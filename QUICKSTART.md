@@ -7,7 +7,7 @@
 先本地安装一次：
 
 ```bash
-pip install -e /path/to/gpt-codex-ai-bridge-kit
+pip install -e /path/to/GPT_Codex_AI_Bridge_Kit
 ```
 
 以后进入任意真实项目根目录，运行：

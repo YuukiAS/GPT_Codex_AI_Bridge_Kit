@@ -93,7 +93,7 @@ def init_workspace(
     if not (root / "templates").exists():
         print(
             "ERROR: cannot find kit templates. Use an editable local install, "
-            "for example: pip install -e /path/to/gpt-codex-ai-bridge-kit",
+            "for example: pip install -e /path/to/GPT_Codex_AI_Bridge_Kit",
             file=sys.stderr,
         )
         return 2

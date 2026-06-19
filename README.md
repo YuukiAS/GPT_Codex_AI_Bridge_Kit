@@ -40,7 +40,7 @@
 如果想以后在任意仓库里用一个短命令部署，先在本机安装一次：
 
 ```bash
-pip install -e /path/to/gpt-codex-ai-bridge-kit
+pip install -e /path/to/GPT_Codex_AI_Bridge_Kit
 ```
 
 之后进入任意真实项目根目录，运行一个词：
