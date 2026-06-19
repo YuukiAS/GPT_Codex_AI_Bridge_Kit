@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gpt-codex-ai-bridge-kit"
+version = "0.1.0"
+description = "Local GPT-Codex AI bridge workflow templates and CLI."
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = []
+
+[project.scripts]
+ai-bridge = "ai_bridge_kit.cli:main"
+
+[tool.setuptools]
+packages = ["ai_bridge_kit"]
