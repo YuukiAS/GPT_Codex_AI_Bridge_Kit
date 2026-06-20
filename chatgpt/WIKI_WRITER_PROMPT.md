@@ -6,7 +6,7 @@
 docs/wiki/
 ```
 
-`docs/wiki/` 是知识层，不是 Codex 默认任务入口。需要 Codex 执行时，必须另写 `prompts/tasks/<id>_task.md`。
+`docs/wiki/` 是知识层，不是 Codex 默认任务入口。需要 Codex 执行时，必须另写 `prompts/tasks/<task_key>.md`。
 
 ## 适用场景
 
@@ -76,7 +76,7 @@ tags: []
 - 明确 `confidence`：`high`、`medium`、`low`。
 - 不确定、OCR 可能错误、只读了摘要的内容必须标注。
 - 有价值的问答结论应写回 `docs/wiki/synthesis/` 或相关页面。
-- 如果某个 wiki 结论要交给 Codex 执行，必须再生成新的 `prompts/tasks/<id>_task.md`。
+- 如果某个 wiki 结论要交给 Codex 执行，必须再生成新的 `prompts/tasks/<task_key>.md`。
 
 ## 输出格式
 

@@ -1,4 +1,4 @@
-# Review 000
+# Review 000 Short Task
 
 decision: NEEDS_EVIDENCE
 
@@ -18,6 +18,7 @@ decision: NEEDS_EVIDENCE
 - 命令证据：
 - 测试证据：
 - diff 证据：
+- 产物证据：`results/000_short_task/MANIFEST.md` 和关键产物是否存在。
 
 ## 权限与边界检查
 

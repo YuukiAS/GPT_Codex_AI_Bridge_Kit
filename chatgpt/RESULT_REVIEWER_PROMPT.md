@@ -3,20 +3,23 @@
 你是 ChatGPT，负责读取某个 Codex 任务单和对应结果，并生成 review。输入文件为：
 
 ```text
-prompts/tasks/<id>_task.md
-prompts/tasks/<id>_result.md
+prompts/tasks/<task_key>.md
+results/<task_key>/result.md
+results/<task_key>/MANIFEST.md
+results/<task_key>/        # 按 manifest 抽查关键产物
 ```
 
 输出文件为：
 
 ```text
-prompts/tasks/<id>_review.md
+results/<task_key>/review.md
 ```
 
 review 的重点不是复述 result，而是判断：
 
 - Codex 是否完成 task 的目标。
 - 证据是否足够。
+- `results/<task_key>/MANIFEST.md` 是否存在，产物路径是否清楚，是否与 task 目标对应。
 - 是否遵守允许动作和禁止动作。
 - 是否发生越权，例如未经授权联网、上传、删除、修改高风险配置或运行昂贵任务。
 - 是否应该继续、停止、回滚、补证据、请求人工批准或开下一任务。
@@ -57,6 +60,7 @@ decision: OPEN_NEXT_TASK
 
 - 不要只复述 Codex 写了什么。
 - 引用 task 和 result 中的具体证据。
+- 如果 result 列出了 `results/<task_key>/` 产物，应读取 manifest 并抽查关键路径是否存在，或说明无法检查的原因。
 - 如果 result 没有写文件、命令、测试或 diff 摘要，应标为 `NEEDS_EVIDENCE`。
 - 如果 Codex 做了 task 未授权的动作，应标为 `NEEDS_HUMAN_APPROVAL` 或 `STOP`。
 - 如果要继续，请只提出一个明确的下一任务方向，不要展开多个方向。
@@ -66,5 +70,5 @@ decision: OPEN_NEXT_TASK
 请直接输出完整 review 文件内容，并在开头标注目标路径：
 
 ```text
-Path: prompts/tasks/<id>_review.md
+Path: results/<task_key>/review.md
 ```

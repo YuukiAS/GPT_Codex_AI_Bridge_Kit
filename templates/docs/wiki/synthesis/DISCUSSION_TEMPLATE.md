@@ -34,4 +34,4 @@ confidence: medium
 
 ## 可执行后续
 
-如果要执行，先生成新的 `prompts/tasks/<id>_task.md`。
+如果要执行，先生成新的 `prompts/tasks/<task_key>.md`。

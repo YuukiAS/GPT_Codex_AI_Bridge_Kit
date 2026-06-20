@@ -25,4 +25,4 @@
 
 #### 下一步
 
-如果要执行，先提炼成 `prompts/tasks/<id>_task.md`。
+如果要执行，先提炼成 `prompts/tasks/<task_key>.md`。

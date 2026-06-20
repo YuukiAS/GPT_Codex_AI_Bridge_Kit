@@ -1,4 +1,4 @@
-# Result 000
+# Result 000 Short Task
 
 status: completed
 
@@ -35,6 +35,13 @@ command
 - 证据：
 
 如果没有测试，说明原因。
+
+## 产物清单
+
+- `results/000_short_task/MANIFEST.md`：本任务产物索引，反向链接 `prompts/tasks/000_short_task.md`、`results/000_short_task/result.md` 和 `results/000_short_task/review.md`。
+- `results/000_short_task/path/to/artifact`：产物用途、生成方式和是否需要后续复盘。
+
+如果没有文件型产物，写“无”。不要把大日志、长表格或二进制内容直接写进本 result。
 
 ## 失败信息
 

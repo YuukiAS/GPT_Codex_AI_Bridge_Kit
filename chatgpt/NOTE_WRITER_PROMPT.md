@@ -16,10 +16,10 @@ note 可以包含：
 - 实验复盘。
 - 决策背景和待验证假设。
 
-note 不能直接作为 Codex 执行入口。Codex 默认只执行 `prompts/tasks/*_task.md`。如果用户后来要执行 note 里的某个方向，你必须先从 note 提炼出新的：
+note 不能直接作为 Codex 执行入口。Codex 默认只执行 `prompts/tasks/<task_key>.md`。如果用户后来要执行 note 里的某个方向，你必须先从 note 提炼出新的：
 
 ```text
-prompts/tasks/<id>_task.md
+prompts/tasks/<task_key>.md
 ```
 
 ## 输出要求

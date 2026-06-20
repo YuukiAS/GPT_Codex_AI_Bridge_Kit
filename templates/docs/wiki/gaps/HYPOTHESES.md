@@ -29,4 +29,4 @@
 
 #### 最小验证实验
 
-说明如果要交给 Codex 或研究流程执行，最小下一步是什么。执行前必须另写 `prompts/tasks/<id>_task.md`。
+说明如果要交给 Codex 或研究流程执行，最小下一步是什么。执行前必须另写 `prompts/tasks/<task_key>.md`。

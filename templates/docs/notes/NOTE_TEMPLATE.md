@@ -22,7 +22,7 @@ status: reference
 
 ## 如果以后要执行
 
-这篇 note 不能直接作为 Codex 任务入口。如果要执行其中某个方向，应先让 ChatGPT 提炼成新的 `prompts/tasks/<id>_task.md`。
+这篇 note 不能直接作为 Codex 任务入口。如果要执行其中某个方向，应先让 ChatGPT 提炼成新的 `prompts/tasks/<task_key>.md`。
 
 ## 相关材料
 

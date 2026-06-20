@@ -15,7 +15,7 @@ from ai_bridge_kit.cli import init_workspace  # noqa: E402
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Initialize prompts/tasks and docs/notes handoff directories in a project."
+        description="Initialize prompts/tasks, docs/notes, and results handoff directories in a project."
     )
     parser.add_argument(
         "--target",

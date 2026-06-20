@@ -2,7 +2,7 @@
 
 `docs/wiki/` 是项目内可长期复用的研究知识层。它用于沉淀论文摘要、报告摘要、概念页、方法对比、研究空白和讨论结论。
 
-它不是 Codex 默认任务入口。需要 Codex 执行时，先把 wiki 中的方向提炼成 `prompts/tasks/<id>_task.md`。
+它不是 Codex 默认任务入口。需要 Codex 执行时，先把 wiki 中的方向提炼成 `prompts/tasks/<task_key>.md`。
 
 ## 目录
 

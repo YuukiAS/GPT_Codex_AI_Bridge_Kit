@@ -1,5 +1,5 @@
 ---
-task_id: "000"
+task_key: "000_short_task"
 project: "project-name"
 status: "ready"
 executor: "Codex"
@@ -11,7 +11,7 @@ allow_external_upload: false
 requires_human_approval: false
 ---
 
-# Task 000
+# Task 000 Short Task
 
 ## 目标
 
@@ -26,7 +26,9 @@ requires_human_approval: false
 - 读取与本任务直接相关的文件。
 - 运行明确必要且低风险的 shell command。
 - 按 frontmatter 授权进行文件修改。
-- 完成后写 `prompts/tasks/000_result.md`。
+- 完成后写 `results/000_short_task/result.md`。
+- 如生成日志、表格、图、导出包、长报告或中间输出，写入同名 `results/000_short_task/`。
+- 如创建 `results/000_short_task/`，同时写 `results/000_short_task/MANIFEST.md`，并在 result 中列出产物清单。
 
 ## 禁止动作
 
@@ -35,10 +37,12 @@ requires_human_approval: false
 - 不要删除数据。
 - 不要扩大到本任务之外的重构或优化。
 - 不要主动执行 `docs/notes/` 中未被引用的内容。
+- 不要把文件型产物塞进 `prompts/tasks/` 或 `docs/notes/`。
 
 ## 预期产出
 
-- `prompts/tasks/000_result.md`。
+- `results/000_short_task/result.md`。
+- 如有文件型产物，写入 `results/000_short_task/`，并包含 `results/000_short_task/MANIFEST.md`。
 - 如有代码修改，包含修改文件列表和 diff 摘要。
 - 如有命令运行，包含命令、目的和结果。
 

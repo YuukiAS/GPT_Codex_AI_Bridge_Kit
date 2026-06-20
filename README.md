@@ -6,26 +6,35 @@
 
 ## 核心目录
 
-在真实项目中，本 kit 默认使用两类目录：
+在真实项目中，本 kit 默认使用三类工作目录：
 
 - `prompts/`：面向模型或 agent 的输入材料总目录。
-- `prompts/tasks/`：可执行 handoff 任务目录，也是 Codex 默认唯一任务入口。
-- `docs/notes/`：研究笔记、方案分析、会议记录、实验复盘等参考材料目录。
+- `prompts/tasks/`：可执行 handoff 任务入口目录，也是 Codex 默认唯一任务入口。
+- `docs/notes/`：研究笔记、方案分析、会议记录、讨论记录等参考材料目录，不承载执行产物。
+- `results/`：任务、实验、审计或脚本生成的实物产物目录，例如日志、表格、图、报告、导出包和中间产物。
 - `docs/wiki/`：长期研究知识库，用于沉淀论文摘要、报告摘要、概念、对比、gap 和综合讨论。
 
-`docs/notes/` 和 `docs/wiki/` 都不直接驱动 Codex 执行。Codex 不应主动把这里的长文当任务做。如果某篇 note 或 wiki 结论后来需要落地，应先由 ChatGPT 提炼成新的 `prompts/tasks/<id>_task.md`。
+任务使用可读的 `task_key` 命名：
+
+```text
+<id>_<short_slug>
+```
+
+`id` 可以是序号或日期；`short_slug` 控制在 1-3 个词内，用下划线连接，例如 `002_fix_ci`、`20260620_t2_edema_pilot`。新任务文件写作 `prompts/tasks/<task_key>.md`，因为它已经位于 `tasks/` 目录下，不再追加 `_task` 后缀。
+
+`docs/notes/` 和 `docs/wiki/` 都不直接驱动 Codex 执行。Codex 不应主动把这里的长文当任务做。如果某篇 note 或 wiki 结论后来需要落地，应先由 ChatGPT 提炼成新的 `prompts/tasks/<task_key>.md`。
 
 ## 核心循环
 
 1. ChatGPT 生成任务单：
-   `prompts/tasks/<id>_task.md`
-2. Codex 读取任务单，按授权执行，并写回结果：
-   `prompts/tasks/<id>_result.md`
-3. ChatGPT 读取 task 和 result，生成复盘：
-   `prompts/tasks/<id>_review.md`
+   `prompts/tasks/<task_key>.md`
+2. Codex 读取任务单，按授权执行，并把执行报告、manifest 和文件型产物写入：
+   `results/<task_key>/`
+3. ChatGPT 读取 task、`results/<task_key>/result.md`、`results/<task_key>/MANIFEST.md` 和必要产物，生成复盘：
+   `results/<task_key>/review.md`
 4. 人类根据 review 批准、否决、停止、回滚、换方向，或要求生成下一张 task。
 
-这个循环把“口头交代”变成了可审计文件：任务边界、允许动作、禁止动作、证据、命令、修改文件、失败信息和下一步判断都能留在项目里。
+这个循环把“口头交代”变成了可审计文件：任务边界留在 `prompts/tasks/`，执行报告、review、证据和产物留在同名 `results/<task_key>/`，从任务到结果可以直接按目录名对应。
 
 ## Kit 内容
 
@@ -49,7 +58,7 @@ pip install -e /path/to/GPT_Codex_AI_Bridge_Kit
 ai-bridge
 ```
 
-它等价于初始化当前目录，并默认创建或更新 `AGENTS.md` 中的协议片段、`prompts/`、`docs/notes/` 和 repo-local Codex skill。
+它等价于初始化当前目录，并默认创建或更新 `AGENTS.md` 中的协议片段、`prompts/`、`docs/notes/`、`results/` 和 repo-local Codex skill。
 
 这里使用一个很薄的 CLI，而不是更复杂的服务或 MCP 编排。原因是这个工具包的核心资产是仓库里的 Markdown 协议文件；CLI 只负责把这些文件稳定部署到任意项目中。
 
@@ -79,6 +88,9 @@ docs/
     comparisons/
     gaps/
     synthesis/
+results/
+  README.md
+  ARTIFACT_MANIFEST_TEMPLATE.md
 .agents/
   skills/
     agent-task-executor/
@@ -112,10 +124,13 @@ ai-bridge validate --target /path/to/project
 - `prompts/CHATGPT_RULES.md` 是否存在。
 - `prompts/tasks/` 是否存在。
 - `docs/notes/` 是否存在。
+- `results/` 是否存在。
 - `docs/wiki/` 和 `docs/wiki/index.md` 是否存在。
-- `*_task.md` 是否包含 YAML frontmatter。
+- task 文件是否包含 YAML frontmatter。
 - task frontmatter 是否包含必要字段。
-- `*_result.md` 和 `*_review.md` 命名是否能对应到已有 task。
+- 新任务文件名是否采用 `<id>_<short_slug>.md`，其中 short slug 为 1-3 个词。
+- `results/<task_key>/` 是否能对应到已有 task。
+- `results/<task_key>/result.md`、`results/<task_key>/review.md` 和 `results/<task_key>/MANIFEST.md` 是否存在。
 
 发现问题时脚本会返回非零退出码，便于以后接入更严格的检查。
 
@@ -125,7 +140,7 @@ ai-bridge validate --target /path/to/project
 
 - 需要 Codex 执行明确动作。
 - 需要改代码、跑测试、检查日志、生成文件或做受控 shell command。
-- 有明确停止条件和结果回写要求。
+- 有明确停止条件和 `results/<task_key>/` 输出要求。
 
 写 note 的情况：
 
@@ -143,8 +158,20 @@ ai-bridge validate --target /path/to/project
 - ChatGPT 或 Codex 生成了一个 report，值得沉淀成长期知识。
 - 多篇论文之间需要对比、概念抽象、gap 梳理或假设管理。
 
-默认写入 `docs/wiki/`。新增或更新 wiki 页面后，更新 `docs/wiki/index.md`，并 append `docs/wiki/log.md`。如果 wiki 中的某个方向要执行，再生成新的 `prompts/tasks/<id>_task.md`。
+默认写入 `docs/wiki/`。新增或更新 wiki 页面后，更新 `docs/wiki/index.md`，并 append `docs/wiki/log.md`。如果 wiki 中的某个方向要执行，再生成新的 `prompts/tasks/<task_key>.md`。
+
+## 什么时候写 results
+
+写 `results/<task_key>/` 的情况：
+
+- Codex 或脚本生成了可复用的文件产物，例如日志、CSV/JSON、图、压缩包、模型评估表、长报告或中间输出。
+- task 的产出不是单纯的执行摘要，而是需要后续检查、复盘或复用的文件集合。
+- 产物体量较大、会持续增长，或不适合放进 `prompts/tasks/`。
+
+原则：`prompts/tasks/<task_key>.md` 只保存任务单；`results/<task_key>/result.md` 记录发生了什么、证据在哪里、产物路径是什么；`results/<task_key>/MANIFEST.md` 索引实际产物；`results/<task_key>/review.md` 保存复盘。不要把执行报告、大日志、长表格或二进制输出塞进 `prompts/tasks/`。
+
+旧版 `prompts/tasks/<id>_task.md`、`<id>_result.md`、`<id>_review.md` 仍可作为 legacy 文件读取和校验，但新任务应使用 `prompts/tasks/<task_key>.md` 与 `results/<task_key>/`。
 
 ## 默认协议
 
-本 kit 的默认协议是 `prompts/` 加 `docs/notes/`。如果某些项目偏好隐藏目录，可以自行改写模板，但建议先保持默认路径，直到团队已经稳定使用这套协议。
+本 kit 的默认协议是 `prompts/`、`docs/notes/` 和 `results/` 三层分工。如果某些项目偏好隐藏目录，可以自行改写模板，但建议先保持默认路径，直到团队已经稳定使用这套协议。

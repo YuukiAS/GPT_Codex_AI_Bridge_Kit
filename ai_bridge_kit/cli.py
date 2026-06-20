@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -20,7 +21,7 @@ PROMPT_FILES = {
 }
 
 REQUIRED_FIELDS = [
-    "task_id",
+    "task_key",
     "project",
     "status",
     "executor",
@@ -31,6 +32,9 @@ REQUIRED_FIELDS = [
     "allow_external_upload",
     "requires_human_approval",
 ]
+
+LEGACY_REQUIRED_FIELDS = ["task_id", *REQUIRED_FIELDS[1:]]
+TASK_KEY_RE = re.compile(r"^\d+_[A-Za-z0-9]+(?:_[A-Za-z0-9]+){0,2}$")
 
 
 def kit_root() -> Path:
@@ -107,6 +111,7 @@ def init_workspace(
         target / "prompts" / "tasks",
         target / "docs",
         target / "docs" / "notes",
+        target / "results",
         target / "docs" / "wiki",
         target / "docs" / "wiki" / "papers",
         target / "docs" / "wiki" / "concepts",
@@ -135,6 +140,14 @@ def init_workspace(
         copy_file(
             root / "templates" / "prompts" / "templates" / name,
             target / "prompts" / "templates" / name,
+            force,
+            actions,
+        )
+
+    for name in ["README.md", "ARTIFACT_MANIFEST_TEMPLATE.md"]:
+        copy_file(
+            root / "templates" / "results" / name,
+            target / "results" / name,
             force,
             actions,
         )
@@ -177,7 +190,9 @@ def init_workspace(
     print("Next:")
     print("- ChatGPT/GitHub MCP should read AGENTS.md and prompts/CHATGPT_RULES.md.")
     print("- Codex should read AGENTS.md, prompts/AGENT_RULES.md, and the selected task.")
-    print("- Put executable work in prompts/tasks/<id>_task.md.")
+    print("- Put executable work in prompts/tasks/<task_key>.md.")
+    print("- Use <id>_<short_slug>; keep the slug to 1-3 words.")
+    print("- Put execution reports and artifacts in results/<task_key>/.")
     print("- Put reusable research knowledge in docs/wiki/; reference it from tasks when needed.")
     return 0
 
@@ -213,6 +228,7 @@ def validate_workspace(target: Path) -> int:
         (target / "prompts" / "CHATGPT_RULES.md", "prompts/CHATGPT_RULES.md"),
         (target / "prompts" / "tasks", "prompts/tasks/"),
         (target / "docs" / "notes", "docs/notes/"),
+        (target / "results", "results/"),
         (target / "docs" / "wiki", "docs/wiki/"),
         (target / "docs" / "wiki" / "index.md", "docs/wiki/index.md"),
     ]
@@ -224,40 +240,92 @@ def validate_workspace(target: Path) -> int:
             errors.append(f"ERROR missing {label}")
 
     tasks_dir = target / "prompts" / "tasks"
+    results_dir = target / "results"
     if tasks_dir.exists():
-        task_files = sorted(tasks_dir.glob("*_task.md"))
-        task_ids = {path.name.removesuffix("_task.md") for path in task_files}
+        legacy_task_files = sorted(tasks_dir.glob("*_task.md"))
+        task_files = sorted(
+            path
+            for path in tasks_dir.glob("*.md")
+            if not path.name.endswith(("_task.md", "_result.md", "_review.md"))
+        )
+        task_keys = {path.stem for path in task_files}
+        legacy_task_ids = {path.name.removesuffix("_task.md") for path in legacy_task_files}
+        all_task_keys = task_keys | legacy_task_ids
         if not task_files:
-            warnings.append("WARN no task files found in prompts/tasks/")
+            warnings.append("WARN no new-style task files found in prompts/tasks/")
 
         for task_file in task_files:
             data, parse_error = parse_frontmatter(task_file)
             if parse_error:
                 errors.append(f"ERROR {task_file}: {parse_error}")
                 continue
+            if not TASK_KEY_RE.fullmatch(task_file.stem):
+                errors.append(
+                    f"ERROR {task_file}: filename must be <id>_<short_slug>.md with a 1-3 word slug"
+                )
             missing = [field for field in REQUIRED_FIELDS if field not in data]
             if missing:
                 errors.append(f"ERROR {task_file}: missing fields {', '.join(missing)}")
+            elif data.get("task_key") != task_file.stem:
+                errors.append(
+                    f"ERROR {task_file}: task_key '{data.get('task_key')}' does not match filename"
+                )
+            else:
+                oks.append(f"OK   {task_file.relative_to(target)} frontmatter fields present")
+
+        for task_file in legacy_task_files:
+            data, parse_error = parse_frontmatter(task_file)
+            if parse_error:
+                errors.append(f"ERROR {task_file}: {parse_error}")
+                continue
+            missing = [field for field in LEGACY_REQUIRED_FIELDS if field not in data]
+            if missing:
+                errors.append(f"ERROR {task_file}: missing legacy fields {', '.join(missing)}")
             elif data.get("task_id") != task_file.name.removesuffix("_task.md"):
                 errors.append(
                     f"ERROR {task_file}: task_id '{data.get('task_id')}' does not match filename"
                 )
             else:
-                oks.append(f"OK   {task_file.relative_to(target)} frontmatter fields present")
+                warnings.append(f"WARN legacy task naming: {task_file.relative_to(target)}")
 
         for result_file in sorted(tasks_dir.glob("*_result.md")):
             result_id = result_file.name.removesuffix("_result.md")
-            if result_id in task_ids:
-                oks.append(f"OK   {result_file.relative_to(target)} matches a task")
+            if result_id in legacy_task_ids:
+                warnings.append(f"WARN legacy result location: {result_file.relative_to(target)}")
             else:
                 warnings.append(f"WARN result has no matching task: {result_file.relative_to(target)}")
 
         for review_file in sorted(tasks_dir.glob("*_review.md")):
             review_id = review_file.name.removesuffix("_review.md")
-            if review_id in task_ids:
-                oks.append(f"OK   {review_file.relative_to(target)} matches a task")
+            if review_id in legacy_task_ids:
+                warnings.append(f"WARN legacy review location: {review_file.relative_to(target)}")
             else:
                 warnings.append(f"WARN review has no matching task: {review_file.relative_to(target)}")
+
+        if results_dir.exists():
+            for artifact_dir in sorted(path for path in results_dir.iterdir() if path.is_dir()):
+                if not TASK_KEY_RE.fullmatch(artifact_dir.name):
+                    continue
+                if artifact_dir.name in all_task_keys:
+                    oks.append(f"OK   {artifact_dir.relative_to(target)}/ matches a task")
+                else:
+                    warnings.append(
+                        f"WARN results directory has no matching task: {artifact_dir.relative_to(target)}/"
+                    )
+                    continue
+                manifest = artifact_dir / "MANIFEST.md"
+                if manifest.exists():
+                    oks.append(f"OK   {manifest.relative_to(target)} exists")
+                else:
+                    warnings.append(f"WARN missing artifact manifest: {manifest.relative_to(target)}")
+                result_report = artifact_dir / "result.md"
+                if not result_report.exists():
+                    warnings.append(
+                        f"WARN missing result report: {result_report.relative_to(target)}"
+                    )
+                review_report = artifact_dir / "review.md"
+                if not review_report.exists():
+                    warnings.append(f"WARN missing review file: {review_report.relative_to(target)}")
 
     print(f"Validating handoff workspace: {target}")
     print()
@@ -285,7 +353,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="ai-bridge",
         description=(
-            "Deploy and validate the prompts/tasks + docs/notes ChatGPT/Codex handoff protocol. "
+            "Deploy and validate the prompts/tasks + docs/notes + results ChatGPT/Codex handoff protocol. "
             "With no subcommand, initializes the current directory."
         ),
     )

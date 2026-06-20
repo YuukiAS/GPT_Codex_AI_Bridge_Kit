@@ -6,14 +6,14 @@
 .agents/skills/agent-task-executor/SKILL.md
 ```
 
-它不代表某个具体项目任务，只规定如何执行 `prompts/tasks/*_task.md`。
+它不代表某个具体项目任务，只规定如何执行 `prompts/tasks/<task_key>.md`。
 
 ## 触发条件
 
 当用户要求执行某个 handoff task，或任务路径形如：
 
 ```text
-prompts/tasks/<id>_task.md
+prompts/tasks/<task_key>.md
 ```
 
 使用本规程。
@@ -22,12 +22,12 @@ prompts/tasks/<id>_task.md
 
 1. 读取项目根目录 `AGENTS.md`，如果存在。
 2. 读取 `prompts/AGENT_RULES.md`。
-3. 读取指定 `prompts/tasks/<id>_task.md`。
+3. 读取指定 `prompts/tasks/<task_key>.md`。
 4. 检查 YAML frontmatter。
 5. 核对权限字段。
 6. 执行任务单中明确授权的动作。
-7. 记录读取文件、修改文件、命令、输出摘要、测试结果和失败信息。
-8. 写回 `prompts/tasks/<id>_result.md`。
+7. 记录读取文件、修改文件、命令、输出摘要、测试结果、失败信息和文件型产物。
+8. 写回 `results/<task_key>/result.md`。
 9. 在最终回复中简短说明 result 文件已写入。
 
 ## 必查 frontmatter 字段
@@ -35,7 +35,7 @@ prompts/tasks/<id>_task.md
 任务单至少应包含：
 
 ```yaml
-task_id: "002"
+task_key: "002_short_task"
 project: "project-name"
 status: "ready"
 executor: "Codex"
@@ -66,14 +66,25 @@ requires_human_approval: false
 - 不要把不确定结论写成事实。
 - 不要主动把 `docs/notes/` 或 `docs/wiki/` 当作任务执行。
 - 不要只在聊天里总结而不写 result 文件。
+- 不要把日志、表格、图、导出包、长报告或中间输出塞进 `prompts/tasks/` 或 `docs/notes/`；这些文件型产物应写到同名 `results/<task_key>/`，并用 `results/<task_key>/MANIFEST.md` 索引。
 
 ## result 文件要求
 
 写入：
 
 ```text
-prompts/tasks/<id>_result.md
+results/<task_key>/result.md
 ```
+
+如果任务生成文件型产物，写入：
+
+```text
+results/<task_key>/
+```
+
+如果创建 `results/<task_key>/`，必须同时写或更新 `results/<task_key>/MANIFEST.md`，反向链接 `prompts/tasks/<task_key>.md`、`results/<task_key>/result.md`、`results/<task_key>/review.md`，并说明每个关键产物的用途。
+
+result 文件只保存摘要、证据和产物清单，不保存大日志、长表格或二进制内容。
 
 建议结构：
 
@@ -91,6 +102,8 @@ status: completed
 ## 运行命令
 
 ## 测试结果
+
+## 产物清单
 
 ## 失败信息
 

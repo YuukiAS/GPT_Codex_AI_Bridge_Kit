@@ -45,4 +45,4 @@ tags: []
 
 ## 可执行后续
 
-这里仅记录可能方向。要执行时，先提炼成 `prompts/tasks/<id>_task.md`。
+这里仅记录可能方向。要执行时，先提炼成 `prompts/tasks/<task_key>.md`。
