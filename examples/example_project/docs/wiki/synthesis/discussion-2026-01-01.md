@@ -15,8 +15,9 @@ confidence: high
 
 - `prompts/tasks/` 是 Codex 可执行任务入口。
 - `docs/notes/` 保存临时或半结构化参考笔记。
+- `results/` 保存任务或实验生成的文件型产物。
 - `docs/wiki/` 保存长期可复用知识，例如论文摘要、报告摘要、概念和综合讨论。
 
 ## 可执行后续
 
-如果要把这条结论转成项目改动，应先生成新的 `prompts/tasks/<id>_task.md`。
+如果要把这条结论转成项目改动，应先生成新的 `prompts/tasks/<task_key>.md`。

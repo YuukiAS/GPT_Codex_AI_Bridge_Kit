@@ -5,14 +5,15 @@
 Codex 默认读取：
 
 - `prompts/AGENT_RULES.md`
-- `prompts/tasks/*_task.md`
+- `prompts/tasks/<task_key>.md`
 
 Codex 完成后写：
 
-- `prompts/tasks/*_result.md`
+- `results/<task_key>/result.md`
+- 文件型产物写 `results/<task_key>/`，并在 result 中列出产物清单。
 
 ChatGPT 复盘写：
 
-- `prompts/tasks/*_review.md`
+- `results/<task_key>/review.md`
 
-`docs/notes/` 和 `docs/wiki/` 只作参考，不直接执行。
+`docs/notes/` 和 `docs/wiki/` 只作参考，不直接执行。`docs/notes/` 不保存执行产物。

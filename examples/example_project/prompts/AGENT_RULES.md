@@ -4,7 +4,7 @@
 
 ## 默认入口
 
-Codex 只从明确指定的 `prompts/tasks/<id>_task.md` 开始执行。`docs/notes/` 和 `docs/wiki/` 是参考目录，不是任务入口。
+Codex 只从明确指定的 `prompts/tasks/<task_key>.md` 开始执行。`docs/notes/` 和 `docs/wiki/` 是参考目录，不是任务入口。文件型产物写入 `results/<task_key>/`。
 
 ## 权限边界
 
@@ -12,7 +12,7 @@ Codex 必须遵守 task frontmatter。没有授权时，不得联网、上传、
 
 ## 结果记录
 
-Codex 必须写 `prompts/tasks/<id>_result.md`，记录读取文件、修改文件、命令、测试、失败信息、diff 摘要和下一步建议。
+Codex 必须写 `results/<task_key>/result.md`，记录读取文件、修改文件、命令、测试、失败信息、diff 摘要、`results/<task_key>/` 产物清单和下一步建议。不要把大日志、长表格或二进制产物塞进 `prompts/tasks/` 或 `docs/notes/`。
 
 ## 证据要求
 

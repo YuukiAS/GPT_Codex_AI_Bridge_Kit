@@ -1,5 +1,5 @@
 ---
-task_id: "001"
+task_key: "001_structure_audit"
 project: "example_project"
 status: "ready"
 executor: "Codex"
@@ -11,7 +11,7 @@ allow_external_upload: false
 requires_human_approval: false
 ---
 
-# Task 001
+# Task 001 Structure Audit
 
 ## 目标
 
@@ -23,13 +23,14 @@ requires_human_approval: false
 
 ## 允许动作
 
-- 读取 `AGENTS.md`、`prompts/AGENT_RULES.md`、`prompts/tasks/001_task.md` 和 `docs/notes/2026-01-01_example_note.md`。
+- 读取 `AGENTS.md`、`prompts/AGENT_RULES.md`、`prompts/tasks/001_structure_audit.md` 和 `docs/notes/2026-01-01_example_note.md`。
 - 运行低风险只读 shell command，例如列出文件树。
-- 写 `prompts/tasks/001_result.md`。
+- 写 `results/001_structure_audit/result.md`。
+- 写 `results/001_structure_audit/MANIFEST.md`。
 
 ## 禁止动作
 
-- 不要修改除 `prompts/tasks/001_result.md` 以外的文件。
+- 不要修改除 `results/001_structure_audit/` 以外的文件。
 - 不要联网。
 - 不要上传。
 - 不要删除数据。
@@ -37,7 +38,8 @@ requires_human_approval: false
 
 ## 预期产出
 
-- `prompts/tasks/001_result.md`，包含结构审计摘要、读取文件、运行命令、测试结果、失败信息、diff 摘要和一个最小改进建议。
+- `results/001_structure_audit/result.md`，包含结构审计摘要、读取文件、运行命令、测试结果、失败信息、diff 摘要和一个最小改进建议。
+- `results/001_structure_audit/MANIFEST.md`，索引本任务的 task、result、review 和关键产物。
 
 ## 停止条件
 

@@ -1,5 +1,5 @@
 ---
-task_id: "000"
+task_key: "000_short_task"
 project: "example_project"
 status: "ready"
 executor: "Codex"
@@ -11,7 +11,7 @@ allow_external_upload: false
 requires_human_approval: false
 ---
 
-# Task 000
+# Task 000 Short Task
 
 ## 目标
 
@@ -25,7 +25,8 @@ requires_human_approval: false
 
 - 读取相关文件。
 - 运行低风险 shell command。
-- 写 result 文件。
+- 写 `results/000_short_task/result.md`。
+- 如生成文件型产物，写入 `results/000_short_task/` 并在 result 中列出清单。
 
 ## 禁止动作
 
@@ -33,10 +34,12 @@ requires_human_approval: false
 - 不要上传。
 - 不要删除数据。
 - 不要扩大范围。
+- 不要把文件型产物写进 `prompts/tasks/` 或 `docs/notes/`。
 
 ## 预期产出
 
-- `prompts/tasks/000_result.md`
+- `results/000_short_task/result.md`
+- 如有文件型产物，写入 `results/000_short_task/`
 
 ## 停止条件
 
