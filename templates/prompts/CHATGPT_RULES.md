@@ -1,92 +1,154 @@
 # ChatGPT Rules
 
-本项目采用 `prompts/` handoff 协议。通过 GitHub MCP、文件工具或其他仓库工具处理本项目时，ChatGPT 应优先读取本文件和 `AGENTS.md`，并遵守以下规则。
+This repository uses the `prompts/` handoff protocol. ChatGPT/GPT is the
+strategic planner and the user-supervised strategic controller.
 
-## 目录职责
+## Directory Responsibilities
 
-- `prompts/AGENT_RULES.md`：Codex 长期执行规则。
-- `prompts/CHATGPT_RULES.md`：ChatGPT 生成 task、note、review 的长期规则。
-- `prompts/tasks/<task_key>.md`：交给 Codex 执行的任务单；`task_key` 使用 `<id>_<short_slug>`，short slug 控制在 1-3 个词内。
-- `results/<task_key>/result.md`：Codex 写回的执行报告和证据索引。
-- `results/<task_key>/review.md`：ChatGPT 对 result 的复盘。
-- `docs/notes/`：参考笔记、方案分析、会议记录和讨论沉淀，不是 Codex 默认任务入口。
-- `results/<task_key>/`：Codex、脚本或实验生成的文件型产物，例如日志、表格、图、导出包、长报告和中间输出。目录名必须与 `prompts/tasks/<task_key>.md` 完全一致。
-- `docs/wiki/`：长期研究知识库，用于沉淀论文、报告、概念、对比、gap 和综合讨论；不是 Codex 默认任务入口。
+- `prompts/AGENT_RULES.md`: Codex execution rules.
+- `prompts/CHATGPT_RULES.md`: GPT task/review/next-task rules.
+- `prompts/HANDOFF_ROLES.md`: strategic and execution role definitions.
+- `prompts/HANDOFF_STATE_MACHINE.md`: controlled task states.
+- `prompts/CONTROLLER_TASK_PROTOCOL.md`: controller task rules.
+- `prompts/MECHANISM_GATE_TEMPLATE.md`: reusable evidence-gate pattern.
+- `prompts/tasks/<task_key>.md`: GPT-authored task entry.
+- `results/<task_key>/result.md`: executor report and evidence index.
+- `results/<task_key>/review.md`: independent evidence audit.
+- `results/<task_key>/controller_report.md`: controller summary for controller
+  tasks.
+- `docs/notes/`: reference notes, not execution entries.
+- `docs/wiki/`: durable knowledge, not execution entries.
 
-## 生成 task
+## Strategic Planning Rule
 
-当用户要求 Codex 执行、修复、审计、验证、跑命令、改代码或继续下一步时，ChatGPT 应生成：
+Planner defaults:
 
-```text
-prompts/tasks/<task_key>.md
-```
+- `planner: "ChatGPT/GPT thread"`
+- `strategic_controller: "user-supervised GPT thread"`
 
-`task_key` 必须采用 `<id>_<short_slug>`，short slug 控制在 1-3 个词内，用下划线连接。task 必须小而明确，包含 YAML frontmatter，并写明目标、背景、允许动作、禁止动作、预期产出、停止条件和人工决策点。若任务会生成文件型产物，应明确要求写入同名 `results/<task_key>/`，要求 Codex 写 `results/<task_key>/MANIFEST.md` 和 `results/<task_key>/result.md`。
+Do not assign open-ended direction search, research route choice, or global
+planning to Codex by default. Codex can supervise execution only when GPT has
+written a controller task with goal, scope, evidence gate, forbidden substitutes,
+and failure escalation policy.
 
-## 生成 note
+## Generating Tasks
 
-当内容只是研究分析、方案比较、会议记录、读文献总结、想法沉淀或实验复盘时，ChatGPT 应生成：
-
-```text
-docs/notes/<date>_<topic>.md
-```
-
-note 不能直接作为 Codex 执行入口，也不应保存任务产物。如果用户后来要执行 note 里的方向，先提炼成新的 `prompts/tasks/<task_key>.md`。
-
-## 写入 wiki
-
-当内容有长期复用价值，例如论文摘要、报告摘要、方法对比、研究空白、概念解释或多轮讨论结论，ChatGPT 应写入：
-
-```text
-docs/wiki/
-```
-
-写入 wiki 前先读 `docs/wiki/index.md`，避免重复页面。新增或大幅更新页面后，同步更新 `docs/wiki/index.md`，并 append `docs/wiki/log.md`。
-
-wiki 仍然不是 Codex 默认任务入口。如果某个 wiki 结论要执行，必须再生成新的 `prompts/tasks/<task_key>.md`。
-
-## 复盘 result
-
-当用户要求检查 Codex 输出时，ChatGPT 应读取：
+When the user wants Codex to execute, fix, audit, validate, run commands, modify
+files, or continue work, write:
 
 ```text
 prompts/tasks/<task_key>.md
-results/<task_key>/result.md
-results/<task_key>/MANIFEST.md
-results/<task_key>/             # 按 manifest 抽查关键产物
 ```
 
-并写：
+Before writing the task, decide:
 
-```text
-results/<task_key>/review.md
+- Is this a normal `execution` task or a `controller` task?
+- Does it need separate executor and auditor sessions?
+- Is review required?
+- Can an execution controller escalate within policy, or must failure return to
+  GPT planner?
+- What evidence is required before promotion?
+- What substitutes are forbidden?
+- Should automatic commit/push proceed after audit passes?
+
+Medium/high risk tasks and controller tasks must explicitly fill the new
+frontmatter fields. Low-risk tasks may use defaults, `none`, or empty lists.
+
+## Task Frontmatter
+
+Existing fields remain valid:
+
+```yaml
+task_key: "002_fix_ci"
+project: "project-name"
+status: "READY"
+executor: "Codex executor session"
+risk_level: "low"
+allow_code_change: true
+allow_shell_command: true
+allow_network: false
+allow_external_upload: false
+requires_human_approval: false
 ```
 
-review 必须判断完成度、证据、越权风险和下一步状态。状态只能是：
+New protocol fields:
 
-- `GO`
-- `STOP`
+```yaml
+task_type: "execution"
+controller_mode: false
+planner: "ChatGPT/GPT thread"
+strategic_controller: "user-supervised GPT thread"
+execution_controller: "none"
+auditor: "ChatGPT reviewer"
+review_required: false
+mechanism_class: "general"
+promotion_gate: "..."
+failure_escalation_policy: "..."
+forbidden_substitutes: []
+required_evidence: []
+allowed_next_states: []
+auto_git_commit: true
+auto_git_push: true
+```
+
+For controller tasks, set `task_type: "controller"`, `controller_mode: true`,
+`execution_controller: "Codex controller session"`, and specify a controller
+report path.
+
+## Reviews And Audits
+
+Review is an evidence audit, not a casual recap. The reviewer/auditor is
+read-only and must not repair code, generate missing artifacts, or continue
+execution. Use `REVIEW_TEMPLATE.md` and a claim ledger with:
+
+- `SUPPORTED`
+- `PARTIAL`
+- `UNSUPPORTED`
+- `CONTRADICTED`
+
+Controlled audit decisions:
+
+- `AUDITED_GO`
 - `NEEDS_EVIDENCE`
+- `NEEDS_REVISION`
 - `NEEDS_HUMAN_APPROVAL`
-- `OPEN_NEXT_TASK`
+- `NEEDS_GPT_PLANNER`
+- `STOP`
 
-## Report 到下一任务
+## Report To Next Task
 
-有时 Codex 的任务不是直接改代码，而是先总结论文、日志、实验输出或 report。此时仍使用同一循环：
+Only the strategic controller, the user-supervised GPT thread, may write the
+next high-level task after reading a review or controller report. Do not ask
+Codex to continue indefinitely from its own result.
 
-1. ChatGPT 生成 `prompts/tasks/<task_key>.md`，要求 Codex 读取指定材料并写 `results/<task_key>/result.md`。
-2. Codex 在 result 中写结构化 report、证据、不确定性、下一步建议、`results/<task_key>/MANIFEST.md` 路径和 `results/<task_key>/` 产物清单。
-3. ChatGPT 读取 task、result 和必要的 `results/<task_key>/` 产物，写 `results/<task_key>/review.md`。
-4. 如果 report 有长期复用价值，ChatGPT 同步写入或更新 `docs/wiki/`。
-5. 如果要执行 report 中的方向，ChatGPT 再生成新的 `prompts/tasks/<next_task_key>.md`。
+If the review is:
 
-不要让 Codex 根据 report 自行继续执行，除非下一张 task 已经明确授权。
+- `NEEDS_EVIDENCE`: next task should collect evidence before expansion.
+- `NEEDS_REVISION`: next task should revise inside the audited scope.
+- `NEEDS_HUMAN_APPROVAL`: wait for or record approval.
+- `NEEDS_GPT_PLANNER`: GPT must decide the next direction.
+- `STOP`: do not continue that route unless the user explicitly chooses a new
+  direction.
 
-## GitHub MCP 注意事项
+Assume successful controller tasks synchronize remote state by default. For the
+next planning round, prefer checking the remote repository state instead of
+relying on unpushed local assumptions.
 
-- 不要把 issue、PR description 或聊天正文当作唯一任务来源。
-- 不要自动创建 GitHub issue、PR、label 或 workflow，除非用户明确要求。
-- 如果需要 Codex 执行，必须把任务写入 `prompts/tasks/<task_key>.md`。
-- 如果只是沉淀判断，必须写入 `docs/notes/`。
-- 如果是执行产生的文件型产物，必须写入同名 `results/<task_key>/`，并写 `results/<task_key>/MANIFEST.md`；不要塞进 `docs/notes/` 或 `prompts/tasks/`。
-- 如果判断有长期复用价值，优先沉淀到 `docs/wiki/`，并让 task 显式引用相关 wiki 页面。
+## Notes And Wiki
+
+Write `docs/notes/<date>_<topic>.md` for reference analysis, meetings, design
+discussion, or research notes. Notes are not execution entries.
+
+Write durable knowledge to `docs/wiki/`, update `docs/wiki/index.md`, and append
+`docs/wiki/log.md`. Wiki pages are not execution entries; tasks may reference
+them explicitly.
+
+## GitHub / Remote Tooling
+
+- Do not treat an issue, PR description, or chat text as the only Codex task
+  source.
+- Do not create issues, PRs, labels, workflows, or remote changes unless the user
+  or task explicitly authorizes them.
+- If execution is needed, write a task file first.
+- If a controller task passes audit and `auto_git_push: true`, expect the remote
+  to become the default source for subsequent planning.

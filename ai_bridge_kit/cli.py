@@ -12,12 +12,18 @@ END_MARKER = "<!-- ai-bridge-kit:end -->"
 
 PROMPT_FILES = {
     "task": "chatgpt/TASK_WRITER_PROMPT.md",
+    "task-template": "templates/prompts/templates/TASK_TEMPLATE.md",
+    "controller-task-template": "templates/prompts/templates/CONTROLLER_TASK_TEMPLATE.md",
     "note": "chatgpt/NOTE_WRITER_PROMPT.md",
     "review": "chatgpt/RESULT_REVIEWER_PROMPT.md",
     "next": "chatgpt/NEXT_TASK_PROMPT.md",
     "wiki": "chatgpt/WIKI_WRITER_PROMPT.md",
     "github-mcp": "chatgpt/GITHUB_MCP_REPO_INSTRUCTIONS.md",
     "codex": "codex/CODEX_START_PROMPT.md",
+    "roles": "templates/prompts/HANDOFF_ROLES.md",
+    "state-machine": "templates/prompts/HANDOFF_STATE_MACHINE.md",
+    "controller-protocol": "templates/prompts/CONTROLLER_TASK_PROTOCOL.md",
+    "mechanism-gate": "templates/prompts/MECHANISM_GATE_TEMPLATE.md",
 }
 
 REQUIRED_FIELDS = [
@@ -35,6 +41,39 @@ REQUIRED_FIELDS = [
 
 LEGACY_REQUIRED_FIELDS = ["task_id", *REQUIRED_FIELDS[1:]]
 TASK_KEY_RE = re.compile(r"^\d+_[A-Za-z0-9]+(?:_[A-Za-z0-9]+){0,2}$")
+CONTROLLED_STATES = {
+    "READY",
+    "EXECUTION_PLANNED",
+    "EXECUTOR_RUNNING",
+    "EXECUTED_UNAUDITED",
+    "AUDITOR_RUNNING",
+    "AUDITED_GO",
+    "NEEDS_EVIDENCE",
+    "NEEDS_REVISION",
+    "NEEDS_HUMAN_APPROVAL",
+    "NEEDS_SUBAGENT_LAUNCH",
+    "ESCALATE_WITHIN_POLICY",
+    "NEEDS_GPT_PLANNER",
+    "STOP",
+}
+PROMOTION_MARKERS = {
+    "AUDITED_GO",
+    "promotion_decision: PROMOTE",
+    "promotion_decision: \"PROMOTE\"",
+    "next_allowed_action: PROMOTE_AND_SYNC_REMOTE",
+    "PROMOTE_AND_SYNC_REMOTE",
+}
+RISK_PROTOCOL_FIELDS = [
+    "task_type",
+    "controller_mode",
+    "planner",
+    "strategic_controller",
+    "review_required",
+    "promotion_gate",
+    "failure_escalation_policy",
+    "required_evidence",
+]
+CONTROLLER_FIELDS = ["execution_controller", "auditor"]
 
 
 def kit_root() -> Path:
@@ -135,8 +174,25 @@ def init_workspace(
         force,
         actions,
     )
+    for name in [
+        "HANDOFF_ROLES.md",
+        "HANDOFF_STATE_MACHINE.md",
+        "CONTROLLER_TASK_PROTOCOL.md",
+        "MECHANISM_GATE_TEMPLATE.md",
+    ]:
+        copy_file(
+            root / "templates" / "prompts" / name,
+            target / "prompts" / name,
+            force,
+            actions,
+        )
 
-    for name in ["TASK_TEMPLATE.md", "RESULT_TEMPLATE.md", "REVIEW_TEMPLATE.md"]:
+    for name in [
+        "TASK_TEMPLATE.md",
+        "CONTROLLER_TASK_TEMPLATE.md",
+        "RESULT_TEMPLATE.md",
+        "REVIEW_TEMPLATE.md",
+    ]:
         copy_file(
             root / "templates" / "prompts" / "templates" / name,
             target / "prompts" / "templates" / name,
@@ -217,7 +273,37 @@ def parse_frontmatter(path: Path) -> tuple[dict[str, str], str | None]:
     return data, None
 
 
-def validate_workspace(target: Path) -> int:
+def boolish(value: str | None) -> bool:
+    return str(value or "").strip().lower() in {"true", "yes", "1", "on"}
+
+
+def missing_or_empty(data: dict[str, str], fields: list[str]) -> list[str]:
+    missing: list[str] = []
+    for field in fields:
+        value = data.get(field)
+        if value is None or value.strip() in {"", "[]", "{}", "none", "null"}:
+            missing.append(field)
+    return missing
+
+
+def looks_like_controller_task(data: dict[str, str]) -> bool:
+    return data.get("task_type", "").strip().lower() == "controller" or boolish(
+        data.get("controller_mode")
+    )
+
+
+def text_has_any(text: str, markers: set[str]) -> bool:
+    return any(marker in text for marker in markers)
+
+
+def warns_or_errors(warnings: list[str], errors: list[str], strict: bool, message: str) -> None:
+    if strict:
+        errors.append(message.replace("WARN ", "ERROR ", 1))
+    else:
+        warnings.append(message)
+
+
+def validate_workspace(target: Path, strict: bool = False) -> int:
     errors: list[str] = []
     warnings: list[str] = []
     oks: list[str] = []
@@ -239,6 +325,32 @@ def validate_workspace(target: Path) -> int:
         else:
             errors.append(f"ERROR missing {label}")
 
+    protocol_paths = [
+        (target / "prompts" / "HANDOFF_ROLES.md", "prompts/HANDOFF_ROLES.md"),
+        (
+            target / "prompts" / "HANDOFF_STATE_MACHINE.md",
+            "prompts/HANDOFF_STATE_MACHINE.md",
+        ),
+        (
+            target / "prompts" / "CONTROLLER_TASK_PROTOCOL.md",
+            "prompts/CONTROLLER_TASK_PROTOCOL.md",
+        ),
+        (
+            target / "prompts" / "MECHANISM_GATE_TEMPLATE.md",
+            "prompts/MECHANISM_GATE_TEMPLATE.md",
+        ),
+    ]
+    for path, label in protocol_paths:
+        if path.exists():
+            oks.append(f"OK   {label} exists")
+        else:
+            warns_or_errors(
+                warnings,
+                errors,
+                strict,
+                f"WARN missing optional protocol file {label}",
+            )
+
     tasks_dir = target / "prompts" / "tasks"
     results_dir = target / "results"
     if tasks_dir.exists():
@@ -249,6 +361,7 @@ def validate_workspace(target: Path) -> int:
             if not path.name.endswith(("_task.md", "_result.md", "_review.md"))
         )
         task_keys = {path.stem for path in task_files}
+        task_data_by_key: dict[str, dict[str, str]] = {}
         legacy_task_ids = {path.name.removesuffix("_task.md") for path in legacy_task_files}
         all_task_keys = task_keys | legacy_task_ids
         if not task_files:
@@ -272,6 +385,43 @@ def validate_workspace(target: Path) -> int:
                 )
             else:
                 oks.append(f"OK   {task_file.relative_to(target)} frontmatter fields present")
+                task_data_by_key[task_file.stem] = data
+
+            risk = data.get("risk_level", "").strip().lower()
+            if risk in {"medium", "high"}:
+                missing_protocol = missing_or_empty(data, RISK_PROTOCOL_FIELDS)
+                if missing_protocol:
+                    warns_or_errors(
+                        warnings,
+                        errors,
+                        strict,
+                        f"WARN {task_file}: {risk} risk task missing protocol fields "
+                        f"{', '.join(missing_protocol)}",
+                    )
+
+            if looks_like_controller_task(data):
+                missing_controller = missing_or_empty(data, CONTROLLER_FIELDS)
+                task_text = read_text(task_file)
+                has_report_contract = (
+                    "controller_report" in data
+                    or "controller_report.md" in task_text
+                    or "Controller Report" in task_text
+                )
+                if missing_controller:
+                    warns_or_errors(
+                        warnings,
+                        errors,
+                        strict,
+                        f"WARN {task_file}: controller task missing fields "
+                        f"{', '.join(missing_controller)}",
+                    )
+                if not has_report_contract:
+                    warns_or_errors(
+                        warnings,
+                        errors,
+                        strict,
+                        f"WARN {task_file}: controller task missing controller_report.md contract",
+                    )
 
         for task_file in legacy_task_files:
             data, parse_error = parse_frontmatter(task_file)
@@ -326,8 +476,86 @@ def validate_workspace(target: Path) -> int:
                 review_report = artifact_dir / "review.md"
                 if not review_report.exists():
                     warnings.append(f"WARN missing review file: {review_report.relative_to(target)}")
+                task_data = task_data_by_key.get(artifact_dir.name, {})
+                controller_report = artifact_dir / "controller_report.md"
+                review_required = boolish(task_data.get("review_required"))
+                controller_task = looks_like_controller_task(task_data)
+                if review_required and not review_report.exists():
+                    warns_or_errors(
+                        warnings,
+                        errors,
+                        strict,
+                        f"WARN review_required true but missing review file: "
+                        f"{review_report.relative_to(target)}",
+                    )
+                if controller_task:
+                    if controller_report.exists():
+                        oks.append(f"OK   {controller_report.relative_to(target)} exists")
+                    else:
+                        warns_or_errors(
+                            warnings,
+                            errors,
+                            strict,
+                            f"WARN controller task missing controller report: "
+                            f"{controller_report.relative_to(target)}",
+                        )
+
+                review_text = read_text(review_report) if review_report.exists() else ""
+                result_text = read_text(result_report) if result_report.exists() else ""
+                controller_text = read_text(controller_report) if controller_report.exists() else ""
+                audit_present = review_report.exists() or "audited_decision" in controller_text
+                promotion_without_audit = (
+                    text_has_any(result_text, PROMOTION_MARKERS)
+                    or text_has_any(controller_text, PROMOTION_MARKERS)
+                    or text_has_any(review_text, PROMOTION_MARKERS)
+                ) and not audit_present
+                if promotion_without_audit:
+                    warns_or_errors(
+                        warnings,
+                        errors,
+                        strict,
+                        f"WARN promotion-like state without review/audit evidence in "
+                        f"{artifact_dir.relative_to(target)}/",
+                    )
+
+                auto_commit = boolish(task_data.get("auto_git_commit"))
+                auto_push = boolish(task_data.get("auto_git_push"))
+                sync_text = "\n".join([result_text, controller_text]).lower()
+                skipped_sync = any(
+                    marker in sync_text
+                    for marker in [
+                        "commit_executed: false",
+                        "push_executed: false",
+                        "commit executed: false",
+                        "push executed: false",
+                        "commit_executed: no",
+                        "push_executed: no",
+                    ]
+                )
+                has_sync_reason = any(
+                    marker in sync_text
+                    for marker in [
+                        "reason_if_not_executed",
+                        "reason if not executed",
+                        "human approval",
+                        "requires_human_approval",
+                        "not a git repository",
+                        "no remote",
+                        "push failed",
+                        "commit failed",
+                    ]
+                )
+                if (auto_commit or auto_push) and skipped_sync and not has_sync_reason:
+                    warns_or_errors(
+                        warnings,
+                        errors,
+                        strict,
+                        f"WARN auto commit/push not executed without an explicit reason in "
+                        f"{artifact_dir.relative_to(target)}/",
+                    )
 
     print(f"Validating handoff workspace: {target}")
+    print(f"Strict mode: {strict}")
     print()
     for line in oks:
         print(line)
@@ -367,6 +595,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     validate_parser = subparsers.add_parser("validate", help="Validate a target project.")
     validate_parser.add_argument("--target", type=Path, default=Path.cwd(), help="Target project directory.")
+    validate_parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Treat protocol warnings as errors for medium/high risk and controller tasks.",
+    )
 
     prompt_parser = subparsers.add_parser("prompt", help="Print a reusable prompt or rule file.")
     prompt_parser.add_argument("name", choices=sorted(PROMPT_FILES), help="Prompt name to print.")
@@ -391,7 +624,7 @@ def main(argv: list[str] | None = None) -> int:
             install_skill=not args.no_skill,
         )
     if args.command == "validate":
-        return validate_workspace(args.target.resolve())
+        return validate_workspace(args.target.resolve(), strict=args.strict)
     if args.command == "prompt":
         return print_prompt(args.name)
     if args.command == "where":

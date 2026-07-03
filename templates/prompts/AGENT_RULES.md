@@ -1,119 +1,152 @@
 # Agent Rules
 
-本项目采用 `prompts/` handoff 协议。
+This repository uses the `prompts/` handoff protocol. The protocol is a
+lightweight file bridge between a GPT strategic planner and Codex execution
+sessions.
 
-## 默认入口
+## Default Entry
 
-Codex 的默认任务入口是：
+Codex default task entry:
 
 ```text
 prompts/tasks/<task_key>.md
 ```
 
-`task_key` 必须使用 `<id>_<short_slug>`，其中 `short_slug` 控制在 1-3 个词内，用下划线连接，例如 `002_fix_ci`、`20260620_t2_edema_pilot`。新任务文件位于 `prompts/tasks/`，不再追加 `_task` 后缀。
+`task_key` uses `<id>_<short_slug>` with a 1-3 word slug. New tasks do not add a
+`_task` suffix because they already live in `prompts/tasks/`.
 
-长期执行规则在：
+Long-lived rules:
 
 ```text
 prompts/AGENT_RULES.md
-```
-
-ChatGPT 通过 GitHub MCP 或仓库工具生成 task、note、review 时，应读取：
-
-```text
 prompts/CHATGPT_RULES.md
+prompts/HANDOFF_ROLES.md
+prompts/HANDOFF_STATE_MACHINE.md
+prompts/CONTROLLER_TASK_PROTOCOL.md
+prompts/MECHANISM_GATE_TEMPLATE.md
 ```
 
-Codex 执行报告写到同名 results 目录：
-
-```text
-results/<task_key>/result.md
-```
-
-任务、实验、审计或脚本生成的文件型产物也写到同名目录：
-
-```text
-results/<task_key>/
-```
-
-ChatGPT 复盘写到：
-
-```text
-results/<task_key>/review.md
-```
-
-`prompts/tasks/<task_key>.md` 只保存任务单。`results/<task_key>/result.md` 是执行报告和证据索引。需要保存日志、表格、图、导出包、长报告或中间输出时，必须写入同名 `results/<task_key>/`，并在 result 中列出路径、生成命令和用途。
-
-对应关系必须保持一眼可查：
+Task/result/review mapping:
 
 ```text
 prompts/tasks/<task_key>.md
 results/<task_key>/result.md
 results/<task_key>/review.md
+results/<task_key>/controller_report.md   # controller tasks
 results/<task_key>/MANIFEST.md
 ```
 
-如果创建了 `results/<task_key>/`，必须同时写或更新 `results/<task_key>/MANIFEST.md`，至少包含 task、result、review 的相对路径以及该目录下每个关键产物的用途。不要把其他 task 的产物混进同一个 `results/<task_key>/`。
+If `results/<task_key>/` is created, update
+`results/<task_key>/MANIFEST.md`.
 
-`docs/notes/` 只保存参考笔记、方案分析、会议记录和讨论沉淀，不保存执行产物，也不是默认任务入口。`docs/wiki/` 保存长期研究知识，包括论文摘要、报告摘要、概念、对比、gap 和综合讨论，也不是默认任务入口。只有 task 显式引用某篇 note 或 wiki 页面时，Codex 才能把它作为背景材料读取。
+`docs/notes/` and `docs/wiki/` are reference stores, not default execution
+entries. Read them only when the task explicitly references them.
 
-## 权限边界
+## Roles
 
-Codex 必须遵守 task frontmatter：
+- GPT/ChatGPT is the default `planner` and `strategic_controller`.
+- A Codex `execution_controller` may coordinate execution only inside a
+  GPT-authored controller task.
+- A Codex `executor` performs authorized changes and writes result artifacts.
+- An `auditor` is separate from the executor and remains read-only.
+
+Do not let one session silently switch roles. If the current session is the
+executor and the task requires an auditor, stop at `EXECUTED_UNAUDITED` after
+writing result. If the user explicitly asks the current Codex session to audit,
+perform a read-only audit only.
+
+## Permission Boundary
+
+Codex must obey task frontmatter:
 
 - `allow_code_change`
 - `allow_shell_command`
 - `allow_network`
 - `allow_external_upload`
 - `requires_human_approval`
+- `task_type`
+- `controller_mode`
+- `review_required`
+- `promotion_gate`
+- `failure_escalation_policy`
+- `allowed_next_states`
+- `auto_git_commit`
+- `auto_git_push`
 
-未授权的动作默认禁止。尤其不要自动联网、上传、删除数据、运行昂贵任务或修改高风险配置。
+Unauthorized actions are forbidden by default. In particular, do not network,
+upload, delete data, run expensive tasks, alter deployment/security/migration
+configuration, or push externally unless the task authorizes the action and the
+state machine allows it.
 
-## 结果记录
+## Execution Task Rules
 
-每次执行 task 后，Codex 必须写 `results/<task_key>/result.md`，至少记录：
+For `task_type: execution`:
 
-- 执行摘要。
-- 读取文件。
-- 修改文件。
-- 运行命令。
-- 测试结果。
-- 失败信息。
-- git diff 摘要。
-- `results/<task_key>/` 产物清单和 `results/<task_key>/MANIFEST.md` 路径；没有额外文件型产物时写“无”。
-- 需要人工批准的事项。
-- 下一步建议。
+- Execute only the authorized task scope.
+- Write `results/<task_key>/result.md`.
+- Record files read, files changed, commands, exit statuses, tests, artifacts,
+  diff summary, failures, incomplete items, approval needs, and auditable claims.
+- Use claim lines such as `claim.<name>: <description>`.
+- Treat `self_assessed_status` as executor self-assessment only.
+- Do not open the next task, invent a new direction, bypass review, or claim
+  final audited completion.
 
-## 证据要求
+## Controller Task Rules
 
-结论必须有证据。优先引用：
+For `task_type: controller` or `controller_mode: true`:
 
-- 文件路径和行号。
-- 命令和退出状态。
-- 测试名称和结果。
-- diff 摘要。
-- `results/<task_key>/` 中的产物路径。
-- 明确的错误信息。
-- 被 task 显式引用的 `docs/wiki/` 页面。
+- Read the GPT-authored controller task and stay inside it.
+- Build an execution plan.
+- Create or launch separate executor and auditor sessions when supported.
+- If automatic subagent launch is unavailable, write prompt files such as:
 
-不确定的判断必须标明不确定性，不要写成事实。
+```text
+results/<task_key>/subagents/executor_prompt.md
+results/<task_key>/subagents/auditor_prompt.md
+```
 
-## 失败处理
+  Then mark state `NEEDS_SUBAGENT_LAUNCH` or `NEEDS_HUMAN_APPROVAL`.
+- Collect executor result and auditor review.
+- Apply the task's promotion gate and failure escalation policy.
+- Write `results/<task_key>/controller_report.md`.
+- If a new direction is needed, write `NEEDS_GPT_PLANNER` and stop.
 
-如果任务无法安全完成，Codex 应停止扩大范围，并在 result 中说明：
+The execution controller must not turn a failed route into a new high-level
+direction. That is the GPT planner's role.
 
-- 已完成什么。
-- 卡在哪里。
-- 缺少什么权限或材料。
-- 是否需要人工批准。
-- 建议下一张 task 解决什么单一问题。
+## Audit Rules
 
-## 人工审批机制
+Auditors must be read-only:
 
-以下动作需要 task 显式授权；没有授权时必须停止并请求人工批准：
+- Do not fix code.
+- Do not generate missing artifacts.
+- Do not rerun execution commands unless a new execution task explicitly
+  authorizes it.
+- Review claims against file, command, test, artifact, manifest, and diff
+  evidence.
+- Use controlled decisions from `HANDOFF_STATE_MACHINE.md`.
 
-- 联网、下载依赖或调用外部 API。
-- 上传文件、日志、数据或结果。
-- 删除数据。
-- 运行高成本、长时间或高资源命令。
-- 修改安全、权限、部署、生产或数据迁移配置。
+## Git Sync Policy
+
+Default task fields:
+
+- `auto_git_commit: true`
+- `auto_git_push: true`
+
+For controller tasks, when the audit passes, the promotion gate is satisfied, and
+no human approval gate is triggered, the controller should commit and push. If
+commit or push is skipped, `controller_report.md` must state the reason.
+
+Plain executors should not commit/push medium/high risk changes that still need
+audit unless the task explicitly authorizes that path.
+
+## Failure Handling
+
+If the task cannot be completed safely:
+
+- Stop expanding scope.
+- Record completed work, blocker, missing permission or evidence, and required
+  next state.
+- Use `NEEDS_GPT_PLANNER` when a new direction or strategic judgment is needed.
+- Do not bypass `STOP`, `NEEDS_EVIDENCE`, `NEEDS_REVISION`,
+  `NEEDS_HUMAN_APPROVAL`, or `NEEDS_GPT_PLANNER`.

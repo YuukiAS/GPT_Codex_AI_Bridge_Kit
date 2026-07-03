@@ -1,39 +1,105 @@
 # Review 000 Short Task
 
-decision: NEEDS_EVIDENCE
+audited_status: NEEDS_EVIDENCE
+promotion_decision: BLOCKED
 
-## 结论
+Allowed `audited_status` values:
 
-判断 Codex result 是否足以关闭 task。
+- `AUDITED_GO`
+- `NEEDS_EVIDENCE`
+- `NEEDS_REVISION`
+- `NEEDS_HUMAN_APPROVAL`
+- `NEEDS_GPT_PLANNER`
+- `STOP`
 
-## 完成度判断
+Allowed `promotion_decision` values:
 
-- task 目标：
-- result 覆盖情况：
-- 未完成部分：
+- `PROMOTE`
+- `BLOCKED`
+- `HUMAN_APPROVAL_REQUIRED`
+- `RETURN_TO_EXECUTOR`
+- `RETURN_TO_GPT_PLANNER`
+- `STOP`
 
-## 证据检查
+## Task Goal
 
-- 文件证据：
-- 命令证据：
-- 测试证据：
-- diff 证据：
-- 产物证据：`results/000_short_task/MANIFEST.md` 和关键产物是否存在。
+Restate the task goal and promotion gate from the task file.
 
-## 权限与边界检查
+## Claimed Completion
 
-- 是否遵守允许动作：
-- 是否触碰禁止动作：
-- 是否需要人工批准：
+Summarize the executor's self-assessed status and claims without accepting them
+yet.
 
-## 风险与遗漏
+## Audited Status
 
-说明仍然不确定或可能有风险的地方。
+State the controlled decision enum. Do not write vague decisions such as
+`looks good`, `probably done`, or `mostly fine`.
 
-## 人工决策
+## Claim Ledger
 
-说明人类需要批准、否决、停止、回滚或换方向的事项。
+| Claim | Auditor judgment | Evidence | Notes |
+| --- | --- | --- | --- |
+| `claim.example` | `SUPPORTED` | `path:line` or command exit status | concise note |
 
-## 下一步
+Allowed claim judgments:
 
-给出一个明确判断：停止、补证据、回滚、或开下一张 task。
+- `SUPPORTED`
+- `PARTIAL`
+- `UNSUPPORTED`
+- `CONTRADICTED`
+
+## Supported Claims
+
+- claim:
+- evidence:
+
+## Partial Claims
+
+- claim:
+- missing evidence:
+
+## Unsupported Claims
+
+- claim:
+- reason:
+
+## Contradicted Claims
+
+- claim:
+- contradiction:
+
+## Missing Evidence
+
+- evidence needed:
+- why it matters:
+
+## Permission Boundary Check
+
+- allowed actions respected:
+- forbidden actions touched:
+- network/upload/delete/high-risk actions:
+- human approval required:
+
+The auditor must remain read-only. Do not fix code, generate missing artifacts,
+or continue execution unless a new execution task explicitly authorizes it.
+
+## Promotion Decision
+
+- promotion_decision:
+- blocked_promotion_reason:
+- next_allowed_action:
+
+For medium/high risk tasks, no promotion, release, deployment, commit, push, or
+high-cost expansion should happen without supported claims and a passing audit,
+unless the task explicitly waives review.
+
+## Next Allowed Action
+
+Choose exactly one:
+
+- `STOP`
+- `REQUEST_EVIDENCE`
+- `REQUEST_REVISION`
+- `REQUEST_HUMAN_APPROVAL`
+- `PROMOTE_AND_SYNC_REMOTE`
+- `RETURN_TO_GPT_PLANNER`

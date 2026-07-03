@@ -1,31 +1,105 @@
-# Review 000
+# Review 000 Short Task
 
-decision: GO
+audited_status: NEEDS_EVIDENCE
+promotion_decision: BLOCKED
 
-## 结论
+Allowed `audited_status` values:
 
-说明 result 是否足以关闭 task。
+- `AUDITED_GO`
+- `NEEDS_EVIDENCE`
+- `NEEDS_REVISION`
+- `NEEDS_HUMAN_APPROVAL`
+- `NEEDS_GPT_PLANNER`
+- `STOP`
 
-## 完成度判断
+Allowed `promotion_decision` values:
 
-说明完成和未完成部分。
+- `PROMOTE`
+- `BLOCKED`
+- `HUMAN_APPROVAL_REQUIRED`
+- `RETURN_TO_EXECUTOR`
+- `RETURN_TO_GPT_PLANNER`
+- `STOP`
 
-## 证据检查
+## Task Goal
 
-说明证据是否足够。
+Restate the task goal and promotion gate from the task file.
 
-## 权限与边界检查
+## Claimed Completion
 
-说明是否越权。
+Summarize the executor's self-assessed status and claims without accepting them
+yet.
 
-## 风险与遗漏
+## Audited Status
 
-说明剩余风险。
+State the controlled decision enum. Do not write vague decisions such as
+`looks good`, `probably done`, or `mostly fine`.
 
-## 人工决策
+## Claim Ledger
 
-说明需要人类判断的事项。
+| Claim | Auditor judgment | Evidence | Notes |
+| --- | --- | --- | --- |
+| `claim.example` | `SUPPORTED` | `path:line` or command exit status | concise note |
 
-## 下一步
+Allowed claim judgments:
 
-说明是否继续。
+- `SUPPORTED`
+- `PARTIAL`
+- `UNSUPPORTED`
+- `CONTRADICTED`
+
+## Supported Claims
+
+- claim:
+- evidence:
+
+## Partial Claims
+
+- claim:
+- missing evidence:
+
+## Unsupported Claims
+
+- claim:
+- reason:
+
+## Contradicted Claims
+
+- claim:
+- contradiction:
+
+## Missing Evidence
+
+- evidence needed:
+- why it matters:
+
+## Permission Boundary Check
+
+- allowed actions respected:
+- forbidden actions touched:
+- network/upload/delete/high-risk actions:
+- human approval required:
+
+The auditor must remain read-only. Do not fix code, generate missing artifacts,
+or continue execution unless a new execution task explicitly authorizes it.
+
+## Promotion Decision
+
+- promotion_decision:
+- blocked_promotion_reason:
+- next_allowed_action:
+
+For medium/high risk tasks, no promotion, release, deployment, commit, push, or
+high-cost expansion should happen without supported claims and a passing audit,
+unless the task explicitly waives review.
+
+## Next Allowed Action
+
+Choose exactly one:
+
+- `STOP`
+- `REQUEST_EVIDENCE`
+- `REQUEST_REVISION`
+- `REQUEST_HUMAN_APPROVAL`
+- `PROMOTE_AND_SYNC_REMOTE`
+- `RETURN_TO_GPT_PLANNER`

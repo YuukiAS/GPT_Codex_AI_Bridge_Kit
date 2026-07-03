@@ -1,54 +1,95 @@
 # Codex Start Prompt
 
-请按本项目的 handoff 协议执行指定任务。
+Execute the specified handoff task according to this repository's protocol.
 
-## 固定读取顺序
+## Read Order
 
-1. 先读取项目根目录的 `AGENTS.md`。
-2. 再读取 `prompts/AGENT_RULES.md`。
-3. 再读取指定任务单：
+1. `AGENTS.md`
+2. `prompts/AGENT_RULES.md`
+3. `prompts/HANDOFF_ROLES.md`
+4. `prompts/HANDOFF_STATE_MACHINE.md`
+5. If this is a controller task, `prompts/CONTROLLER_TASK_PROTOCOL.md`
+6. The selected task:
 
 ```text
 prompts/tasks/<task_key>.md
 ```
 
-## 执行规则
+## Role Discipline
 
-- 必须遵守任务单里的 `允许动作` 和 `禁止动作`。
-- 必须检查 YAML frontmatter 中的权限字段。
-- 不能擅自扩大范围。
-- 不能主动执行 `docs/notes/`，除非任务单显式引用某篇 note 作为背景材料。
-- 如果任务单没有授权联网、上传、删除数据、运行昂贵任务或修改高风险配置，遇到这些需求时必须停止。
-- 如果需要人工批准，先把需要批准的事项写入 result，不要继续执行。
-- 如果任务生成日志、表格、图、导出包、长报告或中间输出，写入同名 `results/<task_key>/`，同时写 `results/<task_key>/MANIFEST.md`，不要塞进 `prompts/tasks/` 或 `docs/notes/`。
+Identify your role from the task:
 
-## 结果回写
+- executor
+- execution controller
+- auditor
 
-完成后必须写：
+Do not silently switch roles.
+
+If you are executor:
+
+- Execute only authorized scope.
+- Write `results/<task_key>/result.md`.
+- Include files read, files changed, commands, exit statuses, tests, artifacts,
+  diff summary, failures, incomplete items, approval needs, and auditable
+  `claim.<name>` lines.
+- Do not treat your result as final completion.
+- Do not open the next task.
+- Do not bypass review/audit.
+
+If you are execution controller:
+
+- Work only inside the GPT-authored controller task.
+- Create or launch separate executor/auditor sessions if supported.
+- If subagent launch is unsupported, write executor/auditor prompt files under
+  `results/<task_key>/subagents/` and set `NEEDS_SUBAGENT_LAUNCH` or
+  `NEEDS_HUMAN_APPROVAL`.
+- Collect results and audit reviews.
+- Apply the promotion gate.
+- Write `results/<task_key>/controller_report.md`.
+- If audit passes and no human approval is triggered, automatically commit and
+  push when `auto_git_commit: true` and `auto_git_push: true`.
+- If the task needs a new direction, write `NEEDS_GPT_PLANNER` and stop.
+
+If you are auditor:
+
+- Remain read-only.
+- Check claims against evidence.
+- Do not repair code or generate missing artifacts unless a new execution task
+  explicitly authorizes it.
+
+## Permission Rules
+
+Check frontmatter before acting:
+
+- `allow_code_change`
+- `allow_shell_command`
+- `allow_network`
+- `allow_external_upload`
+- `requires_human_approval`
+- `review_required`
+- `promotion_gate`
+- `failure_escalation_policy`
+- `auto_git_commit`
+- `auto_git_push`
+
+Stop if an unapproved network call, upload, deletion, expensive command,
+deployment/security/migration change, or out-of-scope direction is needed.
+
+## Required Output
+
+Normal execution task:
 
 ```text
 results/<task_key>/result.md
+results/<task_key>/MANIFEST.md
 ```
 
-result 必须包含：
-
-- 执行摘要。
-- 读取文件。
-- 修改文件。
-- 运行命令。
-- 测试结果。
-- `results/<task_key>/MANIFEST.md` 和产物清单；没有额外文件型产物时写“无”。
-- 失败信息。
-- 下一步建议。
-- git diff 摘要。
-- 需要人工批准的事项。
-
-不要只在聊天里总结而不写 result 文件。
-
-## 任务入口
-
-本次要执行的任务是：
+Controller task:
 
 ```text
-prompts/tasks/<task_key>.md
+results/<task_key>/controller_report.md
+results/<task_key>/subagents/
+results/<task_key>/MANIFEST.md
 ```
+
+Do not only summarize in chat. Write the protocol files.

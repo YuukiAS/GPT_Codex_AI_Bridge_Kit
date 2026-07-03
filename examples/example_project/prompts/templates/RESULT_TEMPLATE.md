@@ -1,43 +1,104 @@
 # Result 000 Short Task
 
-status: completed
+status: EXECUTED_UNAUDITED
+self_assessed_status: completed
 
-## 执行摘要
+## Execution Summary
 
-说明完成情况。
+Briefly state what was completed, what was not completed, and whether the task
+goal appears satisfied from the executor perspective.
 
-## 读取文件
+## Files Read
 
-- 无。
+- `path/to/file.md`: purpose and key finding.
 
-## 修改文件
+## Files Modified
 
-- 无。
+- `path/to/file.py`: change summary.
 
-## 运行命令
+If no files were modified, write `none`.
 
-- 无。
+## Commands Run
 
-## 测试结果
+```bash
+command
+```
 
-- 无。
+- purpose:
+- result:
+- exit_status:
 
-## 产物清单
+If no commands were run, write `none`.
 
-无。
+## Test Results
 
-## 失败信息
+- test_or_validation:
+- result:
+- evidence:
 
-无。
+If no tests were run, explain why.
 
-## git diff 摘要
+## Artifact Paths
 
-无。
+- `results/000_short_task/MANIFEST.md`: artifact index linking task, result,
+  review, and generated files.
+- `results/000_short_task/path/to/artifact`: purpose and generation method.
 
-## 需要人工批准的事项
+If no additional file artifacts were generated, write `none`.
 
-无。
+## Diff Summary
 
-## 下一步建议
+Summarize added, modified, and deleted files. If the target is not a git
+repository, say so.
 
-说明下一步。
+## Claims
+
+Use one auditable claim per line:
+
+- `claim.structure_checked`: The target directory structure was inspected.
+- `claim.tests_passed`: The listed validation command exited 0.
+
+Do not use domain-specific claim names unless the task defines them.
+
+## Failure Information
+
+Record failed commands, error messages, root cause if known, and incomplete
+items. If no failure occurred, write `none`.
+
+## Incomplete Items
+
+- item:
+- reason:
+- required_next_state:
+
+If none, write `none`.
+
+## Human Approval Needed
+
+List actions that require human approval before continuing. If none, write
+`none`.
+
+## Git Commit And Push
+
+- auto_git_commit:
+- commit_executed:
+- commit_sha:
+- auto_git_push:
+- push_executed:
+- remote:
+- reason_if_not_executed:
+
+Executors should not claim final audited promotion unless the task explicitly
+authorizes them to commit/push without a separate audit.
+
+## Self-Assessed Status
+
+The executor may write one of:
+
+- `completed`
+- `partial`
+- `blocked`
+- `failed`
+
+This is executor self-assessment only. It is not an audit decision and does not
+replace `review.md` or `controller_report.md`.

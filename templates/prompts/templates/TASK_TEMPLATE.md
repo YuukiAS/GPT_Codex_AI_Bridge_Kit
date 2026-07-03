@@ -1,9 +1,24 @@
 ---
 task_key: "000_short_task"
 project: "project-name"
-status: "ready"
-executor: "Codex"
+status: "READY"
+task_type: "execution"
+controller_mode: false
+planner: "ChatGPT/GPT thread"
+strategic_controller: "user-supervised GPT thread"
+execution_controller: "none"
+executor: "Codex executor session"
+auditor: "ChatGPT reviewer"
+review_required: false
 risk_level: "low"
+mechanism_class: "general"
+promotion_gate: "Task goal met with result evidence; independent review optional for low risk."
+failure_escalation_policy: "Stop on missing permission, missing evidence, or out-of-scope direction; return to GPT planner for new direction."
+forbidden_substitutes: []
+required_evidence: []
+allowed_next_states: ["EXECUTED_UNAUDITED", "NEEDS_EVIDENCE", "NEEDS_REVISION", "NEEDS_HUMAN_APPROVAL", "NEEDS_GPT_PLANNER", "STOP"]
+auto_git_commit: true
+auto_git_push: true
 allow_code_change: false
 allow_shell_command: true
 allow_network: false
@@ -13,48 +28,128 @@ requires_human_approval: false
 
 # Task 000 Short Task
 
-## 目标
+This is the normal execution-task template. For controller tasks, use
+`CONTROLLER_TASK_TEMPLATE.md` or set `task_type: "controller"` and fill the
+controller sections explicitly.
 
-用一句话说明 Codex 要完成的单一目标。
+## Goal
 
-## 背景
+State the single outcome Codex must complete.
 
-说明为什么要做这件事，以及需要读取哪些项目材料。不要把长期研究笔记直接塞进任务；需要引用 note 时写明具体路径。
+## Background
 
-## 允许动作
+Explain why this task exists and list the exact files, directories, notes,
+issues, or artifacts that are in scope. Do not place long research notes in this
+task; reference their paths instead.
 
-- 读取与本任务直接相关的文件。
-- 运行明确必要且低风险的 shell command。
-- 按 frontmatter 授权进行文件修改。
-- 完成后写 `results/000_short_task/result.md`。
-- 如生成日志、表格、图、导出包、长报告或中间输出，写入同名 `results/000_short_task/`。
-- 如创建 `results/000_short_task/`，同时写 `results/000_short_task/MANIFEST.md`，并在 result 中列出产物清单。
+## Mechanism Class And Completion Definition
 
-## 禁止动作
+- Mechanism class:
+- Completion definition:
+- Promotion gate:
 
-- 不要联网，除非 `allow_network: true`。
-- 不要上传任何内容，除非 `allow_external_upload: true`。
-- 不要删除数据。
-- 不要扩大到本任务之外的重构或优化。
-- 不要主动执行 `docs/notes/` 中未被引用的内容。
-- 不要把文件型产物塞进 `prompts/tasks/` 或 `docs/notes/`。
+For medium/high risk tasks, define what evidence proves the mechanism worked.
+Executor self-assessment is not final completion.
 
-## 预期产出
+## Allowed Actions
 
-- `results/000_short_task/result.md`。
-- 如有文件型产物，写入 `results/000_short_task/`，并包含 `results/000_short_task/MANIFEST.md`。
-- 如有代码修改，包含修改文件列表和 diff 摘要。
-- 如有命令运行，包含命令、目的和结果。
+- Read files directly related to this task.
+- Run authorized low-risk shell commands.
+- Modify files only when `allow_code_change: true`.
+- Write `results/000_short_task/result.md`.
+- Write `results/000_short_task/MANIFEST.md` when creating or updating
+  `results/000_short_task/`.
 
-## 停止条件
+## Forbidden Actions
 
-- 缺少必要文件。
-- 发现需要未授权动作。
-- 命令失败且继续执行会扩大风险。
-- 任务目标已经达到。
+- Do not use the network unless `allow_network: true`.
+- Do not upload anything unless `allow_external_upload: true`.
+- Do not delete data unless explicitly authorized.
+- Do not expand into unrelated refactors or optimizations.
+- Do not execute unreferenced `docs/notes/` or `docs/wiki/` material.
+- Do not treat `result.md` as the final audited status when review is required.
 
-## 人工决策点
+## Forbidden Substitutes
 
-- 是否允许提升权限。
-- 是否接受结果。
-- 是否需要开下一张 task。
+- List routes that would look like progress but would not satisfy this task.
+- For low-risk tasks, write `none` if there are no special forbidden
+  substitutes.
+
+## Required Evidence
+
+- Files read:
+- Files changed:
+- Commands and exit statuses:
+- Tests or validation:
+- Artifact paths:
+- Claims to audit:
+
+For low-risk tasks this can be short. For medium/high risk or controller tasks,
+make it explicit before execution starts.
+
+## Review Requirements
+
+- `review_required`:
+- Auditor:
+- Review path: `results/000_short_task/review.md`
+- Audit decision enum, if required:
+  `AUDITED_GO`, `NEEDS_EVIDENCE`, `NEEDS_REVISION`,
+  `NEEDS_HUMAN_APPROVAL`, `NEEDS_GPT_PLANNER`, `STOP`
+
+If this is an execution task with `review_required: true`, Codex executor must
+stop at `EXECUTED_UNAUDITED` after writing result.
+
+## Subtask / Subsession Orchestration
+
+For normal execution tasks, write `none`.
+
+For controller tasks, specify how the Codex execution controller should create
+or launch separate executor and auditor sessions. If the runtime cannot launch
+subagents automatically, require prompt files under:
+
+```text
+results/000_short_task/subagents/
+```
+
+and set state to `NEEDS_SUBAGENT_LAUNCH` or `NEEDS_HUMAN_APPROVAL`.
+
+## Expected Output
+
+- `results/000_short_task/result.md`
+- `results/000_short_task/MANIFEST.md`
+- Any generated artifacts under `results/000_short_task/`
+- If code changed, a concise diff summary.
+- If commands ran, command, purpose, result, and exit status.
+- Claim lines in result using `claim.<name>: <description>`.
+
+## Failure Escalation Policy
+
+State what Codex may retry or revise inside this task. GPT planner must define
+the fallback before execution starts. If a new direction is needed, Codex must
+write `NEEDS_GPT_PLANNER` and stop.
+
+## Git Automatic Commit And Push Policy
+
+Default policy:
+
+- `auto_git_commit: true`
+- `auto_git_push: true`
+
+When the promotion gate is satisfied and no human approval is triggered, a
+controller should commit and push. A plain executor should only commit/push if
+the task explicitly authorizes it without a separate audit requirement. Any
+skipped commit or push must be explained in result or controller report.
+
+## Stop Conditions
+
+- Required files are missing.
+- An unauthorized action is needed.
+- Evidence is insufficient and continuing would expand scope.
+- The task needs a new direction from GPT planner.
+- The task goal has been met within authorized scope.
+
+## Human Decision Points
+
+- Permission escalation.
+- Acceptance of audited result.
+- Rollback, stop, or new GPT-authored task.

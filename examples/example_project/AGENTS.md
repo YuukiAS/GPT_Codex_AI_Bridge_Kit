@@ -1,19 +1,36 @@
 # Example Project Agents
 
-本示例项目采用 `prompts/` handoff 协议。
+This example project uses the `prompts/` handoff protocol.
 
-Codex 默认读取：
+Read:
 
 - `prompts/AGENT_RULES.md`
+- `prompts/CHATGPT_RULES.md`
+- `prompts/HANDOFF_ROLES.md`
+- `prompts/HANDOFF_STATE_MACHINE.md`
+- `prompts/CONTROLLER_TASK_PROTOCOL.md`
+
+Default task entry:
+
 - `prompts/tasks/<task_key>.md`
 
-Codex 完成后写：
+Normal executor output:
 
 - `results/<task_key>/result.md`
-- 文件型产物写 `results/<task_key>/`，并在 result 中列出产物清单。
+- `results/<task_key>/MANIFEST.md`
 
-ChatGPT 复盘写：
+Controller task output:
 
-- `results/<task_key>/review.md`
+- `results/<task_key>/controller_report.md`
+- `results/<task_key>/subagents/executor_prompt.md`
+- `results/<task_key>/subagents/auditor_prompt.md`
+- executor result and read-only auditor review
 
-`docs/notes/` 和 `docs/wiki/` 只作参考，不直接执行。`docs/notes/` 不保存执行产物。
+Example tasks:
+
+- `001_structure_audit`: original simple execution/review loop.
+- `002_greeting_controller`: GPT planner -> Codex execution controller -> Codex
+  executor -> Codex auditor -> controller report -> GPT next task.
+
+`docs/notes/` and `docs/wiki/` are reference stores and are not executed unless a
+task explicitly references them.

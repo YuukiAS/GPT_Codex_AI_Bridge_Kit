@@ -1,60 +1,104 @@
 # Result 000 Short Task
 
-status: completed
+status: EXECUTED_UNAUDITED
+self_assessed_status: completed
 
-## 执行摘要
+## Execution Summary
 
-简要说明本次完成了什么，是否达到 task 目标。
+Briefly state what was completed, what was not completed, and whether the task
+goal appears satisfied from the executor perspective.
 
-## 读取文件
+## Files Read
 
-- `path/to/file.md`：读取目的和关键发现。
+- `path/to/file.md`: purpose and key finding.
 
-## 修改文件
+## Files Modified
 
-- `path/to/file.py`：修改内容摘要。
+- `path/to/file.py`: change summary.
 
-如果没有修改，写“无”。
+If no files were modified, write `none`.
 
-## 运行命令
+## Commands Run
 
 ```bash
 command
 ```
 
-- 目的：
-- 结果：
-- 退出状态：
+- purpose:
+- result:
+- exit_status:
 
-如果没有运行命令，写“无”。
+If no commands were run, write `none`.
 
-## 测试结果
+## Test Results
 
-- 测试名称：
-- 结果：
-- 证据：
+- test_or_validation:
+- result:
+- evidence:
 
-如果没有测试，说明原因。
+If no tests were run, explain why.
 
-## 产物清单
+## Artifact Paths
 
-- `results/000_short_task/MANIFEST.md`：本任务产物索引，反向链接 `prompts/tasks/000_short_task.md`、`results/000_short_task/result.md` 和 `results/000_short_task/review.md`。
-- `results/000_short_task/path/to/artifact`：产物用途、生成方式和是否需要后续复盘。
+- `results/000_short_task/MANIFEST.md`: artifact index linking task, result,
+  review, and generated files.
+- `results/000_short_task/path/to/artifact`: purpose and generation method.
 
-如果没有文件型产物，写“无”。不要把大日志、长表格或二进制内容直接写进本 result。
+If no additional file artifacts were generated, write `none`.
 
-## 失败信息
+## Diff Summary
 
-记录失败命令、错误信息、失败原因和未完成内容。没有失败时写“无”。
+Summarize added, modified, and deleted files. If the target is not a git
+repository, say so.
 
-## git diff 摘要
+## Claims
 
-说明新增、修改、删除的文件数量和关键变化。没有 git 仓库时写明“未检查 git diff，因为目标目录不是 git 仓库”。
+Use one auditable claim per line:
 
-## 需要人工批准的事项
+- `claim.structure_checked`: The target directory structure was inspected.
+- `claim.tests_passed`: The listed validation command exited 0.
 
-列出继续执行前需要人类批准的动作。没有时写“无”。
+Do not use domain-specific claim names unless the task defines them.
 
-## 下一步建议
+## Failure Information
 
-只建议一个最合理的下一步，或说明可以停止。
+Record failed commands, error messages, root cause if known, and incomplete
+items. If no failure occurred, write `none`.
+
+## Incomplete Items
+
+- item:
+- reason:
+- required_next_state:
+
+If none, write `none`.
+
+## Human Approval Needed
+
+List actions that require human approval before continuing. If none, write
+`none`.
+
+## Git Commit And Push
+
+- auto_git_commit:
+- commit_executed:
+- commit_sha:
+- auto_git_push:
+- push_executed:
+- remote:
+- reason_if_not_executed:
+
+Executors should not claim final audited promotion unless the task explicitly
+authorizes them to commit/push without a separate audit.
+
+## Self-Assessed Status
+
+The executor may write one of:
+
+- `completed`
+- `partial`
+- `blocked`
+- `failed`
+
+This is executor self-assessment only. It is not an audit decision and does not
+replace `review.md` or `controller_report.md`.
