@@ -1,3 +1,7 @@
+---
+name: agent-task-executor
+description: Execute GPT-Codex handoff tasks from prompts/tasks/<task_key>.md by reading AGENTS.md and prompts/AGENT_RULES.md, checking task frontmatter permissions, performing only authorized executor/controller actions, and writing results/<task_key>/result.md plus MANIFEST.md when artifacts are produced. Use when Codex is asked to run a handoff task, controller task, or bridge-kit execution protocol.
+---
 # Agent Task Executor
 
 这个 skill 是通用 Codex 执行规程。它可以复制到真实项目：

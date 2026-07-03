@@ -41,6 +41,7 @@ REQUIRED_FIELDS = [
 
 LEGACY_REQUIRED_FIELDS = ["task_id", *REQUIRED_FIELDS[1:]]
 TASK_KEY_RE = re.compile(r"^\d+_[A-Za-z0-9]+(?:_[A-Za-z0-9]+){0,2}$")
+SKILL_REQUIRED_FIELDS = ["name", "description"]
 CONTROLLED_STATES = {
     "READY",
     "EXECUTION_PLANNED",
@@ -266,6 +267,8 @@ def parse_frontmatter(path: Path) -> tuple[dict[str, str], str | None]:
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
             continue
+        if line[:1].isspace() or stripped.startswith("-"):
+            continue
         if ":" not in stripped:
             return data, f"invalid frontmatter line {line_number}: {line}"
         key, value = stripped.split(":", 1)
@@ -324,6 +327,20 @@ def validate_workspace(target: Path, strict: bool = False) -> int:
             oks.append(f"OK   {label} exists")
         else:
             errors.append(f"ERROR missing {label}")
+
+    executor_skill = target / ".agents" / "skills" / "agent-task-executor" / "SKILL.md"
+    if executor_skill.exists():
+        data, parse_error = parse_frontmatter(executor_skill)
+        if parse_error:
+            errors.append(f"ERROR {executor_skill}: {parse_error}")
+        else:
+            missing = [field for field in SKILL_REQUIRED_FIELDS if field not in data]
+            if missing:
+                errors.append(f"ERROR {executor_skill}: missing skill fields {', '.join(missing)}")
+            else:
+                oks.append("OK   .agents/skills/agent-task-executor/SKILL.md frontmatter fields present")
+    elif (target / ".agents" / "skills").exists():
+        warnings.append("WARN .agents/skills exists but agent-task-executor skill is not installed")
 
     protocol_paths = [
         (target / "prompts" / "HANDOFF_ROLES.md", "prompts/HANDOFF_ROLES.md"),
