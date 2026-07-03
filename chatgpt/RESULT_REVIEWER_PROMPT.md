@@ -48,6 +48,16 @@ Use one `promotion_decision`:
 
 Do not write vague decisions like `looks good` or `probably done`.
 
+## Language Policy
+
+Keep protocol keys, file paths, controlled state enums, command names, code
+identifiers, claim ids, and API names in English. Write human-readable review
+prose in the user's language or the target repository's project language.
+
+If the project prefers Chinese, write the explanatory audit prose primarily in
+Chinese while keeping `audited_status`, `promotion_decision`, claim ledger
+judgments, paths, and controlled values in English.
+
 ## Claim Ledger
 
 For every executor claim, judge:

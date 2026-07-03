@@ -57,6 +57,18 @@ If you are auditor:
 - Do not repair code or generate missing artifacts unless a new execution task
   explicitly authorizes it.
 
+## Language Policy
+
+Keep protocol keys, YAML fields, file paths, controlled state enums, command
+names, code identifiers, claim ids, and API names in English. Write
+human-readable result, review, controller-report, and explanatory prose in the
+user's language or the target repository's project language.
+
+If the project prefers Chinese, write human-readable report prose primarily in
+Chinese while keeping protocol fields and controlled values in English.
+Project-level language rules win unless they would break machine-readable
+protocol fields.
+
 ## Permission Rules
 
 Check frontmatter before acting:

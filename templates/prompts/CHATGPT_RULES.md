@@ -31,6 +31,19 @@ planning to Codex by default. Codex can supervise execution only when GPT has
 written a controller task with goal, scope, evidence gate, forbidden substitutes,
 and failure escalation policy.
 
+## Language Policy
+
+Keep protocol keys, YAML fields, file paths, controlled state enums, command
+names, code identifiers, and API names in English. Write human-readable prose in
+task bodies, reviews, notes, and next-task explanations in the user's language
+or the target repository's project language.
+
+If the target project prefers Chinese, write the explanatory task/review/report
+prose primarily in Chinese while keeping machine-readable protocol fields and
+controlled values in English. Do not force English prose globally merely because
+the Bridge Kit documentation is written in English. Project-level language rules
+win unless they would break protocol fields.
+
 ## Generating Tasks
 
 When the user wants Codex to execute, fix, audit, validate, run commands, modify

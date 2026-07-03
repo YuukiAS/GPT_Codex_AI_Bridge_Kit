@@ -182,6 +182,20 @@ This kit intentionally stays domain-neutral. It does not define domain-specific
 mechanism gates. Real repositories should define their own gates in `AGENTS.md`,
 project rules, or skills, then reference those gates from task files.
 
+## Language Policy
+
+Protocol keys, YAML fields, file paths, controlled state enums, command names,
+code identifiers, and API names should remain English. Human-readable prose in
+task bodies, results, reviews, controller reports, notes, and next-task
+explanations should follow the user's language or the target repository's
+project rules.
+
+If a project prefers Chinese, write human-readable task/review/report prose
+primarily in Chinese while keeping protocol fields and controlled values in
+English. Do not force English prose globally just because this kit's protocol
+documentation is written in English. Project-level language rules win unless
+they would break machine-readable protocol fields.
+
 ## Install And Initialize
 
 Install once:

@@ -24,6 +24,17 @@ Assume successful controller tasks have already synchronized the remote when
 `auto_git_push: true`. Prefer checking remote repository state for the next
 planning round instead of relying on unpushed local state.
 
+## Language Policy
+
+Keep protocol keys, YAML fields, file paths, controlled state enums, command
+names, code identifiers, and API names in English. Write human-readable
+next-task explanations in the user's language or the target repository's project
+language.
+
+If the project prefers Chinese, write explanatory prose primarily in Chinese
+while keeping protocol fields and controlled values in English. Project-level
+language rules win unless they would break machine-readable protocol fields.
+
 ## Decision Rules
 
 - If audited status is `AUDITED_GO`, you may open a next task only if a real next

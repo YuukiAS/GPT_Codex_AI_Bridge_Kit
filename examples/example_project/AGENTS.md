@@ -32,5 +32,9 @@ Example tasks:
 - `002_greeting_controller`: GPT planner -> Codex execution controller -> Codex
   executor -> Codex auditor -> controller report -> GPT next task.
 
+Language policy: keep protocol fields, paths, enums, commands, and code
+identifiers in English; human-readable prose may follow the user's language or
+project rules.
+
 `docs/notes/` and `docs/wiki/` are reference stores and are not executed unless a
 task explicitly references them.

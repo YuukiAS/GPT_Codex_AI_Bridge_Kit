@@ -62,6 +62,16 @@ For medium/high risk tasks or controller tasks, explicitly fill
 `promotion_gate`, `failure_escalation_policy`, `required_evidence`,
 `forbidden_substitutes`, `allowed_next_states`, roles, and review requirements.
 
+## Language Policy
+
+Keep protocol keys, YAML fields, file paths, controlled state enums, command
+names, code identifiers, and API names in English. Write human-readable task
+prose in the user's language or the target repository's project language.
+
+If the project prefers Chinese, write the task body primarily in Chinese while
+keeping frontmatter fields and controlled values in English. Project-level
+language rules win unless they would break machine-readable protocol fields.
+
 ## Required Sections
 
 ```markdown

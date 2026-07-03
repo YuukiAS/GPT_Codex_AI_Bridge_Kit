@@ -55,6 +55,18 @@ executor and the task requires an auditor, stop at `EXECUTED_UNAUDITED` after
 writing result. If the user explicitly asks the current Codex session to audit,
 perform a read-only audit only.
 
+## Language Policy
+
+Keep protocol keys, YAML fields, file paths, controlled state enums, command
+names, code identifiers, and API names in English. Human-readable prose in
+results, reviews, controller reports, notes, and explanations should follow the
+user's language or the target repository's project rules.
+
+If the target project prefers Chinese, write human-readable report prose
+primarily in Chinese while keeping protocol fields and controlled values in
+English. Project-level language rules win unless they would break
+machine-readable protocol fields.
+
 ## Permission Boundary
 
 Codex must obey task frontmatter:
