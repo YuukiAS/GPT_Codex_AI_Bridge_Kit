@@ -1,0 +1,7 @@
+{
+  "backend": "gmail_smtp",
+  "recipient_count": 1,
+  "status": "PASS",
+  "test_identifier": "ai-bridge-notifier-send-test-v0.3.0",
+  "timestamp": "2026-08-11T09:06:47+00:00"
+}

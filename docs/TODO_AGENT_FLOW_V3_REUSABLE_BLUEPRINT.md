@@ -641,23 +641,54 @@ Users should not manually pause/resume Critic every implementation round.
 
 ## 12. Reusable notifier
 
-Future Bridge Kit integration should provide one reusable notifier service rather
-than project-specific notifier scripts.
+Bridge Kit v0.3.0 introduces Generic Notifier support while keeping Agent-Flow
+v3 itself in design-only status.
 
-Desired concept:
+Confirmed v0.3.0 notifier direction:
 
 ```text
-ai-bridge notifier start
-ai-bridge notifier status
-ai-bridge notifier stop
+one-shot terminal hook is the default
+tmux is not a dependency
+polling run is optional compatibility
+rclone machine bootstrap is user-managed
+private sync is pull-only
+real email send-test is the NOTIFIER_READY gate
 ```
 
-Project configuration should define terminal/notifiable states. Nonterminal
-states such as normal repair, CI running, waiting for Planner/Critic, or role
-STANDBY should not create terminal notifications.
+Default terminal hook:
+
+```text
+Goal / Controller terminal state
+-> results/<task_key>/notification_brief.json
+-> ai-bridge notifier send results/<task_key>/notification_brief.json
+```
+
+Supported CLI:
+
+```text
+ai-bridge notifier send <brief_path>
+ai-bridge notifier send-test
+ai-bridge notifier once
+ai-bridge notifier run
+ai-bridge notifier status
+```
+
+`ai-bridge notifier run` is optional long-running polling mode. It must not be
+treated as the default installation path, and Bridge Kit must not require tmux,
+daemon, systemd, or a process supervisor.
+
+Project configuration should define terminal/notifiable states through explicit
+`notification_brief.json` files. Nonterminal states such as normal repair, CI
+running, waiting for Planner/Critic, or role `STANDBY` should not create terminal
+notifications.
 
 Secrets and recipient details belong in user-local config/environment, not in
 project repositories.
+
+Do not copy CARE-specific route watchboard, route_A/B/C, Slurm mandatory fields,
+runtime-home discovery, worktree assumptions, immutable notification
+transactions, moving SHAs, large manifests, or multi-receipt hash coupling into
+the generic notifier core.
 
 ---
 

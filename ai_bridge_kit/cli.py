@@ -642,6 +642,12 @@ def build_parser() -> argparse.ArgumentParser:
             help="Explicit Codex Home. Defaults to $CODEX_HOME, then ~/.codex.",
         )
 
+    notifier_parser = subparsers.add_parser("notifier", help="Send Generic Notifier terminal emails.")
+    notifier_parser.add_argument("notifier_args", nargs=argparse.REMAINDER)
+
+    private_parser = subparsers.add_parser("private", help="Sync private Bridge Kit configuration.")
+    private_parser.add_argument("private_args", nargs=argparse.REMAINDER)
+
     prompt_parser = subparsers.add_parser("prompt", help="Print a reusable prompt or rule file.")
     prompt_parser.add_argument("name", choices=sorted(PROMPT_FILES), help="Prompt name to print.")
 
@@ -696,6 +702,14 @@ def main(argv: list[str] | None = None) -> int:
             for line in lines:
                 print(line)
             return exit_code
+    if args.command == "notifier":
+        from . import notifier
+
+        return notifier.main(args.notifier_args)
+    if args.command == "private":
+        from . import private
+
+        return private.main(args.private_args)
     if args.command == "prompt":
         return print_prompt(args.name)
     if args.command == "where":

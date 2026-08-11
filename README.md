@@ -46,6 +46,203 @@ write a controller report, and commit/push when the audited promotion gate
 passes. It must not invent a new direction. If a new direction is needed, it
 outputs `NEEDS_GPT_PLANNER` and stops.
 
+## Lite Handoff
+
+Lite Handoff remains the default workflow:
+
+```text
+Planner -> Codex -> result -> optional GPT review
+```
+
+Existing repositories can continue using:
+
+```bash
+ai-bridge init --target /path/to/project
+ai-bridge validate --target /path/to/project
+```
+
+No notifier, polling process, tmux session, or Agent-Flow runtime is required for
+old Lite Handoff repositories.
+
+## Generic Notifier
+
+Generic Notifier is an optional terminal email notification feature. The default
+mode is one-shot:
+
+```text
+Goal / Controller reaches a legal terminal state
+-> write results/<task_key>/notification_brief.json
+-> ai-bridge notifier send results/<task_key>/notification_brief.json
+-> send one SMTP email
+-> record local send success/failure
+-> stop
+```
+
+Default new-project usage:
+
+```bash
+ai-bridge private sync --profile notifier
+ai-bridge notifier send-test
+ai-bridge notifier send results/<task_key>/notification_brief.json
+```
+
+Core CLI:
+
+```bash
+ai-bridge notifier send <brief_path>
+ai-bridge notifier send-test
+ai-bridge notifier once
+ai-bridge notifier run
+ai-bridge notifier status
+```
+
+`send <brief_path>` is the recommended path. It sends one explicit terminal
+brief and uses local state under `.ai-bridge/state/notifier.json` for
+send-once/dedup and failed-send retry.
+
+`send-test` uses the same SMTP backend and must send a real email before a
+machine/project is marked `NOTIFIER_READY`.
+
+`once` scans `results/*/notification_brief.json` once. On first startup, it
+baselines existing terminal briefs and does not backfill historical
+notifications.
+
+`run` is optional polling compatibility mode. It is not an installation
+requirement and is not needed for `NOTIFIER_READY`.
+
+tmux is optional, not required, and not managed by Bridge Kit. Users who want a
+long-running process may host `ai-bridge notifier run` themselves through tmux,
+screen, nohup, systemd, or another local deployment choice.
+
+### Terminal Brief Schema
+
+Standard path:
+
+```text
+results/<task_key>/notification_brief.json
+```
+
+Required fields:
+
+```json
+{
+  "schema": "ai-bridge.notification_brief.v1",
+  "project": "example-project",
+  "task_key": "001_example_task",
+  "terminal_status": "complete",
+  "key_conclusion": "The task reached a terminal state.",
+  "next_step": "Review evidence and decide the next task.",
+  "evidence_paths": ["results/001_example_task/result.md"]
+}
+```
+
+Supported `terminal_status` values:
+
+```text
+complete
+blocked
+awaiting_human
+```
+
+Optional fields include `commit_status`, `push_status`, `details`, `jobs`,
+`duration`, `branch`, and `version`. Generic Notifier does not require Slurm,
+GPU, training, reviewer/controller, commit, or push fields.
+
+The notifier does not infer scientific/product conclusions. It only sends the
+brief's declared conclusion.
+
+### SMTP Backend
+
+v0.3.0 implements only SMTP email:
+
+```text
+smtp.gmail.com
+port 587
+STARTTLS
+```
+
+Environment/private keys:
+
+```text
+AI_BRIDGE_NOTIFY_SMTP_USER
+AI_BRIDGE_NOTIFY_SMTP_PASSWORD
+AI_BRIDGE_NOTIFY_FROM
+AI_BRIDGE_NOTIFY_TO
+AI_BRIDGE_NOTIFY_SUBJECT_PREFIX
+```
+
+Emails include both plain text and HTML alternatives and intentionally stay
+short: project, task, status, conclusion, next step, and key evidence.
+
+## Private Bootstrap
+
+Bridge Kit does not bootstrap rclone OAuth, create Google tokens, manage rclone
+remotes, or download rclone credentials from Google Drive. Each machine must
+already have a user-configured rclone remote.
+
+Private notifier configuration is pulled from an existing rclone source:
+
+```bash
+export AI_BRIDGE_PRIVATE_RCLONE_SOURCE='<remote>:Private/GPT_Codex_AI_Bridge_Kit/notifier.env'
+ai-bridge private sync --profile notifier
+```
+
+The sync is pull-only:
+
+1. check `rclone` exists;
+2. check the configured source can be copied;
+3. download to `.ai-bridge/private/notifier.env`;
+4. try `chmod 0600`;
+5. verify required notifier keys exist;
+6. never print secret values;
+7. never upload or modify the Google Drive source.
+
+If rclone is missing, the CLI reports `RCLONE_NOT_CONFIGURED`. If the source is
+unset or unavailable, it reports `PRIVATE_SOURCE_UNAVAILABLE`.
+
+Public examples use only:
+
+```text
+sender@example.org
+recipient@example.org
+```
+
+## Optional Polling Mode
+
+One-shot notifier sends are preferred. Polling exists for compatibility:
+
+```bash
+ai-bridge notifier once
+ai-bridge notifier run --poll-seconds 60
+```
+
+First polling startup records existing terminal briefs as baseline and does not
+send historical notifications. Later new terminal briefs may be sent, with
+failed sends retried because failed events are not marked as sent.
+
+## Shared Codex Configuration
+
+Host policy and the shared config profile let multiple repositories reuse
+user-level Codex defaults instead of reconfiguring each repo.
+
+Reference file:
+
+```text
+templates/host/CODEX_CONFIG_PROFILE.md
+```
+
+The managed host policy keeps:
+
+```toml
+[features]
+memories = true
+default_mode_request_user_input = true
+```
+
+The current Codex CLI feature discovery confirms both features are available on
+this host. If a future Codex install lacks one, `ai-bridge host validate` should
+report incompatibility rather than silently pretending it works.
+
 ## Host Policy And Repo Handoff
 
 ```text
@@ -420,3 +617,40 @@ Then initialize each repository separately:
 ai-bridge init --target /path/to/project
 ai-bridge validate --target /path/to/project
 ```
+
+## New Project Notifier Flow
+
+Machine one-time setup:
+
+1. Configure an rclone remote manually.
+2. Set `AI_BRIDGE_PRIVATE_RCLONE_SOURCE` to the private notifier env path.
+
+Project setup:
+
+```bash
+ai-bridge init --target /path/to/project
+cd /path/to/project
+ai-bridge private sync --profile notifier
+ai-bridge notifier send-test
+```
+
+Mark `NOTIFIER_READY` only after the real Gmail SMTP test email is actually
+sent.
+
+Goal terminal step:
+
+```text
+results/<task_key>/notification_brief.json
+```
+
+```bash
+ai-bridge notifier send results/<task_key>/notification_brief.json
+```
+
+Optional legacy/polling:
+
+```bash
+ai-bridge notifier run
+```
+
+tmux remains optional and unmanaged by Bridge Kit.

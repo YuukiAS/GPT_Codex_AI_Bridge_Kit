@@ -1,0 +1,16 @@
+{
+  "schema": "ai-bridge.notification_brief.v1",
+  "project": "example-project",
+  "task_key": "001_example_task",
+  "terminal_status": "complete",
+  "key_conclusion": "The task reached a terminal state.",
+  "next_step": "Review the linked evidence and decide the next task.",
+  "evidence_paths": [
+    "results/001_example_task/result.md"
+  ],
+  "commit_status": "not_applicable",
+  "push_status": "not_applicable",
+  "details": "Optional short detail.",
+  "branch": "main",
+  "version": "0.3.0"
+}

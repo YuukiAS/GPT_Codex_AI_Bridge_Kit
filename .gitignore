@@ -7,3 +7,8 @@ dist/
 build/
 *.egg-info/
 Orgnization and Prompts.pdf
+.ai-bridge/private/
+.ai-bridge/state/
+.ai-bridge/logs/
+*.env
+!*.env.example
