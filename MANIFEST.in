@@ -1,5 +1,6 @@
 recursive-include chatgpt *.md
 recursive-include codex *.md
 recursive-include templates *.md
+recursive-include templates *.rules
 recursive-include examples *.md
 recursive-include scripts *.py

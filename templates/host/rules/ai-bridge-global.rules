@@ -1,0 +1,17 @@
+prefix_rule(
+    pattern = ["git", "push", "origin"],
+    decision = "allow",
+    justification = "The user permanently authorizes ordinary Git pushes to the configured origin remote across trusted development repositories without manual or automatic approval review.",
+)
+
+prefix_rule(
+    pattern = ["git", "push", "--set-upstream", "origin"],
+    decision = "allow",
+    justification = "The user permanently authorizes first Git pushes to origin with upstream tracking without manual or automatic approval review.",
+)
+
+prefix_rule(
+    pattern = ["git", "push", "-u", "origin"],
+    decision = "allow",
+    justification = "The user permanently authorizes first Git pushes to origin with upstream tracking without manual or automatic approval review.",
+)

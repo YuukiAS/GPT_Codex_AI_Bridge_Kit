@@ -11,10 +11,11 @@ The original protocol was a simple loop:
 2. Codex executes the task and writes `results/<task_key>/result.md`.
 3. ChatGPT reviews the result and writes `results/<task_key>/review.md`.
 
-That loop remains valid. The kit now also defines a general two-layer control
-model for medium/high risk work: GPT remains the strategic planner, while a
-Codex execution controller may coordinate executor and auditor sessions inside a
-GPT-authored controller task.
+That loop remains valid. The kit now also defines a two-layer operating model:
+host-level Codex policy is installed once per Codex identity, while repo-level
+handoff protocol is initialized once per repository. For medium/high risk work,
+GPT remains the strategic planner, while a Codex execution controller may
+coordinate executor and auditor sessions inside a GPT-authored controller task.
 
 ## Planned Agent-Flow v3
 
@@ -44,6 +45,39 @@ execution plan, launch or prepare executor/auditor subtasks, collect evidence,
 write a controller report, and commit/push when the audited promotion gate
 passes. It must not invent a new direction. If a new direction is needed, it
 outputs `NEEDS_GPT_PLANNER` and stops.
+
+## Host Policy And Repo Handoff
+
+```text
+                  GPT-Codex AI Bridge Kit
+                           |
+             +-------------+-------------+
+             |                           |
+      Host Policy                  Repo Handoff
+      once / CODEX_HOME            once / repository
+             |                           |
+   config.toml                     AGENTS.md
+   AGENTS.md                       prompts/
+   rules/                          results/
+                                  docs/
+                                  .agents/skills/
+             |
+      all repositories
+      using this CODEX_HOME
+```
+
+Host policy is installed once for each Codex host, server, Workstation, WSL
+identity, native Windows identity, or explicit `$CODEX_HOME`. It manages Codex
+defaults that should apply across repositories.
+
+Repo handoff is initialized separately in each repository. It creates the
+version-controlled handoff files for that project and does not silently modify
+`$CODEX_HOME`.
+
+Repo-local `.codex/config.toml` or `.codex/rules/` may override or further
+tighten host policy. Memories help with long-term context, but repository files
+such as `AGENTS.md`, tasks, results, reviews, and docs remain the authoritative
+project state.
 
 ## Core Directories
 
@@ -215,11 +249,76 @@ they would break machine-readable protocol fields.
 
 ## Install And Initialize
 
-Install once:
+Install the package:
 
 ```bash
 pip install -e /path/to/GPT_Codex_AI_Bridge_Kit
 ```
+
+### Once Per Codex Host / Identity
+
+```bash
+ai-bridge host install
+ai-bridge host validate
+```
+
+Use `--codex-home /explicit/path` when managing a non-default Codex Home. Codex
+Home resolution is:
+
+1. explicit `--codex-home`
+2. `$CODEX_HOME`
+3. `~/.codex`
+
+Every host command prints the final Codex Home it uses.
+
+`ai-bridge host install` non-destructively maintains:
+
+```text
+$CODEX_HOME/config.toml
+$CODEX_HOME/AGENTS.md
+$CODEX_HOME/rules/ai-bridge-global.rules
+```
+
+It preserves unrelated config fields and unknown TOML content, updates only the
+managed keys, and backs up modified files under:
+
+```text
+$CODEX_HOME/ai-bridge-kit/backups/<timestamp>/
+```
+
+Managed config values:
+
+```toml
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+approvals_reviewer = "auto_review"
+
+[sandbox_workspace_write]
+network_access = true
+
+[features]
+default_mode_request_user_input = true
+memories = true
+```
+
+Managed execpolicy rules allow only these Git push prefixes:
+
+```text
+git push origin ...
+git push --set-upstream origin ...
+git push -u origin ...
+```
+
+They do not authorize force push, remote changes, remote branch/tag deletion,
+arbitrary shell, arbitrary Python, `danger-full-access`, or
+`approval_policy = "never"`.
+
+The host `AGENTS.md` managed block says Codex should continue on the current
+branch by default and must not create a new branch or PR without explicit user
+authorization. Material ambiguity should be asked through user input; routine
+implementation details should be decided locally and carried through.
+
+### Once Per Repository
 
 Initialize any repository:
 
@@ -230,9 +329,20 @@ ai-bridge init --target /path/to/project
 Or run `ai-bridge` from the target repository root.
 
 By default, existing files are not overwritten. Use `--force` to refresh managed
-templates.
+templates. Repo initialization only manages repository handoff files such as
+`AGENTS.md`, `prompts/`, `results/`, `docs/`, and the repo-local Codex skill.
+It may report host policy status, but it does not install host policy.
 
 ## Validate
+
+Validate host policy:
+
+```bash
+ai-bridge host status
+ai-bridge host validate
+```
+
+Validate repo handoff:
 
 ```bash
 ai-bridge validate --target /path/to/project
@@ -257,6 +367,25 @@ warnings to errors.
 - `chatgpt/`: reusable prompts for task writing, evidence audit, next-task
   planning, notes, and wiki work.
 - `codex/`: Codex start prompt, `AGENTS.md` snippet, and repo-local skill.
-- `templates/`: files copied into target repositories.
+- `templates/`: files copied into target repositories plus host desired-state
+  templates under `templates/host/`.
 - `examples/example_project/`: minimal end-to-end examples.
 - `ai_bridge_kit/cli.py`: standard-library CLI.
+- `ai_bridge_kit/host.py`: host-level Codex policy install/status/validation.
+
+## New Server Short Path
+
+On each new Codex host or identity:
+
+```bash
+pip install -e /path/to/GPT_Codex_AI_Bridge_Kit
+ai-bridge host install
+ai-bridge host validate
+```
+
+Then initialize each repository separately:
+
+```bash
+ai-bridge init --target /path/to/project
+ai-bridge validate --target /path/to/project
+```

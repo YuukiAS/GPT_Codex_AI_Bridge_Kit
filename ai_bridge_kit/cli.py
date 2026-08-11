@@ -251,6 +251,19 @@ def init_workspace(
     print("- Use <id>_<short_slug>; keep the slug to 1-3 words.")
     print("- Put execution reports and artifacts in results/<task_key>/.")
     print("- Put reusable research knowledge in docs/wiki/; reference it from tasks when needed.")
+    try:
+        from .host import format_status, inspect_host_policy, resolve_codex_home
+
+        host_status = inspect_host_policy(resolve_codex_home())
+        print()
+        print("Host policy:")
+        print(format_status(host_status))
+        if host_status.overall_state != "configured":
+            print("Run: ai-bridge host validate")
+    except Exception as exc:
+        print()
+        print(f"Host policy: unable to inspect ({exc})")
+        print("Run: ai-bridge host status")
     return 0
 
 
@@ -618,6 +631,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Treat protocol warnings as errors for medium/high risk and controller tasks.",
     )
 
+    host_parser = subparsers.add_parser("host", help="Install, inspect, or validate Codex host policy.")
+    host_subparsers = host_parser.add_subparsers(dest="host_command")
+    for name in ["install", "status", "validate"]:
+        command_parser = host_subparsers.add_parser(name, help=f"{name.title()} Codex host policy.")
+        command_parser.add_argument(
+            "--codex-home",
+            type=Path,
+            default=None,
+            help="Explicit Codex Home. Defaults to $CODEX_HOME, then ~/.codex.",
+        )
+
     prompt_parser = subparsers.add_parser("prompt", help="Print a reusable prompt or rule file.")
     prompt_parser.add_argument("name", choices=sorted(PROMPT_FILES), help="Prompt name to print.")
 
@@ -642,6 +666,36 @@ def main(argv: list[str] | None = None) -> int:
         )
     if args.command == "validate":
         return validate_workspace(args.target.resolve(), strict=args.strict)
+    if args.command == "host":
+        from .host import (
+            format_status,
+            inspect_host_policy,
+            install_host_policy,
+            resolve_codex_home,
+            validate_host_policy,
+        )
+
+        if args.host_command is None:
+            parser.parse_args(["host", "--help"])
+            return 0
+        codex_home = resolve_codex_home(args.codex_home)
+        if args.host_command == "install":
+            status, actions = install_host_policy(codex_home)
+            for action in actions:
+                print(action)
+            print()
+            print(format_status(status))
+            return 0 if status.overall_state == "configured" else 1
+        if args.host_command == "status":
+            print(format_status(inspect_host_policy(codex_home)))
+            return 0
+        if args.host_command == "validate":
+            status, lines, exit_code = validate_host_policy(codex_home)
+            print(format_status(status))
+            print()
+            for line in lines:
+                print(line)
+            return exit_code
     if args.command == "prompt":
         return print_prompt(args.name)
     if args.command == "where":
