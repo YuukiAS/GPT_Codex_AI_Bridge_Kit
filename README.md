@@ -16,6 +16,23 @@ model for medium/high risk work: GPT remains the strategic planner, while a
 Codex execution controller may coordinate executor and auditor sessions inside a
 GPT-authored controller task.
 
+## Planned Agent-Flow v3
+
+A future reusable high-risk Agent-Flow mode is being stress-tested first in the
+CARE-ASE project. It is intentionally **not implemented in this kit yet**. The
+current lightweight handoff remains the active protocol until the CARE run
+finishes and the design is simplified/extracted.
+
+The blueprint is tracked in:
+
+```text
+docs/TODO_AGENT_FLOW_V3_REUSABLE_BLUEPRINT.md
+```
+
+The planned design keeps independent Planner/Critic/Controller/Verifier/Executor
+roles for high-risk work while explicitly avoiding the over-engineered
+provenance/hash/moving-target behavior exposed by the first CARE production run.
+
 ## Core Idea
 
 The strategic planning layer is the user-supervised ChatGPT/GPT thread. It owns
