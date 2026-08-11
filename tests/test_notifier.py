@@ -19,8 +19,8 @@ def valid_brief(status: str = "complete", task_key: str = "001_done") -> dict:
         "project": "demo",
         "task_key": task_key,
         "terminal_status": status,
-        "key_conclusion": "Done.",
-        "next_step": "Review evidence.",
+        "key_conclusion": "任务已经完成，关键证据齐全。",
+        "next_step": "查看证据后决定下一步。",
         "evidence_paths": ["results/001_done/result.md"],
     }
 
@@ -174,11 +174,48 @@ class NotifierTests(unittest.TestCase):
         }
         message = notifier.build_email_message(valid_brief(), env)
         text = message.as_string()
+        plain = notifier.render_plain(valid_brief())
+        decoded_parts = "\n".join(part.get_content() for part in message.iter_parts())
 
         self.assertTrue(message.is_multipart())
+        self.assertIn("完成：001_done", message["Subject"])
+        self.assertTrue(plain.startswith("结论\n任务已经完成"))
+        self.assertIn("下一步：查看证据后决定下一步。", plain)
+        self.assertIn("状态", plain)
+        self.assertIn("关键证据", plain)
+        self.assertIn("results/001_done/result.md", plain)
+        self.assertNotIn("Conclusion:", plain)
+        self.assertNotIn("Next step:", plain)
         self.assertIn("text/plain", text)
         self.assertIn("text/html", text)
+        self.assertIn("结论", decoded_parts)
         self.assertNotIn("secret-app-password", text)
+
+    def test_blocked_subject_is_chinese_and_literals_preserved(self) -> None:
+        env = {
+            "AI_BRIDGE_NOTIFY_SMTP_USER": "sender@example.org",
+            "AI_BRIDGE_NOTIFY_FROM": "sender@example.org",
+            "AI_BRIDGE_NOTIFY_TO": "recipient@example.org",
+            "AI_BRIDGE_NOTIFY_SUBJECT_PREFIX": "[CARE]",
+        }
+        brief = valid_brief("blocked", "care-ase-faithful")
+        brief.update(
+            {
+                "commit_status": "complete_before_notifier",
+                "push_status": "complete_before_notifier",
+                "branch": "develop",
+                "details": "packet 未记录 Slurm ledger/finalizer_state",
+            }
+        )
+        subject = notifier.subject_for_brief(brief, env)
+        plain = notifier.render_plain(brief)
+
+        self.assertEqual(subject, "[CARE] 阻塞：care-ase-faithful")
+        self.assertIn("终态：阻塞（blocked）", plain)
+        self.assertIn("commit：complete_before_notifier", plain)
+        self.assertIn("push：complete_before_notifier", plain)
+        self.assertIn("branch：develop", plain)
+        self.assertIn("packet 未记录 Slurm ledger/finalizer_state", plain)
 
     def test_cli_send_dry_run(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -192,8 +229,9 @@ class NotifierTests(unittest.TestCase):
 
     def test_private_secret_fixture_not_in_tracked_files(self) -> None:
         root = Path(__file__).resolve().parents[1]
+        marker = "PRIVATE_TEST_SECRET_" + "SHOULD_NOT_APPEAR"
         proc = subprocess.run(
-            ["git", "grep", "-n", "PRIVATE_TEST_SECRET_SHOULD_NOT_APPEAR"],
+            ["git", "grep", "-n", marker],
             cwd=root,
             text=True,
             stdout=subprocess.PIPE,

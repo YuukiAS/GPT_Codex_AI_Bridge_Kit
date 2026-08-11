@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.1
+
+- Change Generic Notifier email subjects and bodies to Chinese-first narrative
+  by default while preserving technical literals such as task keys, file paths,
+  branch names, and commit/push status values.
+
 ## 0.3.0
 
 - Add Generic Notifier with one-shot terminal brief sends, optional polling,

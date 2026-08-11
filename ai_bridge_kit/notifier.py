@@ -26,6 +26,18 @@ REQUIRED_BRIEF_FIELDS = {
 }
 STATE_PATH = Path(".ai-bridge") / "state" / "notifier.json"
 PRIVATE_ENV_PATH = Path(".ai-bridge") / "private" / "notifier.env"
+STATUS_LABELS = {
+    "complete": "完成",
+    "blocked": "阻塞",
+    "awaiting_human": "等待人工确认",
+}
+OPTIONAL_LABELS = {
+    "commit_status": "commit",
+    "push_status": "push",
+    "duration": "运行时长",
+    "branch": "branch",
+    "version": "version",
+}
 
 
 @dataclass(frozen=True)
@@ -157,31 +169,51 @@ def require_email_config(env: dict[str, str]) -> list[str]:
 
 def subject_for_brief(brief: dict[str, Any], env: dict[str, str], *, test: bool = False) -> str:
     prefix = env.get("AI_BRIDGE_NOTIFY_SUBJECT_PREFIX", "[AI Bridge]")
-    status = str(brief.get("terminal_status", "")).upper()
+    status = str(brief.get("terminal_status", "")).strip().lower()
+    status_label = STATUS_LABELS.get(status, status or "未知状态")
     task = str(brief.get("task_key", "unknown"))
-    label = "SEND_TEST" if test else status
-    return f"{prefix}[{label}] {task}"
+    if test:
+        return f"{prefix} 测试邮件：{task}"
+    return f"{prefix} {status_label}：{task}"
+
+
+def status_label(brief: dict[str, Any]) -> str:
+    status = str(brief.get("terminal_status", "")).strip().lower()
+    label = STATUS_LABELS.get(status, status or "未知状态")
+    raw = str(brief.get("terminal_status", "unknown"))
+    return f"{label}（{raw}）"
 
 
 def render_plain(brief: dict[str, Any]) -> str:
     evidence = brief.get("evidence_paths") if isinstance(brief.get("evidence_paths"), list) else []
     lines = [
-        f"Project: {brief.get('project', 'unknown')}",
-        f"Task: {brief.get('task_key', 'unknown')}",
-        f"Status: {brief.get('terminal_status', 'unknown')}",
+        "结论",
+        str(brief.get("key_conclusion", "")).strip(),
         "",
-        f"Conclusion: {brief.get('key_conclusion', '')}",
-        f"Next step: {brief.get('next_step', '')}",
+        f"下一步：{brief.get('next_step', '')}",
         "",
-        "Evidence:",
+        "状态",
+        f"项目：{brief.get('project', 'unknown')}",
+        f"任务：{brief.get('task_key', 'unknown')}",
+        f"终态：{status_label(brief)}",
     ]
-    lines.extend(f"- {item}" for item in evidence[:8])
-    for key in ["commit_status", "push_status", "duration", "branch", "version"]:
+    for key, label in OPTIONAL_LABELS.items():
         if brief.get(key):
-            lines.append(f"{key}: {brief[key]}")
+            lines.append(f"{label}：{brief[key]}")
+    jobs = brief.get("jobs")
+    if isinstance(jobs, list) and jobs:
+        lines.extend(["", "作业概览"])
+        for item in jobs[:8]:
+            if isinstance(item, dict):
+                summary = "；".join(f"{key}={value}" for key, value in item.items())
+                lines.append(f"- {summary}")
+            else:
+                lines.append(f"- {item}")
+    lines.extend(["", "关键证据"])
+    lines.extend(str(item) for item in evidence[:8])
     details = brief.get("details")
     if isinstance(details, str) and details.strip():
-        lines.extend(["", "Details:", details.strip()[:1000]])
+        lines.extend(["", "备注", details.strip()[:1000]])
     return "\n".join(lines).strip() + "\n"
 
 
@@ -189,22 +221,36 @@ def render_html(brief: dict[str, Any]) -> str:
     evidence = brief.get("evidence_paths") if isinstance(brief.get("evidence_paths"), list) else []
     evidence_items = "\n".join(f"<li>{html.escape(str(item))}</li>" for item in evidence[:8])
     rows = []
-    for key in ["commit_status", "push_status", "duration", "branch", "version"]:
+    for key, label in OPTIONAL_LABELS.items():
         if brief.get(key):
-            rows.append(f"<p><strong>{html.escape(key)}:</strong> {html.escape(str(brief[key]))}</p>")
+            rows.append(f"<p><strong>{html.escape(label)}：</strong>{html.escape(str(brief[key]))}</p>")
+    jobs = brief.get("jobs")
+    jobs_html = ""
+    if isinstance(jobs, list) and jobs:
+        job_items = []
+        for item in jobs[:8]:
+            if isinstance(item, dict):
+                summary = "；".join(f"{key}={value}" for key, value in item.items())
+                job_items.append(f"<li>{html.escape(summary)}</li>")
+            else:
+                job_items.append(f"<li>{html.escape(str(item))}</li>")
+        jobs_html = "<h2>作业概览</h2><ul>" + "\n".join(job_items) + "</ul>"
     details = brief.get("details")
     detail_html = ""
     if isinstance(details, str) and details.strip():
-        detail_html = f"<h2>Details</h2><p>{html.escape(details.strip()[:1000])}</p>"
+        detail_html = f"<h2>备注</h2><p>{html.escape(details.strip()[:1000])}</p>"
     return (
         "<html><body>"
-        f"<p><strong>Project:</strong> {html.escape(str(brief.get('project', 'unknown')))}</p>"
-        f"<p><strong>Task:</strong> {html.escape(str(brief.get('task_key', 'unknown')))}</p>"
-        f"<p><strong>Status:</strong> {html.escape(str(brief.get('terminal_status', 'unknown')))}</p>"
-        f"<p><strong>Conclusion:</strong> {html.escape(str(brief.get('key_conclusion', '')))}</p>"
-        f"<p><strong>Next step:</strong> {html.escape(str(brief.get('next_step', '')))}</p>"
-        f"<h2>Evidence</h2><ul>{evidence_items}</ul>"
+        "<h1>结论</h1>"
+        f"<p>{html.escape(str(brief.get('key_conclusion', '')))}</p>"
+        f"<p><strong>下一步：</strong>{html.escape(str(brief.get('next_step', '')))}</p>"
+        "<h2>状态</h2>"
+        f"<p><strong>项目：</strong>{html.escape(str(brief.get('project', 'unknown')))}</p>"
+        f"<p><strong>任务：</strong>{html.escape(str(brief.get('task_key', 'unknown')))}</p>"
+        f"<p><strong>终态：</strong>{html.escape(status_label(brief))}</p>"
         + "".join(rows)
+        + jobs_html
+        + f"<h2>关键证据</h2><ul>{evidence_items}</ul>"
         + detail_html
         + "</body></html>"
     )
@@ -324,8 +370,8 @@ def send_test(
         "project": "AI Bridge Notifier",
         "task_key": "send_test",
         "terminal_status": "complete",
-        "key_conclusion": "Generic notifier SMTP test completed.",
-        "next_step": "Mark NOTIFIER_READY only if this real email was received.",
+        "key_conclusion": "Generic Notifier 的 Gmail SMTP 测试邮件已经从当前机器发出。",
+        "next_step": "只有确认真实邮件送达后，才标记 NOTIFIER_READY。",
         "evidence_paths": ["ai-bridge notifier send-test"],
     }
     if dry_run:
