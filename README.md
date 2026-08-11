@@ -70,6 +70,27 @@ Host policy is installed once for each Codex host, server, Workstation, WSL
 identity, native Windows identity, or explicit `$CODEX_HOME`. It manages Codex
 defaults that should apply across repositories.
 
+```text
+Host Policy
+├── Codex config defaults
+├── feature flags
+├── execpolicy allow rules
+├── global Git/branch behavior
+└── global user-facing narrative language
+```
+
+The default user-facing narrative language is Simplified Chinese, while
+repository artifacts continue to follow repository/task-specific language
+conventions.
+
+Codex Desktop / Goal mode may save long objectives as attachments such as
+`$CODEX_HOME/attachments/.../goal-objective.md` and ask the session to read that
+objective file before continuing. That mechanism is normal and does not need to
+be disabled, bypassed, or repeated in every Goal. Host Policy provides the
+session-level default: interactive narrative remains Simplified Chinese even
+when the objective file, commands, repository documentation, terminal output, or
+upstream documentation are in English.
+
 Repo handoff is initialized separately in each repository. It creates the
 version-controlled handoff files for that project and does not silently modify
 `$CODEX_HOME`.
@@ -317,6 +338,16 @@ The host `AGENTS.md` managed block says Codex should continue on the current
 branch by default and must not create a new branch or PR without explicit user
 authorization. Material ambiguity should be asked through user input; routine
 implementation details should be decided locally and carried through.
+
+The same managed block also sets user-facing narrative language policy:
+interactive progress, plans, status explanations, approval questions, risk
+explanations, test summaries, completion reports, and blocker reports default to
+Simplified Chinese unless the user explicitly asks for another language.
+Technical literals such as code, shell commands, file paths, Git refs,
+configuration keys, YAML/TOML fields, protocol state names, API identifiers, and
+exact quoted errors remain in their original form. This is not a Codex
+`config.toml` language key; `ai-bridge host status` reports it as Bridge Kit
+policy state with `narrative_language: zh-CN`.
 
 ### Once Per Repository
 

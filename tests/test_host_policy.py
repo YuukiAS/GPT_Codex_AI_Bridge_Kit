@@ -8,9 +8,11 @@ from pathlib import Path
 from ai_bridge_kit.host import (
     HOST_BEGIN_MARKER,
     HOST_END_MARKER,
+    NARRATIVE_POLICY_MARKERS,
     config_values,
     desired_agents_block,
     desired_rules_text,
+    format_status,
     inspect_host_policy,
     install_host_policy,
     install_managed_block,
@@ -107,6 +109,19 @@ memories = false
         self.assertIn(block, updated)
         self.assertNotIn("old managed text", updated)
 
+    def test_new_install_agents_block_contains_narrative_language_policy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            codex_home = Path(tmp)
+            install_host_policy(codex_home)
+            agents_text = (codex_home / "AGENTS.md").read_text(encoding="utf-8")
+
+            for marker in NARRATIVE_POLICY_MARKERS:
+                self.assertIn(marker, agents_text)
+            self.assertIn(
+                "narrative_language: zh-CN",
+                format_status(inspect_host_policy(codex_home)),
+            )
+
     def test_rules_install_and_repeat(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             codex_home = Path(tmp)
@@ -117,6 +132,30 @@ memories = false
             _, actions = install_host_policy(codex_home)
             self.assertEqual(actions, ["No changes needed; host policy is already configured."])
 
+    def test_existing_managed_block_updates_narrative_policy_and_preserves_user_content(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            codex_home = Path(tmp)
+            agents_path = codex_home / "AGENTS.md"
+            agents_path.write_text(
+                "User header\n\n"
+                f"{HOST_BEGIN_MARKER}\n"
+                "# AI Bridge Kit Host Policy\n\n"
+                "## Old Policy\n\n"
+                "old\n"
+                f"{HOST_END_MARKER}\n\n"
+                "User footer\n",
+                encoding="utf-8",
+            )
+
+            install_host_policy(codex_home)
+            agents_text = agents_path.read_text(encoding="utf-8")
+
+            self.assertIn("User header", agents_text)
+            self.assertIn("User footer", agents_text)
+            for marker in NARRATIVE_POLICY_MARKERS:
+                self.assertIn(marker, agents_text)
+            self.assertEqual(inspect_host_policy(codex_home).narrative_language_state, "configured")
+
     def test_status_missing_configured_drifted(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             codex_home = Path(tmp)
@@ -124,9 +163,39 @@ memories = false
 
             install_host_policy(codex_home)
             self.assertEqual(inspect_host_policy(codex_home).overall_state, "configured")
+            self.assertEqual(inspect_host_policy(codex_home).narrative_language_state, "configured")
 
             (codex_home / "rules" / "ai-bridge-global.rules").write_text("drift\n", encoding="utf-8")
             self.assertEqual(inspect_host_policy(codex_home).overall_state, "drifted")
+
+    def test_status_reports_narrative_language_policy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            codex_home = Path(tmp)
+            install_host_policy(codex_home)
+            status_text = format_status(inspect_host_policy(codex_home))
+
+            self.assertIn("narrative_language: zh-CN (configured)", status_text)
+            self.assertIn("artifact_language_policy: repository/task controlled", status_text)
+
+    def test_validate_reports_drift_when_narrative_policy_is_removed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            codex_home = Path(tmp)
+            install_host_policy(codex_home)
+            agents_path = codex_home / "AGENTS.md"
+            agents_path.write_text(
+                agents_path.read_text(encoding="utf-8").replace(
+                    "## User-Facing Narrative Language",
+                    "## User-Facing Language Removed",
+                ),
+                encoding="utf-8",
+            )
+
+            status, lines, exit_code = validate_host_policy(codex_home)
+
+            self.assertEqual(status.narrative_language_state, "drifted")
+            self.assertEqual(status.overall_state, "drifted")
+            self.assertEqual(exit_code, 1)
+            self.assertTrue(any("Host policy files are drifted" in line for line in lines))
 
     def test_validate_with_real_codex_cli_when_available(self) -> None:
         if shutil.which("codex") is None:

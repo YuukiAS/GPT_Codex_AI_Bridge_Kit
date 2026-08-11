@@ -15,6 +15,13 @@ from . import __version__
 HOST_BEGIN_MARKER = "<!-- ai-bridge-kit:host-policy:start -->"
 HOST_END_MARKER = "<!-- ai-bridge-kit:host-policy:end -->"
 RULES_RELATIVE_PATH = Path("rules") / "ai-bridge-global.rules"
+NARRATIVE_POLICY_MARKERS = [
+    "## User-Facing Narrative Language",
+    "natural Simplified Chinese",
+    "goal-objective.md",
+    "Repository artifacts are a separate concern from interactive narrative",
+    "repository/task-specific language policy",
+]
 
 REQUIRED_CONFIG = {
     ("", "approval_policy"): '"on-request"',
@@ -53,6 +60,9 @@ class HostStatus:
     config_exists: bool
     config_checks: list[ConfigCheck]
     agents_state: str
+    narrative_language_state: str
+    narrative_language: str
+    artifact_language_policy: str
     rules_state: str
     project_overrides: list[Path]
     overall_state: str
@@ -312,6 +322,22 @@ def _agents_state(path: Path) -> str:
     return "missing"
 
 
+def _narrative_language_state(path: Path) -> str:
+    if not path.exists():
+        return "missing"
+    current = read_text(path)
+    if HOST_BEGIN_MARKER not in current or HOST_END_MARKER not in current:
+        return "missing"
+    start = current.index(HOST_BEGIN_MARKER)
+    end = current.index(HOST_END_MARKER) + len(HOST_END_MARKER)
+    managed_block = current[start:end]
+    return (
+        "configured"
+        if all(marker in managed_block for marker in NARRATIVE_POLICY_MARKERS)
+        else "drifted"
+    )
+
+
 def _rules_state(path: Path) -> str:
     if not path.exists():
         return "missing"
@@ -329,8 +355,9 @@ def inspect_host_policy(codex_home: Path, cwd: Path | None = None) -> HostStatus
     config_checks = _check_config(config_path)
     config_state = _state_from_checks(config_checks) if config_path.exists() else "missing"
     agents_state = _agents_state(codex_home / "AGENTS.md")
+    narrative_language_state = _narrative_language_state(codex_home / "AGENTS.md")
     rules_state = _rules_state(codex_home / RULES_RELATIVE_PATH)
-    states = {config_state, agents_state, rules_state}
+    states = {config_state, agents_state, narrative_language_state, rules_state}
     if "drifted" in states:
         overall = "drifted"
     elif "missing" in states:
@@ -342,6 +369,9 @@ def inspect_host_policy(codex_home: Path, cwd: Path | None = None) -> HostStatus
         config_exists=config_path.exists(),
         config_checks=config_checks,
         agents_state=agents_state,
+        narrative_language_state=narrative_language_state,
+        narrative_language="zh-CN",
+        artifact_language_policy="repository/task controlled",
         rules_state=rules_state,
         project_overrides=detect_project_overrides(cwd),
         overall_state=overall,
@@ -437,6 +467,9 @@ def validate_host_policy(codex_home: Path, cwd: Path | None = None) -> tuple[Hos
             status.config_exists,
             status.config_checks,
             status.agents_state,
+            status.narrative_language_state,
+            status.narrative_language,
+            status.artifact_language_policy,
             status.rules_state,
             status.project_overrides,
             "incompatible",
@@ -451,6 +484,9 @@ def validate_host_policy(codex_home: Path, cwd: Path | None = None) -> tuple[Hos
             status.config_exists,
             status.config_checks,
             status.agents_state,
+            status.narrative_language_state,
+            status.narrative_language,
+            status.artifact_language_policy,
             status.rules_state,
             status.project_overrides,
             "incompatible",
@@ -492,6 +528,8 @@ def format_status(status: HostStatus) -> str:
     lines.extend(
         [
             f"global AGENTS managed block: {status.agents_state}",
+            f"narrative_language: {status.narrative_language} ({status.narrative_language_state})",
+            f"artifact_language_policy: {status.artifact_language_policy}",
             f"ai-bridge-global.rules: {status.rules_state}",
         ]
     )
