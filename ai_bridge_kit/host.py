@@ -448,6 +448,23 @@ def _execpolicy_decision(rules_path: Path, command: list[str]) -> tuple[str | No
     return decision or None, output
 
 
+def _with_incompatible(status: HostStatus) -> HostStatus:
+    if status.overall_state != "configured":
+        return status
+    return HostStatus(
+        status.codex_home,
+        status.config_exists,
+        status.config_checks,
+        status.agents_state,
+        status.narrative_language_state,
+        status.narrative_language,
+        status.artifact_language_policy,
+        status.rules_state,
+        status.project_overrides,
+        "incompatible",
+    )
+
+
 def validate_host_policy(codex_home: Path, cwd: Path | None = None) -> tuple[HostStatus, list[str], int]:
     status = inspect_host_policy(codex_home, cwd)
     lines: list[str] = []
@@ -462,35 +479,13 @@ def validate_host_policy(codex_home: Path, cwd: Path | None = None) -> tuple[Hos
         lines.append(f"Codex version: {version}")
     if version_error:
         exit_code = 1
-        status = HostStatus(
-            status.codex_home,
-            status.config_exists,
-            status.config_checks,
-            status.agents_state,
-            status.narrative_language_state,
-            status.narrative_language,
-            status.artifact_language_policy,
-            status.rules_state,
-            status.project_overrides,
-            "incompatible",
-        )
+        status = _with_incompatible(status)
         lines.append(f"Incompatible: {version_error}")
 
     _, feature_issues = _feature_availability()
     if feature_issues:
         exit_code = 1
-        status = HostStatus(
-            status.codex_home,
-            status.config_exists,
-            status.config_checks,
-            status.agents_state,
-            status.narrative_language_state,
-            status.narrative_language,
-            status.artifact_language_policy,
-            status.rules_state,
-            status.project_overrides,
-            "incompatible",
-        )
+        status = _with_incompatible(status)
         for issue in feature_issues:
             lines.append(f"Incompatible: {issue}")
     else:
