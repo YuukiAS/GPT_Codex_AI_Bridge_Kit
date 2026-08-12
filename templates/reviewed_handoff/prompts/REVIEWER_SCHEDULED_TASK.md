@@ -26,6 +26,8 @@ Reviewer 必须独立读取：
 - 现有测试与必要的 user-facing artifacts；
 - 之前的 REVIEW_<n>.md，仅用于检查 blocker closure。
 
+`base_commit..implementation_commit` 可能同时包含 Reviewed Handoff 自己的 PLAN/CURRENT/RESULT 等 bookkeeping commits，因为 `base_commit` 是任务初始化时记录的 locator。不要因为这些合法 workflow 文件本身存在于 diff 就把它们当作产品实现或 regression。实现审核应聚焦冻结 Plan 定义的项目代码、配置、文档和 user-facing artifacts。相反，如果真实 diff 显示 Executor 修改了 `REQUEST.md`、`PLAN.md`、既有 `REVIEW_<n>.md`、`FINAL_REPORT.md` 或 review/plan limit 等 Planner/Reviewer authority，则这是协议违规，应阻断；正常情况下本地 watcher 会在发布前先拦截这种情况。
+
 Review 的唯一目标是判断当前实现是否满足冻结 Plan 且没有造成相关 regression。禁止仅因为“还可以更优雅”“可以再加一个 abstraction”“理论上更安全”而扩大冻结 scope。
 
 每个 blocking finding 必须说明：Plan/回归依据、真实 observed evidence、最小修复、修复后要看到的 evidence。没有冻结 Plan 或已有行为依据的问题只能作为 non-blocking note/backlog。
