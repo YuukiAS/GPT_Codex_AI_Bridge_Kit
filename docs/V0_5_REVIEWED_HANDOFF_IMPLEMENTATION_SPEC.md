@@ -23,7 +23,7 @@ The intended experience is:
 1. the user provides the objective and source material once;
 2. GPT Planner freezes the implementation plan;
 3. a persistent lightweight machine watcher sees `PLAN_FROZEN` and launches Codex Executor;
-4. Codex executes, verifies, commits and publishes `READY_FOR_GPT_REVIEW`;
+4. Codex executes, verifies, commits and publishes `READY_FOR_GPT_REVIEW`, or `WAITING_FOR_CI` when GitHub CI is required;
 5. a ChatGPT Scheduled Task reviews GitHub state asynchronously;
 6. the local watcher automatically launches one Codex repair when the first review returns `REVISE`;
 7. the second review must either pass, block, or escalate to the user;
@@ -83,6 +83,7 @@ Normal states:
 PLAN_REQUESTED
 PLAN_FROZEN
 EXECUTING
+WAITING_FOR_CI
 READY_FOR_GPT_REVIEW
 REVISE
 PASS
@@ -99,6 +100,8 @@ BLOCKED
 The canonical transition graph lives in `schema.json` and the Python core. Illegal transitions fail closed.
 
 `READY_FOR_GPT_REVIEW` is not equivalent to completion. It requires a current `RESULT.md`, an `implementation_commit` locator, and `ci_status=PASS` when CI is required.
+
+For CI-required tasks, Codex Executor must stop at `WAITING_FOR_CI` with `CURRENT.ci_status=PENDING`. `CURRENT.ci_status` is the only machine truth for CI. `RESULT.md` is execution narrative and must not be treated as a second CI authority. The Scheduled GPT reviewer reads the real GitHub checks for the current authorized branch tip that contains `CURRENT.state=WAITING_FOR_CI`; that branch tip is the CI locator. It is a normal Git locator, not semantic identity, and it is not written into a hash chain or receipt graph. Do not assume `implementation_commit` equals the GitHub workflow head SHA, because the watcher may publish both implementation and control-plane commits.
 
 `AWAIT_HUMAN_DECISION` and `BLOCKED` are user-facing terminal states. Every terminal state must have a structurally valid `FINAL_REPORT.md`; the user should never have to reconstruct the outcome from CI logs or Reviewer artifacts.
 
@@ -190,6 +193,7 @@ It processes only states that explicitly require GPT work, primarily:
 
 ```text
 NEEDS_GPT_PLANNER
+WAITING_FOR_CI
 READY_FOR_GPT_REVIEW
 PASS
 ```

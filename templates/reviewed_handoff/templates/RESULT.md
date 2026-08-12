@@ -2,7 +2,6 @@
 schema: AI_BRIDGE_REVIEWED_RESULT_V1
 task_key: <TASK_KEY>
 implementation_commit: <COMMIT>
-ci_status: <PASS_OR_NOT_REQUIRED>
 ---
 
 # Codex Result

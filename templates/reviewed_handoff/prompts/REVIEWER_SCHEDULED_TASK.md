@@ -18,9 +18,10 @@ automation/reviewed_handoff/tasks/*/CURRENT.json
 
 这个状态只用于 `ci_required=true` 的任务。Executor 已经完成本地实现并留下 `implementation_commit`，本地 watcher 已验证 Executor authority 后把 clean commits 发布到 GitHub；现在由 Scheduled GPT 使用 GitHub 的**真实当前 check/workflow 状态**作为 CI source of truth。
 
+- CI locator 是 GitHub 上当前授权 branch 的 tip，也就是包含 `CURRENT.state=WAITING_FOR_CI` 的已发布 control commit。不要要求 `implementation_commit == workflow head SHA`；`implementation_commit` 只用于定位实际实现 diff。不要把 CI locator 写入 `review_target_id`、hash graph 或 receipt。
 - CI 仍 pending/running：无副作用退出，本轮不写 review、不制造新 commit。
-- 当前 `implementation_commit` 的必需 CI 全部 PASS：把 `CURRENT.ci_status` 更新为 `PASS`，状态推进到 `READY_FOR_GPT_REVIEW`，然后可以在同一次 Scheduled Task run 中继续执行下面的独立 GPT review。
-- 必需 CI 明确 FAIL：把 `CURRENT.ci_status` 更新为 `FAIL`，将 CI 失败作为一条真实 blocking finding 写入当前 `REVIEW_<round>.md`，decision=`REVISE`；如果这是第一轮，进入 `REVISE` 让本地 watcher 自动返修；如果已达到 review 上限，先写 `FINAL_REPORT.md` 再进入 `AWAIT_HUMAN_DECISION`。
+- 必需 CI 全部 PASS：用 `reviewed-handoff transition apply --expected-state WAITING_FOR_CI --next-state READY_FOR_GPT_REVIEW` 机械更新 `CURRENT.ci_status=PASS` 并推进状态，然后可以在同一次 Scheduled Task run 中继续执行下面的独立 GPT review。
+- 必需 CI 明确 FAIL：用 `reviewed-handoff review record --decision REVISE` 将 CI 失败作为一条真实 blocking finding 写入当前 `REVIEW_<round>.md`；该命令会把 `CURRENT.ci_status` 机械更新为 `FAIL`。如果这是第一轮，进入 `REVISE` 让本地 watcher 自动返修；如果已达到 review 上限，先写 `FINAL_REPORT.md` 再进入 `AWAIT_HUMAN_DECISION`。
 - CI 状态无法可靠确认、workflow 被取消且无法判断是否应重跑、权限/服务不可用等真正外部问题：不要伪造 PASS。必要时写 `FINAL_REPORT.md` 后进入 `BLOCKED`。
 
 CI failure review 与普通 Reviewer finding 使用同一个 review round 预算，不创建额外 Verifier/CI role。

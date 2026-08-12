@@ -197,6 +197,8 @@ Watcher 只同步当前已经 checkout/授权的 branch，不创建 branch/PR。
 
 Reviewed Handoff 的默认 review 上限是两轮：第一轮 `REVISE` 允许一次 Codex repair；第二轮仍 `REVISE` 必须停在 `AWAIT_HUMAN_DECISION`。执行中如果出现冻结 Plan 无法安全推导的实质歧义，Scheduled GPT 最多允许一次最小 re-plan；再次需要改变 Plan 则交给用户。所有终态都必须生成 `FINAL_REPORT.md`，因此用户回来后只需要读一份面向人的报告。
 
+如果任务要求 GitHub CI，Codex Executor 只能把任务推进到 `WAITING_FOR_CI` 并保持 `CURRENT.ci_status=PENDING`；真实 CI 结果由 Scheduled GPT 从 GitHub checks 读取。`CURRENT.ci_status` 是唯一机器真值，`RESULT.md` 只记录执行叙述。CI locator 使用包含 `WAITING_FOR_CI` 的当前 branch tip，不要求它等于 `implementation_commit`，也不引入 hash/receipt 链。
+
 Reviewed Handoff 刻意**不**使用 Agent-Flow 的 `review_target_id`、Requirement Ledger、semantic source manifest、role receipt graph、Review Bundle SHA 或 Final Critic。`base_commit` / `implementation_commit` 只是让 GPT 定位真实 diff 的 Git locator。如果某项任务真的需要这些证明机制，应直接升级到 Agent-Flow，而不是把 Reviewed Handoff 继续加重。
 
 详细规格见 `docs/V0_5_REVIEWED_HANDOFF_IMPLEMENTATION_SPEC.md`。

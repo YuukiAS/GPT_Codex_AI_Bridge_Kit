@@ -31,6 +31,14 @@ class ReviewedRunnerTests(unittest.TestCase):
         subprocess.check_call(["git", "commit", "-m", "freeze plan"], cwd=target, stdout=subprocess.DEVNULL)
         return tmp, target, state_home
 
+    def attach_origin(self, target: Path, base: Path) -> Path:
+        remote = base / "origin.git"
+        subprocess.check_call(["git", "init", "--bare", "--initial-branch", "main", remote], stdout=subprocess.DEVNULL)
+        subprocess.check_call(["git", "remote", "add", "origin", str(remote)], cwd=target)
+        subprocess.check_call(["git", "push", "-u", "origin", "main"], cwd=target, stdout=subprocess.DEVNULL)
+        subprocess.check_call(["git", "symbolic-ref", "HEAD", "refs/heads/main"], cwd=remote)
+        return remote
+
     @staticmethod
     def codex_only_fake(real_run, callback=None):
         def fake_run(*args, **kwargs):
@@ -131,6 +139,80 @@ class ReviewedRunnerTests(unittest.TestCase):
         event = runner.event_identity("001_feature", current)
         self.assertEqual(event, "001_feature|REVISE|1|0|abc123")
         self.assertNotIn("sha256", event.lower())
+
+    def test_executor_direct_push_is_blocked_by_process_guard(self) -> None:
+        tmp, target, state_home = self.make_project()
+        with tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(state_home)}):
+            self.attach_origin(target, Path(tmp.name))
+            (target / "src.py").write_text("VALUE = 2\n", encoding="utf-8")
+            subprocess.check_call(["git", "add", "src.py"], cwd=target)
+            subprocess.check_call(["git", "commit", "-m", "executor local commit"], cwd=target, stdout=subprocess.DEVNULL)
+            result = subprocess.run(
+                ["git", "push", "origin", "main"],
+                cwd=target,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                env=runner.push_guard_environment(target),
+                check=False,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("Executor must not push", result.stdout)
+
+    def test_executor_authority_rejects_request_plan_review_and_protected_current(self) -> None:
+        tmp, target, state_home = self.make_project()
+        with tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(state_home)}):
+            pre_head = runner.git_output(target, ["rev-parse", "HEAD"])
+            current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+            pre_current = rh.load_json(current_path)
+            rh.write_text(rh.task_root(target, "001_feature") / "REQUEST.md", "# changed\n")
+            rh.write_text(rh.result_root(target, "001_feature") / "REVIEW_1.md", "# changed\n")
+            post_current = dict(pre_current)
+            post_current["review_round"] = 1
+            rh.write_json(current_path, post_current)
+            subprocess.check_call(["git", "add", "."], cwd=target)
+            subprocess.check_call(["git", "commit", "-m", "executor authority violation"], cwd=target, stdout=subprocess.DEVNULL)
+            post_head = runner.git_output(target, ["rev-parse", "HEAD"])
+            errors = runner.executor_authority_errors(target, "001_feature", pre_current, post_current, pre_head, post_head)
+            text = "\n".join(errors)
+            self.assertIn("review_round", text)
+            self.assertIn("REQUEST.md", text)
+            self.assertIn("REVIEW_1.md", text)
+
+    def test_publish_clean_progress_pushes_authorized_branch_without_creating_branch(self) -> None:
+        tmp, target, state_home = self.make_project()
+        with tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(state_home)}):
+            self.attach_origin(target, Path(tmp.name))
+            before_branches = subprocess.check_output(["git", "branch", "--format", "%(refname:short)"], cwd=target, text=True).splitlines()
+            (target / "src.py").write_text("VALUE = 2\n", encoding="utf-8")
+            subprocess.check_call(["git", "add", "src.py"], cwd=target)
+            subprocess.check_call(["git", "commit", "-m", "executor validated progress"], cwd=target, stdout=subprocess.DEVNULL)
+            published, error = runner.publish_clean_progress(target, "main")
+            self.assertTrue(published, error)
+            self.assertIsNone(error)
+            self.assertEqual(runner.branch_heads(target, "main")[0], runner.branch_heads(target, "main")[1])
+            after_branches = subprocess.check_output(["git", "branch", "--format", "%(refname:short)"], cwd=target, text=True).splitlines()
+            self.assertEqual(before_branches, after_branches)
+
+    def test_publish_clean_progress_rejects_diverged_branch(self) -> None:
+        tmp, target, state_home = self.make_project()
+        with tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(state_home)}):
+            remote = self.attach_origin(target, Path(tmp.name))
+            clone = Path(tmp.name) / "other"
+            subprocess.check_call(["git", "clone", str(remote), str(clone)], stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "config", "user.email", "other@example.org"], cwd=clone)
+            subprocess.check_call(["git", "config", "user.name", "Other User"], cwd=clone)
+            (clone / "remote.txt").write_text("remote\n", encoding="utf-8")
+            subprocess.check_call(["git", "add", "remote.txt"], cwd=clone)
+            subprocess.check_call(["git", "commit", "-m", "remote advance"], cwd=clone, stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "push", "origin", "main"], cwd=clone, stdout=subprocess.DEVNULL)
+
+            (target / "local.txt").write_text("local\n", encoding="utf-8")
+            subprocess.check_call(["git", "add", "local.txt"], cwd=target)
+            subprocess.check_call(["git", "commit", "-m", "local advance"], cwd=target, stdout=subprocess.DEVNULL)
+            published, error = runner.publish_clean_progress(target, "main")
+            self.assertFalse(published)
+            self.assertIn("diverged", str(error))
 
 
 if __name__ == "__main__":

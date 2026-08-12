@@ -312,8 +312,6 @@ def validate_result_file(path: Path, task_key: str, current: dict[str, Any]) -> 
     commit = str(current.get("implementation_commit") or "")
     if data.get("implementation_commit") != commit:
         errors.append("RESULT.md implementation_commit must match CURRENT")
-    if data.get("ci_status") != str(current.get("ci_status")):
-        errors.append("RESULT.md ci_status must match CURRENT")
     return errors
 
 
@@ -589,8 +587,7 @@ def apply_transition(
     if expected_state == "WAITING_FOR_CI" and next_state in {"REVISE", "BLOCKED"}:
         raise ValueError("use reviewed-handoff review record for CI failure decisions")
     if expected_state == "WAITING_FOR_CI" and next_state == "READY_FOR_GPT_REVIEW":
-        if current.get("ci_status") != "PASS":
-            raise ValueError("WAITING_FOR_CI -> READY_FOR_GPT_REVIEW requires ci_status=PASS")
+        current["ci_status"] = "PASS"
     if expected_state == "REVISE" and next_state == "EXECUTING":
         if current.get("review_round", 0) >= current.get("max_review_rounds", 2):
             raise ValueError("review round limit reached; route to AWAIT_HUMAN_DECISION")
@@ -657,10 +654,10 @@ def record_review(
     if source_state not in {"READY_FOR_GPT_REVIEW", "WAITING_FOR_CI"}:
         raise ValueError("GPT review can only be recorded from READY_FOR_GPT_REVIEW or failed WAITING_FOR_CI")
     if source_state == "WAITING_FOR_CI":
-        if current.get("ci_status") != "FAIL":
-            raise ValueError("CI review can only be recorded after current ci_status=FAIL")
         if decision == "PASS":
             raise ValueError("failed CI cannot be recorded as PASS")
+        if decision == "REVISE":
+            current["ci_status"] = "FAIL"
     errors = validate_task(target, task_key)
     if errors:
         raise ValueError("; ".join(errors))

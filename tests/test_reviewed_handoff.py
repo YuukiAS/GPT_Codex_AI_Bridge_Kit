@@ -50,7 +50,6 @@ class ReviewedHandoffTests(unittest.TestCase):
         text = (
             template.replace("<TASK_KEY>", "001_feature")
             .replace("<COMMIT>", commit)
-            .replace("<PASS_OR_NOT_REQUIRED>", ci_status)
         )
         rh.write_text(rh.result_root(target, "001_feature") / "RESULT.md", text)
 
@@ -118,11 +117,77 @@ class ReviewedHandoffTests(unittest.TestCase):
             rh.write_json(root / "CURRENT.json", current)
             self.freeze_and_start(target)
             self.write_result(target, commit="impl-ci", ci_status="PENDING")
-            with self.assertRaisesRegex(ValueError, "ci_status=PASS"):
+            with self.assertRaisesRegex(ValueError, "WAITING_FOR_CI"):
                 rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
-            self.write_result(target, commit="impl-ci", ci_status="PASS")
-            advanced = rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            waiting = rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="WAITING_FOR_CI")
+            self.assertEqual(waiting["state"], "WAITING_FOR_CI")
+            self.assertEqual(waiting["ci_status"], "PENDING")
+            advanced = rh.apply_transition(target, "001_feature", expected_state="WAITING_FOR_CI", next_state="READY_FOR_GPT_REVIEW")
             self.assertEqual(advanced["state"], "READY_FOR_GPT_REVIEW")
+            self.assertEqual(advanced["ci_status"], "PASS")
+
+    def test_ci_failure_uses_normal_review_round_budget(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            root = rh.task_root(target, "001_feature")
+            current = rh.load_json(root / "CURRENT.json")
+            current["ci_required"] = True
+            current["ci_status"] = "PENDING"
+            rh.write_json(root / "CURRENT.json", current)
+            self.freeze_and_start(target)
+            self.write_result(target, commit="impl-ci-1", ci_status="PENDING")
+            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="WAITING_FOR_CI")
+            current = rh.record_review(target, "001_feature", decision="REVISE", body="CI failed: unit job failed.")
+            self.assertEqual(current["state"], "REVISE")
+            self.assertEqual(current["ci_status"], "FAIL")
+            self.assertEqual(current["review_round"], 1)
+
+            rh.apply_transition(target, "001_feature", expected_state="REVISE", next_state="EXECUTING")
+            self.write_result(target, commit="impl-ci-2", ci_status="PENDING")
+            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="WAITING_FOR_CI")
+            with self.assertRaisesRegex(ValueError, "FINAL_REPORT"):
+                rh.record_review(target, "001_feature", decision="REVISE", body="CI still failed.")
+            self.write_final_report(target)
+            current = rh.record_review(target, "001_feature", decision="REVISE", body="CI still failed.")
+            self.assertEqual(current["state"], "AWAIT_HUMAN_DECISION")
+            self.assertTrue(current["review_limit_reached"])
+            self.assertEqual(current["review_round"], 2)
+
+    def test_waiting_for_ci_pending_has_no_side_effect_plan(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            root = rh.task_root(target, "001_feature")
+            current = rh.load_json(root / "CURRENT.json")
+            current["ci_required"] = True
+            current["ci_status"] = "PENDING"
+            rh.write_json(root / "CURRENT.json", current)
+            self.freeze_and_start(target)
+            self.write_result(target, commit="impl-ci", ci_status="PENDING")
+            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="WAITING_FOR_CI")
+            before = rh.load_json(root / "CURRENT.json")
+            plan = rh.plan_transition(target, "001_feature")
+            after = rh.load_json(root / "CURRENT.json")
+            self.assertEqual(plan["next_action"], "WAIT_FOR_CI")
+            self.assertNotIn("next_state", plan)
+            self.assertEqual(before, after)
+
+    def test_result_frontmatter_cannot_override_current_ci_truth(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            root = rh.task_root(target, "001_feature")
+            current = rh.load_json(root / "CURRENT.json")
+            current["ci_required"] = True
+            current["ci_status"] = "PENDING"
+            rh.write_json(root / "CURRENT.json", current)
+            self.freeze_and_start(target)
+            self.write_result(target, commit="impl-ci", ci_status="PENDING")
+            result_path = rh.result_root(target, "001_feature") / "RESULT.md"
+            text = result_path.read_text(encoding="utf-8")
+            result_path.write_text(text.replace("implementation_commit: impl-ci", "implementation_commit: impl-ci\nci_status: PASS"), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "WAITING_FOR_CI"):
+                rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            current = rh.load_json(root / "CURRENT.json")
+            self.assertEqual(current["ci_status"], "PENDING")
 
     def test_review_record_first_revise_then_second_revise_human_gate(self) -> None:
         tmp, target = self.make_project()
@@ -184,20 +249,30 @@ class ReviewedHandoffTests(unittest.TestCase):
             self.assertEqual(current["state"], "AWAIT_HUMAN_DECISION")
             self.assertEqual(rh.validate_task(target, "001_feature"), [])
 
+    def test_all_terminal_states_require_final_report(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            root = rh.task_root(target, "001_feature")
+            self.freeze_and_start(target)
+            current_path = root / "CURRENT.json"
+            current = rh.load_json(current_path)
+            current["state"] = "BLOCKED"
+            current["runner_failure"] = {"event": "test"}
+            rh.write_json(current_path, current)
+            self.assertTrue(any("FINAL_REPORT" in error for error in rh.validate_task(target, "001_feature")))
+            self.write_final_report(target)
+            self.assertEqual(rh.validate_task(target, "001_feature"), [])
+
     def test_only_one_scheduled_plan_revision_is_allowed(self) -> None:
         tmp, target = self.make_project()
         with tmp:
             self.freeze_and_start(target)
             current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
-            current = rh.load_json(current_path)
-            current["state"] = "NEEDS_GPT_PLANNER"
-            rh.write_json(current_path, current)
+            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="NEEDS_GPT_PLANNER")
             current = rh.apply_transition(target, "001_feature", expected_state="NEEDS_GPT_PLANNER", next_state="PLAN_FROZEN")
             self.assertEqual(current["plan_revision"], 1)
             rh.apply_transition(target, "001_feature", expected_state="PLAN_FROZEN", next_state="EXECUTING")
-            current = rh.load_json(current_path)
-            current["state"] = "NEEDS_GPT_PLANNER"
-            rh.write_json(current_path, current)
+            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="NEEDS_GPT_PLANNER")
             plan = rh.plan_transition(target, "001_feature")
             self.assertEqual(plan["next_state"], "AWAIT_HUMAN_DECISION")
             self.write_final_report(target)
@@ -214,8 +289,48 @@ class ReviewedHandoffTests(unittest.TestCase):
             self.assertFalse(flags["role_receipt_graph"])
             self.assertFalse(flags["stable_review_snapshot"])
             current = rh.load_json(rh.task_root(target, "001_feature") / "CURRENT.json")
-            forbidden = {"review_target_id", "request_nonce", "requirement_ledger_sha256", "bundle_sha256", "source_snapshot"}
+            forbidden = {
+                "review_target_id",
+                "request_nonce",
+                "requirement_ledger_sha256",
+                "bundle_sha256",
+                "source_snapshot",
+                "role_receipt_id",
+                "planner_thread_id",
+                "executor_thread_id",
+                "reviewer_thread_id",
+            }
             self.assertTrue(forbidden.isdisjoint(current))
+
+    def test_reviewed_handoff_e2e_revise_repair_pass(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            self.write_plan(target)
+            rh.apply_transition(target, "001_feature", expected_state="PLAN_REQUESTED", next_state="PLAN_FROZEN")
+            rh.apply_transition(target, "001_feature", expected_state="PLAN_FROZEN", next_state="EXECUTING")
+            self.write_result(target, commit="impl-1")
+            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            rh.record_review(target, "001_feature", decision="REVISE", body="Plan item not complete.")
+            rh.apply_transition(target, "001_feature", expected_state="REVISE", next_state="EXECUTING")
+            self.write_result(target, commit="impl-2")
+            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            rh.record_review(target, "001_feature", decision="PASS", body="Plan satisfied.")
+            self.write_final_report(target)
+            final = rh.apply_transition(target, "001_feature", expected_state="PASS", next_state="AWAIT_HUMAN_DECISION")
+            self.assertEqual(final["state"], "AWAIT_HUMAN_DECISION")
+            self.assertEqual(rh.validate_task(target, "001_feature"), [])
+
+    def test_material_planner_question_replans_once_then_resumes(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            self.write_plan(target)
+            rh.apply_transition(target, "001_feature", expected_state="PLAN_REQUESTED", next_state="PLAN_FROZEN")
+            rh.apply_transition(target, "001_feature", expected_state="PLAN_FROZEN", next_state="EXECUTING")
+            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="NEEDS_GPT_PLANNER")
+            current = rh.apply_transition(target, "001_feature", expected_state="NEEDS_GPT_PLANNER", next_state="PLAN_FROZEN")
+            self.assertEqual(current["plan_revision"], 1)
+            resumed = rh.apply_transition(target, "001_feature", expected_state="PLAN_FROZEN", next_state="EXECUTING")
+            self.assertEqual(resumed["state"], "EXECUTING")
 
     def test_core_validate_detects_review_round_drift(self) -> None:
         tmp, target = self.make_project()
