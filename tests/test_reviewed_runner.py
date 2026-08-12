@@ -103,7 +103,7 @@ class ReviewedRunnerTests(unittest.TestCase):
         tmp, target, state_home = self.make_project()
         with tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(state_home)}):
             def leave_dirty_work():
-                (target / "src" / "partial.py").write_text("PARTIAL = True\n", encoding="utf-8")
+                (target / "partial.py").write_text("PARTIAL = True\n", encoding="utf-8")
 
             real_run = subprocess.run
             with mock.patch("subprocess.run", side_effect=self.codex_only_fake(real_run, leave_dirty_work)), mock.patch(
@@ -114,7 +114,7 @@ class ReviewedRunnerTests(unittest.TestCase):
             self.assertEqual(result["status"], "codex_dirty_blocked")
             self.assertEqual(result["attempt"], 1)
             blocker.assert_called_once()
-            self.assertTrue((target / "src" / "partial.py").exists())
+            self.assertTrue((target / "partial.py").exists())
             local = runner.load_local_state(target)
             event = runner.event_identity("001_feature", rh.load_json(rh.task_root(target, "001_feature") / "CURRENT.json"))
             self.assertTrue(local["events"][event]["completed"])
