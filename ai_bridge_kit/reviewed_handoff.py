@@ -19,6 +19,7 @@ TASK_STATES = {
     "PLAN_REQUESTED",
     "PLAN_FROZEN",
     "EXECUTING",
+    "WAITING_FOR_CI",
     "NEEDS_GPT_PLANNER",
     "READY_FOR_GPT_REVIEW",
     "REVISE",
@@ -30,9 +31,10 @@ TASK_STATES = {
 ALLOWED_TRANSITIONS: dict[str, set[str]] = {
     "PLAN_REQUESTED": {"PLAN_FROZEN", "BLOCKED"},
     "PLAN_FROZEN": {"EXECUTING", "BLOCKED"},
-    "EXECUTING": {"READY_FOR_GPT_REVIEW", "NEEDS_GPT_PLANNER", "BLOCKED"},
+    "EXECUTING": {"WAITING_FOR_CI", "READY_FOR_GPT_REVIEW", "NEEDS_GPT_PLANNER", "BLOCKED"},
+    "WAITING_FOR_CI": {"READY_FOR_GPT_REVIEW", "REVISE", "BLOCKED"},
     "NEEDS_GPT_PLANNER": {"PLAN_FROZEN", "AWAIT_HUMAN_DECISION", "BLOCKED"},
-    "READY_FOR_GPT_REVIEW": {"REVISE", "PASS", "AWAIT_HUMAN_DECISION", "BLOCKED"},
+    "READY_FOR_GPT_REVIEW": {"REVISE", "PASS", "BLOCKED"},
     "REVISE": {"EXECUTING", "NEEDS_GPT_PLANNER", "AWAIT_HUMAN_DECISION", "BLOCKED"},
     "PASS": {"AWAIT_HUMAN_DECISION"},
     "AWAIT_HUMAN_DECISION": set(),
@@ -391,11 +393,10 @@ def validate_task(target: Path, task_key: str) -> list[str]:
             errors.extend(validate_plan_file(plan_path, task_key))
 
     result_path = result_root(target, task_key) / "RESULT.md"
-    result_bound_state = state in {"READY_FOR_GPT_REVIEW", "REVISE", "PASS"} or (
-        state == "AWAIT_HUMAN_DECISION"
-        and bool(current.get("implementation_commit") or current.get("last_review_decision"))
+    implementation_bound = state in {"WAITING_FOR_CI", "READY_FOR_GPT_REVIEW", "REVISE", "PASS"} or (
+        state in TERMINAL_STATES and bool(current.get("implementation_commit"))
     )
-    if result_bound_state:
+    if implementation_bound:
         if not result_path.exists():
             errors.append(f"{state} requires results/{task_key}/RESULT.md")
         commit = str(current.get("implementation_commit") or "").strip()
@@ -411,10 +412,25 @@ def validate_task(target: Path, task_key: str) -> list[str]:
                 if git_commit_exists(target, commit) and git_commit_exists(target, base_commit):
                     if not git_is_ancestor(target, base_commit, commit):
                         errors.append(f"{state} implementation_commit is not descended from base_commit")
-        if current.get("ci_required") and current.get("ci_status") != "PASS":
-            errors.append(f"{state} requires ci_status=PASS")
-        if not current.get("ci_required") and current.get("ci_status") not in {"NOT_REQUIRED", "PASS"}:
-            errors.append(f"{state} requires ci_status=NOT_REQUIRED or PASS")
+
+        ci_required = bool(current.get("ci_required"))
+        ci_status = current.get("ci_status")
+        if state == "WAITING_FOR_CI":
+            if not ci_required:
+                errors.append("WAITING_FOR_CI requires ci_required=true")
+            if ci_status not in {"PENDING", "PASS", "FAIL"}:
+                errors.append("WAITING_FOR_CI ci_status must be PENDING, PASS, or FAIL")
+        elif ci_required and state in {"READY_FOR_GPT_REVIEW", "PASS"}:
+            if ci_status != "PASS":
+                errors.append(f"{state} requires ci_status=PASS")
+        elif ci_required and state == "AWAIT_HUMAN_DECISION" and current.get("human_gate_reason") == "PASS":
+            if ci_status != "PASS":
+                errors.append("PASS human gate requires ci_status=PASS")
+        elif ci_required:
+            if ci_status not in {"PENDING", "PASS", "FAIL"}:
+                errors.append(f"{state} has invalid ci_status: {ci_status}")
+        elif ci_status not in {"NOT_REQUIRED", "PASS"}:
+            errors.append(f"{state} requires ci_status=NOT_REQUIRED or PASS when CI is not required")
 
     reviews = review_files(target, task_key)
     if len(reviews) > 2:
@@ -432,7 +448,7 @@ def validate_task(target: Path, task_key: str) -> list[str]:
         if current.get("last_review_decision") != latest_data.get("decision"):
             errors.append("CURRENT.last_review_decision must match the latest review artifact")
         latest_commit = latest_data.get("implementation_commit")
-        if state in {"REVISE", "PASS", "AWAIT_HUMAN_DECISION"} and latest_commit != str(current.get("implementation_commit")):
+        if state in {"REVISE", "PASS", "AWAIT_HUMAN_DECISION", "BLOCKED"} and latest_commit != str(current.get("implementation_commit")):
             errors.append("latest review must be bound to CURRENT implementation_commit")
         decision = latest_data.get("decision")
         if state == "REVISE" and decision != "REVISE":
@@ -511,9 +527,17 @@ def plan_transition(target: Path, task_key: str) -> dict[str, Any]:
         return {"state": state, "valid": True, "next_state": "EXECUTING", "next_action": "RUN_CODEX_EXECUTOR"}
     if state == "EXECUTING":
         if (result_dir / "RESULT.md").exists() and str(current.get("implementation_commit") or "").strip():
-            if not current.get("ci_required") or current.get("ci_status") == "PASS":
-                return {"state": state, "valid": True, "next_state": "READY_FOR_GPT_REVIEW", "next_action": "WAIT_SCHEDULED_GPT_REVIEW"}
+            if current.get("ci_required"):
+                return {"state": state, "valid": True, "next_state": "WAITING_FOR_CI", "next_action": "PUBLISH_AND_WAIT_FOR_CI"}
+            return {"state": state, "valid": True, "next_state": "READY_FOR_GPT_REVIEW", "next_action": "WAIT_SCHEDULED_GPT_REVIEW"}
         return {"state": state, "valid": True, "next_action": "CONTINUE_CODEX_EXECUTION"}
+    if state == "WAITING_FOR_CI":
+        ci_status = current.get("ci_status")
+        if ci_status == "PASS":
+            return {"state": state, "valid": True, "next_state": "READY_FOR_GPT_REVIEW", "next_action": "RUN_GPT_REVIEW"}
+        if ci_status == "FAIL":
+            return {"state": state, "valid": True, "next_action": "RECORD_CI_FAILURE_REVIEW"}
+        return {"state": state, "valid": True, "next_action": "WAIT_FOR_CI"}
     if state == "NEEDS_GPT_PLANNER":
         if current.get("plan_revision", 0) >= current.get("max_plan_revisions", 1):
             return {"state": state, "valid": True, "next_state": "AWAIT_HUMAN_DECISION", "next_action": "HUMAN_PLAN_DECISION"}
@@ -540,7 +564,8 @@ def apply_transition(
     next_action: str = "",
 ) -> dict[str, Any]:
     path = task_root(target, task_key) / "CURRENT.json"
-    current = load_json(path)
+    original = load_json(path)
+    current = dict(original)
     if current.get("state") != expected_state:
         raise ValueError(f"transition expected {expected_state}, found {current.get('state')}")
     if not transition_allowed(expected_state, next_state):
@@ -561,25 +586,35 @@ def apply_transition(
         current["plan_revision"] = int(current.get("plan_revision", 0)) + 1
     if expected_state == "READY_FOR_GPT_REVIEW":
         raise ValueError("use reviewed-handoff review record for every READY_FOR_GPT_REVIEW exit so GPT review cannot be bypassed")
+    if expected_state == "WAITING_FOR_CI" and next_state in {"REVISE", "BLOCKED"}:
+        raise ValueError("use reviewed-handoff review record for CI failure decisions")
+    if expected_state == "WAITING_FOR_CI" and next_state == "READY_FOR_GPT_REVIEW":
+        if current.get("ci_status") != "PASS":
+            raise ValueError("WAITING_FOR_CI -> READY_FOR_GPT_REVIEW requires ci_status=PASS")
     if expected_state == "REVISE" and next_state == "EXECUTING":
         if current.get("review_round", 0) >= current.get("max_review_rounds", 2):
             raise ValueError("review round limit reached; route to AWAIT_HUMAN_DECISION")
-    if expected_state == "EXECUTING" and next_state == "READY_FOR_GPT_REVIEW":
+    if expected_state == "EXECUTING" and next_state in {"WAITING_FOR_CI", "READY_FOR_GPT_REVIEW"}:
         result_path = result_root(target, task_key) / "RESULT.md"
         if not result_path.exists() or not str(current.get("implementation_commit") or "").strip():
-            raise ValueError("READY_FOR_GPT_REVIEW requires current RESULT.md and implementation_commit")
+            raise ValueError(f"{next_state} requires current RESULT.md and implementation_commit")
         result_errors = validate_result_file(result_path, task_key, current)
         if result_errors:
             raise ValueError("; ".join(result_errors))
         if git_repo_available(target):
             commit = str(current.get("implementation_commit") or "")
             if not git_commit_exists(target, commit):
-                raise ValueError("READY_FOR_GPT_REVIEW requires a real implementation_commit Git locator")
+                raise ValueError(f"{next_state} requires a real implementation_commit Git locator")
             base_commit = str(current.get("base_commit") or "")
             if git_commit_exists(target, base_commit) and not git_is_ancestor(target, base_commit, commit):
-                raise ValueError("READY_FOR_GPT_REVIEW implementation_commit must descend from base_commit")
-        if current.get("ci_required") and current.get("ci_status") != "PASS":
-            raise ValueError("READY_FOR_GPT_REVIEW requires ci_status=PASS when CI is required")
+                raise ValueError(f"{next_state} implementation_commit must descend from base_commit")
+        if current.get("ci_required"):
+            if next_state != "WAITING_FOR_CI":
+                raise ValueError("CI-required Executor work must enter WAITING_FOR_CI before GPT review")
+            if current.get("ci_status") != "PENDING":
+                raise ValueError("Executor must publish CI-required work with ci_status=PENDING")
+        elif next_state != "READY_FOR_GPT_REVIEW":
+            raise ValueError("CI-not-required Executor work should enter READY_FOR_GPT_REVIEW directly")
     if next_state in TERMINAL_STATES:
         report_errors = validate_final_report(result_root(target, task_key) / "FINAL_REPORT.md")
         if report_errors:
@@ -597,6 +632,10 @@ def apply_transition(
     if next_action:
         current["next_action"] = next_action
     write_json(path, current)
+    post_errors = validate_task(target, task_key)
+    if post_errors:
+        write_json(path, original)
+        raise ValueError("transition would create invalid Reviewed Handoff state: " + "; ".join(post_errors))
     return current
 
 
@@ -612,9 +651,16 @@ def record_review(
         raise ValueError(f"unsupported review decision: {decision}")
     root = task_root(target, task_key)
     current_path = root / "CURRENT.json"
-    current = load_json(current_path)
-    if current.get("state") != "READY_FOR_GPT_REVIEW":
-        raise ValueError("GPT review can only be recorded from READY_FOR_GPT_REVIEW")
+    original = load_json(current_path)
+    current = dict(original)
+    source_state = current.get("state")
+    if source_state not in {"READY_FOR_GPT_REVIEW", "WAITING_FOR_CI"}:
+        raise ValueError("GPT review can only be recorded from READY_FOR_GPT_REVIEW or failed WAITING_FOR_CI")
+    if source_state == "WAITING_FOR_CI":
+        if current.get("ci_status") != "FAIL":
+            raise ValueError("CI review can only be recorded after current ci_status=FAIL")
+        if decision == "PASS":
+            raise ValueError("failed CI cannot be recorded as PASS")
     errors = validate_task(target, task_key)
     if errors:
         raise ValueError("; ".join(errors))
@@ -633,6 +679,9 @@ def record_review(
         raise ValueError("review requires implementation_commit locator")
     if commit != current_commit_locator:
         raise ValueError("review implementation_commit must match CURRENT implementation_commit")
+    review_path = result_root(target, task_key) / f"REVIEW_{next_round}.md"
+    if review_path.exists():
+        raise ValueError(f"review artifact already exists: {review_path.name}")
     header = (
         "---\n"
         f"schema: {REVIEW_SCHEMA}\n"
@@ -642,7 +691,6 @@ def record_review(
         f"implementation_commit: {commit}\n"
         "---\n\n"
     )
-    review_path = result_root(target, task_key) / f"REVIEW_{next_round}.md"
     write_text(review_path, header + body.rstrip() + "\n")
     current["review_round"] = next_round
     current["last_review_decision"] = decision
@@ -661,6 +709,11 @@ def record_review(
         current["state"] = "REVISE"
         current["next_action"] = "RUN_CODEX_REPAIR"
     write_json(current_path, current)
+    post_errors = validate_task(target, task_key)
+    if post_errors:
+        write_json(current_path, original)
+        review_path.unlink(missing_ok=True)
+        raise ValueError("review would create invalid Reviewed Handoff state: " + "; ".join(post_errors))
     return current
 
 
