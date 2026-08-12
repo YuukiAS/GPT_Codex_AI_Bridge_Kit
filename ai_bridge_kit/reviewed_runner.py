@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -15,12 +16,27 @@ from . import reviewed_handoff as rh
 ELIGIBLE_EXECUTOR_STATES = {"PLAN_FROZEN", "REVISE"}
 
 
+def machine_state_home() -> Path:
+    override = os.environ.get("AI_BRIDGE_STATE_HOME")
+    return Path(override).expanduser().resolve() if override else (Path.home() / ".ai-bridge").resolve()
+
+
+def repo_state_slug(target: Path) -> str:
+    resolved = target.resolve()
+    raw = f"{resolved.parent.name}__{resolved.name}" or "repository"
+    return re.sub(r"[^A-Za-z0-9._-]+", "_", raw)
+
+
+def machine_task_root(target: Path) -> Path:
+    return machine_state_home() / "reviewed-handoff" / repo_state_slug(target)
+
+
 def state_path(target: Path) -> Path:
-    return target.resolve() / ".ai-bridge" / "state" / "reviewed-handoff-watcher.json"
+    return machine_task_root(target) / "watcher.json"
 
 
 def log_root(target: Path) -> Path:
-    return target.resolve() / ".ai-bridge" / "logs" / "reviewed-handoff"
+    return machine_task_root(target) / "logs"
 
 
 def load_local_state(target: Path) -> dict[str, Any]:
