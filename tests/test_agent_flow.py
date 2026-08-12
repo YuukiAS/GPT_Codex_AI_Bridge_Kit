@@ -28,9 +28,9 @@ class FakeRuntimeAdapter(agent_flow.RuntimeAdapter):
             base_task_nonce=request.request_nonce,
             allowed_write_scope=request.allowed_write_scope,
             start_or_resume_status="started",
-            produced_commit=f"{request.role.lower()}-commit",
+            produced_commit="",
             produced_evidence_id=f"{request.role.lower()}-evidence",
-            commit_kind="fake-test",
+            commit_kind="no_commit",
         )
 
 
@@ -545,7 +545,8 @@ class AgentFlowTests(unittest.TestCase):
                     "produced_evidence_id": "verifier-evidence",
                     "base_task_nonce": "nonce",
                     "commit_kind": "fake-test",
-                }
+                },
+                allow_fake_test=True,
             ),
             [],
         )
@@ -894,6 +895,30 @@ class AgentFlowTests(unittest.TestCase):
             write(target / "tests" / "test_calc.py", "from src.calc import add\n\ndef test_add():\n    assert add(1, 2) == 4\n")
             self.assertTrue(any("verifier semantic digest is stale" in error or "VERIFIER_SOURCE_MANIFEST" in error for error in agent_flow.validate_task_state(target, "001_toy")))
 
+    def test_contract_and_ledger_changes_after_snapshot_are_rejected(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            snapshot = self.snapshot_and_bundle(target)
+            root = agent_flow.task_root(target, "001_toy")
+            current = agent_flow.load_json(root / "CURRENT.json")
+            current["state"] = "READY_FOR_PLANNER_REVIEW"
+            current["current_review_target_id"] = snapshot["review_target_id"]
+            agent_flow.write_json(root / "CURRENT.json", current)
+            write(root / "FROZEN_CONTRACT.md", "# Frozen Contract\n\nREQ_EXAMPLE_001: add returns numeric sum.\n")
+            self.assertTrue(any("frozen_contract_sha256 is stale" in error for error in agent_flow.validate_task_state(target, "001_toy")))
+
+            snapshot = self.snapshot_and_bundle(target)
+            current = agent_flow.load_json(root / "CURRENT.json")
+            current["state"] = "VERIFIER_FROZEN"
+            current["current_review_target_id"] = snapshot["review_target_id"]
+            agent_flow.write_json(root / "CURRENT.json", current)
+            self.write_verifier_freeze(target)
+            ledger = agent_flow.load_json(root / "REQUIREMENT_LEDGER.json")
+            ledger["requirements"][0]["verifier_authority"] = "updated authority text"
+            agent_flow.write_json(root / "REQUIREMENT_LEDGER.json", ledger)
+            errors = agent_flow.validate_task_state(target, "001_toy")
+            self.assertTrue(any("requirement_ledger_sha256 is stale" in error for error in errors))
+
     def test_evidence_artifact_status_is_authoritative(self) -> None:
         tmp, target = self.make_project()
         with tmp:
@@ -1123,6 +1148,149 @@ class AgentFlowTests(unittest.TestCase):
                 next_action="ORDINARY_BOTH_REPAIR",
             )
             self.assertEqual(agent_flow.load_json(root / "CURRENT.json")["critic_mode"], "STANDBY")
+
+    def test_contract_review_requires_refreeze_and_new_snapshot_target(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            root = agent_flow.task_root(target, "001_toy")
+            write(root / "PLANNER_DRAFT.md", "# Draft\n")
+            self.apply_next(target, "PLAN_REQUESTED", "PLAN_READY_FOR_CRITIC")
+            self.write_critic_freeze(target)
+            self.apply_next(target, "PLAN_READY_FOR_CRITIC", "PLAN_FROZEN")
+            self.write_controller_receipt(target)
+            self.apply_next(target, "PLAN_FROZEN", "CONTROLLER_INITIALIZING")
+            first = self.snapshot_and_bundle(target)
+            self.apply_next(target, "CONTROLLER_INITIALIZING", "VERIFIER_RUNNING")
+            self.write_verifier_freeze(target)
+            self.apply_next(target, "VERIFIER_RUNNING", "VERIFIER_FROZEN")
+            self.write_role_receipt(target, "Executor")
+            self.apply_next(target, "VERIFIER_FROZEN", "EXECUTOR_RUNNING")
+            self.write_executor_result(target)
+            self.apply_next(target, "EXECUTOR_RUNNING", "EVIDENCE_RUNNING")
+            self.apply_next(target, "EVIDENCE_RUNNING", "READY_FOR_PLANNER_REVIEW")
+            agent_flow.write_current_findings(
+                target,
+                "001_toy",
+                [
+                    {
+                        "finding_id": "F_AMBIG",
+                        "classification": "CONTRACT_AMBIGUITY",
+                        "blocking": True,
+                        "owner_role": "Planner",
+                        "requirement_ids": ["REQ_EXAMPLE_001"],
+                        "summary": "contract ambiguous",
+                        "observed_evidence": "Planner review",
+                        "required_repair": "clarify contract",
+                        "required_regression_evidence": "new target",
+                        "forbidden_workaround": "runtime choice",
+                        "created_against_review_target_id": first["review_target_id"],
+                    }
+                ],
+                first["review_target_id"],
+            )
+            self.apply_next(target, "READY_FOR_PLANNER_REVIEW", "WAITING_FOR_EXTERNAL_GPT")
+            self.apply_next(target, "WAITING_FOR_EXTERNAL_GPT", "CONTRACT_REVIEW_REQUIRED")
+            current = agent_flow.load_json(root / "CURRENT.json")
+            self.assertEqual(current["contract_review_base_target_id"], first["review_target_id"])
+
+            write(root / "FROZEN_CONTRACT.md", "# Frozen Contract\n\nREQ_EXAMPLE_001: add returns numeric sum.\n")
+            self.write_critic_freeze(target, critic_mode="REQUIRED_CONTRACT_REVIEW")
+            plan = agent_flow.plan_transition(target, "001_toy")
+            self.assertEqual(plan["next_action"], "RUN_OR_WAIT_CONTRACT_CRITIC_REVIEW")
+            self.assertTrue(any("frozen_contract_sha256 is stale" in error for error in plan["waiting_on"]))
+            with self.assertRaisesRegex(ValueError, "frozen_contract_sha256 is stale"):
+                agent_flow.apply_transition(target, "001_toy", expected_state="CONTRACT_REVIEW_REQUIRED", next_state="PLANNER_REVISE_BOTH")
+
+            self.snapshot_and_bundle(target)
+            second = agent_flow.load_json(root / "SOURCE_SNAPSHOT.json")
+            self.assertNotEqual(first["review_target_id"], second["review_target_id"])
+            resumed = self.apply_next(target, "CONTRACT_REVIEW_REQUIRED", "PLANNER_REVISE_BOTH")
+            self.assertNotIn("contract_review_base_target_id", resumed)
+            self.assertEqual(resumed["critic_mode"], "STANDBY")
+
+    def test_contract_review_same_snapshot_target_is_rejected(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            root = agent_flow.task_root(target, "001_toy")
+            write(root / "PLANNER_DRAFT.md", "# Draft\n")
+            self.apply_next(target, "PLAN_REQUESTED", "PLAN_READY_FOR_CRITIC")
+            self.write_critic_freeze(target)
+            self.apply_next(target, "PLAN_READY_FOR_CRITIC", "PLAN_FROZEN")
+            self.write_controller_receipt(target)
+            self.apply_next(target, "PLAN_FROZEN", "CONTROLLER_INITIALIZING")
+            first = self.snapshot_and_bundle(target)
+            current_path = root / "CURRENT.json"
+            current = agent_flow.load_json(current_path)
+            current["state"] = "CONTRACT_REVIEW_REQUIRED"
+            current["critic_mode"] = "REQUIRED_CONTRACT_REVIEW"
+            current["current_review_target_id"] = first["review_target_id"]
+            current["contract_review_base_target_id"] = first["review_target_id"]
+            agent_flow.write_json(current_path, current)
+            self.write_critic_freeze(target, critic_mode="REQUIRED_CONTRACT_REVIEW")
+            plan = agent_flow.plan_transition(target, "001_toy")
+            self.assertEqual(plan["next_action"], "RUN_OR_WAIT_CONTRACT_CRITIC_REVIEW")
+            self.assertTrue(any("new semantic review_target_id" in error for error in plan["waiting_on"]))
+            with self.assertRaisesRegex(ValueError, "new semantic review_target_id"):
+                agent_flow.apply_transition(target, "001_toy", expected_state="CONTRACT_REVIEW_REQUIRED", next_state="PLANNER_REVISE_BOTH")
+
+    def test_production_transitions_reject_fake_test_role_receipts(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            root = agent_flow.task_root(target, "001_toy")
+            write(root / "PLANNER_DRAFT.md", "# Draft\n")
+            self.apply_next(target, "PLAN_REQUESTED", "PLAN_READY_FOR_CRITIC")
+            self.write_critic_freeze(target)
+            self.apply_next(target, "PLAN_READY_FOR_CRITIC", "PLAN_FROZEN")
+            self.write_controller_receipt(target)
+            controller_path = agent_flow.role_receipt_path(target, "001_toy", "Controller")
+            controller = agent_flow.load_json(controller_path)
+            controller["commit_kind"] = "fake-test"
+            controller["produced_commit"] = "fake"
+            agent_flow.write_json(controller_path, controller)
+            self.assertTrue(any("fake-test" in error for error in agent_flow.validate_transition_predicates(target, "001_toy", "CONTROLLER_INITIALIZING", agent_flow.load_json(root / "CURRENT.json"), agent_flow.load_project_profile(target))))
+            current_path = root / "CURRENT.json"
+            current = agent_flow.load_json(current_path)
+            current["state"] = "CONTROLLER_INITIALIZING"
+            agent_flow.write_json(current_path, current)
+            self.assertTrue(any("fake-test" in error for error in agent_flow.validate_task_state(target, "001_toy")))
+            self.assertFalse(agent_flow.plan_transition(target, "001_toy")["valid"])
+            current["state"] = "PLAN_FROZEN"
+            agent_flow.write_json(current_path, current)
+            with self.assertRaisesRegex(ValueError, "fake-test"):
+                agent_flow.apply_transition(target, "001_toy", expected_state="PLAN_FROZEN", next_state="CONTROLLER_INITIALIZING")
+
+            controller["commit_kind"] = "no_commit"
+            controller["produced_commit"] = ""
+            agent_flow.write_json(controller_path, controller)
+            self.apply_next(target, "PLAN_FROZEN", "CONTROLLER_INITIALIZING")
+            self.snapshot_and_bundle(target)
+            self.apply_next(target, "CONTROLLER_INITIALIZING", "VERIFIER_RUNNING")
+            self.write_verifier_freeze(target)
+            verifier_path = agent_flow.role_receipt_path(target, "001_toy", "Verifier")
+            verifier = agent_flow.load_json(verifier_path)
+            verifier["commit_kind"] = "fake-test"
+            verifier["produced_commit"] = "fake"
+            agent_flow.write_json(verifier_path, verifier)
+            self.assertTrue(any("fake-test" in error for error in agent_flow.validate_transition_predicates(target, "001_toy", "VERIFIER_FROZEN", agent_flow.load_json(root / "CURRENT.json"), agent_flow.load_project_profile(target))))
+            with self.assertRaisesRegex(ValueError, "fake-test"):
+                agent_flow.apply_transition(target, "001_toy", expected_state="VERIFIER_RUNNING", next_state="VERIFIER_FROZEN")
+
+            verifier["commit_kind"] = "no_commit"
+            verifier["produced_commit"] = ""
+            agent_flow.write_json(verifier_path, verifier)
+            self.apply_next(target, "VERIFIER_RUNNING", "VERIFIER_FROZEN")
+            self.write_role_receipt(target, "Executor")
+            self.apply_next(target, "VERIFIER_FROZEN", "EXECUTOR_RUNNING")
+            self.write_executor_result(target)
+            executor_path = agent_flow.role_receipt_path(target, "001_toy", "Executor")
+            executor = agent_flow.load_json(executor_path)
+            executor["commit_kind"] = "fake-test"
+            executor["produced_commit"] = "fake"
+            agent_flow.write_json(executor_path, executor)
+            self.assertTrue(any("fake-test" in error for error in agent_flow.validate_transition_predicates(target, "001_toy", "EVIDENCE_RUNNING", agent_flow.load_json(root / "CURRENT.json"), agent_flow.load_project_profile(target))))
+            self.assertTrue(any("fake-test" in error for error in agent_flow.validate_agent_flow(target)[0]))
+            with self.assertRaisesRegex(ValueError, "fake-test"):
+                agent_flow.apply_transition(target, "001_toy", expected_state="EXECUTOR_RUNNING", next_state="EVIDENCE_RUNNING")
 
     def test_toy_a_control_plane_path(self) -> None:
         tmp, target = self.make_project()

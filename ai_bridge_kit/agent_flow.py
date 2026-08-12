@@ -815,6 +815,8 @@ def validate_current_semantic_snapshot(target: Path, task_key: str, profile: dic
     root = task_root(target, task_key)
     errors: list[str] = []
     required_paths = [
+        root / "FROZEN_CONTRACT.md",
+        root / "REQUIREMENT_LEDGER.json",
         root / "IMPLEMENTATION_SOURCE_MANIFEST.json",
         root / "VERIFIER_SOURCE_MANIFEST.json",
         root / "SOURCE_SNAPSHOT.json",
@@ -829,6 +831,17 @@ def validate_current_semantic_snapshot(target: Path, task_key: str, profile: dic
     stored_impl = load_json(root / "IMPLEMENTATION_SOURCE_MANIFEST.json")
     stored_verifier = load_json(root / "VERIFIER_SOURCE_MANIFEST.json")
     stored_snapshot = load_json(root / "SOURCE_SNAPSHOT.json")
+    current_contract_sha256 = file_sha256(root / "FROZEN_CONTRACT.md")
+    current_ledger_sha256 = file_sha256(root / "REQUIREMENT_LEDGER.json")
+    try:
+        ledger_errors = validate_requirement_ledger(load_json(root / "REQUIREMENT_LEDGER.json"))
+    except Exception as exc:
+        ledger_errors = [f"current REQUIREMENT_LEDGER.json unreadable or invalid: {exc}"]
+    errors.extend(f"current REQUIREMENT_LEDGER.json invalid: {item}" for item in ledger_errors)
+    if stored_snapshot.get("frozen_contract_sha256") != current_contract_sha256:
+        errors.append("SOURCE_SNAPSHOT.json frozen_contract_sha256 is stale against current FROZEN_CONTRACT.md")
+    if stored_snapshot.get("requirement_ledger_sha256") != current_ledger_sha256:
+        errors.append("SOURCE_SNAPSHOT.json requirement_ledger_sha256 is stale against current REQUIREMENT_LEDGER.json")
     if stored_impl != current_impl:
         errors.append("IMPLEMENTATION_SOURCE_MANIFEST.json is stale against current tracked implementation semantic source")
     if stored_verifier != current_verifier:
@@ -839,8 +852,8 @@ def validate_current_semantic_snapshot(target: Path, task_key: str, profile: dic
         errors.append("SOURCE_SNAPSHOT.json verifier semantic digest is stale")
     recomputed_target = compute_review_target_id(
         task_identity=stored_snapshot.get("task_identity", {}),
-        frozen_contract_sha256=str(stored_snapshot.get("frozen_contract_sha256")),
-        requirement_ledger_sha256=str(stored_snapshot.get("requirement_ledger_sha256")),
+        frozen_contract_sha256=current_contract_sha256,
+        requirement_ledger_sha256=current_ledger_sha256,
         implementation_semantic_digest_sha256=current_impl["semantic_digest_sha256"],
         verifier_semantic_digest_sha256=current_verifier["semantic_digest_sha256"],
     )
@@ -1112,7 +1125,7 @@ def validate_role_receipt(
     *,
     request_nonce: str | None = None,
     review_target_id: str | None = None,
-    allow_fake_test: bool = True,
+    allow_fake_test: bool = False,
 ) -> list[str]:
     errors: list[str] = []
     role = receipt.get("role")
@@ -1819,6 +1832,35 @@ def validate_untracked_semantic_sources(target: Path, profile: dict[str, Any]) -
     return errors
 
 
+def validate_contract_review_resume(
+    target: Path,
+    task_key: str,
+    current: dict[str, Any],
+    profile: dict[str, Any],
+) -> list[str]:
+    root = task_root(target, task_key)
+    errors = validate_critic_freeze(target, task_key)
+    if not errors:
+        freeze_payload = load_json(root / "CRITIC_FREEZE.json")
+        if freeze_payload.get("critic_mode") != "REQUIRED_CONTRACT_REVIEW":
+            errors.append("contract review requires current Critic refreeze with critic_mode=REQUIRED_CONTRACT_REVIEW")
+    base_target = current.get("contract_review_base_target_id")
+    if not base_target:
+        errors.append("contract review resume requires contract_review_base_target_id")
+    snapshot_path = root / "SOURCE_SNAPSHOT.json"
+    if not snapshot_path.exists():
+        errors.append("contract review resume requires regenerated SOURCE_SNAPSHOT.json")
+        return errors
+    errors.extend(validate_current_semantic_snapshot(target, task_key, profile))
+    snapshot_payload = load_json(snapshot_path)
+    new_target = snapshot_payload.get("review_target_id")
+    if not new_target:
+        errors.append("contract review resume requires current SOURCE_SNAPSHOT review_target_id")
+    elif base_target and new_target == base_target:
+        errors.append("contract review resume requires a new semantic review_target_id")
+    return errors
+
+
 def validate_transition_predicates(target: Path, task_key: str, state: str, current: dict[str, Any], profile: dict[str, Any]) -> list[str]:
     root = task_root(target, task_key)
     errors: list[str] = []
@@ -2180,13 +2222,9 @@ def plan_transition(target: Path, task_key: str) -> dict[str, Any]:
     if state == "PLANNER_REVISE_BOTH":
         return {"state": state, "valid": True, "next_state": "VERIFIER_RUNNING", "next_action": "LAUNCH_VERIFIER_THEN_EXECUTOR_REPAIR"}
     if state == "CONTRACT_REVIEW_REQUIRED":
-        freeze_errors = validate_critic_freeze(target, task_key)
-        if not freeze_errors:
-            freeze_payload = load_json(task_root(target, task_key) / "CRITIC_FREEZE.json")
-            if freeze_payload.get("critic_mode") != "REQUIRED_CONTRACT_REVIEW":
-                freeze_errors.append("contract review requires current Critic refreeze with critic_mode=REQUIRED_CONTRACT_REVIEW")
-        if freeze_errors:
-            return {"state": state, "valid": True, "next_action": "RUN_OR_WAIT_CONTRACT_CRITIC_REVIEW", "waiting_on": freeze_errors}
+        resume_errors = validate_contract_review_resume(target, task_key, current, profile)
+        if resume_errors:
+            return {"state": state, "valid": True, "next_action": "RUN_OR_WAIT_CONTRACT_CRITIC_REVIEW", "waiting_on": resume_errors}
         return {"state": state, "valid": True, "next_state": "PLANNER_REVISE_BOTH", "next_action": "RESUME_AFTER_CONTRACT_REFREEZE"}
     if state == "PLANNER_PASS_CANDIDATE":
         return {"state": state, "valid": True, "next_state": "READY_FOR_CRITIC_FINAL_AUDIT", "next_action": "RUN_FINAL_CRITIC"}
@@ -2223,6 +2261,7 @@ def apply_transition(target: Path, task_key: str, *, expected_state: str, next_s
         "CI_RUNNING",
         "READY_FOR_PLANNER_REVIEW",
         "WAITING_FOR_EXTERNAL_GPT",
+        "CONTRACT_REVIEW_REQUIRED",
         "PLANNER_PASS_CANDIDATE",
         "READY_FOR_CRITIC_FINAL_AUDIT",
         "PLANNER_PASS",
@@ -2242,14 +2281,19 @@ def apply_transition(target: Path, task_key: str, *, expected_state: str, next_s
             current["requirement_ledger_sha256"] = file_sha256(task_root(target, task_key) / "REQUIREMENT_LEDGER.json")
     if next_state == "CONTRACT_REVIEW_REQUIRED":
         current["critic_mode"] = "REQUIRED_CONTRACT_REVIEW"
+        current["contract_review_base_target_id"] = current.get("current_review_target_id")
     if expected_state == "CONTRACT_REVIEW_REQUIRED" and next_state == "PLANNER_REVISE_BOTH":
-        freeze_errors = validate_critic_freeze(target, task_key)
-        if freeze_errors:
-            raise ValueError("; ".join(freeze_errors))
-        freeze_payload = load_json(task_root(target, task_key) / "CRITIC_FREEZE.json")
-        if freeze_payload.get("critic_mode") != "REQUIRED_CONTRACT_REVIEW":
-            raise ValueError("contract review requires current Critic refreeze with critic_mode=REQUIRED_CONTRACT_REVIEW")
+        resume_errors = validate_contract_review_resume(target, task_key, current, profile)
+        if resume_errors:
+            raise ValueError("; ".join(resume_errors))
+        snapshot_payload = load_json(task_root(target, task_key) / "SOURCE_SNAPSHOT.json")
+        current["current_review_target_id"] = snapshot_payload.get("review_target_id")
+        current["frozen_contract_sha256"] = snapshot_payload.get("frozen_contract_sha256")
+        current["requirement_ledger_sha256"] = snapshot_payload.get("requirement_ledger_sha256")
+        current["implementation_semantic_digest_sha256"] = snapshot_payload.get("implementation_semantic_digest_sha256")
+        current["verifier_semantic_digest_sha256"] = snapshot_payload.get("verifier_semantic_digest_sha256")
         current["critic_mode"] = "STANDBY"
+        current.pop("contract_review_base_target_id", None)
     if next_state == "READY_FOR_CRITIC_FINAL_AUDIT":
         current["critic_mode"] = "REQUIRED_FINAL_AUDIT"
     if next_state == "AWAIT_HUMAN_DECISION":

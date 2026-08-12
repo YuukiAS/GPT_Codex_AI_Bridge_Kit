@@ -24,6 +24,10 @@
   contract-review refreeze gates, role commit provenance, evidence artifact
   semantic binding, single current findings truth, machine review write
   authority, and runtime role receipt predicates.
+- Close final provenance blockers by binding semantic snapshots to current
+  frozen contract and Requirement Ledger hashes, requiring contract-review
+  refreeze to produce a new semantic target before runtime repair resumes, and
+  making production transition predicates reject `fake-test` role receipts.
 
 ## 0.3.1
 
