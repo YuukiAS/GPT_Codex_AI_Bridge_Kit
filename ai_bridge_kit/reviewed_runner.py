@@ -14,6 +14,22 @@ from . import reviewed_handoff as rh
 
 
 ELIGIBLE_EXECUTOR_STATES = {"PLAN_FROZEN", "REVISE"}
+ALLOWED_EXECUTOR_TERMINAL_STATES = {"READY_FOR_GPT_REVIEW", "NEEDS_GPT_PLANNER"}
+PROTECTED_CURRENT_FIELDS = {
+    "schema",
+    "task_key",
+    "review_round",
+    "max_review_rounds",
+    "plan_revision",
+    "max_plan_revisions",
+    "base_commit",
+    "base_branch",
+    "ci_required",
+    "last_review_decision",
+    "review_limit_reached",
+    "human_gate_reason",
+    "runner_failure",
+}
 
 
 def machine_state_home() -> Path:
@@ -22,8 +38,7 @@ def machine_state_home() -> Path:
 
 
 def repo_state_slug(target: Path) -> str:
-    resolved = target.resolve()
-    raw = f"{resolved.parent.name}__{resolved.name}" or "repository"
+    raw = target.resolve().as_posix().strip("/") or "repository"
     return re.sub(r"[^A-Za-z0-9._-]+", "_", raw)
 
 
@@ -101,7 +116,7 @@ def sync_origin_ff_only(target: Path, branch: str) -> None:
 
 
 def publish_clean_progress(target: Path, branch: str) -> tuple[bool, str | None]:
-    """Ensure clean Codex progress is visible on origin without inventing workflow identity."""
+    """Ensure validated clean Codex progress is visible on origin."""
     if working_tree_dirty(target):
         return False, "working tree is dirty"
     git_output(target, ["fetch", "origin", branch])
@@ -161,6 +176,75 @@ def eligible_events(target: Path) -> list[tuple[str, dict[str, Any]]]:
     return events
 
 
+def changed_paths(target: Path, pre_head: str, post_head: str) -> list[str]:
+    if pre_head == post_head:
+        return []
+    output = git_output(target, ["diff", "--name-only", pre_head, post_head])
+    return sorted(line.strip().replace("\\", "/") for line in output.splitlines() if line.strip())
+
+
+def executor_authority_errors(
+    target: Path,
+    task_key: str,
+    pre_current: dict[str, Any],
+    post_current: dict[str, Any],
+    pre_head: str,
+    post_head: str,
+) -> list[str]:
+    errors: list[str] = []
+    for field in sorted(PROTECTED_CURRENT_FIELDS):
+        if pre_current.get(field) != post_current.get(field):
+            errors.append(f"Executor changed protected CURRENT field: {field}")
+
+    post_state = post_current.get("state")
+    if post_state not in ALLOWED_EXECUTOR_TERMINAL_STATES:
+        errors.append(
+            "Executor must finish an unattended event in READY_FOR_GPT_REVIEW or NEEDS_GPT_PLANNER; "
+            f"found {post_state}"
+        )
+
+    own_current = f"automation/reviewed_handoff/tasks/{task_key}/CURRENT.json"
+    own_result = f"results/{task_key}/RESULT.md"
+    for path in changed_paths(target, pre_head, post_head):
+        if path.startswith("automation/reviewed_handoff/") and path != own_current:
+            errors.append(f"Executor changed Planner/Reviewer/control authority path: {path}")
+            continue
+        review_match = re.fullmatch(r"results/([^/]+)/REVIEW_\d+\.md", path)
+        final_match = re.fullmatch(r"results/([^/]+)/FINAL_REPORT\.md", path)
+        result_match = re.fullmatch(r"results/([^/]+)/RESULT\.md", path)
+        if review_match or final_match:
+            errors.append(f"Executor changed Reviewer/user-report authority path: {path}")
+        elif result_match and path != own_result:
+            errors.append(f"Executor changed another Reviewed Handoff task result: {path}")
+    return errors
+
+
+def push_guard_environment(target: Path) -> dict[str, str]:
+    """Install a process-local pre-push guard for Codex; watcher remains the publisher."""
+    hooks_dir = machine_task_root(target) / "git-hooks"
+    hooks_dir.mkdir(parents=True, exist_ok=True)
+    hook = hooks_dir / "pre-push"
+    hook.write_text(
+        "#!/bin/sh\n"
+        "echo 'Reviewed Handoff Executor must not push; the watcher owns validated publication.' >&2\n"
+        "exit 1\n",
+        encoding="utf-8",
+    )
+    try:
+        hook.chmod(0o700)
+    except OSError:
+        pass
+    env = os.environ.copy()
+    try:
+        count = int(env.get("GIT_CONFIG_COUNT", "0") or "0")
+    except ValueError:
+        count = 0
+    env["GIT_CONFIG_COUNT"] = str(count + 1)
+    env[f"GIT_CONFIG_KEY_{count}"] = "core.hooksPath"
+    env[f"GIT_CONFIG_VALUE_{count}"] = str(hooks_dir)
+    return env
+
+
 def executor_prompt(target: Path, task_key: str, current: dict[str, Any], branch: str) -> str:
     state = current.get("state")
     return f"""You are the Codex Executor for Reviewed Handoff task `{task_key}` in this repository.
@@ -176,7 +260,11 @@ Read, in this order:
 
 The machine state that triggered this run is `{state}`. Work only on this task. Do not redesign the frozen Plan. If a material decision cannot be derived safely, publish `NEEDS_GPT_PLANNER` according to the protocol instead of asking the human interactively.
 
-Use the already checked-out existing branch `{branch}`. Do not create a branch or PR. When implementation is complete, run the real acceptance/regression checks, create an implementation commit containing the task-owned implementation changes, then write/update `results/{task_key}/RESULT.md` and `CURRENT.json` with that implementation commit as a locator in a separate control-plane commit. The watcher will ensure clean committed progress reaches `origin/{branch}` even if your own ordinary push was omitted. Do not add provenance hashes, receipt graphs, or Agent-Flow artifacts.
+Use the already checked-out existing branch `{branch}`. Do not create a branch or PR. Do not push. The watcher is the sole publisher for Executor events and will push only after validating your committed diff and workflow state. A pre-push guard is installed for this Codex process intentionally.
+
+Never modify `REQUEST.md`, `PLAN.md`, previous `REVIEW_<n>.md`, `FINAL_REPORT.md`, Reviewed Handoff schema/prompts/templates, review counters/limits, Planner counters/limits, base Git locators, CI requirement, or Reviewer decisions. You may update only Executor-owned workflow outputs such as this task's `CURRENT.state`, `implementation_commit`, `ci_status`, `next_action`, and `results/{task_key}/RESULT.md`, in addition to the actual Plan-owned implementation files.
+
+When implementation is complete, run the real acceptance/regression checks, create an implementation commit containing the Plan-owned implementation changes, then write/update `results/{task_key}/RESULT.md` and `CURRENT.json` with that implementation commit as a locator in a separate control-plane commit. Leave the working tree clean. Do not add provenance hashes, receipt graphs, or Agent-Flow artifacts.
 """
 
 
@@ -196,7 +284,13 @@ def run_codex_event(
     prompt = executor_prompt(target, task_key, current, branch)
     command = codex_command(target, codex_bin)
     if dry_run:
-        return {"task_key": task_key, "event": event_identity(task_key, current), "command": command, "prompt": prompt, "launched": False}
+        return {
+            "task_key": task_key,
+            "event": event_identity(task_key, current),
+            "command": command,
+            "prompt": prompt,
+            "launched": False,
+        }
 
     event = event_identity(task_key, current)
     pre_head = git_output(target, ["rev-parse", "HEAD"])
@@ -213,7 +307,7 @@ def run_codex_event(
             text=True,
             stdout=handle,
             stderr=subprocess.STDOUT,
-            env=os.environ.copy(),
+            env=push_guard_environment(target),
             check=False,
         )
     post_path = rh.task_root(target, task_key) / "CURRENT.json"
@@ -323,13 +417,31 @@ def watcher_once(
             )
             return {"status": "event_exhausted", "task_key": task_key, "event": event, "attempts": attempts, "blocker": blocker}
         if dry_run:
-            return {"status": "dry_run", **run_codex_event(target, task_key, current, branch=selected_branch, codex_bin=codex_bin, dry_run=True)}
+            return {
+                "status": "dry_run",
+                **run_codex_event(target, task_key, current, branch=selected_branch, codex_bin=codex_bin, dry_run=True),
+            }
 
+        pre_current = dict(current)
         result = run_codex_event(target, task_key, current, branch=selected_branch, codex_bin=codex_bin)
         attempts += 1
+        post_current_path = rh.task_root(target, task_key) / "CURRENT.json"
+        post_current = rh.load_json(post_current_path) if post_current_path.exists() else {}
         dirty_after = working_tree_dirty(target)
-        workflow_errors = rh.validate_task(target, task_key) if result.get("progressed") and not dirty_after else []
-        completed = bool(result.get("progressed")) and not dirty_after and not workflow_errors
+        authority_errors = executor_authority_errors(
+            target,
+            task_key,
+            pre_current,
+            post_current,
+            str(result.get("pre_head") or ""),
+            str(result.get("post_head") or ""),
+        ) if result.get("progressed") and not dirty_after else []
+        workflow_errors = (
+            rh.validate_task(target, task_key)
+            if result.get("progressed") and not dirty_after and not authority_errors
+            else []
+        )
+        completed = bool(result.get("progressed")) and not dirty_after and not authority_errors and not workflow_errors
         publication_error: str | None = None
         if completed and sync:
             published, publication_error = publish_clean_progress(target, selected_branch)
@@ -341,6 +453,7 @@ def watcher_once(
             "last_exit_code": result.get("exit_code"),
             "last_progressed": result.get("progressed"),
             "last_log_path": result.get("log_path"),
+            "last_authority_errors": authority_errors,
             "last_workflow_errors": workflow_errors,
             "last_publication_error": publication_error,
         }
@@ -351,8 +464,31 @@ def watcher_once(
             result["attempt"] = attempts
             return result
 
+        if authority_errors:
+            events[event]["completed"] = True
+            events[event]["manual_recovery_required"] = True
+            write_local_state(target, local)
+            result.update(
+                status="codex_authority_violation",
+                attempt=attempts,
+                authority_errors=authority_errors,
+                reason="Executor changed Planner/Reviewer authority; local commits were not published",
+            )
+            return result
+
+        # If Codex committed something but never produced a valid state transition, do not publish or retry over it.
+        if not result.get("progressed") and result.get("post_head") != result.get("pre_head"):
+            events[event]["completed"] = True
+            events[event]["manual_recovery_required"] = True
+            write_local_state(target, local)
+            result.update(
+                status="local_manual_recovery_required",
+                attempt=attempts,
+                reason="Codex advanced local Git history without publishing a valid Reviewed Handoff state; commits were not auto-pushed",
+            )
+            return result
+
         # If this Codex invocation itself left uncommitted work, do not launch another Codex over it.
-        # When HEAD is unchanged, publishing only CURRENT + FINAL_REPORT is safe and excludes dirty implementation files.
         if dirty_after:
             if result.get("post_head") == result.get("pre_head"):
                 blocker = publish_operational_blocker(
@@ -368,8 +504,6 @@ def watcher_once(
                 write_local_state(target, local)
                 result.update(status="codex_dirty_blocked", attempt=attempts, blocker=blocker)
                 return result
-            # A partial local commit must not be pushed merely to publish a blocker.
-            # Stop the watcher and preserve local evidence for manual recovery.
             events[event]["completed"] = True
             events[event]["manual_recovery_required"] = True
             write_local_state(target, local)
@@ -404,7 +538,14 @@ def watcher_run(
     max_cycles: int | None = None,
 ) -> int:
     cycles = 0
-    stop_statuses = {"local_manual_recovery_required", "event_exhausted"}
+    stop_statuses = {
+        "local_manual_recovery_required",
+        "event_exhausted",
+        "codex_dirty_blocked",
+        "codex_authority_violation",
+        "codex_invalid_progress",
+        "codex_unpublished_progress",
+    }
     while True:
         try:
             result = watcher_once(target, branch=branch, codex_bin=codex_bin, sync=True, dry_run=False)
@@ -457,6 +598,8 @@ def main(argv: list[str] | None = None) -> int:
             "codex_invalid_progress",
             "codex_unpublished_progress",
             "event_exhausted",
+            "codex_dirty_blocked",
+            "codex_authority_violation",
             "local_manual_recovery_required",
         }
         return 0 if result.get("status") not in failure_statuses else 1
