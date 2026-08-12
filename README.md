@@ -1,530 +1,66 @@
 # GPT-Codex AI Bridge Kit
 
-This kit is a local file bridge for ChatGPT/GPT and Codex. Lite Handoff remains
-the default protocol for ordinary repositories. Host Policy, Generic Notifier,
-and Optional Agent-Flow Core are separate layers that can be adopted only when
-they are needed.
+这是一个用于 ChatGPT/GPT 与 Codex 协作的本地工作流工具包。它的目标不是再造一个复杂的 Agent 平台，而是把长期配置、项目交接、高风险任务闭环和终态通知拆成彼此独立的层，让不同项目只安装自己真正需要的部分。
 
-The original protocol was a simple loop:
-
-1. ChatGPT writes `prompts/tasks/<task_key>.md`.
-2. Codex executes the task and writes `results/<task_key>/result.md`.
-3. ChatGPT reviews the result and writes `results/<task_key>/review.md`.
-
-That loop remains valid. The kit now defines four layers:
+最重要的理解方式不是“有五个安装等级”，而是分成三个作用域：**机器层、项目层和任务层**。其中真正需要安装的只有机器层和项目层；Agent-Flow 的 task 只是某一次高风险工作的运行实例，不是新的安装层。
 
 ```text
-1. Host Policy
-2. Lite Handoff
-3. Generic Notifier
-4. Optional Agent-Flow Core
+机器层
+└── Host Policy                    每个 CODEX_HOME 安装一次
+
+项目层
+├── Lite Handoff                   每个正式项目默认安装
+├── Generic Notifier               需要终态邮件时可选安装
+└── Agent-Flow Core                高风险项目显式安装
+
+任务层
+├── Lite task                      一份轻量任务交接文件
+└── Agent-Flow task                一次独立的高风险工作流实例
 ```
 
-Host-level Codex policy is installed once per Codex identity, while repo-level
-handoff protocol is initialized once per repository. Agent-Flow is an explicit
-opt-in layer for high-risk work; it is not installed by `ai-bridge init` and does
-not replace Lite Handoff.
+## 新机器和新项目应该怎么装
 
-## Core Idea
+一台新的服务器、工作站、WSL 环境或其他独立 Codex identity，首先安装本工具包，然后配置一次 Host Policy。`CODEX_HOME` 不同时，应视为不同的 Codex identity，分别安装。
 
-The strategic planning layer is the user-supervised ChatGPT/GPT thread. It owns
-direction, research judgment, task design, review interpretation, and next-task
-planning.
-
-The execution-control layer may be a Codex controller session. It can build an
-execution plan, launch or prepare executor/auditor subtasks, collect evidence,
-write a controller report, and commit/push when the audited promotion gate
-passes. It must not invent a new direction. If a new direction is needed, it
-outputs `NEEDS_GPT_PLANNER` and stops.
-
-## Lite Handoff
-
-Lite Handoff remains the default workflow:
-
-```text
-Planner -> Codex -> result -> optional GPT review
+```bash
+pip install -e /path/to/GPT_Codex_AI_Bridge_Kit
+ai-bridge host install
+ai-bridge host validate
 ```
 
-Existing repositories can continue using:
+随后，每个正式 repository 单独初始化 Lite Handoff。普通开发到这里通常已经足够，不需要因为项目文件很多、修改范围大或存在 Controller 就自动安装 Agent-Flow。
 
 ```bash
 ai-bridge init --target /path/to/project
 ai-bridge validate --target /path/to/project
 ```
 
-No notifier, polling process, tmux session, or Agent-Flow runtime is required for
-old Lite Handoff repositories.
-
-## Optional Agent-Flow Core
-
-Agent-Flow Core adds a reusable high-risk control plane:
-
-```text
-Planner
--> Initial Critic
--> Controller
--> Verifier
--> Executor
--> Planner repair loop
--> Final Critic
--> Human gate
-```
-
-It provides Project Profile, Role Authority Policy, Requirement Ledger, typed
-Finding schema, change classification, canonical implementation/verifier source
-manifests, Stable Review Snapshot, compact Review Bundle validation, deterministic
-routing, detached worktree planning, Final Critic gate checks, and terminal
-notification brief generation for the existing Generic Notifier.
-
-Install it only for repositories that need high-risk autonomous execution:
+如果这个项目需要任务结束后自动发邮件，再配置 Generic Notifier；如果项目要执行科研架构重构、昂贵训练、数据敏感逻辑、生产部署或其他“错误通过的代价很高”的任务，再显式安装 Agent-Flow。
 
 ```bash
+# 可选：终态邮件
+cd /path/to/project
+ai-bridge private sync --profile notifier
+ai-bridge notifier send-test
+
+# 可选：高风险 Agent-Flow
 ai-bridge agent-flow install --target /path/to/project
 ai-bridge agent-flow validate --target /path/to/project
-ai-bridge agent-flow task init --target /path/to/project --task-key 001_example
 ```
 
-Snapshot and validation tools:
+换句话说，推荐默认路径是 **Host Policy + Lite Handoff**。Notifier 和 Agent-Flow 都是按需叠加的能力，不应静默安装。
 
-```bash
-ai-bridge agent-flow snapshot --target /path/to/project --task-key 001_example
-ai-bridge agent-flow bundle validate --target /path/to/project --task-key 001_example
-ai-bridge agent-flow classify-change --target /path/to/project --path src/example.py
-ai-bridge agent-flow route --target /path/to/project --task-key 001_example
-ai-bridge agent-flow prompt --target /path/to/project planner
-```
+## Host Policy：一台机器上的 Codex 长期怎么工作
 
-Agent-Flow install is additive and idempotent. It does not modify `$CODEX_HOME`,
-remotes, branches, notifier state, or Lite Handoff files. Branch topology remains
-user-controlled; Verifier and Executor isolation defaults to detached worktree
-plans unless the user explicitly authorizes role branches.
-
-## Generic Notifier
-
-Generic Notifier is an optional terminal email notification feature. The default
-mode is one-shot:
-
-```text
-Goal / Controller reaches a legal terminal state
--> write results/<task_key>/notification_brief.json
--> ai-bridge notifier send results/<task_key>/notification_brief.json
--> send one SMTP email
--> record local send success/failure
--> stop
-```
-
-Default new-project usage:
-
-```bash
-ai-bridge private sync --profile notifier
-ai-bridge notifier send-test
-ai-bridge notifier send results/<task_key>/notification_brief.json
-```
-
-Core CLI:
-
-```bash
-ai-bridge notifier send <brief_path>
-ai-bridge notifier send-test
-ai-bridge notifier once
-ai-bridge notifier run
-ai-bridge notifier status
-```
-
-`send <brief_path>` is the recommended path. It sends one explicit terminal
-brief and uses local state under `.ai-bridge/state/notifier.json` for
-send-once/dedup and failed-send retry.
-
-`send-test` uses the same SMTP backend and must send a real email before a
-machine/project is marked `NOTIFIER_READY`.
-
-`once` scans `results/*/notification_brief.json` once. On first startup, it
-baselines existing terminal briefs and does not backfill historical
-notifications.
-
-`run` is optional polling compatibility mode. It is not an installation
-requirement and is not needed for `NOTIFIER_READY`.
-
-tmux is optional, not required, and not managed by Bridge Kit. Users who want a
-long-running process may host `ai-bridge notifier run` themselves through tmux,
-screen, nohup, systemd, or another local deployment choice.
-
-### Terminal Brief Schema
-
-Standard path:
-
-```text
-results/<task_key>/notification_brief.json
-```
-
-Required fields:
-
-```json
-{
-  "schema": "ai-bridge.notification_brief.v1",
-  "project": "example-project",
-  "task_key": "001_example_task",
-  "terminal_status": "complete",
-  "key_conclusion": "The task reached a terminal state.",
-  "next_step": "Review evidence and decide the next task.",
-  "evidence_paths": ["results/001_example_task/result.md"]
-}
-```
-
-Supported `terminal_status` values:
-
-```text
-complete
-blocked
-awaiting_human
-```
-
-Optional fields include `commit_status`, `push_status`, `details`, `jobs`,
-`duration`, `branch`, and `version`. Generic Notifier does not require Slurm,
-GPU, training, reviewer/controller, commit, or push fields.
-
-The notifier does not infer scientific/product conclusions. It only sends the
-brief's declared conclusion.
-
-### SMTP Backend
-
-v0.3.0 implements only SMTP email:
-
-```text
-smtp.gmail.com
-port 587
-STARTTLS
-```
-
-Environment/private keys:
-
-```text
-AI_BRIDGE_NOTIFY_SMTP_USER
-AI_BRIDGE_NOTIFY_SMTP_PASSWORD
-AI_BRIDGE_NOTIFY_FROM
-AI_BRIDGE_NOTIFY_TO
-AI_BRIDGE_NOTIFY_SUBJECT_PREFIX
-```
-
-Emails include both plain text and HTML alternatives and intentionally stay
-short: project, task, status, conclusion, next step, and key evidence.
-
-## Private Bootstrap
-
-Bridge Kit does not bootstrap rclone OAuth, create Google tokens, manage rclone
-remotes, or download rclone credentials from Google Drive. Each machine must
-already have a user-configured rclone remote.
-
-Private notifier configuration is pulled from an existing rclone source:
-
-```bash
-export AI_BRIDGE_PRIVATE_RCLONE_SOURCE='<remote>:Private/GPT_Codex_AI_Bridge_Kit/notifier.env'
-ai-bridge private sync --profile notifier
-```
-
-The sync is pull-only:
-
-1. check `rclone` exists;
-2. check the configured source can be copied;
-3. download to `.ai-bridge/private/notifier.env`;
-4. try `chmod 0600`;
-5. verify required notifier keys exist;
-6. never print secret values;
-7. never upload or modify the Google Drive source.
-
-If rclone is missing, the CLI reports `RCLONE_NOT_CONFIGURED`. If the source is
-unset or unavailable, it reports `PRIVATE_SOURCE_UNAVAILABLE`.
-
-Public examples use only:
-
-```text
-sender@example.org
-recipient@example.org
-```
-
-## Optional Polling Mode
-
-One-shot notifier sends are preferred. Polling exists for compatibility:
-
-```bash
-ai-bridge notifier once
-ai-bridge notifier run --poll-seconds 60
-```
-
-First polling startup records existing terminal briefs as baseline and does not
-send historical notifications. Later new terminal briefs may be sent, with
-failed sends retried because failed events are not marked as sent.
-
-## Shared Codex Configuration
-
-Host policy and the shared config profile let multiple repositories reuse
-user-level Codex defaults instead of reconfiguring each repo.
-
-Reference file:
-
-```text
-templates/host/CODEX_CONFIG_PROFILE.md
-```
-
-The managed host policy keeps:
-
-```toml
-[features]
-memories = true
-default_mode_request_user_input = true
-```
-
-The current Codex CLI feature discovery confirms both features are available on
-this host. If a future Codex install lacks one, `ai-bridge host validate` should
-report incompatibility rather than silently pretending it works.
-
-## Host Policy And Repo Handoff
-
-```text
-                  GPT-Codex AI Bridge Kit
-                           |
-             +-------------+-------------+
-             |                           |
-      Host Policy                  Repo Handoff
-      once / CODEX_HOME            once / repository
-             |                           |
-   config.toml                     AGENTS.md
-   AGENTS.md                       prompts/
-   rules/                          results/
-                                  docs/
-                                  .agents/skills/
-             |
-      all repositories
-      using this CODEX_HOME
-```
-
-Host policy is installed once for each Codex host, server, Workstation, WSL
-identity, native Windows identity, or explicit `$CODEX_HOME`. It manages Codex
-defaults that should apply across repositories.
-
-```text
-Host Policy
-├── Codex config defaults
-├── feature flags
-├── execpolicy allow rules
-├── global Git/branch behavior
-└── global user-facing narrative language
-```
-
-The default user-facing narrative language is Simplified Chinese, while
-repository artifacts continue to follow repository/task-specific language
-conventions.
-
-Codex Desktop / Goal mode may save long objectives as attachments such as
-`$CODEX_HOME/attachments/.../goal-objective.md` and ask the session to read that
-objective file before continuing. That mechanism is normal and does not need to
-be disabled, bypassed, or repeated in every Goal. Host Policy provides the
-session-level default: interactive narrative remains Simplified Chinese even
-when the objective file, commands, repository documentation, terminal output, or
-upstream documentation are in English.
-
-Repo handoff is initialized separately in each repository. It creates the
-version-controlled handoff files for that project and does not silently modify
-`$CODEX_HOME`.
-
-Repo-local `.codex/config.toml` or `.codex/rules/` may override or further
-tighten host policy. Memories help with long-term context, but repository files
-such as `AGENTS.md`, tasks, results, reviews, and docs remain the authoritative
-project state.
-
-## Core Directories
-
-```text
-prompts/
-  AGENT_RULES.md
-  CHATGPT_RULES.md
-  HANDOFF_ROLES.md
-  HANDOFF_STATE_MACHINE.md
-  CONTROLLER_TASK_PROTOCOL.md
-  MECHANISM_GATE_TEMPLATE.md
-  tasks/
-  templates/
-docs/
-  notes/
-  wiki/
-results/
-```
-
-Task names use:
-
-```text
-<id>_<short_slug>
-```
-
-Example: `002_fix_ci`, `20260702_api_docs`. New task files live at
-`prompts/tasks/<task_key>.md`; do not add `_task`.
-
-## File Mapping
-
-Normal execution task:
-
-```text
-prompts/tasks/<task_key>.md
-results/<task_key>/result.md
-results/<task_key>/review.md
-results/<task_key>/MANIFEST.md
-```
-
-Controller task:
-
-```text
-prompts/tasks/<task_key>.md
-results/<task_key>/controller_report.md
-results/<task_key>/subagents/executor_prompt.md
-results/<task_key>/subagents/auditor_prompt.md
-results/<task_key>/result.md
-results/<task_key>/review.md
-results/<task_key>/MANIFEST.md
-```
-
-`docs/notes/` and `docs/wiki/` are reference stores. They are not default Codex
-execution entries.
-
-## Recommended Workflow
-
-1. ChatGPT/GPT main thread acts as planner and writes either a normal execution
-   task or a controller task.
-2. The user starts a Codex session with the GPT-authored task.
-3. For a normal execution task, Codex executor performs the authorized work and
-   writes `result.md`.
-4. For a controller task, Codex execution controller starts separate executor and
-   auditor sessions when the runtime supports it.
-5. If subagent launch is unavailable, the controller writes prompt files under
-   `results/<task_key>/subagents/` and marks `NEEDS_SUBAGENT_LAUNCH` or
-   `NEEDS_HUMAN_APPROVAL`.
-6. Executor writes result and artifacts.
-7. Auditor performs read-only evidence audit with a claim ledger.
-8. Controller writes `controller_report.md`.
-9. If `auto_git_commit: true`, `auto_git_push: true`, audit passes, and no human
-   approval is triggered, the controller commits and pushes to the remote.
-10. ChatGPT/GPT reads the review or controller report and decides the next task,
-    stop, rollback, or human approval path.
-
-The default planning assumption is that successful controller tasks synchronize
-remote state. Later GPT planning should prefer checking the remote repository
-state instead of relying on unpushed local state.
-
-## Roles
-
-- Planner: `ChatGPT/GPT thread`.
-- Strategic controller: `user-supervised GPT thread`.
-- Execution controller: `Codex controller session` inside a controller task.
-- Executor: `Codex executor session`.
-- Auditor/reviewer: separate Codex auditor session or ChatGPT reviewer with
-  enough file evidence.
-
-Auditors are read-only. Executor self-assessment is not final completion.
-Controller reports do not replace GPT strategic judgment.
-
-## Task Types
-
-Normal execution task:
-
-- `task_type: "execution"`
-- One executor session.
-- Writes `results/<task_key>/result.md`.
-- May require later audit depending on `review_required`.
-
-Controller task:
-
-- `task_type: "controller"`
-- `controller_mode: true`
-- Codex controller coordinates executor/auditor subtasks inside GPT-defined
-  scope.
-- Writes `results/<task_key>/controller_report.md`.
-- Commits/pushes only after the task promotion gate passes and approval policy
-  allows it.
-
-## Frontmatter
-
-Legacy fields remain valid:
-
-```yaml
-task_key: "002_fix_ci"
-project: "project-name"
-status: "READY"
-executor: "Codex executor session"
-risk_level: "low"
-allow_code_change: true
-allow_shell_command: true
-allow_network: false
-allow_external_upload: false
-requires_human_approval: false
-```
-
-New protocol fields:
-
-```yaml
-task_type: "execution"
-controller_mode: false
-planner: "ChatGPT/GPT thread"
-strategic_controller: "user-supervised GPT thread"
-execution_controller: "none"
-auditor: "ChatGPT reviewer"
-review_required: false
-mechanism_class: "general"
-promotion_gate: "..."
-failure_escalation_policy: "..."
-forbidden_substitutes: []
-required_evidence: []
-allowed_next_states: []
-auto_git_commit: true
-auto_git_push: true
-```
-
-For low-risk tasks, new fields can use defaults, `none`, or empty lists. For
-medium/high risk tasks and controller tasks, fill them explicitly.
-
-## Project-Specific Gates
-
-This kit intentionally stays domain-neutral. It does not define domain-specific
-mechanism gates. Real repositories should define their own gates in `AGENTS.md`,
-project rules, or skills, then reference those gates from task files.
-
-## Language Policy
-
-Protocol keys, YAML fields, file paths, controlled state enums, command names,
-code identifiers, and API names should remain English. Human-readable prose in
-task bodies, results, reviews, controller reports, notes, and next-task
-explanations should follow the user's language or the target repository's
-project rules.
-
-If a project prefers Chinese, write human-readable task/review/report prose
-primarily in Chinese while keeping protocol fields and controlled values in
-English. Do not force English prose globally just because this kit's protocol
-documentation is written in English. Project-level language rules win unless
-they would break machine-readable protocol fields.
-
-## Install And Initialize
-
-Install the package:
-
-```bash
-pip install -e /path/to/GPT_Codex_AI_Bridge_Kit
-```
-
-### Once Per Codex Host / Identity
+Host Policy 属于机器层，写入当前实际使用的 `$CODEX_HOME`，而不是某个 repository。Codex Home 的解析顺序是显式 `--codex-home`、环境变量 `$CODEX_HOME`、最后才是 `~/.codex`。所有 host 命令都会打印最终使用的路径，避免在多服务器、多账户、Windows/WSL 并存时修改错身份。
 
 ```bash
 ai-bridge host install
+ai-bridge host status
 ai-bridge host validate
 ```
 
-Use `--codex-home /explicit/path` when managing a non-default Codex Home. Codex
-Home resolution is:
-
-1. explicit `--codex-home`
-2. `$CODEX_HOME`
-3. `~/.codex`
-
-Every host command prints the final Codex Home it uses.
-
-`ai-bridge host install` non-destructively maintains:
+它非破坏式维护以下文件，并在改动前把原文件备份到 `$CODEX_HOME/ai-bridge-kit/backups/<timestamp>/`：
 
 ```text
 $CODEX_HOME/config.toml
@@ -532,14 +68,7 @@ $CODEX_HOME/AGENTS.md
 $CODEX_HOME/rules/ai-bridge-global.rules
 ```
 
-It preserves unrelated config fields and unknown TOML content, updates only the
-managed keys, and backs up modified files under:
-
-```text
-$CODEX_HOME/ai-bridge-kit/backups/<timestamp>/
-```
-
-Managed config values:
+当前长期配置保持：
 
 ```toml
 approval_policy = "on-request"
@@ -554,7 +83,13 @@ default_mode_request_user_input = true
 memories = true
 ```
 
-Managed execpolicy rules allow only these Git push prefixes:
+`default_mode_request_user_input = true` 的目的，是让 Codex 在默认协作模式下遇到会实质改变架构、范围、部署方式、Git 工作流或科学/产品语义的歧义时可以直接询问用户，而不需要为了提问专门进入 Plan mode。普通实现细节仍应自行判断，不应不断打断用户。`memories = true` 用于辅助长期上下文，但 repository 中的协议、任务和结果文件仍然是项目状态的权威来源。
+
+Host Policy 还在全局 `AGENTS.md` 中维护长期行为约束：用户可见的进度说明、计划、风险解释、测试总结和完成报告默认使用自然的简体中文；代码、路径、命令、配置键、状态名和精确错误信息保持原始技术字面量。Goal mode 把过长目标保存成 `$CODEX_HOME/attachments/.../goal-objective.md` 是正常机制，不需要每个 Goal 再重复写“请用中文”。
+
+Git 方面，Codex 默认继续当前已经 checkout 的 branch。未经用户针对新 branch 的明确授权，不得因为“修改很大”“PR 更安全”或“main 是干净基线”而自行创建 branch 或 PR，也不得自行 force push、删除远端 branch/tag 或修改 remote。
+
+`$CODEX_HOME/rules/ai-bridge-global.rules` 则用于减少普通 push 的审批等待。目前长期授权的 execpolicy 前缀是：
 
 ```text
 git push origin ...
@@ -562,130 +97,202 @@ git push --set-upstream origin ...
 git push -u origin ...
 ```
 
-They do not authorize force push, remote changes, remote branch/tag deletion,
-arbitrary shell, arbitrary Python, `danger-full-access`, or
-`approval_policy = "never"`.
+这意味着普通 `origin` push 可以跳过人工审批和 auto-review。危险 Git 行为仍由全局行为政策禁止；不要把这组前缀理解成对 force push、远端删除或 remote 修改的授权。项目自己的 `.codex/config.toml` 或 `.codex/rules/` 仍可进一步收紧这些默认策略。
 
-The host `AGENTS.md` managed block says Codex should continue on the current
-branch by default and must not create a new branch or PR without explicit user
-authorization. Material ambiguity should be asked through user input; routine
-implementation details should be decided locally and carried through.
+## Lite Handoff：每个项目默认的 GPT ↔ Codex 交接层
 
-The same managed block also sets user-facing narrative language policy:
-interactive progress, plans, status explanations, approval questions, risk
-explanations, test summaries, completion reports, and blocker reports default to
-Simplified Chinese unless the user explicitly asks for another language.
-Technical literals such as code, shell commands, file paths, Git refs,
-configuration keys, YAML/TOML fields, protocol state names, API identifiers, and
-exact quoted errors remain in their original form. This is not a Codex
-`config.toml` language key; `ai-bridge host status` reports it as Bridge Kit
-policy state with `narrative_language: zh-CN`.
-
-### Once Per Repository
-
-Initialize any repository:
+Lite Handoff 是本工具包最基础、也最常用的项目层。它适合普通功能开发、修 bug、文档更新、常规重构，以及虽然工作量不小、但不需要独立五角色证据闭环的任务。
 
 ```bash
 ai-bridge init --target /path/to/project
+ai-bridge validate --target /path/to/project
 ```
 
-Or run `ai-bridge` from the target repository root.
+初始化后，项目会得到一套可以随 repository 一起版本控制的交接结构：
 
-By default, existing files are not overwritten. Use `--force` to refresh managed
-templates. Repo initialization only manages repository handoff files such as
-`AGENTS.md`, `prompts/`, `results/`, `docs/`, and the repo-local Codex skill.
-It may report host policy status, but it does not install host policy.
+```text
+AGENTS.md
 
-## Validate
+prompts/
+├── AGENT_RULES.md
+├── CHATGPT_RULES.md
+├── HANDOFF_ROLES.md
+├── HANDOFF_STATE_MACHINE.md
+├── CONTROLLER_TASK_PROTOCOL.md
+├── tasks/
+└── templates/
 
-Validate host policy:
+results/
+docs/notes/
+docs/wiki/
+
+.agents/skills/agent-task-executor/SKILL.md
+```
+
+最简单的 Lite 流程仍然只是：GPT 写任务，Codex 执行并写结果，之后按需要再由 GPT 审查。
+
+```text
+prompts/tasks/<task_key>.md
+        ↓
+Codex
+        ↓
+results/<task_key>/result.md
+        ↓
+可选 review
+```
+
+Lite 并不等于“只能做小修改”。它仍然支持 Controller task、审计、自动 commit/push 等现有 Handoff 能力。它与 Agent-Flow 的主要区别不是代码量，而是证明负担：Lite 不强制独立 Verifier、Requirement Ledger、Stable Review Snapshot 和 Final Critic。
+
+`ai-bridge init` 只管理 repository 内的 Handoff 文件。它可以显示 Host Policy 状态，但不会静默修改 `$CODEX_HOME`；同样也不会自动安装 Notifier 或 Agent-Flow。
+
+## Generic Notifier：可选的终态邮件能力
+
+Notifier 是横向可选能力，不决定任务是否完成，只负责把已经合法到达的终态发送给用户。默认推荐 one-shot，而不是常驻轮询进程。
+
+项目第一次启用时，先从用户已经配置好的私有来源拉取邮件配置，再发送一次真实测试邮件：
+
+```bash
+cd /path/to/project
+export AI_BRIDGE_PRIVATE_RCLONE_SOURCE='<remote>:Private/GPT_Codex_AI_Bridge_Kit/notifier.env'
+ai-bridge private sync --profile notifier
+ai-bridge notifier send-test
+```
+
+Bridge Kit 不负责创建 rclone OAuth、不生成 Google token，也不会把本地 secret 上传回远端。私有配置默认落在 `.ai-bridge/private/notifier.env`，并尽量限制为用户可读写。
+
+任务真正结束时，工作流生成：
+
+```text
+results/<task_key>/notification_brief.json
+```
+
+然后直接发送：
+
+```bash
+ai-bridge notifier send results/<task_key>/notification_brief.json
+```
+
+`send` 是推荐路径；`once` 和 `run` 只作为兼容的扫描/轮询模式存在。tmux、systemd、nohup 等进程托管方式都不是 Bridge Kit 的安装依赖。
+
+目前通知器使用 SMTP/STARTTLS。所需私有键包括：
+
+```text
+AI_BRIDGE_NOTIFY_SMTP_USER
+AI_BRIDGE_NOTIFY_SMTP_PASSWORD
+AI_BRIDGE_NOTIFY_FROM
+AI_BRIDGE_NOTIFY_TO
+AI_BRIDGE_NOTIFY_SUBJECT_PREFIX
+```
+
+## Agent-Flow Core：高风险项目才安装的闭环控制层
+
+Agent-Flow 是项目层的可选高风险工作流。它适用于科研架构实现、昂贵训练或计算、数据/安全敏感逻辑、生产部署、重要迁移，以及其他“false PASS 比多做一次验证更贵”的任务。
+
+```bash
+ai-bridge agent-flow install --target /path/to/project
+ai-bridge agent-flow validate --target /path/to/project
+```
+
+安装后，项目会增加独立的 `automation/agent_flow/` 控制平面，其中包含 Project Profile、角色权限、状态 schema、Planner/Critic/Controller/Verifier/Executor 提示模板以及 Requirement Ledger、source manifest、Review Bundle 等模板。它不会修改 `$CODEX_HOME`、不会替换 Lite Handoff，也不会为了角色隔离自行创建 branch。
+
+高风险流程的目标结构是：
+
+```text
+Planner
+→ Initial Critic
+→ Controller
+→ Verifier
+→ Executor
+→ Planner repair loop
+→ Final Critic
+→ Human gate
+```
+
+这里的重点不是“多几个 Agent”，而是把不同判断权分开。Planner 负责用户目标和实现审查；Critic 负责初始合同审计、必要的合同复审和最终独立闭环；Controller 只做机械路由；Verifier 只能依据冻结 requirement 建立验证 oracle；Executor 只负责实现，不能改合同或验证规则，也不能自行宣布最终通过。
+
+Agent-Flow 还使用 Stable Review Snapshot，把真正影响语义的合同、Requirement Ledger、实现源码和 Verifier 源码与 Controller receipt、CURRENT 状态、文档、通知等控制平面变化分开。目标是只有语义变化才触发昂贵重验证，receipt-only、state-only 或 control-plane-only 修改不能默认“为了安全全部重跑”。详细设计和当前实现约束见 `docs/V0_4_AGENT_FLOW_IMPLEMENTATION_SPEC.md`。
+
+## Agent-Flow task：不是第五个安装层
+
+Agent-Flow Core 在一个 repository 中只需要安装一次，但同一个项目可能先后执行多个完全不同的高风险任务。每个任务都需要独立的 objective、request nonce、冻结合同、Requirement Ledger、review target、修复历史和最终人工决策，因此需要单独创建 task 实例。
+
+```bash
+ai-bridge agent-flow task init \
+  --target /path/to/project \
+  --task-key 001_registration_refactor
+```
+
+这一步不是“再安装一层 Agent-Flow”，而只是创建一次工作流实例。概念上类似：
+
+```text
+CardiacNexus
+├── Agent-Flow Core                 项目只安装一次
+├── task 001_registration_refactor  一次具体高风险任务
+├── task 002_segmentation_upgrade   另一次具体高风险任务
+└── task 003_deployment_validation  另一次具体高风险任务
+```
+
+Lite Handoff 其实也有 task，只不过它通常是一份 `prompts/tasks/<task_key>.md` 交接文件；Agent-Flow task 则是一个拥有独立状态、合同、证据和完整生命周期的运行实例。用户在日常使用中不应该把 `task init` 当成基础设施安装动作。
+
+Agent-Flow 的辅助工具包括：
+
+```bash
+ai-bridge agent-flow snapshot --target /path/to/project --task-key 001_example
+ai-bridge agent-flow bundle validate --target /path/to/project --task-key 001_example
+ai-bridge agent-flow classify-change --target /path/to/project --path src/example.py
+ai-bridge agent-flow route --target /path/to/project --task-key 001_example
+ai-bridge agent-flow prompt --target /path/to/project planner
+```
+
+## 如何选择
+
+如果只是给一台新机器建立长期 Codex 默认行为，配置 Host Policy；如果只是让一个新 repository 能被 GPT 和 Codex 稳定交接，安装 Lite Handoff。绝大多数项目以这两层作为默认起点。
+
+如果希望任务完成或真正阻塞时收到邮件，再加 Notifier。不要因为“可能以后会用”就在所有 repository 中预装私有通知配置。
+
+如果某个项目确实需要高风险、长链路、独立验证的自动闭环，再安装 Agent-Flow。**修改很多文件、任务很复杂、需要 Controller，并不自动等于必须使用 Agent-Flow**；真正的判断标准是错误通过的代价，以及是否需要独立合同/验证/最终审计。
+
+## 验证与维护
+
+主机层使用：
 
 ```bash
 ai-bridge host status
 ai-bridge host validate
 ```
 
-Validate repo handoff:
+Lite Handoff 使用：
 
 ```bash
 ai-bridge validate --target /path/to/project
-```
-
-Strict mode upgrades protocol warnings to errors:
-
-```bash
 ai-bridge validate --target /path/to/project --strict
 ```
 
-Validation checks directory layout, task frontmatter, task/result/review mapping,
-controller report expectations, review-required tasks, promotion-like states
-without audit evidence, and unexplained skipped auto commit/push.
-
-Old projects remain compatible: missing new protocol fields are warnings for
-medium/high risk or controller tasks, and only strict mode upgrades those
-warnings to errors.
-
-## Kit Contents
-
-- `chatgpt/`: reusable prompts for task writing, evidence audit, next-task
-  planning, notes, and wiki work.
-- `codex/`: Codex start prompt, `AGENTS.md` snippet, and repo-local skill.
-- `templates/`: files copied into target repositories plus host desired-state
-  templates under `templates/host/`.
-- `examples/example_project/`: minimal end-to-end examples.
-- `ai_bridge_kit/cli.py`: standard-library CLI.
-- `ai_bridge_kit/host.py`: host-level Codex policy install/status/validation.
-
-## New Server Short Path
-
-On each new Codex host or identity:
+Agent-Flow 使用：
 
 ```bash
-pip install -e /path/to/GPT_Codex_AI_Bridge_Kit
-ai-bridge host install
-ai-bridge host validate
+ai-bridge agent-flow status --target /path/to/project
+ai-bridge agent-flow validate --target /path/to/project
 ```
 
-Then initialize each repository separately:
+Notifier 使用：
 
 ```bash
-ai-bridge init --target /path/to/project
-ai-bridge validate --target /path/to/project
+ai-bridge notifier status
 ```
 
-## New Project Notifier Flow
+Host Policy 安装是非破坏式的；Lite 和 Agent-Flow 初始化也应保持幂等。不要通过手工复制 `$CODEX_HOME` 文件到项目目录来“统一配置”，也不要把 repository 的 Agent-Flow 模板反向当成服务器全局策略。
 
-Machine one-time setup:
+## 仓库内容和进一步文档
 
-1. Configure an rclone remote manually.
-2. Set `AI_BRIDGE_PRIVATE_RCLONE_SOURCE` to the private notifier env path.
+`chatgpt/` 保存 GPT 侧可复用提示，`codex/` 保存 Codex 启动提示和 repo-local skill，`templates/` 保存 Lite、Host 和 Agent-Flow 的 desired-state 模板，`ai_bridge_kit/` 是 CLI 与核心实现，`tests/` 是回归测试。长期协议细节和 Agent-Flow 的设计决策放在 `docs/`，README 只负责告诉人“这套工具是什么、该装什么、什么时候装”。
 
-Project setup:
-
-```bash
-ai-bridge init --target /path/to/project
-cd /path/to/project
-ai-bridge private sync --profile notifier
-ai-bridge notifier send-test
-```
-
-Mark `NOTIFIER_READY` only after the real Gmail SMTP test email is actually
-sent.
-
-Goal terminal step:
+Agent-Flow v0.4 的实现规格与 CARE 压力测试经验分别见：
 
 ```text
-results/<task_key>/notification_brief.json
+docs/V0_4_AGENT_FLOW_IMPLEMENTATION_SPEC.md
+docs/AGENT_FLOW_V3_POST_CARE_EXTRACTION_DECISIONS.md
+docs/CARE_AGENT_FLOW_V3_POSTMORTEM_20260811.md
 ```
 
-```bash
-ai-bridge notifier send results/<task_key>/notification_brief.json
-```
-
-Optional legacy/polling:
-
-```bash
-ai-bridge notifier run
-```
-
-tmux remains optional and unmanaged by Bridge Kit.
+如果以后让 Codex 在新服务器或新 repository 上配置这套工具，根目录 `AGENTS.md` 是机器执行入口；README 是给人阅读和理解整体模型的入口。
