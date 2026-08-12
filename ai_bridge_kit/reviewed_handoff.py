@@ -41,6 +41,14 @@ ALLOWED_TRANSITIONS: dict[str, set[str]] = {
 
 REVIEW_DECISIONS = {"PASS", "REVISE", "BLOCKED"}
 TERMINAL_STATES = {"AWAIT_HUMAN_DECISION", "BLOCKED"}
+FINAL_REPORT_HEADINGS = [
+    "## What this task solved",
+    "## What changed",
+    "## New capabilities / behavior",
+    "## Example usage",
+    "## Regression and remaining limitations",
+    "## Technical appendix",
+]
 
 REQUIRED_CORE_FILES = [
     "README.md",
@@ -270,6 +278,17 @@ def validate_result_file(path: Path, task_key: str, current: dict[str, Any]) -> 
     return errors
 
 
+def validate_final_report(path: Path) -> list[str]:
+    if not path.exists():
+        return ["terminal state requires FINAL_REPORT.md"]
+    text = read_text(path)
+    errors: list[str] = []
+    for heading in FINAL_REPORT_HEADINGS:
+        if heading not in text:
+            errors.append(f"FINAL_REPORT.md missing required section: {heading}")
+    return errors
+
+
 def review_files(target: Path, task_key: str) -> list[Path]:
     return sorted(result_root(target, task_key).glob("REVIEW_*.md"))
 
@@ -379,9 +398,8 @@ def validate_task(target: Path, task_key: str) -> list[str]:
 
     if state == "PASS" and current.get("review_round", 0) < 1:
         errors.append("PASS requires at least one GPT review")
-    if state == "AWAIT_HUMAN_DECISION" and current.get("last_review_decision") == "PASS":
-        if not (result_root(target, task_key) / "FINAL_REPORT.md").exists():
-            errors.append("PASS human gate requires FINAL_REPORT.md")
+    if state in TERMINAL_STATES:
+        errors.extend(validate_final_report(result_root(target, task_key) / "FINAL_REPORT.md"))
     return errors
 
 
@@ -498,9 +516,10 @@ def apply_transition(
             raise ValueError("; ".join(result_errors))
         if current.get("ci_required") and current.get("ci_status") != "PASS":
             raise ValueError("READY_FOR_GPT_REVIEW requires ci_status=PASS when CI is required")
-    if expected_state == "PASS" and next_state == "AWAIT_HUMAN_DECISION":
-        if not (result_root(target, task_key) / "FINAL_REPORT.md").exists():
-            raise ValueError("PASS -> AWAIT_HUMAN_DECISION requires FINAL_REPORT.md")
+    if next_state in TERMINAL_STATES:
+        report_errors = validate_final_report(result_root(target, task_key) / "FINAL_REPORT.md")
+        if report_errors:
+            raise ValueError("; ".join(report_errors))
     if next_state == "AWAIT_HUMAN_DECISION" and expected_state == "REVISE":
         current["review_limit_reached"] = True
     current["state"] = next_state
@@ -532,6 +551,11 @@ def record_review(
     max_rounds = int(current.get("max_review_rounds", 2))
     if next_round > max_rounds:
         raise ValueError("review round limit reached")
+    terminal_after_review = decision == "BLOCKED" or (decision == "REVISE" and next_round >= max_rounds)
+    if terminal_after_review:
+        report_errors = validate_final_report(result_root(target, task_key) / "FINAL_REPORT.md")
+        if report_errors:
+            raise ValueError("terminal review decision requires FINAL_REPORT.md before closing the automatic loop: " + "; ".join(report_errors))
     commit = implementation_commit or str(current.get("implementation_commit") or "")
     if not commit:
         raise ValueError("review requires implementation_commit locator")
@@ -553,11 +577,11 @@ def record_review(
         current["next_action"] = "WRITE_FINAL_REPORT"
     elif decision == "BLOCKED":
         current["state"] = "BLOCKED"
-        current["next_action"] = "REPORT_BLOCKER"
+        current["next_action"] = "PRESENT_FINAL_REPORT"
     elif next_round >= max_rounds:
         current["state"] = "AWAIT_HUMAN_DECISION"
         current["review_limit_reached"] = True
-        current["next_action"] = "HUMAN_REVIEW_DECISION"
+        current["next_action"] = "PRESENT_FINAL_REPORT"
     else:
         current["state"] = "REVISE"
         current["next_action"] = "RUN_CODEX_REPAIR"
