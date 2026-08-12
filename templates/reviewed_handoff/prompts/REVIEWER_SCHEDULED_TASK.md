@@ -8,11 +8,11 @@ automation/reviewed_handoff/prompts/REVIEWER_SCHEDULED_TASK.md
 automation/reviewed_handoff/tasks/*/CURRENT.json
 ```
 
-只处理机器状态明确需要 GPT 的 task。没有待处理 task 时无副作用退出：不写 commit、不重复 review、不通知用户。
+只处理机器状态明确需要 GPT 的 task。没有待处理 task 时无副作用退出：不写 commit、不重复 review、不通知用户。Executor 由目标机器上的 `ai-bridge reviewed-handoff watcher run` 唤醒；Scheduled GPT 不直接调用 Codex，也不需要 OpenAI API。
 
 ## NEEDS_GPT_PLANNER
 
-读取 REQUEST、当前 PLAN、RESULT/Reviewer finding 和真实 repository 状态。只允许一次最小 Plan revision，只解决 Executor 无法从原 Plan 安全推导的实质歧义。不要因为想到更好的架构而扩大 scope。修改 PLAN 后增加 `plan_revision` 并恢复 `PLAN_FROZEN`。若已达到 planner revision limit，或需要用户改变产品/科学语义，进入 `AWAIT_HUMAN_DECISION`。
+读取 REQUEST、当前 PLAN、RESULT/Reviewer finding 和真实 repository 状态。只允许一次最小 Plan revision，只解决 Executor 无法从原 Plan 安全推导的实质歧义。不要因为想到更好的架构而扩大 scope。修改 PLAN 后增加 `plan_revision` 并恢复 `PLAN_FROZEN`。若已达到 planner revision limit，或需要用户改变产品/科学语义，先写 `FINAL_REPORT.md` 解释需要用户决定的具体问题与已完成工作，再进入 `AWAIT_HUMAN_DECISION`。
 
 ## READY_FOR_GPT_REVIEW
 
@@ -32,9 +32,9 @@ Review 的唯一目标是判断当前实现是否满足冻结 Plan 且没有造�
 
 写 `REVIEW_<round>.md`，decision 只能是 `PASS`、`REVISE` 或 `BLOCKED`。
 
-- 第一轮 `REVISE`：进入 `REVISE`，由 Codex 做最小 repair。
-- 第二轮仍 `REVISE`：直接进入 `AWAIT_HUMAN_DECISION`，不得开启第三轮自动返修。
-- `BLOCKED`：进入 `BLOCKED`，只报告真实外部 blocker。
+- 第一轮 `REVISE`：进入 `REVISE`，本地 Codex watcher 会自动启动一次最小 repair。
+- 第二轮仍 `REVISE`：先写 `FINAL_REPORT.md`，清楚说明已完成内容、仍未关闭的 blocker、为什么自动返修停止以及用户下一步选择，再进入 `AWAIT_HUMAN_DECISION`；不得开启第三轮自动返修。
+- `BLOCKED`：先写 `FINAL_REPORT.md`，说明真实外部 blocker、已有成果和恢复方式，再进入 `BLOCKED`。
 - `PASS`：写 `FINAL_REPORT.md`，然后进入 `AWAIT_HUMAN_DECISION`。
 
-FINAL_REPORT 面向用户，不是 CI 日志。必须先讲：本轮解决了什么、实际改了哪里、产生了什么以前没有的能力或行为、哪些候选/方案被拒绝及原因、是否有 regression 风险、给出可直接理解的 example usage。技术 appendix 再列 commit、tests/CI 和 remaining limitations。
+所有终态必须有 `FINAL_REPORT.md`。FINAL_REPORT 面向用户，不是 CI 日志。必须先讲：本轮解决了什么、实际改了哪里、产生了什么以前没有的能力或行为、哪些候选/方案被拒绝及原因、是否有 regression 风险、给出可直接理解的 example usage。技术 appendix 再列 commit、tests/CI 和 remaining limitations。
