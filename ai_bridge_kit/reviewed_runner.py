@@ -14,7 +14,6 @@ from . import reviewed_handoff as rh
 
 
 ELIGIBLE_EXECUTOR_STATES = {"PLAN_FROZEN", "REVISE"}
-ALLOWED_EXECUTOR_TERMINAL_STATES = {"READY_FOR_GPT_REVIEW", "NEEDS_GPT_PLANNER"}
 PROTECTED_CURRENT_FIELDS = {
     "schema",
     "task_key",
@@ -196,12 +195,21 @@ def executor_authority_errors(
         if pre_current.get(field) != post_current.get(field):
             errors.append(f"Executor changed protected CURRENT field: {field}")
 
+    ci_required = bool(pre_current.get("ci_required"))
+    allowed_states = {"NEEDS_GPT_PLANNER", "WAITING_FOR_CI"} if ci_required else {
+        "NEEDS_GPT_PLANNER",
+        "READY_FOR_GPT_REVIEW",
+    }
     post_state = post_current.get("state")
-    if post_state not in ALLOWED_EXECUTOR_TERMINAL_STATES:
+    if post_state not in allowed_states:
         errors.append(
-            "Executor must finish an unattended event in READY_FOR_GPT_REVIEW or NEEDS_GPT_PLANNER; "
-            f"found {post_state}"
+            "Executor ended in a state outside its authority for this task: "
+            f"{post_state}; allowed={sorted(allowed_states)}"
         )
+    if ci_required and post_state == "WAITING_FOR_CI" and post_current.get("ci_status") != "PENDING":
+        errors.append("CI-required Executor must publish WAITING_FOR_CI with ci_status=PENDING")
+    if not ci_required and post_state == "READY_FOR_GPT_REVIEW" and post_current.get("ci_status") not in {"NOT_REQUIRED", "PASS"}:
+        errors.append("CI-not-required Executor produced invalid ci_status before GPT review")
 
     own_current = f"automation/reviewed_handoff/tasks/{task_key}/CURRENT.json"
     own_result = f"results/{task_key}/RESULT.md"
@@ -247,6 +255,12 @@ def push_guard_environment(target: Path) -> dict[str, str]:
 
 def executor_prompt(target: Path, task_key: str, current: dict[str, Any], branch: str) -> str:
     state = current.get("state")
+    ci_instruction = (
+        "This task requires GitHub CI. After local tests and commits, keep `ci_status=PENDING` and finish in "
+        "`WAITING_FOR_CI`; do not claim GitHub CI PASS locally."
+        if current.get("ci_required")
+        else "This task does not require GitHub CI; finish successful local execution in `READY_FOR_GPT_REVIEW`."
+    )
     return f"""You are the Codex Executor for Reviewed Handoff task `{task_key}` in this repository.
 
 Read, in this order:
@@ -264,7 +278,9 @@ Use the already checked-out existing branch `{branch}`. Do not create a branch o
 
 Never modify `REQUEST.md`, `PLAN.md`, previous `REVIEW_<n>.md`, `FINAL_REPORT.md`, Reviewed Handoff schema/prompts/templates, review counters/limits, Planner counters/limits, base Git locators, CI requirement, or Reviewer decisions. You may update only Executor-owned workflow outputs such as this task's `CURRENT.state`, `implementation_commit`, `ci_status`, `next_action`, and `results/{task_key}/RESULT.md`, in addition to the actual Plan-owned implementation files.
 
-When implementation is complete, run the real acceptance/regression checks, create an implementation commit containing the Plan-owned implementation changes, then write/update `results/{task_key}/RESULT.md` and `CURRENT.json` with that implementation commit as a locator in a separate control-plane commit. Leave the working tree clean. Do not add provenance hashes, receipt graphs, or Agent-Flow artifacts.
+{ci_instruction}
+
+When implementation is complete, run the real local acceptance/regression checks, create an implementation commit containing the Plan-owned implementation changes, then write/update `results/{task_key}/RESULT.md` and `CURRENT.json` with that implementation commit as a locator in a separate control-plane commit. Leave the working tree clean. Do not add provenance hashes, receipt graphs, or Agent-Flow artifacts.
 """
 
 
