@@ -123,6 +123,43 @@ def current_branch(target: Path) -> str:
         return "UNKNOWN"
 
 
+def git_repo_available(target: Path) -> bool:
+    try:
+        return git_output(target, ["rev-parse", "--is-inside-work-tree"]) == "true"
+    except Exception:
+        return False
+
+
+def git_commit_exists(target: Path, commit: str) -> bool:
+    if not commit or commit == "UNKNOWN" or not git_repo_available(target):
+        return False
+    try:
+        subprocess.check_call(
+            ["git", "cat-file", "-e", f"{commit}^{{commit}}"],
+            cwd=target,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return True
+    except Exception:
+        return False
+
+
+def git_is_ancestor(target: Path, base_commit: str, implementation_commit: str) -> bool:
+    if not git_commit_exists(target, base_commit) or not git_commit_exists(target, implementation_commit):
+        return False
+    try:
+        subprocess.check_call(
+            ["git", "merge-base", "--is-ancestor", base_commit, implementation_commit],
+            cwd=target,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return True
+    except Exception:
+        return False
+
+
 def parse_frontmatter(path: Path) -> tuple[dict[str, str], str | None]:
     text = read_text(path)
     if not text.startswith("---\n"):
@@ -361,10 +398,19 @@ def validate_task(target: Path, task_key: str) -> list[str]:
     if result_bound_state:
         if not result_path.exists():
             errors.append(f"{state} requires results/{task_key}/RESULT.md")
-        if not str(current.get("implementation_commit") or "").strip():
+        commit = str(current.get("implementation_commit") or "").strip()
+        if not commit:
             errors.append(f"{state} requires implementation_commit locator")
-        elif result_path.exists():
-            errors.extend(validate_result_file(result_path, task_key, current))
+        else:
+            if result_path.exists():
+                errors.extend(validate_result_file(result_path, task_key, current))
+            if git_repo_available(target):
+                if not git_commit_exists(target, commit):
+                    errors.append(f"{state} implementation_commit is not a real Git commit locator")
+                base_commit = str(current.get("base_commit") or "")
+                if git_commit_exists(target, commit) and git_commit_exists(target, base_commit):
+                    if not git_is_ancestor(target, base_commit, commit):
+                        errors.append(f"{state} implementation_commit is not descended from base_commit")
         if current.get("ci_required") and current.get("ci_status") != "PASS":
             errors.append(f"{state} requires ci_status=PASS")
         if not current.get("ci_required") and current.get("ci_status") not in {"NOT_REQUIRED", "PASS"}:
@@ -380,6 +426,8 @@ def validate_task(target: Path, task_key: str) -> list[str]:
         latest_data = data
     if current.get("review_round") != len(reviews):
         errors.append("CURRENT.review_round must equal the number of REVIEW_<n>.md artifacts")
+    if current.get("last_review_decision") in REVIEW_DECISIONS and not latest_data:
+        errors.append("CURRENT.last_review_decision requires a GPT review artifact")
     if latest_data:
         if current.get("last_review_decision") != latest_data.get("decision"):
             errors.append("CURRENT.last_review_decision must match the latest review artifact")
@@ -391,13 +439,22 @@ def validate_task(target: Path, task_key: str) -> list[str]:
             errors.append("REVISE state requires latest review decision REVISE")
         if state == "PASS" and decision != "PASS":
             errors.append("PASS state requires latest review decision PASS")
-        if state == "AWAIT_HUMAN_DECISION" and current.get("review_limit_reached") and decision != "REVISE":
-            errors.append("review-limit human gate requires latest review decision REVISE")
     elif state in {"REVISE", "PASS"}:
         errors.append(f"{state} requires at least one REVIEW_<n>.md artifact")
 
     if state == "PASS" and current.get("review_round", 0) < 1:
         errors.append("PASS requires at least one GPT review")
+    if state == "AWAIT_HUMAN_DECISION":
+        gate_reason = current.get("human_gate_reason")
+        if current.get("review_limit_reached"):
+            if not latest_data or latest_data.get("decision") != "REVISE":
+                errors.append("review-limit human gate requires latest GPT review decision REVISE")
+            if current.get("review_round") != current.get("max_review_rounds"):
+                errors.append("review-limit human gate requires review_round=max_review_rounds")
+        if current.get("implementation_commit") and not latest_data and gate_reason != "PLANNER_DECISION":
+            errors.append("implementation-backed human gate requires a GPT review artifact or explicit PLANNER_DECISION escalation")
+    if state == "BLOCKED" and current.get("implementation_commit") and not latest_data and not current.get("runner_failure"):
+        errors.append("implementation-backed BLOCKED state requires a GPT review artifact or runner_failure evidence")
     if state in TERMINAL_STATES:
         errors.extend(validate_final_report(result_root(target, task_key) / "FINAL_REPORT.md"))
     return errors
@@ -502,8 +559,8 @@ def apply_transition(
         if current.get("plan_revision", 0) >= current.get("max_plan_revisions", 1):
             raise ValueError("Reviewed Handoff allows only one scheduled GPT plan revision before human escalation")
         current["plan_revision"] = int(current.get("plan_revision", 0)) + 1
-    if expected_state == "READY_FOR_GPT_REVIEW" and next_state in {"PASS", "REVISE"}:
-        raise ValueError("use reviewed-handoff review record so review artifacts and round limits stay consistent")
+    if expected_state == "READY_FOR_GPT_REVIEW":
+        raise ValueError("use reviewed-handoff review record for every READY_FOR_GPT_REVIEW exit so GPT review cannot be bypassed")
     if expected_state == "REVISE" and next_state == "EXECUTING":
         if current.get("review_round", 0) >= current.get("max_review_rounds", 2):
             raise ValueError("review round limit reached; route to AWAIT_HUMAN_DECISION")
@@ -514,14 +571,28 @@ def apply_transition(
         result_errors = validate_result_file(result_path, task_key, current)
         if result_errors:
             raise ValueError("; ".join(result_errors))
+        if git_repo_available(target):
+            commit = str(current.get("implementation_commit") or "")
+            if not git_commit_exists(target, commit):
+                raise ValueError("READY_FOR_GPT_REVIEW requires a real implementation_commit Git locator")
+            base_commit = str(current.get("base_commit") or "")
+            if git_commit_exists(target, base_commit) and not git_is_ancestor(target, base_commit, commit):
+                raise ValueError("READY_FOR_GPT_REVIEW implementation_commit must descend from base_commit")
         if current.get("ci_required") and current.get("ci_status") != "PASS":
             raise ValueError("READY_FOR_GPT_REVIEW requires ci_status=PASS when CI is required")
     if next_state in TERMINAL_STATES:
         report_errors = validate_final_report(result_root(target, task_key) / "FINAL_REPORT.md")
         if report_errors:
             raise ValueError("; ".join(report_errors))
+    if next_state == "AWAIT_HUMAN_DECISION" and expected_state == "NEEDS_GPT_PLANNER":
+        current["human_gate_reason"] = "PLANNER_DECISION"
     if next_state == "AWAIT_HUMAN_DECISION" and expected_state == "REVISE":
+        if current.get("review_round", 0) < current.get("max_review_rounds", 2):
+            raise ValueError("automatic review-limit human gate is only valid after max_review_rounds")
         current["review_limit_reached"] = True
+        current["human_gate_reason"] = "REVIEW_LIMIT"
+    if next_state == "AWAIT_HUMAN_DECISION" and expected_state == "PASS":
+        current["human_gate_reason"] = "PASS"
     current["state"] = next_state
     if next_action:
         current["next_action"] = next_action
@@ -556,9 +627,12 @@ def record_review(
         report_errors = validate_final_report(result_root(target, task_key) / "FINAL_REPORT.md")
         if report_errors:
             raise ValueError("terminal review decision requires FINAL_REPORT.md before closing the automatic loop: " + "; ".join(report_errors))
-    commit = implementation_commit or str(current.get("implementation_commit") or "")
+    current_commit_locator = str(current.get("implementation_commit") or "")
+    commit = implementation_commit or current_commit_locator
     if not commit:
         raise ValueError("review requires implementation_commit locator")
+    if commit != current_commit_locator:
+        raise ValueError("review implementation_commit must match CURRENT implementation_commit")
     header = (
         "---\n"
         f"schema: {REVIEW_SCHEMA}\n"
@@ -581,6 +655,7 @@ def record_review(
     elif next_round >= max_rounds:
         current["state"] = "AWAIT_HUMAN_DECISION"
         current["review_limit_reached"] = True
+        current["human_gate_reason"] = "REVIEW_LIMIT"
         current["next_action"] = "PRESENT_FINAL_REPORT"
     else:
         current["state"] = "REVISE"
