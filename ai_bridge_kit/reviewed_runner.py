@@ -63,10 +63,13 @@ def ensure_git_repo(target: Path) -> None:
         raise ValueError(f"Reviewed Handoff watcher requires a Git repository: {exc}") from exc
 
 
-def ensure_clean_repo(target: Path) -> None:
+def working_tree_dirty(target: Path) -> bool:
     ensure_git_repo(target)
-    dirty = git_output(target, ["status", "--porcelain"])
-    if dirty:
+    return bool(git_output(target, ["status", "--porcelain"]))
+
+
+def ensure_clean_repo(target: Path) -> None:
+    if working_tree_dirty(target):
         raise ValueError("Reviewed Handoff watcher refuses to sync or launch Codex with a dirty working tree")
 
 
@@ -81,10 +84,42 @@ def resolve_branch(target: Path, branch: str | None) -> str:
     return selected
 
 
+def branch_heads(target: Path, branch: str) -> tuple[str, str]:
+    return git_output(target, ["rev-parse", "HEAD"]), git_output(target, ["rev-parse", f"origin/{branch}"])
+
+
 def sync_origin_ff_only(target: Path, branch: str) -> None:
     ensure_clean_repo(target)
     git_output(target, ["fetch", "origin", branch])
     git_output(target, ["merge", "--ff-only", f"origin/{branch}"])
+    local_head, remote_head = branch_heads(target, branch)
+    if local_head != remote_head:
+        raise ValueError(
+            "Reviewed Handoff watcher requires the local branch to equal origin before launching Codex; "
+            "push or reconcile pre-existing local commits first"
+        )
+
+
+def publish_clean_progress(target: Path, branch: str) -> tuple[bool, str | None]:
+    """Ensure clean Codex progress is visible on origin without inventing workflow identity."""
+    if working_tree_dirty(target):
+        return False, "working tree is dirty"
+    git_output(target, ["fetch", "origin", branch])
+    local_head, remote_head = branch_heads(target, branch)
+    if local_head == remote_head:
+        return True, None
+    counts = git_output(target, ["rev-list", "--left-right", "--count", f"origin/{branch}...HEAD"]).split()
+    if len(counts) != 2:
+        return False, "unable to determine local/remote branch relation"
+    behind, ahead = (int(counts[0]), int(counts[1]))
+    if behind == 0 and ahead > 0:
+        git_output(target, ["push", "origin", branch])
+        git_output(target, ["fetch", "origin", branch])
+        local_head, remote_head = branch_heads(target, branch)
+        if local_head == remote_head:
+            return True, None
+        return False, "origin did not reach the local Codex commit after push"
+    return False, f"local/remote branch diverged during Codex execution (behind={behind}, ahead={ahead})"
 
 
 def event_identity(task_key: str, current: dict[str, Any]) -> str:
@@ -141,7 +176,7 @@ Read, in this order:
 
 The machine state that triggered this run is `{state}`. Work only on this task. Do not redesign the frozen Plan. If a material decision cannot be derived safely, publish `NEEDS_GPT_PLANNER` according to the protocol instead of asking the human interactively.
 
-Use the already checked-out existing branch `{branch}`. Do not create a branch or PR. When implementation is complete, run the real acceptance/regression checks, create an implementation commit containing the task-owned implementation changes, then write/update `results/{task_key}/RESULT.md` and `CURRENT.json` with that implementation commit as a locator in a separate control-plane commit. Push ordinary commits to `origin/{branch}`. Do not add provenance hashes, receipt graphs, or Agent-Flow artifacts.
+Use the already checked-out existing branch `{branch}`. Do not create a branch or PR. When implementation is complete, run the real acceptance/regression checks, create an implementation commit containing the task-owned implementation changes, then write/update `results/{task_key}/RESULT.md` and `CURRENT.json` with that implementation commit as a locator in a separate control-plane commit. The watcher will ensure clean committed progress reaches `origin/{branch}` even if your own ordinary push was omitted. Do not add provenance hashes, receipt graphs, or Agent-Flow artifacts.
 """
 
 
@@ -164,6 +199,7 @@ def run_codex_event(
         return {"task_key": task_key, "event": event_identity(task_key, current), "command": command, "prompt": prompt, "launched": False}
 
     event = event_identity(task_key, current)
+    pre_head = git_output(target, ["rev-parse", "HEAD"])
     log_dir = log_root(target) / task_key
     log_dir.mkdir(parents=True, exist_ok=True)
     log_path = log_dir / log_name(task_key, current)
@@ -182,6 +218,7 @@ def run_codex_event(
         )
     post_path = rh.task_root(target, task_key) / "CURRENT.json"
     post_current = rh.load_json(post_path) if post_path.exists() else {}
+    post_head = git_output(target, ["rev-parse", "HEAD"])
     progressed = event_identity(task_key, post_current) != event or post_current.get("state") not in ELIGIBLE_EXECUTOR_STATES
     return {
         "task_key": task_key,
@@ -191,6 +228,8 @@ def run_codex_event(
         "exit_code": proc.returncode,
         "progressed": progressed,
         "post_state": post_current.get("state"),
+        "pre_head": pre_head,
+        "post_head": post_head,
         "log_path": str(log_path),
         "elapsed_seconds": round(time.time() - started, 3),
     }
@@ -236,6 +275,7 @@ def publish_operational_blocker(
     rel_current = str(current_path.relative_to(target))
     rel_final = str(final_path.relative_to(target))
     try:
+        # --only commits exactly the control files, preserving unrelated dirty implementation work.
         git_output(target, ["add", rel_current, rel_final])
         git_output(target, ["commit", "--only", rel_current, rel_final, "-m", f"Block Reviewed Handoff task {task_key} after runner failure"])
         git_output(target, ["push", "origin", branch])
@@ -287,17 +327,65 @@ def watcher_once(
 
         result = run_codex_event(target, task_key, current, branch=selected_branch, codex_bin=codex_bin)
         attempts += 1
-        completed = result.get("exit_code") == 0 and bool(result.get("progressed"))
+        dirty_after = working_tree_dirty(target)
+        workflow_errors = rh.validate_task(target, task_key) if result.get("progressed") and not dirty_after else []
+        completed = bool(result.get("progressed")) and not dirty_after and not workflow_errors
+        publication_error: str | None = None
+        if completed and sync:
+            published, publication_error = publish_clean_progress(target, selected_branch)
+            completed = published
+
         events[event] = {
             "attempts": attempts,
             "completed": completed,
             "last_exit_code": result.get("exit_code"),
             "last_progressed": result.get("progressed"),
             "last_log_path": result.get("log_path"),
+            "last_workflow_errors": workflow_errors,
+            "last_publication_error": publication_error,
         }
         write_local_state(target, local)
+
         if completed:
             result["status"] = "codex_progressed"
+            result["attempt"] = attempts
+            return result
+
+        # If this Codex invocation itself left uncommitted work, do not launch another Codex over it.
+        # When HEAD is unchanged, publishing only CURRENT + FINAL_REPORT is safe and excludes dirty implementation files.
+        if dirty_after:
+            if result.get("post_head") == result.get("pre_head"):
+                blocker = publish_operational_blocker(
+                    target,
+                    task_key,
+                    branch=selected_branch,
+                    event=event,
+                    attempts=attempts,
+                    log_path=result.get("log_path"),
+                )
+                events[event]["completed"] = True
+                events[event]["terminated_dirty"] = True
+                write_local_state(target, local)
+                result.update(status="codex_dirty_blocked", attempt=attempts, blocker=blocker)
+                return result
+            # A partial local commit must not be pushed merely to publish a blocker.
+            # Stop the watcher and preserve local evidence for manual recovery.
+            events[event]["completed"] = True
+            events[event]["manual_recovery_required"] = True
+            write_local_state(target, local)
+            result.update(
+                status="local_manual_recovery_required",
+                attempt=attempts,
+                reason="Codex left a dirty tree after advancing local Git history; partial commits are not auto-pushed",
+            )
+            return result
+
+        if workflow_errors:
+            result["status"] = "codex_invalid_progress"
+            result["workflow_errors"] = workflow_errors
+        elif publication_error:
+            result["status"] = "codex_unpublished_progress"
+            result["publication_error"] = publication_error
         elif result.get("exit_code") == 0:
             result["status"] = "codex_no_progress"
         else:
@@ -316,10 +404,13 @@ def watcher_run(
     max_cycles: int | None = None,
 ) -> int:
     cycles = 0
+    stop_statuses = {"local_manual_recovery_required", "event_exhausted"}
     while True:
         try:
             result = watcher_once(target, branch=branch, codex_bin=codex_bin, sync=True, dry_run=False)
             print(json.dumps(result, ensure_ascii=False, sort_keys=True), flush=True)
+            if result.get("status") in stop_statuses:
+                return 1
         except KeyboardInterrupt:
             return 0
         except Exception as exc:
@@ -360,7 +451,15 @@ def main(argv: list[str] | None = None) -> int:
             dry_run=args.dry_run,
         )
         print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
-        return 0 if result.get("status") not in {"invalid_workflow", "codex_failed", "event_exhausted"} else 1
+        failure_statuses = {
+            "invalid_workflow",
+            "codex_failed",
+            "codex_invalid_progress",
+            "codex_unpublished_progress",
+            "event_exhausted",
+            "local_manual_recovery_required",
+        }
+        return 0 if result.get("status") not in failure_statuses else 1
     if args.command == "run":
         return watcher_run(
             args.target,
