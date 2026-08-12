@@ -14,6 +14,17 @@ automation/reviewed_handoff/tasks/*/CURRENT.json
 
 读取 REQUEST、当前 PLAN、RESULT/Reviewer finding 和真实 repository 状态。只允许一次最小 Plan revision，只解决 Executor 无法从原 Plan 安全推导的实质歧义。不要因为想到更好的架构而扩大 scope。修改 PLAN 后增加 `plan_revision` 并恢复 `PLAN_FROZEN`。若已达到 planner revision limit，或需要用户改变产品/科学语义，先写 `FINAL_REPORT.md` 解释需要用户决定的具体问题与已完成工作，再进入 `AWAIT_HUMAN_DECISION`。
 
+## WAITING_FOR_CI
+
+这个状态只用于 `ci_required=true` 的任务。Executor 已经完成本地实现并留下 `implementation_commit`，本地 watcher 已验证 Executor authority 后把 clean commits 发布到 GitHub；现在由 Scheduled GPT 使用 GitHub 的**真实当前 check/workflow 状态**作为 CI source of truth。
+
+- CI 仍 pending/running：无副作用退出，本轮不写 review、不制造新 commit。
+- 当前 `implementation_commit` 的必需 CI 全部 PASS：把 `CURRENT.ci_status` 更新为 `PASS`，状态推进到 `READY_FOR_GPT_REVIEW`，然后可以在同一次 Scheduled Task run 中继续执行下面的独立 GPT review。
+- 必需 CI 明确 FAIL：把 `CURRENT.ci_status` 更新为 `FAIL`，将 CI 失败作为一条真实 blocking finding 写入当前 `REVIEW_<round>.md`，decision=`REVISE`；如果这是第一轮，进入 `REVISE` 让本地 watcher 自动返修；如果已达到 review 上限，先写 `FINAL_REPORT.md` 再进入 `AWAIT_HUMAN_DECISION`。
+- CI 状态无法可靠确认、workflow 被取消且无法判断是否应重跑、权限/服务不可用等真正外部问题：不要伪造 PASS。必要时写 `FINAL_REPORT.md` 后进入 `BLOCKED`。
+
+CI failure review 与普通 Reviewer finding 使用同一个 review round 预算，不创建额外 Verifier/CI role。
+
 ## READY_FOR_GPT_REVIEW
 
 Reviewer 必须独立读取：
