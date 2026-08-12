@@ -31,6 +31,17 @@ class ReviewedRunnerTests(unittest.TestCase):
         subprocess.check_call(["git", "commit", "-m", "freeze plan"], cwd=target, stdout=subprocess.DEVNULL)
         return tmp, target, state_home
 
+    @staticmethod
+    def codex_only_fake(real_run, callback=None):
+        def fake_run(*args, **kwargs):
+            command = args[0] if args else kwargs.get("args")
+            if isinstance(command, (list, tuple)) and command and str(command[0]).endswith("codex"):
+                if callback:
+                    callback()
+                return subprocess.CompletedProcess(args=command, returncode=0)
+            return real_run(*args, **kwargs)
+        return fake_run
+
     def test_machine_state_is_outside_repository(self) -> None:
         tmp, target, state_home = self.make_project()
         with tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(state_home)}):
@@ -50,18 +61,18 @@ class ReviewedRunnerTests(unittest.TestCase):
             self.assertIn("PLAN_FROZEN", result["prompt"])
             current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
             current = rh.load_json(current_path)
-            current["state"] = "READY_FOR_GPT_REVIEW"
+            current["state"] = "NEEDS_GPT_PLANNER"
             rh.write_json(current_path, current)
             subprocess.check_call(["git", "add", str(current_path.relative_to(target))], cwd=target)
-            subprocess.check_call(["git", "commit", "-m", "wait review"], cwd=target, stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "commit", "-m", "wait planner"], cwd=target, stdout=subprocess.DEVNULL)
             result = runner.watcher_once(target, branch="main", sync=False, dry_run=True)
             self.assertEqual(result["status"], "idle")
 
     def test_exit_zero_without_state_progress_is_not_marked_complete(self) -> None:
         tmp, target, state_home = self.make_project()
         with tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(state_home)}):
-            fake = subprocess.CompletedProcess(args=["codex"], returncode=0)
-            with mock.patch("ai_bridge_kit.reviewed_runner.subprocess.run", return_value=fake):
+            real_run = subprocess.run
+            with mock.patch("subprocess.run", side_effect=self.codex_only_fake(real_run)):
                 result = runner.watcher_once(target, branch="main", sync=False)
             self.assertEqual(result["status"], "codex_no_progress")
             local = runner.load_local_state(target)
@@ -74,13 +85,13 @@ class ReviewedRunnerTests(unittest.TestCase):
         with tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(state_home)}):
             current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
 
-            def fake_run(*args, **kwargs):
+            def progress():
                 current = rh.load_json(current_path)
                 current["state"] = "NEEDS_GPT_PLANNER"
                 rh.write_json(current_path, current)
-                return subprocess.CompletedProcess(args=["codex"], returncode=0)
 
-            with mock.patch("ai_bridge_kit.reviewed_runner.subprocess.run", side_effect=fake_run):
+            real_run = subprocess.run
+            with mock.patch("subprocess.run", side_effect=self.codex_only_fake(real_run, progress)):
                 result = runner.watcher_once(target, branch="main", sync=False)
             self.assertEqual(result["status"], "codex_progressed")
             self.assertTrue(result["progressed"])
