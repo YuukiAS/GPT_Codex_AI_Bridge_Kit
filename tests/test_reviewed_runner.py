@@ -80,7 +80,7 @@ class ReviewedRunnerTests(unittest.TestCase):
             self.assertFalse(local["events"][event]["completed"])
             self.assertEqual(local["events"][event]["attempts"], 1)
 
-    def test_state_progress_marks_event_complete(self) -> None:
+    def test_state_progress_requires_committed_clean_state(self) -> None:
         tmp, target, state_home = self.make_project()
         with tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(state_home)}):
             current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
@@ -89,14 +89,37 @@ class ReviewedRunnerTests(unittest.TestCase):
                 current = rh.load_json(current_path)
                 current["state"] = "NEEDS_GPT_PLANNER"
                 rh.write_json(current_path, current)
+                subprocess.check_call(["git", "add", str(current_path.relative_to(target))], cwd=target)
+                subprocess.check_call(["git", "commit", "-m", "request planner"], cwd=target, stdout=subprocess.DEVNULL)
 
             real_run = subprocess.run
             with mock.patch("subprocess.run", side_effect=self.codex_only_fake(real_run, progress)):
                 result = runner.watcher_once(target, branch="main", sync=False)
             self.assertEqual(result["status"], "codex_progressed")
             self.assertTrue(result["progressed"])
+            self.assertFalse(runner.working_tree_dirty(target))
 
-    def test_watcher_refuses_dirty_tree_before_launch(self) -> None:
+    def test_dirty_work_from_current_codex_event_blocks_without_retrying_over_it(self) -> None:
+        tmp, target, state_home = self.make_project()
+        with tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(state_home)}):
+            def leave_dirty_work():
+                (target / "src" / "partial.py").write_text("PARTIAL = True\n", encoding="utf-8")
+
+            real_run = subprocess.run
+            with mock.patch("subprocess.run", side_effect=self.codex_only_fake(real_run, leave_dirty_work)), mock.patch(
+                "ai_bridge_kit.reviewed_runner.publish_operational_blocker",
+                return_value={"published": True, "state": "BLOCKED"},
+            ) as blocker:
+                result = runner.watcher_once(target, branch="main", sync=False)
+            self.assertEqual(result["status"], "codex_dirty_blocked")
+            self.assertEqual(result["attempt"], 1)
+            blocker.assert_called_once()
+            self.assertTrue((target / "src" / "partial.py").exists())
+            local = runner.load_local_state(target)
+            event = runner.event_identity("001_feature", rh.load_json(rh.task_root(target, "001_feature") / "CURRENT.json"))
+            self.assertTrue(local["events"][event]["completed"])
+
+    def test_watcher_refuses_preexisting_dirty_tree_before_launch(self) -> None:
         tmp, target, state_home = self.make_project()
         with tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(state_home)}):
             (target / "dirty.txt").write_text("do not overwrite\n", encoding="utf-8")
