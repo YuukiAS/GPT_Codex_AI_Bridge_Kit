@@ -1,8 +1,8 @@
 # GPT-Codex AI Bridge Kit
 
-这是一个用于 ChatGPT/GPT 与 Codex 协作的本地工作流工具包。它的目标不是再造一个复杂的 Agent 平台，而是把长期配置、项目交接、高风险任务闭环和终态通知拆成彼此独立的层，让不同项目只安装自己真正需要的部分。
+这是一个用于 ChatGPT/GPT 与 Codex 协作的本地工作流工具包。它的目标不是再造一个复杂的 Agent 平台，而是把长期配置、项目交接、独立 GPT 复核、高风险任务闭环和终态通知拆成彼此独立的层，让不同项目只安装自己真正需要的部分。
 
-最重要的理解方式不是“有五个安装等级”，而是分成三个作用域：**机器层、项目层和任务层**。其中真正需要安装的只有机器层和项目层；Agent-Flow 的 task 只是某一次高风险工作的运行实例，不是新的安装层。
+最重要的理解方式不是“有几个安装等级”，而是分成三个作用域：**机器层、项目层和任务层**。其中真正需要安装的只有机器层和项目层；Reviewed Handoff task 与 Agent-Flow task 都只是某一次工作的运行实例，不是新的安装层。
 
 ```text
 机器层
@@ -10,11 +10,13 @@
 
 项目层
 ├── Lite Handoff                   每个正式项目默认安装
+├── Reviewed Handoff               需要 GPT 规划 + 独立复核时可选
 ├── Generic Notifier               需要终态邮件时可选安装
 └── Agent-Flow Core                高风险项目显式安装
 
 任务层
 ├── Lite task                      一份轻量任务交接文件
+├── Reviewed Handoff task          一次最多两轮 GPT review 的中档工作流
 └── Agent-Flow task                一次独立的高风险工作流实例
 ```
 
@@ -28,11 +30,18 @@ ai-bridge host install
 ai-bridge host validate
 ```
 
-随后，每个正式 repository 单独初始化 Lite Handoff。普通开发到这里通常已经足够，不需要因为项目文件很多、修改范围大或存在 Controller 就自动安装 Agent-Flow。
+随后，每个正式 repository 单独初始化 Lite Handoff。普通开发到这里通常已经足够，不需要因为项目文件很多、修改范围大或存在 Controller 就自动安装更重的 workflow。
 
 ```bash
 ai-bridge init --target /path/to/project
 ai-bridge validate --target /path/to/project
+```
+
+如果任务需要 GPT 先冻结产品/语义决策、Codex 执行后再由独立 GPT 审核一到两轮，但又不值得引入 Agent-Flow 的 Requirement Ledger、独立 Verifier 和 Final Critic，可以叠加 Reviewed Handoff：
+
+```bash
+ai-bridge reviewed-handoff install --target /path/to/project
+ai-bridge reviewed-handoff validate --target /path/to/project
 ```
 
 如果这个项目需要任务结束后自动发邮件，再配置 Generic Notifier；如果项目要执行科研架构重构、昂贵训练、数据敏感逻辑、生产部署或其他“错误通过的代价很高”的任务，再显式安装 Agent-Flow。
@@ -48,7 +57,7 @@ ai-bridge agent-flow install --target /path/to/project
 ai-bridge agent-flow validate --target /path/to/project
 ```
 
-换句话说，推荐默认路径是 **Host Policy + Lite Handoff**。Notifier 和 Agent-Flow 都是按需叠加的能力，不应静默安装。
+换句话说，推荐默认路径是 **Host Policy + Lite Handoff**。Reviewed Handoff、Notifier 和 Agent-Flow 都是按需叠加的能力，不应静默安装。
 
 ## Host Policy：一台机器上的 Codex 长期怎么工作
 
@@ -101,7 +110,7 @@ git push -u origin ...
 
 ## Lite Handoff：每个项目默认的 GPT ↔ Codex 交接层
 
-Lite Handoff 是本工具包最基础、也最常用的项目层。它适合普通功能开发、修 bug、文档更新、常规重构，以及虽然工作量不小、但不需要独立五角色证据闭环的任务。
+Lite Handoff 是本工具包最基础、也最常用的项目层。它适合普通功能开发、修 bug、文档更新、常规重构，以及虽然工作量不小、但不需要独立 GPT 复核或五角色证据闭环的任务。
 
 ```bash
 ai-bridge init --target /path/to/project
@@ -141,9 +150,56 @@ results/<task_key>/result.md
 可选 review
 ```
 
-Lite 并不等于“只能做小修改”。它仍然支持 Controller task、审计、自动 commit/push 等现有 Handoff 能力。它与 Agent-Flow 的主要区别不是代码量，而是证明负担：Lite 不强制独立 Verifier、Requirement Ledger、Stable Review Snapshot 和 Final Critic。
+Lite 并不等于“只能做小修改”。它仍然支持 Controller task、审计、自动 commit/push 等现有 Handoff 能力。它与更重模式的主要区别不是代码量，而是证明和独立复核负担。
 
-`ai-bridge init` 只管理 repository 内的 Handoff 文件。它可以显示 Host Policy 状态，但不会静默修改 `$CODEX_HOME`；同样也不会自动安装 Notifier 或 Agent-Flow。
+`ai-bridge init` 只管理 repository 内的 Handoff 文件。它可以显示 Host Policy 状态，但不会静默修改 `$CODEX_HOME`；同样也不会自动安装 Reviewed Handoff、Notifier 或 Agent-Flow。
+
+## Reviewed Handoff：GPT 规划、Codex 执行、GPT 最多复核两轮
+
+Reviewed Handoff 是 v0.5 新增的中档模式。它面向这样一类任务：Lite 只让 Codex 自己执行和总结显得太松，但 Agent-Flow 的独立 Critic、Verifier、Requirement Ledger、Stable Review Snapshot 又明显太重。例如外部 repository/skill intake、中等规模重构、第三方能力引入、文档体系迁移、普通产品 feature 等。
+
+```text
+GPT Planner
+→ local Codex watcher launches Executor
+→ Scheduled GPT Reviewer
+→ optional Codex repair
+→ Scheduled GPT Reviewer
+→ Human reads FINAL_REPORT.md
+```
+
+Planner 负责先把语义、产品和架构取舍冻结进 `PLAN.md`，Executor 不再自行重新发明这些决定。Reviewer 只依据冻结 Plan、真实 Git diff、当前测试/CI 和相关 regression boundary 审核，不允许因为“还可以更优雅”而扩大 scope。
+
+安装一次 Reviewed Handoff Core：
+
+```bash
+ai-bridge reviewed-handoff install --target /path/to/project
+ai-bridge reviewed-handoff validate --target /path/to/project
+```
+
+每项任务单独初始化：
+
+```bash
+ai-bridge reviewed-handoff task init \
+  --target /path/to/project \
+  --task-key 001_external_repo_intake \
+  --objective "Evaluate and integrate selected external capabilities"
+```
+
+GPT 侧异步唤醒使用 ChatGPT「安排任务」周期检查 GitHub 上的 `CURRENT.json`；没有待审任务时无副作用退出。这里不需要 OpenAI API。Codex 侧由机器上的轻量 watcher 负责在 `PLAN_FROZEN` 或 `REVISE` 时启动 Executor：
+
+```bash
+ai-bridge reviewed-handoff watcher run \
+  --target /path/to/project \
+  --branch <existing-authorized-branch>
+```
+
+Watcher 只同步当前已经 checkout/授权的 branch，不创建 branch/PR。机器本地的事件去重与日志放在 `${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}/reviewed-handoff/<repo>/`，不进入 repository。Codex 返回 0 也不自动算完成，只有任务状态真正推进才算 executor event 成功；同一 event 的自动尝试有界，避免死循环。
+
+Reviewed Handoff 的默认 review 上限是两轮：第一轮 `REVISE` 允许一次 Codex repair；第二轮仍 `REVISE` 必须停在 `AWAIT_HUMAN_DECISION`。执行中如果出现冻结 Plan 无法安全推导的实质歧义，Scheduled GPT 最多允许一次最小 re-plan；再次需要改变 Plan 则交给用户。所有终态都必须生成 `FINAL_REPORT.md`，因此用户回来后只需要读一份面向人的报告。
+
+Reviewed Handoff 刻意**不**使用 Agent-Flow 的 `review_target_id`、Requirement Ledger、semantic source manifest、role receipt graph、Review Bundle SHA 或 Final Critic。`base_commit` / `implementation_commit` 只是让 GPT 定位真实 diff 的 Git locator。如果某项任务真的需要这些证明机制，应直接升级到 Agent-Flow，而不是把 Reviewed Handoff 继续加重。
+
+详细规格见 `docs/V0_5_REVIEWED_HANDOFF_IMPLEMENTATION_SPEC.md`。
 
 ## Generic Notifier：可选的终态邮件能力
 
@@ -214,7 +270,7 @@ Agent-Flow 还使用 Stable Review Snapshot，把真正影响语义的合同、R
 
 Anti-overengineering 原则也在这里生效：Agent-Flow 只对合同、Requirement Ledger、实现语义源码和验证语义源码建立稳定 `review_target_id`。Git 提交、状态文件、通知、普通 receipt 和文档变化可以作为 provenance 或说明，但不应因为自身变化触发新的语义审核对象或昂贵重跑。设计目标是严格验证业务/科学语义，而不是建立复杂的 provenance 链。
 
-## Agent-Flow task：不是第五个安装层
+## Agent-Flow task：不是新的安装层
 
 Agent-Flow Core 在一个 repository 中只需要安装一次，但同一个项目可能先后执行多个完全不同的高风险任务。每个任务都需要独立的 objective、request nonce、冻结合同、Requirement Ledger、review target、修复历史和最终人工决策，因此需要单独创建 task 实例。
 
@@ -224,17 +280,7 @@ ai-bridge agent-flow task init \
   --task-key 001_registration_refactor
 ```
 
-这一步不是“再安装一层 Agent-Flow”，而只是创建一次工作流实例。概念上类似：
-
-```text
-CardiacNexus
-├── Agent-Flow Core                 项目只安装一次
-├── task 001_registration_refactor  一次具体高风险任务
-├── task 002_segmentation_upgrade   另一次具体高风险任务
-└── task 003_deployment_validation  另一次具体高风险任务
-```
-
-Lite Handoff 其实也有 task，只不过它通常是一份 `prompts/tasks/<task_key>.md` 交接文件；Agent-Flow task 则是一个拥有独立状态、合同、证据和完整生命周期的运行实例。用户在日常使用中不应该把 `task init` 当成基础设施安装动作。
+这一步不是“再安装一层 Agent-Flow”，而只是创建一次工作流实例。
 
 Agent-Flow 的辅助工具包括：
 
@@ -251,11 +297,13 @@ ai-bridge agent-flow prompt --target /path/to/project planner
 
 ## 如何选择
 
-如果只是给一台新机器建立长期 Codex 默认行为，配置 Host Policy；如果只是让一个新 repository 能被 GPT 和 Codex 稳定交接，安装 Lite Handoff。绝大多数项目以这两层作为默认起点。
+如果只是给一台新机器建立长期 Codex 默认行为，配置 Host Policy；如果只是让一个新 repository 能被 GPT 和 Codex 稳定交接，安装 Lite Handoff。普通明确需求直接交给 Codex 完成时，继续使用 Lite。
+
+如果任务里真正需要 GPT 先做语义/产品判断，再让 Codex 实现，并希望实现后由独立 GPT 审核一到两轮，优先使用 Reviewed Handoff。**大量文件、复杂实现本身不要求 Agent-Flow；是否需要独立合同/Verifier/Final Critic 才是升级高风险模式的关键。**
 
 如果希望任务完成或真正阻塞时收到邮件，再加 Notifier。不要因为“可能以后会用”就在所有 repository 中预装私有通知配置。
 
-如果某个项目确实需要高风险、长链路、独立验证的自动闭环，再安装 Agent-Flow。**修改很多文件、任务很复杂、需要 Controller，并不自动等于必须使用 Agent-Flow**；真正的判断标准是错误通过的代价，以及是否需要独立合同/验证/最终审计。
+如果某个项目确实需要高风险、长链路、独立验证的自动闭环，再安装 Agent-Flow。不要为了“更严谨”把 Agent-Flow 的 provenance 机制复制进 Reviewed Handoff。
 
 ## 验证与维护
 
@@ -273,6 +321,14 @@ ai-bridge validate --target /path/to/project
 ai-bridge validate --target /path/to/project --strict
 ```
 
+Reviewed Handoff 使用：
+
+```bash
+ai-bridge reviewed-handoff status --target /path/to/project
+ai-bridge reviewed-handoff validate --target /path/to/project
+ai-bridge reviewed-handoff watcher once --target /path/to/project --branch <branch> --dry-run
+```
+
 Agent-Flow 使用：
 
 ```bash
@@ -286,15 +342,16 @@ Notifier 使用：
 ai-bridge notifier status
 ```
 
-Host Policy 安装是非破坏式的；Lite 和 Agent-Flow 初始化也应保持幂等。不要通过手工复制 `$CODEX_HOME` 文件到项目目录来“统一配置”，也不要把 repository 的 Agent-Flow 模板反向当成服务器全局策略。
+Host Policy 安装是非破坏式的；Lite、Reviewed Handoff 和 Agent-Flow 初始化也应保持幂等。不要通过手工复制 `$CODEX_HOME` 文件到项目目录来“统一配置”，也不要把 repository 的 workflow 模板反向当成服务器全局策略。
 
 ## 仓库内容和进一步文档
 
-`chatgpt/` 保存 GPT 侧可复用提示，`codex/` 保存 Codex 启动提示和 repo-local skill，`templates/` 保存 Lite、Host 和 Agent-Flow 的 desired-state 模板，`ai_bridge_kit/` 是 CLI 与核心实现，`tests/` 是回归测试。长期协议细节和 Agent-Flow 的设计决策放在 `docs/`，README 只负责告诉人“这套工具是什么、该装什么、什么时候装”。
+`chatgpt/` 保存 GPT 侧可复用提示，`codex/` 保存 Codex 启动提示和 repo-local skill，`templates/` 保存 Lite、Host、Reviewed Handoff 和 Agent-Flow 的 desired-state 模板，`ai_bridge_kit/` 是 CLI 与核心实现，`tests/` 是回归测试。长期协议细节放在 `docs/`，README 只负责告诉人“这套工具是什么、该装什么、什么时候装”。
 
-Agent-Flow v0.4 的实现规格与 CARE 压力测试经验分别见：
+当前核心规格包括：
 
 ```text
+docs/V0_5_REVIEWED_HANDOFF_IMPLEMENTATION_SPEC.md
 docs/V0_4_AGENT_FLOW_IMPLEMENTATION_SPEC.md
 docs/AGENT_FLOW_V3_POST_CARE_EXTRACTION_DECISIONS.md
 docs/CARE_AGENT_FLOW_V3_POSTMORTEM_20260811.md
