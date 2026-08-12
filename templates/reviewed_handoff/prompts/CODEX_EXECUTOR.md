@@ -17,12 +17,15 @@ Executor 没有 Planner/Reviewer authority。不得修改：
 
 完成实现后：
 
-1. 运行与 Plan acceptance/regression gates 对应的真实测试；
-2. 若项目要求 CI，等待/确认当前 implementation commit 的真实 CI PASS；
-3. 创建实现 commit；
-4. 写 `results/<task_key>/RESULT.md`，说明实际修改、测试、未完成项和当前 implementation commit；
-5. 更新 `CURRENT.implementation_commit`、`ci_status` 与下一状态，并把这些 control-plane 修改单独 commit；
-6. leave working tree clean。
+1. 运行与 Plan acceptance/regression gates 对应的本地真实测试；
+2. 创建实现 commit；
+3. 写 `results/<task_key>/RESULT.md`，说明实际修改、测试、未完成项和当前 implementation commit；
+4. 更新 `CURRENT.implementation_commit` 与 control-plane 状态，并把这些修改单独 commit；
+5. leave working tree clean。
+
+如果 `CURRENT.ci_required=true`，Executor **不能伪造或等待尚未发布 commit 的 GitHub CI**。此时把 `ci_status` 保持为 `PENDING`，最终状态写成 `WAITING_FOR_CI`。Watcher 验证并发布 clean commits 后，Scheduled GPT 会读取当前 implementation commit 的真实 GitHub checks：PASS 才进入 `READY_FOR_GPT_REVIEW`；FAIL 会作为一条真实 GPT `REVISE` finding 进入返修流程。
+
+如果 `ci_required=false`，本地 acceptance/regression gates 满足后直接进入 `READY_FOR_GPT_REVIEW`，`ci_status` 保持 `NOT_REQUIRED`（或已有合法 PASS）。
 
 **不要执行 `git push`。** Reviewed Handoff watcher 是 Executor event 的唯一 publisher：它会在 Codex 退出后检查真实 commit diff、Planner/Reviewer authority、CURRENT protected fields 和 workflow validity，只有验证通过才把 clean commits push 到当前授权 branch。Codex 进程中的 pre-push guard 是预期行为，不应尝试绕过。
 
