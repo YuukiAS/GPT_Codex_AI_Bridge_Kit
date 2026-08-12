@@ -212,6 +212,8 @@ Planner
 
 Agent-Flow 还使用 Stable Review Snapshot，把真正影响语义的合同、Requirement Ledger、实现源码和 Verifier 源码与 Controller receipt、CURRENT 状态、文档、通知等控制平面变化分开。目标是只有语义变化才触发昂贵重验证，receipt-only、state-only 或 control-plane-only 修改不能默认“为了安全全部重跑”。详细设计和当前实现约束见 `docs/V0_4_AGENT_FLOW_IMPLEMENTATION_SPEC.md`。
 
+Anti-overengineering 原则也在这里生效：Agent-Flow 只对合同、Requirement Ledger、实现语义源码和验证语义源码建立稳定 `review_target_id`。Git 提交、状态文件、通知、普通 receipt 和文档变化可以作为 provenance 或说明，但不应因为自身变化触发新的语义审核对象或昂贵重跑。设计目标是严格验证业务/科学语义，而不是建立复杂的 provenance 链。
+
 ## Agent-Flow task：不是第五个安装层
 
 Agent-Flow Core 在一个 repository 中只需要安装一次，但同一个项目可能先后执行多个完全不同的高风险任务。每个任务都需要独立的 objective、request nonce、冻结合同、Requirement Ledger、review target、修复历史和最终人工决策，因此需要单独创建 task 实例。

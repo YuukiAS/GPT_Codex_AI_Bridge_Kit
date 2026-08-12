@@ -168,6 +168,20 @@ Executor
 
 Agent-Flow 的核心设计必须保持“严格验证、简单编排”。不要把 CARE 原型中的大量 receipt/hash/moving Git target 复制进 generic core。Stable Review Snapshot 的语义身份只能由真正的合同、Requirement Ledger、implementation semantic source 和 verifier semantic source 决定；CURRENT、Controller receipt、通知、文档等控制平面变化不得默认触发 heavy re-verification。
 
+### Anti-Overengineering Invariants
+
+Semantic identity must stay small. `review_target_id` 只能由 task identity、frozen contract digest、Requirement Ledger digest、implementation semantic digest 和 verifier semantic digest 组成。未经用户明确架构决策，不得把 Git locator SHA、`CURRENT.json`、Controller state、Controller merge commit、role/session receipt hashes、Review Bundle hash、Planner review packet hash、Final Critic artifact hash、CI-record commit、runtime receipt commit、notification brief 或 documentation-only files 加入 `review_target_id`。Git SHA 可以作为 locator/provenance，但不能因为 Git history 移动而改变 semantic review identity。
+
+No provenance hash cycles. 禁止设计 `A hashes B`、`B hashes C`、`C hashes A`，也禁止通过 commit、receipt、manifest 的相互绑定间接形成 cycle。合法结构必须保持单向：semantic source -> semantic target -> current evidence -> Review Bundle -> Planner / Final Critic。
+
+Control-plane changes stay lightweight. `CONTROL_PLANE_ONLY_CHANGED`、`RECEIPT_OR_MANIFEST_ONLY_CHANGED`、`CURRENT_OR_ROUTING_ONLY_CHANGED` 和 `DOC_ONLY_CHANGED` 默认不得触发新 semantic target、Executor restart 或 heavy Verifier，除非 Project Profile 明确把相关文件声明为 semantic source。
+
+Heavy verification requires semantic reason. 相同 `review_target_id` 的第二次 heavy Verifier 必须具有机器可验证的 semantic invalidation reason；receipt update、`CURRENT` update、Controller retry、notification、documentation 和 provenance repair 不是 heavy rerun 理由。
+
+Review Bundle stays compact. `REVIEW_BUNDLE.json` 只包含当前 target 所需的 current evidence references。不得重新引入 all historical receipts、giant runtime manifests、full smoke history、all previous Planner/Critic packets 或 all Controller transaction history。历史 artifact 可以保留供审计，但不能默认复制进每个 current Review Bundle。
+
+New provenance fields need justification. 未来如果 Codex 认为需要增加新的 SHA、digest、receipt、manifest、binding 或 state，必须先回答：它防止什么具体 false PASS；现有 semantic identity / typed evidence 为什么不能解决；它是否会导致 receipt-only 或 control-plane-only change 触发昂贵重跑；是否形成新的 hash dependency chain；是否可以通过普通字段或 locator 解决而无需 hash。没有明确收益时不增加。
+
 Agent-Flow v0.4 的当前实现与正确性要求以以下文件为准：
 
 ```text
