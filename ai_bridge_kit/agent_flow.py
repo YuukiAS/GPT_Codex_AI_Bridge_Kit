@@ -58,6 +58,7 @@ TASK_STATES = {
     "CI_RUNNING",
     "READY_FOR_PLANNER_REVIEW",
     "WAITING_FOR_EXTERNAL_GPT",
+    "CONTRACT_REVIEW_REQUIRED",
     "PLANNER_REVISE_EXECUTOR",
     "PLANNER_REVISE_VERIFIER",
     "PLANNER_REVISE_BOTH",
@@ -95,9 +96,11 @@ ALLOWED_TRANSITIONS = {
         "PLANNER_REVISE_EXECUTOR",
         "PLANNER_REVISE_VERIFIER",
         "PLANNER_REVISE_BOTH",
+        "CONTRACT_REVIEW_REQUIRED",
         "PLANNER_PASS_CANDIDATE",
         "NEEDS_USER_SCIENTIFIC_OR_PRODUCT_CHOICE",
     },
+    "CONTRACT_REVIEW_REQUIRED": {"PLANNER_REVISE_BOTH", "BLOCKED_CONTRACT_DRIFT"},
     "PLANNER_REVISE_EXECUTOR": {"EXECUTOR_RUNNING"},
     "PLANNER_REVISE_VERIFIER": {"VERIFIER_RUNNING"},
     "PLANNER_REVISE_BOTH": {"VERIFIER_RUNNING", "EXECUTOR_RUNNING"},
@@ -447,7 +450,7 @@ class RoleReceipt:
     start_or_resume_status: str
     produced_commit: str
     produced_evidence_id: str
-    commit_kind: str = "production"
+    commit_kind: str = "no_commit"
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -673,7 +676,6 @@ def init_task(
                 "critic_mode": "REQUIRED_INITIAL",
                 "planner_decision": None,
                 "final_critic_decision": None,
-                "open_findings": [],
                 "findings_ref": None,
                 "findings_sha256": None,
                 "blocking_finding_ids": [],
@@ -807,6 +809,44 @@ def snapshot(target: Path, task_key: str) -> dict[str, Any]:
     }
     write_json(root / "SOURCE_SNAPSHOT.json", source_snapshot)
     return source_snapshot
+
+
+def validate_current_semantic_snapshot(target: Path, task_key: str, profile: dict[str, Any]) -> list[str]:
+    root = task_root(target, task_key)
+    errors: list[str] = []
+    required_paths = [
+        root / "IMPLEMENTATION_SOURCE_MANIFEST.json",
+        root / "VERIFIER_SOURCE_MANIFEST.json",
+        root / "SOURCE_SNAPSHOT.json",
+    ]
+    for path in required_paths:
+        if not path.exists():
+            errors.append(f"semantic snapshot artifact missing: {path.name}")
+    if errors:
+        return errors
+    current_impl = source_manifest(target, task_key, profile, "implementation")
+    current_verifier = source_manifest(target, task_key, profile, "verifier")
+    stored_impl = load_json(root / "IMPLEMENTATION_SOURCE_MANIFEST.json")
+    stored_verifier = load_json(root / "VERIFIER_SOURCE_MANIFEST.json")
+    stored_snapshot = load_json(root / "SOURCE_SNAPSHOT.json")
+    if stored_impl != current_impl:
+        errors.append("IMPLEMENTATION_SOURCE_MANIFEST.json is stale against current tracked implementation semantic source")
+    if stored_verifier != current_verifier:
+        errors.append("VERIFIER_SOURCE_MANIFEST.json is stale against current tracked verifier semantic source")
+    if stored_snapshot.get("implementation_semantic_digest_sha256") != current_impl.get("semantic_digest_sha256"):
+        errors.append("SOURCE_SNAPSHOT.json implementation semantic digest is stale")
+    if stored_snapshot.get("verifier_semantic_digest_sha256") != current_verifier.get("semantic_digest_sha256"):
+        errors.append("SOURCE_SNAPSHOT.json verifier semantic digest is stale")
+    recomputed_target = compute_review_target_id(
+        task_identity=stored_snapshot.get("task_identity", {}),
+        frozen_contract_sha256=str(stored_snapshot.get("frozen_contract_sha256")),
+        requirement_ledger_sha256=str(stored_snapshot.get("requirement_ledger_sha256")),
+        implementation_semantic_digest_sha256=current_impl["semantic_digest_sha256"],
+        verifier_semantic_digest_sha256=current_verifier["semantic_digest_sha256"],
+    )
+    if stored_snapshot.get("review_target_id") != recomputed_target:
+        errors.append("SOURCE_SNAPSHOT.json review_target_id is stale against current semantic source")
+    return errors
 
 
 def validate_requirement_ledger(ledger: dict[str, Any]) -> list[str]:
@@ -1067,7 +1107,13 @@ def normalize_adapter_result(
     }
 
 
-def validate_role_receipt(receipt: dict[str, Any], *, request_nonce: str | None = None, review_target_id: str | None = None) -> list[str]:
+def validate_role_receipt(
+    receipt: dict[str, Any],
+    *,
+    request_nonce: str | None = None,
+    review_target_id: str | None = None,
+    allow_fake_test: bool = True,
+) -> list[str]:
     errors: list[str] = []
     role = receipt.get("role")
     if role not in ROLES:
@@ -1083,20 +1129,31 @@ def validate_role_receipt(receipt: dict[str, Any], *, request_nonce: str | None 
         "allowed_write_scope",
         "start_or_resume_status",
         "worktree_id",
-        "produced_commit",
         "produced_evidence_id",
         "base_task_nonce",
+        "commit_kind",
     ]:
         if key not in receipt:
             errors.append(f"role receipt missing {key}")
-    if not str(receipt.get("produced_commit") or "").strip():
-        errors.append("role receipt produced_commit must be non-empty")
+    commit_kind = receipt.get("commit_kind")
+    if commit_kind not in {"git", "no_commit", "external", "fake-test"}:
+        errors.append(f"role receipt commit_kind invalid: {commit_kind}")
+    if commit_kind == "fake-test" and not allow_fake_test:
+        errors.append("production role receipt cannot use commit_kind=fake-test")
+    produced_commit = str(receipt.get("produced_commit") or "").strip()
+    if commit_kind == "git" and not produced_commit:
+        errors.append("role receipt produced_commit must be non-empty for commit_kind=git")
+    if commit_kind in {"no_commit", "external"} and produced_commit:
+        errors.append(f"role receipt commit_kind={commit_kind} cannot provide produced_commit for integration")
     if not str(receipt.get("produced_evidence_id") or "").strip():
         errors.append("role receipt produced_evidence_id must be non-empty")
     if request_nonce and receipt.get("base_task_nonce") != request_nonce:
         errors.append("role receipt base_task_nonce mismatch")
-    if review_target_id and receipt.get("base_review_target_id") not in {None, review_target_id}:
-        errors.append("role receipt base_review_target_id mismatch")
+    if review_target_id and role in {"Verifier", "Executor"}:
+        if not receipt.get("base_review_target_id"):
+            errors.append("role receipt base_review_target_id missing for current semantic target")
+        elif receipt.get("base_review_target_id") != review_target_id:
+            errors.append("role receipt base_review_target_id mismatch")
     return errors
 
 
@@ -1142,8 +1199,26 @@ def validate_touched_paths(role: str, touched_paths: list[str], profile: dict[st
     return errors
 
 
-def validate_executor_result(result: dict[str, Any], profile: dict[str, Any] | None = None) -> list[str]:
+def validate_executor_result(
+    result: dict[str, Any],
+    profile: dict[str, Any] | None = None,
+    *,
+    task_key: str | None = None,
+    request_nonce: str | None = None,
+    review_target_id: str | None = None,
+) -> list[str]:
     errors: list[str] = []
+    for key in ["schema", "task_key", "status", "touched_paths"]:
+        if key not in result:
+            errors.append(f"Executor result missing {key}")
+    if result.get("schema") != "AI_BRIDGE_EXECUTOR_RESULT_V1":
+        errors.append("Executor result schema mismatch")
+    if task_key and result.get("task_key") != task_key:
+        errors.append("Executor result task_key mismatch")
+    if request_nonce and result.get("request_nonce") != request_nonce:
+        errors.append("Executor result request_nonce mismatch")
+    if review_target_id and result.get("review_target_id") != review_target_id:
+        errors.append("Executor result review_target_id mismatch")
     if result.get("test_aware_alternate_path") or result.get("synthetic_fake_effect"):
         errors.append("Executor result uses a forbidden test-aware or synthetic path")
     touched = result.get("touched_paths", [])
@@ -1160,6 +1235,35 @@ def validate_executor_result(result: dict[str, Any], profile: dict[str, Any] | N
             errors.append(f"Executor touched forbidden authority path: {path}")
     if profile and isinstance(touched, list):
         errors.extend(validate_touched_paths("Executor", [str(path) for path in touched], profile))
+    return errors
+
+
+def validate_verifier_freeze(target: Path, task_key: str, profile: dict[str, Any]) -> list[str]:
+    root = task_root(target, task_key)
+    receipt = root / "VERIFIER_FREEZE.json"
+    manifest = root / "VERIFIER_SOURCE_MANIFEST.json"
+    errors: list[str] = []
+    if not receipt.exists() or not manifest.exists():
+        return ["VERIFIER_FROZEN requires verifier manifest and verifier-owned freeze receipt"]
+    payload = load_json(receipt)
+    manifest_json = load_json(manifest)
+    request = load_json(root / "REQUEST.json")
+    snapshot = load_json(root / "SOURCE_SNAPSHOT.json") if (root / "SOURCE_SNAPSHOT.json").exists() else {}
+    for key in ["schema", "task_key", "request_nonce", "verifier_semantic_digest_sha256", "verifier_evidence_id"]:
+        if key not in payload:
+            errors.append(f"Verifier freeze missing {key}")
+    if payload.get("schema") != "AI_BRIDGE_VERIFIER_FREEZE_V1":
+        errors.append("Verifier freeze schema mismatch")
+    if payload.get("task_key") != task_key:
+        errors.append("Verifier freeze task_key mismatch")
+    if payload.get("request_nonce") != request.get("request_nonce"):
+        errors.append("Verifier freeze request_nonce mismatch")
+    if snapshot.get("review_target_id") and payload.get("review_target_id") != snapshot.get("review_target_id"):
+        errors.append("Verifier freeze review_target_id mismatch")
+    if payload.get("verifier_semantic_digest_sha256") != manifest_json.get("semantic_digest_sha256"):
+        errors.append("VERIFIER_FROZEN receipt digest does not match verifier source manifest")
+    if not payload.get("verifier_evidence_id"):
+        errors.append("VERIFIER_FROZEN requires verifier_evidence_id")
     return errors
 
 
@@ -1190,7 +1294,12 @@ def validate_role_receipts(target: Path, task_key: str, profile: dict[str, Any])
             continue
         errors.extend(
             f"{role} receipt: {item}"
-            for item in validate_role_receipt(receipt, request_nonce=request.get("request_nonce"), review_target_id=review_target_id)
+            for item in validate_role_receipt(
+                receipt,
+                request_nonce=request.get("request_nonce"),
+                review_target_id=review_target_id,
+                allow_fake_test=False,
+            )
         )
         session = str(receipt.get("session_id") or receipt.get("thread_id") or "")
         worktree = str(receipt.get("worktree_id") or "")
@@ -1243,6 +1352,12 @@ def validate_machine_review_artifact(
         errors.append(f"{role} review artifact path missing: {rel}")
     elif artifact.get("artifact_sha256") != file_sha256(path):
         errors.append(f"{role} review artifact sha256 mismatch")
+    profile = load_project_profile(target)
+    touched = artifact.get("touched_paths")
+    if isinstance(touched, list):
+        errors.extend(validate_touched_paths(role, [str(item) for item in touched], profile))
+    else:
+        errors.append(f"{role} review artifact touched_paths must be a list")
     return errors
 
 
@@ -1313,6 +1428,16 @@ def load_current_findings(target: Path, task_key: str) -> dict[str, Any]:
     }
 
 
+def materialize_current_findings(target: Path, task_key: str) -> dict[str, Any]:
+    path = current_findings_path(target, task_key)
+    if path.exists():
+        return load_json(path)
+    current = load_json(task_root(target, task_key) / "CURRENT.json")
+    legacy = current.get("open_findings", [])
+    findings = legacy if isinstance(legacy, list) else []
+    return write_current_findings(target, task_key, findings, current.get("current_review_target_id"))
+
+
 def findings_digest(payload: dict[str, Any]) -> str:
     return payload_digest(payload, omit={"findings_sha256"})
 
@@ -1335,8 +1460,9 @@ def validate_current_findings(target: Path, task_key: str, requirements: dict[st
     if "findings_sha256" in payload and payload.get("findings_sha256") != findings_digest(payload):
         errors.append("CURRENT_FINDINGS findings_sha256 stale")
     if current.get("findings_ref"):
-        if current.get("findings_ref") != "results/<task_key>/findings/CURRENT_FINDINGS.json":
-            errors.append("CURRENT findings_ref must be results/<task_key>/findings/CURRENT_FINDINGS.json")
+        expected_ref = f"results/{task_key}/findings/CURRENT_FINDINGS.json"
+        if current.get("findings_ref") != expected_ref:
+            errors.append(f"CURRENT findings_ref must be {expected_ref}")
         if current.get("findings_sha256") != payload.get("findings_sha256"):
             errors.append("CURRENT findings_sha256 mismatch")
     findings = payload.get("findings")
@@ -1370,8 +1496,8 @@ def write_current_findings(target: Path, task_key: str, findings: list[dict[str,
     write_json(current_findings_path(target, task_key), payload)
     current_path = task_root(target, task_key) / "CURRENT.json"
     current = load_json(current_path)
-    current["open_findings"] = findings
-    current["findings_ref"] = "results/<task_key>/findings/CURRENT_FINDINGS.json"
+    current.pop("open_findings", None)
+    current["findings_ref"] = f"results/{task_key}/findings/CURRENT_FINDINGS.json"
     current["findings_sha256"] = payload["findings_sha256"]
     current["blocking_finding_ids"] = [str(finding.get("finding_id")) for finding in findings if finding.get("blocking")]
     write_json(current_path, current)
@@ -1403,8 +1529,23 @@ def validate_evidence_entry(target: Path, task_key: str, evidence: dict[str, Any
     path = target / rel
     if not path.exists() or not path.is_file():
         errors.append(f"required evidence file missing: {rel}")
-    elif evidence.get("sha256") != file_sha256(path):
-        errors.append(f"required evidence sha256 mismatch: {rel}")
+    else:
+        if evidence.get("sha256") != file_sha256(path):
+            errors.append(f"required evidence sha256 mismatch: {rel}")
+        if path.suffix == ".json":
+            try:
+                artifact = load_json(path)
+            except Exception as exc:
+                errors.append(f"required evidence JSON artifact unreadable: {rel}: {exc}")
+                artifact = {}
+            if not artifact.get("schema"):
+                errors.append(f"required evidence artifact missing schema: {rel}")
+            if artifact.get("evidence_id") != evidence.get("evidence_id"):
+                errors.append(f"required evidence artifact evidence_id mismatch: {rel}")
+            if artifact.get("status") != evidence.get("status"):
+                errors.append(f"required evidence artifact status mismatch: {rel}")
+            if evidence.get("target_sensitive") and artifact.get("review_target_id") != evidence.get("review_target_id"):
+                errors.append(f"required evidence artifact review_target_id mismatch: {rel}")
     allowed_statuses = EVIDENCE_SUCCESS_STATUSES.get(str(evidence.get("kind")), {"PASS", "success"})
     if evidence.get("status") not in allowed_statuses:
         errors.append(f"required evidence status is not successful: {evidence.get('status')}")
@@ -1683,8 +1824,27 @@ def validate_transition_predicates(target: Path, task_key: str, state: str, curr
     errors: list[str] = []
     snapshot_path = root / "SOURCE_SNAPSHOT.json"
     bundle_path = result_root(target, task_key) / "REVIEW_BUNDLE.json"
+    if state in {
+        "VERIFIER_FROZEN",
+        "READY_FOR_PLANNER_REVIEW",
+        "PLANNER_PASS_CANDIDATE",
+        "READY_FOR_CRITIC_FINAL_AUDIT",
+        "PLANNER_PASS",
+        "AWAIT_HUMAN_DECISION",
+    }:
+        errors.extend(validate_current_semantic_snapshot(target, task_key, profile))
     if state == "PLAN_READY_FOR_CRITIC" and not (root / "PLANNER_DRAFT.md").exists():
         errors.append("PLAN_READY_FOR_CRITIC requires current PLANNER_DRAFT artifact")
+    if state in {"CONTROLLER_INITIALIZING", "VERIFIER_RUNNING"}:
+        controller_receipt = role_receipt_path(target, task_key, "Controller")
+        if not controller_receipt.exists():
+            errors.append(f"{state} requires Controller role receipt")
+        else:
+            request = load_json(root / "REQUEST.json")
+            errors.extend(
+                f"Controller role receipt: {item}"
+                for item in validate_role_receipt(load_json(controller_receipt), request_nonce=request.get("request_nonce"))
+            )
     if state == "PLAN_FROZEN":
         freeze = root / "CRITIC_FREEZE.json"
         errors.extend(validate_critic_freeze(target, task_key))
@@ -1698,18 +1858,8 @@ def validate_transition_predicates(target: Path, task_key: str, state: str, curr
             except Exception as exc:
                 errors.append(f"PLAN_FROZEN ledger invalid: {exc}")
     if state == "VERIFIER_FROZEN":
-        receipt = root / "VERIFIER_FREEZE.json"
-        manifest = root / "VERIFIER_SOURCE_MANIFEST.json"
         role_receipt = role_receipt_path(target, task_key, "Verifier")
-        if not receipt.exists() or not manifest.exists():
-            errors.append("VERIFIER_FROZEN requires verifier manifest and verifier-owned freeze receipt")
-        else:
-            receipt_json = load_json(receipt)
-            manifest_json = load_json(manifest)
-            if receipt_json.get("verifier_semantic_digest_sha256") != manifest_json.get("semantic_digest_sha256"):
-                errors.append("VERIFIER_FROZEN receipt digest does not match verifier source manifest")
-            if not receipt_json.get("verifier_evidence_id"):
-                errors.append("VERIFIER_FROZEN requires verifier_evidence_id")
+        errors.extend(validate_verifier_freeze(target, task_key, profile))
         if not role_receipt.exists():
             errors.append("VERIFIER_FROZEN requires Verifier role receipt")
         else:
@@ -1723,9 +1873,37 @@ def validate_transition_predicates(target: Path, task_key: str, state: str, curr
                     review_target_id=snapshot.get("review_target_id"),
                 )
             )
+    if state in {"EXECUTOR_RUNNING", "EVIDENCE_RUNNING"}:
+        executor_receipt = role_receipt_path(target, task_key, "Executor")
+        if not executor_receipt.exists():
+            errors.append(f"{state} requires Executor role receipt")
+        else:
+            request = load_json(root / "REQUEST.json")
+            snapshot = load_json(snapshot_path) if snapshot_path.exists() else {}
+            errors.extend(
+                f"Executor role receipt: {item}"
+                for item in validate_role_receipt(
+                    load_json(executor_receipt),
+                    request_nonce=request.get("request_nonce"),
+                    review_target_id=snapshot.get("review_target_id"),
+                )
+            )
     if state == "EVIDENCE_RUNNING":
-        if not (result_root(target, task_key) / "implementation" / "executor_result.json").exists():
+        executor_result_path = result_root(target, task_key) / "implementation" / "executor_result.json"
+        if not executor_result_path.exists():
             errors.append("EVIDENCE_RUNNING requires Executor result artifact")
+        else:
+            request = load_json(root / "REQUEST.json")
+            snapshot = load_json(snapshot_path) if snapshot_path.exists() else {}
+            errors.extend(
+                validate_executor_result(
+                    load_json(executor_result_path),
+                    profile,
+                    task_key=task_key,
+                    request_nonce=request.get("request_nonce"),
+                    review_target_id=snapshot.get("review_target_id"),
+                )
+            )
     if state == "READY_FOR_PLANNER_REVIEW":
         if not snapshot_path.exists():
             errors.append("READY_FOR_PLANNER_REVIEW requires SOURCE_SNAPSHOT.json")
@@ -1739,9 +1917,12 @@ def validate_transition_predicates(target: Path, task_key: str, state: str, curr
             try:
                 bundle, _ = validate_review_bundle(target, task_key)
                 if profile.get("requires_ci") or profile.get("ci", {}).get("required"):
-                    ci = bundle.get("ci_receipt")
-                    if not isinstance(ci, dict) or ci.get("status") != "PASS":
-                        errors.append("READY_FOR_PLANNER_REVIEW requires CI PASS")
+                    ci_evidence = [
+                        evidence for evidence in bundle.get("required_evidence", [])
+                        if isinstance(evidence, dict) and evidence.get("kind") == "ci" and evidence.get("required")
+                    ]
+                    if not ci_evidence:
+                        errors.append("READY_FOR_PLANNER_REVIEW requires CI evidence artifact PASS")
             except Exception as exc:
                 errors.append(f"READY_FOR_PLANNER_REVIEW bundle invalid: {exc}")
         errors.extend(validate_untracked_semantic_sources(target, profile))
@@ -1828,7 +2009,19 @@ def validate_agent_flow(target: Path) -> tuple[list[str], int]:
                             for item in validate_touched_paths(role, [str(item) for item in touched], profile)
                         )
                     if role == "Executor":
-                        errors.extend(f"{task_key}: {item}" for item in validate_executor_result(payload, profile))
+                        request = load_json(task_dir / "REQUEST.json") if (task_dir / "REQUEST.json").exists() else {}
+                        snapshot_path = task_dir / "SOURCE_SNAPSHOT.json"
+                        snapshot_payload = load_json(snapshot_path) if snapshot_path.exists() else {}
+                        errors.extend(
+                            f"{task_key}: {item}"
+                            for item in validate_executor_result(
+                                payload,
+                                profile,
+                                task_key=task_key,
+                                request_nonce=request.get("request_nonce"),
+                                review_target_id=snapshot_payload.get("review_target_id"),
+                            )
+                        )
             if (task_dir / "CURRENT.json").exists():
                 errors.extend(f"{task_key}: {item}" for item in validate_task_state(target, task_key, profile or None))
                 current = load_json(task_dir / "CURRENT.json")
@@ -1882,13 +2075,36 @@ def integration_branch_ready(target: Path, current: dict[str, Any]) -> bool:
     return branch in branches
 
 
-def integration_plan(target: Path, task_key: str, role: str, role_commit: str) -> dict[str, Any]:
+def integration_plan(target: Path, task_key: str, role: str, role_receipt: dict[str, Any]) -> dict[str, Any]:
     current = load_json(task_root(target, task_key) / "CURRENT.json")
     if not integration_branch_ready(target, current):
         raise ValueError("Controller integration requires a valid existing authorized integration branch")
+    profile = load_project_profile(target)
+    request = load_json(task_root(target, task_key) / "REQUEST.json")
+    snapshot_path = task_root(target, task_key) / "SOURCE_SNAPSHOT.json"
+    review_target_id = load_json(snapshot_path).get("review_target_id") if snapshot_path.exists() else None
+    errors = validate_role_receipt(
+        role_receipt,
+        request_nonce=request.get("request_nonce"),
+        review_target_id=review_target_id,
+        allow_fake_test=False,
+    )
+    if role_receipt.get("role") != role:
+        errors.append("integration role receipt role mismatch")
+    if role_receipt.get("commit_kind") != "git":
+        errors.append("Controller integration requires role receipt commit_kind=git")
+    errors.extend(validate_role_commit_diff(target, role, role_receipt))
+    changed, err = git_commit_changed_paths(target, str(role_receipt.get("produced_commit") or ""))
+    if err or changed is None:
+        errors.append("Controller integration requires a valid produced Git commit")
+        changed = []
+    errors.extend(validate_touched_paths(role, changed, profile))
+    if errors:
+        raise ValueError("; ".join(errors))
     return {
         "role": role,
-        "role_commit": role_commit,
+        "role_commit": role_receipt.get("produced_commit"),
+        "changed_paths": changed,
         "integration_branch": current.get("integration_branch") or current_branch(target),
         "branch_created": False,
         "policy": "Controller integrates exact role commit SHA into authorized existing branch only",
@@ -1900,6 +2116,7 @@ def transition_allowed(source_state: str, next_state: str) -> bool:
 
 
 def route_current_findings(target: Path, task_key: str) -> dict[str, Any]:
+    materialize_current_findings(target, task_key)
     ledger_path = task_root(target, task_key) / "REQUIREMENT_LEDGER.json"
     requirements = ledger_requirements_by_id(load_json(ledger_path)) if ledger_path.exists() else {}
     findings, errors = validate_current_findings(target, task_key, requirements)
@@ -1948,8 +2165,8 @@ def plan_transition(target: Path, task_key: str) -> dict[str, Any]:
         route_to_state = {
             "REPAIR_EXECUTOR": "PLANNER_REVISE_EXECUTOR",
             "REPAIR_VERIFIER": "PLANNER_REVISE_VERIFIER",
-            "PLANNER_INTERPRET_CONTRACT": "PLANNER_REVISE_BOTH",
-            "PLANNER_TO_CRITIC_CONTRACT_REVIEW": "PLANNER_REVISE_BOTH",
+            "PLANNER_INTERPRET_CONTRACT": "CONTRACT_REVIEW_REQUIRED",
+            "PLANNER_TO_CRITIC_CONTRACT_REVIEW": "CONTRACT_REVIEW_REQUIRED",
             "ASK_USER": "NEEDS_USER_SCIENTIFIC_OR_PRODUCT_CHOICE",
         }
         next_state = route_to_state.get(route["route"])
@@ -1962,6 +2179,15 @@ def plan_transition(target: Path, task_key: str) -> dict[str, Any]:
         return {"state": state, "valid": True, "next_state": "VERIFIER_RUNNING", "next_action": "LAUNCH_VERIFIER_REPAIR"}
     if state == "PLANNER_REVISE_BOTH":
         return {"state": state, "valid": True, "next_state": "VERIFIER_RUNNING", "next_action": "LAUNCH_VERIFIER_THEN_EXECUTOR_REPAIR"}
+    if state == "CONTRACT_REVIEW_REQUIRED":
+        freeze_errors = validate_critic_freeze(target, task_key)
+        if not freeze_errors:
+            freeze_payload = load_json(task_root(target, task_key) / "CRITIC_FREEZE.json")
+            if freeze_payload.get("critic_mode") != "REQUIRED_CONTRACT_REVIEW":
+                freeze_errors.append("contract review requires current Critic refreeze with critic_mode=REQUIRED_CONTRACT_REVIEW")
+        if freeze_errors:
+            return {"state": state, "valid": True, "next_action": "RUN_OR_WAIT_CONTRACT_CRITIC_REVIEW", "waiting_on": freeze_errors}
+        return {"state": state, "valid": True, "next_state": "PLANNER_REVISE_BOTH", "next_action": "RESUME_AFTER_CONTRACT_REFREEZE"}
     if state == "PLANNER_PASS_CANDIDATE":
         return {"state": state, "valid": True, "next_state": "READY_FOR_CRITIC_FINAL_AUDIT", "next_action": "RUN_FINAL_CRITIC"}
     if state == "READY_FOR_CRITIC_FINAL_AUDIT":
@@ -2014,10 +2240,18 @@ def apply_transition(target: Path, task_key: str, *, expected_state: str, next_s
             current["frozen_contract_sha256"] = file_sha256(task_root(target, task_key) / "FROZEN_CONTRACT.md")
         if (task_root(target, task_key) / "REQUIREMENT_LEDGER.json").exists():
             current["requirement_ledger_sha256"] = file_sha256(task_root(target, task_key) / "REQUIREMENT_LEDGER.json")
+    if next_state == "CONTRACT_REVIEW_REQUIRED":
+        current["critic_mode"] = "REQUIRED_CONTRACT_REVIEW"
+    if expected_state == "CONTRACT_REVIEW_REQUIRED" and next_state == "PLANNER_REVISE_BOTH":
+        freeze_errors = validate_critic_freeze(target, task_key)
+        if freeze_errors:
+            raise ValueError("; ".join(freeze_errors))
+        freeze_payload = load_json(task_root(target, task_key) / "CRITIC_FREEZE.json")
+        if freeze_payload.get("critic_mode") != "REQUIRED_CONTRACT_REVIEW":
+            raise ValueError("contract review requires current Critic refreeze with critic_mode=REQUIRED_CONTRACT_REVIEW")
+        current["critic_mode"] = "STANDBY"
     if next_state == "READY_FOR_CRITIC_FINAL_AUDIT":
         current["critic_mode"] = "REQUIRED_FINAL_AUDIT"
-    if next_state == "PLANNER_REVISE_BOTH":
-        current["critic_mode"] = "REQUIRED_CONTRACT_REVIEW"
     if next_state == "AWAIT_HUMAN_DECISION":
         current["terminal_policy"] = "human_gate"
     next_errors = validate_transition_predicates(target, task_key, next_state, current, profile)

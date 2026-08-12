@@ -214,6 +214,9 @@ class AgentFlowTests(unittest.TestCase):
             receipt["worktree_id"] = worktree
         agent_flow.write_json(agent_flow.role_receipt_path(target, "001_toy", role), receipt)
 
+    def write_controller_receipt(self, target: Path) -> None:
+        self.write_role_receipt(target, "Controller")
+
     def write_verifier_freeze(self, target: Path) -> None:
         root = agent_flow.task_root(target, "001_toy")
         manifest = agent_flow.load_json(root / "VERIFIER_SOURCE_MANIFEST.json")
@@ -223,6 +226,7 @@ class AgentFlowTests(unittest.TestCase):
                 "schema": "AI_BRIDGE_VERIFIER_FREEZE_V1",
                 "task_key": "001_toy",
                 "request_nonce": agent_flow.load_json(root / "REQUEST.json")["request_nonce"],
+                "review_target_id": agent_flow.load_json(root / "SOURCE_SNAPSHOT.json")["review_target_id"],
                 "verifier_semantic_digest_sha256": manifest["semantic_digest_sha256"],
                 "verifier_evidence_id": "verifier-evidence",
             },
@@ -235,6 +239,8 @@ class AgentFlowTests(unittest.TestCase):
             {
                 "schema": "AI_BRIDGE_EXECUTOR_RESULT_V1",
                 "task_key": "001_toy",
+                "request_nonce": agent_flow.load_json(agent_flow.task_root(target, "001_toy") / "REQUEST.json")["request_nonce"],
+                "review_target_id": agent_flow.load_json(agent_flow.task_root(target, "001_toy") / "SOURCE_SNAPSHOT.json")["review_target_id"],
                 "status": "complete",
                 "touched_paths": ["src/calc.py", "results/001_toy/implementation/executor_result.json"],
             },
@@ -511,6 +517,21 @@ class AgentFlowTests(unittest.TestCase):
         )
         self.assertTrue(any("resume --last" in error for error in errors))
         self.assertTrue(any("session_id" in error for error in errors))
+        omitted_kind_errors = agent_flow.validate_role_receipt(
+            {
+                "role": "Executor",
+                "session_id": "thread-123",
+                "runtime_adapter": "codex",
+                "allowed_write_scope": ["src/**"],
+                "start_or_resume_status": "started",
+                "worktree_id": "executor-wt",
+                "produced_commit": "abc123",
+                "produced_evidence_id": "executor-evidence",
+                "base_task_nonce": "nonce",
+            },
+            allow_fake_test=False,
+        )
+        self.assertTrue(any("commit_kind" in error for error in omitted_kind_errors))
         self.assertEqual(
             agent_flow.validate_role_receipt(
                 {
@@ -523,6 +544,7 @@ class AgentFlowTests(unittest.TestCase):
                     "produced_commit": "abc123",
                     "produced_evidence_id": "verifier-evidence",
                     "base_task_nonce": "nonce",
+                    "commit_kind": "fake-test",
                 }
             ),
             [],
@@ -688,6 +710,7 @@ class AgentFlowTests(unittest.TestCase):
             self.apply_next(target, "PLAN_REQUESTED", "PLAN_READY_FOR_CRITIC")
             self.write_critic_freeze(target)
             self.apply_next(target, "PLAN_READY_FOR_CRITIC", "PLAN_FROZEN")
+            self.write_controller_receipt(target)
             self.apply_next(target, "PLAN_FROZEN", "CONTROLLER_INITIALIZING")
             self.snapshot_and_bundle(target)
             self.apply_next(target, "CONTROLLER_INITIALIZING", "VERIFIER_RUNNING")
@@ -708,6 +731,7 @@ class AgentFlowTests(unittest.TestCase):
             self.apply_next(target, "PLAN_REQUESTED", "PLAN_READY_FOR_CRITIC")
             self.write_critic_freeze(target)
             self.apply_next(target, "PLAN_READY_FOR_CRITIC", "PLAN_FROZEN")
+            self.write_controller_receipt(target)
             self.apply_next(target, "PLAN_FROZEN", "CONTROLLER_INITIALIZING")
             snapshot = self.snapshot_and_bundle(target)
             self.apply_next(target, "CONTROLLER_INITIALIZING", "VERIFIER_RUNNING")
@@ -757,6 +781,7 @@ class AgentFlowTests(unittest.TestCase):
             freeze["request_nonce"] = agent_flow.load_json(root / "REQUEST.json")["request_nonce"]
             agent_flow.write_json(root / "CRITIC_FREEZE.json", freeze)
             self.apply_next(target, "PLAN_READY_FOR_CRITIC", "PLAN_FROZEN")
+            self.write_controller_receipt(target)
             self.apply_next(target, "PLAN_FROZEN", "CONTROLLER_INITIALIZING")
             snapshot = self.snapshot_and_bundle(target)
             self.write_planner_and_final_pass(target, snapshot)
@@ -844,6 +869,261 @@ class AgentFlowTests(unittest.TestCase):
             errors = agent_flow.validate_role_commit_diff(target, "Executor", receipt)
             self.assertTrue(any("do not match produced_commit diff" in error for error in errors))
 
+    def test_tracked_semantic_changes_after_snapshot_are_rejected(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            subprocess.check_call(["git", "init", "--initial-branch", "main"], cwd=target, stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "config", "user.email", "test@example.org"], cwd=target)
+            subprocess.check_call(["git", "config", "user.name", "Test User"], cwd=target)
+            subprocess.check_call(["git", "add", "."], cwd=target, stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "commit", "-m", "initial"], cwd=target, stdout=subprocess.DEVNULL)
+            snapshot = self.snapshot_and_bundle(target)
+            root = agent_flow.task_root(target, "001_toy")
+            current = agent_flow.load_json(root / "CURRENT.json")
+            current["state"] = "READY_FOR_PLANNER_REVIEW"
+            current["current_review_target_id"] = snapshot["review_target_id"]
+            agent_flow.write_json(root / "CURRENT.json", current)
+            write(target / "src" / "calc.py", "def add(a, b):\n    return a + b + 1\n")
+            self.assertTrue(any("implementation semantic digest is stale" in error or "IMPLEMENTATION_SOURCE_MANIFEST" in error for error in agent_flow.validate_task_state(target, "001_toy")))
+
+            self.snapshot_and_bundle(target)
+            current = agent_flow.load_json(root / "CURRENT.json")
+            current["state"] = "VERIFIER_FROZEN"
+            agent_flow.write_json(root / "CURRENT.json", current)
+            self.write_verifier_freeze(target)
+            write(target / "tests" / "test_calc.py", "from src.calc import add\n\ndef test_add():\n    assert add(1, 2) == 4\n")
+            self.assertTrue(any("verifier semantic digest is stale" in error or "VERIFIER_SOURCE_MANIFEST" in error for error in agent_flow.validate_task_state(target, "001_toy")))
+
+    def test_evidence_artifact_status_is_authoritative(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            snapshot = self.snapshot_and_bundle(target)
+            evidence_path = agent_flow.result_root(target, "001_toy") / "verification" / "unit.json"
+            agent_flow.write_json(
+                evidence_path,
+                {
+                    "schema": "AI_BRIDGE_EVIDENCE_V1",
+                    "evidence_id": "unit-add",
+                    "status": "FAIL",
+                    "review_target_id": snapshot["review_target_id"],
+                },
+            )
+            bundle_path = agent_flow.result_root(target, "001_toy") / "REVIEW_BUNDLE.json"
+            bundle = agent_flow.load_json(bundle_path)
+            bundle["required_evidence"][0]["status"] = "PASS"
+            bundle["required_evidence"][0]["sha256"] = agent_flow.file_sha256(evidence_path)
+            bundle["bundle_sha256"] = agent_flow.bundle_digest(bundle)
+            agent_flow.write_json(bundle_path, bundle)
+            with self.assertRaisesRegex(ValueError, "artifact status mismatch"):
+                agent_flow.validate_review_bundle(target, "001_toy")
+
+    def test_ci_required_uses_ci_evidence_artifact(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            profile_path = agent_flow.agent_root(target) / "PROJECT_PROFILE.json"
+            profile = agent_flow.load_json(profile_path)
+            profile["requires_ci"] = True
+            profile["ci"]["required"] = True
+            agent_flow.write_json(profile_path, profile)
+            snapshot = self.snapshot_and_bundle(target)
+            root = agent_flow.task_root(target, "001_toy")
+            current = agent_flow.load_json(root / "CURRENT.json")
+            current["state"] = "READY_FOR_PLANNER_REVIEW"
+            current["current_review_target_id"] = snapshot["review_target_id"]
+            agent_flow.write_json(root / "CURRENT.json", current)
+            self.assertTrue(any("CI evidence artifact" in error for error in agent_flow.validate_task_state(target, "001_toy")))
+
+            ci_path = agent_flow.result_root(target, "001_toy") / "verification" / "ci.json"
+            agent_flow.write_json(
+                ci_path,
+                {"schema": "AI_BRIDGE_CI_EVIDENCE_V1", "evidence_id": "ci-main", "status": "FAIL", "review_target_id": snapshot["review_target_id"]},
+            )
+            bundle_path = agent_flow.result_root(target, "001_toy") / "REVIEW_BUNDLE.json"
+            bundle = agent_flow.load_json(bundle_path)
+            bundle["required_evidence"].append(
+                {
+                    "evidence_id": "ci-main",
+                    "kind": "ci",
+                    "path": "results/001_toy/verification/ci.json",
+                    "sha256": agent_flow.file_sha256(ci_path),
+                    "status": "PASS",
+                    "required": True,
+                    "target_sensitive": True,
+                    "review_target_id": snapshot["review_target_id"],
+                }
+            )
+            bundle["bundle_sha256"] = agent_flow.bundle_digest(bundle)
+            agent_flow.write_json(bundle_path, bundle)
+            self.assertTrue(any("artifact status mismatch" in error for error in agent_flow.validate_task_state(target, "001_toy")))
+
+    def test_legacy_findings_materialize_to_authoritative_artifact(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            snapshot = self.snapshot_and_bundle(target)
+            path = agent_flow.current_findings_path(target, "001_toy")
+            path.unlink()
+            current_path = agent_flow.task_root(target, "001_toy") / "CURRENT.json"
+            current = agent_flow.load_json(current_path)
+            current["open_findings"] = [
+                {
+                    "finding_id": "F_IMPL",
+                    "classification": "IMPLEMENTATION_BUG",
+                    "blocking": True,
+                    "owner_role": "Executor",
+                    "requirement_ids": ["REQ_EXAMPLE_001"],
+                    "summary": "bad",
+                    "observed_evidence": "unit",
+                    "required_repair": "fix",
+                    "required_regression_evidence": "test",
+                    "forbidden_workaround": "fake",
+                    "created_against_review_target_id": snapshot["review_target_id"],
+                }
+            ]
+            current["findings_ref"] = None
+            current["findings_sha256"] = None
+            agent_flow.write_json(current_path, current)
+            routed = agent_flow.route_current_findings(target, "001_toy")
+            self.assertEqual(routed["target_role"], "Executor")
+            self.assertTrue(path.exists())
+            self.assertNotIn("open_findings", agent_flow.load_json(current_path))
+
+    def test_role_provenance_and_machine_review_authority_are_enforced(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            snapshot = self.snapshot_and_bundle(target)
+            request = agent_flow.load_json(agent_flow.task_root(target, "001_toy") / "REQUEST.json")
+            receipt = {
+                "role": "Executor",
+                "session_id": "exec",
+                "runtime_adapter": "fake",
+                "worktree_id": "exec-wt",
+                "base_task_nonce": request["request_nonce"],
+                "allowed_write_scope": ["src/**"],
+                "start_or_resume_status": "started",
+                "produced_commit": "abc",
+                "produced_evidence_id": "evidence",
+                "commit_kind": "fake-test",
+            }
+            self.assertTrue(any("fake-test" in error for error in agent_flow.validate_role_receipt(receipt, request_nonce=request["request_nonce"], review_target_id=snapshot["review_target_id"], allow_fake_test=False)))
+            receipt["commit_kind"] = "git"
+            self.assertTrue(any("base_review_target_id missing" in error for error in agent_flow.validate_role_receipt(receipt, request_nonce=request["request_nonce"], review_target_id=snapshot["review_target_id"])))
+
+            planner_review = agent_flow.result_root(target, "001_toy") / "planner_reviews" / "bad.md"
+            write(planner_review, "bad\n")
+            artifact = {
+                "role": "Planner",
+                "task_key": "001_toy",
+                "request_nonce": request["request_nonce"],
+                "review_target_id": snapshot["review_target_id"],
+                "artifact_path": "results/001_toy/planner_reviews/bad.md",
+                "artifact_sha256": agent_flow.file_sha256(planner_review),
+                "decision": "PLANNER_PASS_CANDIDATE",
+                "touched_paths": ["src/calc.py"],
+            }
+            self.assertTrue(any("outside allowed_write_scope" in error for error in agent_flow.validate_machine_review_artifact(target, "001_toy", artifact, role="Planner", decision="PLANNER_PASS_CANDIDATE", review_target_required=True)))
+
+            critic_review = agent_flow.result_root(target, "001_toy") / "critic_reviews" / "bad.md"
+            write(critic_review, "bad\n")
+            critic_artifact = {
+                "role": "Critic",
+                "task_key": "001_toy",
+                "request_nonce": request["request_nonce"],
+                "artifact_path": "results/001_toy/critic_reviews/bad.md",
+                "artifact_sha256": agent_flow.file_sha256(critic_review),
+                "decision": "PLAN_FROZEN",
+                "touched_paths": ["src/calc.py"],
+            }
+            self.assertTrue(any("outside allowed_write_scope" in error for error in agent_flow.validate_machine_review_artifact(target, "001_toy", critic_artifact, role="Critic", decision="PLAN_FROZEN", review_target_required=False)))
+
+    def test_integration_requires_valid_git_receipt_and_exact_diff(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            subprocess.check_call(["git", "init", "--initial-branch", "main"], cwd=target, stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "config", "user.email", "test@example.org"], cwd=target)
+            subprocess.check_call(["git", "config", "user.name", "Test User"], cwd=target)
+            subprocess.check_call(["git", "add", "."], cwd=target, stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "commit", "-m", "initial"], cwd=target, stdout=subprocess.DEVNULL)
+            snapshot = self.snapshot_and_bundle(target)
+            current_path = agent_flow.task_root(target, "001_toy") / "CURRENT.json"
+            current = agent_flow.load_json(current_path)
+            current["integration_branch"] = "main"
+            agent_flow.write_json(current_path, current)
+            request = agent_flow.load_json(agent_flow.task_root(target, "001_toy") / "REQUEST.json")
+            bad = {
+                "role": "Executor",
+                "session_id": "exec",
+                "runtime_adapter": "fake",
+                "worktree_id": "exec-wt",
+                "base_task_nonce": request["request_nonce"],
+                "base_review_target_id": snapshot["review_target_id"],
+                "allowed_write_scope": ["src/**"],
+                "start_or_resume_status": "started",
+                "produced_commit": "notasha",
+                "produced_evidence_id": "evidence",
+                "commit_kind": "external",
+                "touched_paths": [],
+            }
+            with self.assertRaisesRegex(ValueError, "commit_kind=git"):
+                agent_flow.integration_plan(target, "001_toy", "Executor", bad)
+
+            write(target / "src" / "calc.py", "def add(a, b):\n    return a + b + 0\n")
+            subprocess.check_call(["git", "add", "src/calc.py"], cwd=target, stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "commit", "-m", "executor change"], cwd=target, stdout=subprocess.DEVNULL)
+            commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=target, text=True).strip()
+            good = {**bad, "commit_kind": "git", "produced_commit": commit, "touched_paths": ["src/calc.py"]}
+            plan = agent_flow.integration_plan(target, "001_toy", "Executor", good)
+            self.assertEqual(plan["role_commit"], commit)
+
+    def test_missing_executor_receipt_and_stale_verifier_freeze_nonce_rejected(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            snapshot = self.snapshot_and_bundle(target)
+            current = agent_flow.load_json(agent_flow.task_root(target, "001_toy") / "CURRENT.json")
+            current["state"] = "EVIDENCE_RUNNING"
+            current["current_review_target_id"] = snapshot["review_target_id"]
+            agent_flow.write_json(agent_flow.task_root(target, "001_toy") / "CURRENT.json", current)
+            self.write_executor_result(target)
+            self.assertTrue(any("Executor role receipt" in error for error in agent_flow.validate_task_state(target, "001_toy")))
+
+            self.write_verifier_freeze(target)
+            freeze_path = agent_flow.task_root(target, "001_toy") / "VERIFIER_FREEZE.json"
+            freeze = agent_flow.load_json(freeze_path)
+            freeze["request_nonce"] = "old"
+            agent_flow.write_json(freeze_path, freeze)
+            current["state"] = "VERIFIER_FROZEN"
+            agent_flow.write_json(agent_flow.task_root(target, "001_toy") / "CURRENT.json", current)
+            self.write_role_receipt(target, "Verifier")
+            self.assertTrue(any("request_nonce mismatch" in error for error in agent_flow.validate_task_state(target, "001_toy")))
+
+    def test_ordinary_planner_revise_both_keeps_critic_standby(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            root = agent_flow.task_root(target, "001_toy")
+            write(root / "PLANNER_DRAFT.md", "# Draft\n")
+            self.apply_next(target, "PLAN_REQUESTED", "PLAN_READY_FOR_CRITIC")
+            self.write_critic_freeze(target)
+            self.apply_next(target, "PLAN_READY_FOR_CRITIC", "PLAN_FROZEN")
+            self.write_controller_receipt(target)
+            self.apply_next(target, "PLAN_FROZEN", "CONTROLLER_INITIALIZING")
+            self.snapshot_and_bundle(target)
+            self.apply_next(target, "CONTROLLER_INITIALIZING", "VERIFIER_RUNNING")
+            self.write_verifier_freeze(target)
+            self.apply_next(target, "VERIFIER_RUNNING", "VERIFIER_FROZEN")
+            self.write_role_receipt(target, "Executor")
+            self.apply_next(target, "VERIFIER_FROZEN", "EXECUTOR_RUNNING")
+            self.write_executor_result(target)
+            self.apply_next(target, "EXECUTOR_RUNNING", "EVIDENCE_RUNNING")
+            self.apply_next(target, "EVIDENCE_RUNNING", "READY_FOR_PLANNER_REVIEW")
+            self.apply_next(target, "READY_FOR_PLANNER_REVIEW", "WAITING_FOR_EXTERNAL_GPT")
+            agent_flow.apply_transition(
+                target,
+                "001_toy",
+                expected_state="WAITING_FOR_EXTERNAL_GPT",
+                next_state="PLANNER_REVISE_BOTH",
+                next_action="ORDINARY_BOTH_REPAIR",
+            )
+            self.assertEqual(agent_flow.load_json(root / "CURRENT.json")["critic_mode"], "STANDBY")
+
     def test_toy_a_control_plane_path(self) -> None:
         tmp, target = self.make_project()
         with tmp:
@@ -887,6 +1167,7 @@ class AgentFlowTests(unittest.TestCase):
             self.apply_next(target, "PLAN_REQUESTED", "PLAN_READY_FOR_CRITIC")
             self.write_critic_freeze(target)
             self.apply_next(target, "PLAN_READY_FOR_CRITIC", "PLAN_FROZEN")
+            self.write_controller_receipt(target)
             self.apply_next(target, "PLAN_FROZEN", "CONTROLLER_INITIALIZING")
             snapshot = self.snapshot_and_bundle(target)
             self.assertTrue(any("verifier-owned freeze" in item for item in agent_flow.validate_transition_predicates(target, "001_toy", "VERIFIER_FROZEN", agent_flow.load_json(root / "CURRENT.json"), agent_flow.load_project_profile(target))))
@@ -944,6 +1225,7 @@ class AgentFlowTests(unittest.TestCase):
             self.apply_next(target, "PLAN_REQUESTED", "PLAN_READY_FOR_CRITIC")
             self.write_critic_freeze(target)
             self.apply_next(target, "PLAN_READY_FOR_CRITIC", "PLAN_FROZEN")
+            self.write_controller_receipt(target)
             self.apply_next(target, "PLAN_FROZEN", "CONTROLLER_INITIALIZING")
             first = self.snapshot_and_bundle(target)
             profile = agent_flow.load_project_profile(target)
@@ -985,16 +1267,21 @@ class AgentFlowTests(unittest.TestCase):
             self.apply_next(target, "READY_FOR_PLANNER_REVIEW", "WAITING_FOR_EXTERNAL_GPT")
             routed = agent_flow.route_current_findings(target, "001_toy")
             self.assertEqual(routed["route"], "PLANNER_INTERPRET_CONTRACT")
-            self.apply_next(target, "WAITING_FOR_EXTERNAL_GPT", "PLANNER_REVISE_BOTH")
+            self.apply_next(target, "WAITING_FOR_EXTERNAL_GPT", "CONTRACT_REVIEW_REQUIRED")
             self.assertEqual(agent_flow.load_json(root / "CURRENT.json")["critic_mode"], "REQUIRED_CONTRACT_REVIEW")
+            plan = agent_flow.plan_transition(target, "001_toy")
+            self.assertEqual(plan["next_action"], "RUN_OR_WAIT_CONTRACT_CRITIC_REVIEW")
+            self.assertNotIn("next_state", plan)
 
             write(agent_flow.task_root(target, "001_toy") / "FROZEN_CONTRACT.md", "# Frozen Contract\n\nREQ_EXAMPLE_001: add returns numeric sum only.\n")
             self.write_critic_freeze(target, critic_mode="REQUIRED_CONTRACT_REVIEW")
             second = self.snapshot_and_bundle(target)
             self.assertNotEqual(first["review_target_id"], second["review_target_id"])
+            self.apply_next(target, "CONTRACT_REVIEW_REQUIRED", "PLANNER_REVISE_BOTH")
             self.apply_next(target, "PLANNER_REVISE_BOTH", "VERIFIER_RUNNING")
             self.write_verifier_freeze(target)
             self.apply_next(target, "VERIFIER_RUNNING", "VERIFIER_FROZEN")
+            self.write_role_receipt(target, "Executor")
             self.apply_next(target, "VERIFIER_FROZEN", "EXECUTOR_RUNNING")
             self.write_executor_result(target)
             agent_flow.write_current_findings(target, "001_toy", [], second["review_target_id"])

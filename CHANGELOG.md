@@ -20,6 +20,10 @@
   graph, task nonce envelope validation, required evidence file/SHA checks,
   unified current findings, mandatory Final Critic audit checks, and real Toy
   A/B E2E repair lifecycle tests.
+- Close final v0.4.0 release blockers for stale semantic snapshots, explicit
+  contract-review refreeze gates, role commit provenance, evidence artifact
+  semantic binding, single current findings truth, machine review write
+  authority, and runtime role receipt predicates.
 
 ## 0.3.1
 
