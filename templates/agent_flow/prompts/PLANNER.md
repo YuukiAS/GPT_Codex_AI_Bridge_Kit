@@ -31,7 +31,7 @@ Review current reality before prior findings:
 Emit exactly one machine artifact:
 
 ```text
-PLANNER_REVIEW.json
+results/<task>/planner_reviews/PLANNER_REVIEW.json
 ```
 
 Allowed decisions:
@@ -42,6 +42,6 @@ Allowed decisions:
 - `PLANNER_PASS_CANDIDATE`
 - `SCIENTIFIC_OR_PRODUCT_CHOICE_REQUIRED`
 
-For `PLANNER_PASS_CANDIDATE`, also write `PLANNER_PASS_CANDIDATE.json` bound to
-the current `review_target_id`.
-
+For `PLANNER_PASS_CANDIDATE`, also write task-root
+`PLANNER_PASS_CANDIDATE.json` bound to the current `request_nonce`,
+`review_target_id`, and planner review artifact path/SHA256.

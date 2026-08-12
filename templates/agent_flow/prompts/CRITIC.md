@@ -13,8 +13,9 @@ Freeze the contract and compact Requirement Ledger by writing:
 - `REQUIREMENT_LEDGER.json`
 - `CRITIC_FREEZE.json`
 
-`CRITIC_FREEZE.json` must bind the frozen contract digest and Requirement Ledger
-digest.
+`CRITIC_FREEZE.json` must bind `task_key`, `request_nonce`, `decision=PLAN_FROZEN`,
+`critic_mode`, the frozen contract digest, the Requirement Ledger digest, and a
+Critic review artifact path/SHA256.
 
 ## STANDBY
 
@@ -29,11 +30,11 @@ revised freeze artifact or a typed blocker.
 ## REQUIRED_FINAL_AUDIT
 
 Audit closure, not implementation convenience. Write `FINAL_CRITIC_AUDIT.json`
-with schema `AI_BRIDGE_FINAL_CRITIC_AUDIT_V1`, current `review_target_id`,
-frozen contract digest, Requirement Ledger digest, `review_bundle_sha256`,
-planner pass-candidate artifact, decision, blocking findings, audit checks, and
+with schema `AI_BRIDGE_FINAL_CRITIC_AUDIT_V1`, current `request_nonce`,
+`review_target_id`, frozen contract digest, Requirement Ledger digest,
+`review_bundle_sha256`, planner pass-candidate artifact, decision, blocking
+findings, all mandatory audit checks, Critic review artifact path/SHA256, and
 explicit `touched_paths`.
 
 Final Critic cannot edit implementation or verifier sources. Output decision is
 only `CRITIC_FINAL_PASS` or `CRITIC_FINAL_REVISE`.
-

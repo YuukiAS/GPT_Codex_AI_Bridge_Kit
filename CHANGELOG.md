@@ -16,6 +16,10 @@
 - Tighten Agent-Flow lifecycle validation with fail-closed state predicates,
   bound Final Critic artifacts, role/session authority checks, multi-change
   invalidation, heavy Verifier rerun guards, terminal brief generation, and CI.
+- Close Agent-Flow state-machine authority gaps with a schema-backed transition
+  graph, task nonce envelope validation, required evidence file/SHA checks,
+  unified current findings, mandatory Final Critic audit checks, and real Toy
+  A/B E2E repair lifecycle tests.
 
 ## 0.3.1
 

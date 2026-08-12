@@ -30,6 +30,7 @@ class FakeRuntimeAdapter(agent_flow.RuntimeAdapter):
             start_or_resume_status="started",
             produced_commit=f"{request.role.lower()}-commit",
             produced_evidence_id=f"{request.role.lower()}-evidence",
+            commit_kind="fake-test",
         )
 
 
@@ -72,6 +73,16 @@ class AgentFlowTests(unittest.TestCase):
 
     def snapshot_and_bundle(self, target: Path) -> dict[str, str]:
         snapshot = agent_flow.snapshot(target, "001_toy")
+        evidence_path = agent_flow.result_root(target, "001_toy") / "verification" / "unit.json"
+        agent_flow.write_json(
+            evidence_path,
+            {
+                "schema": "AI_BRIDGE_EVIDENCE_V1",
+                "evidence_id": "unit-add",
+                "status": "PASS",
+                "review_target_id": snapshot["review_target_id"],
+            },
+        )
         bundle = {
             "schema": "AI_BRIDGE_REVIEW_BUNDLE_V1",
             "task_key": "001_toy",
@@ -82,39 +93,54 @@ class AgentFlowTests(unittest.TestCase):
             "verifier_semantic_digest_sha256": snapshot["verifier_semantic_digest_sha256"],
             "required_evidence": [
                 {
+                    "evidence_id": "unit-add",
                     "kind": "unit_test",
                     "path": "results/001_toy/verification/unit.json",
+                    "sha256": agent_flow.file_sha256(evidence_path),
+                    "status": "PASS",
+                    "required": True,
                     "target_sensitive": True,
                     "review_target_id": snapshot["review_target_id"],
                 }
             ],
-            "open_findings": [],
         }
         bundle["bundle_sha256"] = agent_flow.bundle_digest(bundle)
         agent_flow.write_json(agent_flow.result_root(target, "001_toy") / "REVIEW_BUNDLE.json", bundle)
+        agent_flow.write_current_findings(target, "001_toy", [], snapshot["review_target_id"])
         return snapshot
 
     def write_planner_and_final_pass(self, target: Path, snapshot: dict[str, str]) -> None:
         root = agent_flow.task_root(target, "001_toy")
         request = agent_flow.load_json(root / "REQUEST.json")
         bundle = agent_flow.load_json(agent_flow.result_root(target, "001_toy") / "REVIEW_BUNDLE.json")
+        planner_review_path = agent_flow.result_root(target, "001_toy") / "planner_reviews" / "pass.md"
+        write(planner_review_path, "Planner pass candidate for current target.\n")
         agent_flow.write_json(
             root / "PLANNER_PASS_CANDIDATE.json",
             {
                 "schema": "AI_BRIDGE_PLANNER_PASS_CANDIDATE_V1",
+                "role": "Planner",
                 "task_key": "001_toy",
                 "request_nonce": request["request_nonce"],
                 "review_target_id": snapshot["review_target_id"],
+                "artifact_path": "results/001_toy/planner_reviews/pass.md",
+                "artifact_sha256": agent_flow.file_sha256(planner_review_path),
                 "decision": "PLANNER_PASS_CANDIDATE",
+                "touched_paths": ["automation/agent_flow/tasks/001_toy/PLANNER_PASS_CANDIDATE.json", "results/001_toy/planner_reviews/pass.md"],
             },
         )
+        critic_review_path = agent_flow.result_root(target, "001_toy") / "critic_reviews" / "final.md"
+        write(critic_review_path, "Final Critic pass for current target.\n")
         agent_flow.write_json(
             root / "FINAL_CRITIC_AUDIT.json",
             {
                 "schema": "AI_BRIDGE_FINAL_CRITIC_AUDIT_V1",
+                "role": "Critic",
                 "task_key": "001_toy",
                 "request_nonce": request["request_nonce"],
                 "review_target_id": snapshot["review_target_id"],
+                "artifact_path": "results/001_toy/critic_reviews/final.md",
+                "artifact_sha256": agent_flow.file_sha256(critic_review_path),
                 "frozen_contract_sha256": snapshot["frozen_contract_sha256"],
                 "requirement_ledger_sha256": snapshot["requirement_ledger_sha256"],
                 "review_bundle_sha256": bundle["bundle_sha256"],
@@ -123,24 +149,43 @@ class AgentFlowTests(unittest.TestCase):
                 "blocking_findings": [],
                 "audit_checks": {
                     "contract_not_silently_weakened": True,
-                    "ledger_not_expanded_by_runtime_roles": True,
-                    "verifier_thresholds_cited": True,
-                    "executor_no_test_aware_path": True,
-                    "review_bundle_bound_to_target": True,
+                    "requirement_ledger_not_expanded_by_runtime_roles": True,
+                    "planner_blocking_requirements_closed": True,
+                    "verifier_no_uncited_blocking_requirement_or_threshold": True,
+                    "executor_no_test_aware_alternate_behavior": True,
+                    "review_bundle_bound_to_current_target": True,
+                    "required_evidence_passed": True,
+                    "ci_passed_when_required": True,
+                    "no_unresolved_contract_ambiguity_or_contradiction": True,
                 },
                 "touched_paths": [],
             },
         )
 
-    def write_critic_freeze(self, target: Path) -> None:
+    def write_critic_freeze(self, target: Path, critic_mode: str = "REQUIRED_INITIAL") -> None:
         root = agent_flow.task_root(target, "001_toy")
+        request = agent_flow.load_json(root / "REQUEST.json")
+        critic_review_path = agent_flow.result_root(target, "001_toy") / "critic_reviews" / "freeze.md"
+        write(critic_review_path, "Critic froze contract and ledger.\n")
         agent_flow.write_json(
             root / "CRITIC_FREEZE.json",
             {
                 "schema": "AI_BRIDGE_CRITIC_FREEZE_V1",
+                "role": "Critic",
                 "task_key": "001_toy",
+                "request_nonce": request["request_nonce"],
+                "decision": "PLAN_FROZEN",
+                "critic_mode": critic_mode,
+                "artifact_path": "results/001_toy/critic_reviews/freeze.md",
+                "artifact_sha256": agent_flow.file_sha256(critic_review_path),
                 "frozen_contract_sha256": agent_flow.file_sha256(root / "FROZEN_CONTRACT.md"),
                 "requirement_ledger_sha256": agent_flow.file_sha256(root / "REQUIREMENT_LEDGER.json"),
+                "touched_paths": [
+                    "automation/agent_flow/tasks/001_toy/CRITIC_FREEZE.json",
+                    "automation/agent_flow/tasks/001_toy/FROZEN_CONTRACT.md",
+                    "automation/agent_flow/tasks/001_toy/REQUIREMENT_LEDGER.json",
+                    "results/001_toy/critic_reviews/freeze.md",
+                ],
             },
         )
 
@@ -160,6 +205,9 @@ class AgentFlowTests(unittest.TestCase):
                 worktree_policy="detached",
             )
         ).to_json()
+        snapshot_path = root / "SOURCE_SNAPSHOT.json"
+        if snapshot_path.exists():
+            receipt["base_review_target_id"] = agent_flow.load_json(snapshot_path)["review_target_id"]
         if session:
             receipt["session_id"] = session
         if worktree:
@@ -174,11 +222,36 @@ class AgentFlowTests(unittest.TestCase):
             {
                 "schema": "AI_BRIDGE_VERIFIER_FREEZE_V1",
                 "task_key": "001_toy",
+                "request_nonce": agent_flow.load_json(root / "REQUEST.json")["request_nonce"],
                 "verifier_semantic_digest_sha256": manifest["semantic_digest_sha256"],
                 "verifier_evidence_id": "verifier-evidence",
             },
         )
         self.write_role_receipt(target, "Verifier")
+
+    def write_executor_result(self, target: Path) -> None:
+        agent_flow.write_json(
+            agent_flow.result_root(target, "001_toy") / "implementation" / "executor_result.json",
+            {
+                "schema": "AI_BRIDGE_EXECUTOR_RESULT_V1",
+                "task_key": "001_toy",
+                "status": "complete",
+                "touched_paths": ["src/calc.py", "results/001_toy/implementation/executor_result.json"],
+            },
+        )
+
+    def apply_next(self, target: Path, expected_state: str, expected_next: str) -> dict[str, object]:
+        plan = agent_flow.plan_transition(target, "001_toy")
+        self.assertTrue(plan["valid"], plan)
+        self.assertEqual(plan.get("state"), expected_state)
+        self.assertEqual(plan.get("next_state"), expected_next)
+        return agent_flow.apply_transition(
+            target,
+            "001_toy",
+            expected_state=expected_state,
+            next_state=expected_next,
+            next_action=str(plan.get("next_action", "")),
+        )
 
     def test_install_status_validate_and_task_init_do_not_create_branch(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -362,13 +435,22 @@ class AgentFlowTests(unittest.TestCase):
         tmp, target = self.make_project()
         with tmp:
             snapshot = self.snapshot_and_bundle(target)
-            root = agent_flow.task_root(target, "001_toy")
+            request = agent_flow.load_json(agent_flow.task_root(target, "001_toy") / "REQUEST.json")
+            choice_text = agent_flow.result_root(target, "001_toy") / "planner_reviews" / "choice.md"
+            write(choice_text, "Planner classified this as user scientific/product choice.\n")
             agent_flow.write_json(
-                root / "planner_reviews" / "choice.json",
+                agent_flow.result_root(target, "001_toy") / "planner_reviews" / "choice.json",
                 {
+                    "schema": "AI_BRIDGE_PLANNER_REVIEW_V1",
+                    "role": "Planner",
+                    "task_key": "001_toy",
+                    "request_nonce": request["request_nonce"],
                     "decision": "SCIENTIFIC_OR_PRODUCT_CHOICE_REQUIRED",
                     "finding_id": "F2",
                     "review_target_id": snapshot["review_target_id"],
+                    "artifact_path": "results/001_toy/planner_reviews/choice.md",
+                    "artifact_sha256": agent_flow.file_sha256(choice_text),
+                    "touched_paths": ["results/001_toy/planner_reviews/choice.json", "results/001_toy/planner_reviews/choice.md"],
                 },
             )
             routed = agent_flow.route_findings(
@@ -378,7 +460,7 @@ class AgentFlowTests(unittest.TestCase):
                         "classification": "SCIENTIFIC_OR_PRODUCT_CHOICE_REQUIRED",
                         "blocking": True,
                         "created_against_review_target_id": snapshot["review_target_id"],
-                        "planner_classification_artifact": "planner_reviews/choice.json",
+                        "planner_classification_artifact": "results/001_toy/planner_reviews/choice.json",
                     }
                 ],
                 target=target,
@@ -400,6 +482,11 @@ class AgentFlowTests(unittest.TestCase):
             ],
         )
         self.assertEqual(result["schema"], "AI_BRIDGE_PROJECT_ADAPTER_RESULT_V1")
+        potential = agent_flow.normalize_adapter_result(
+            adapter_name="toy",
+            findings=[{"finding_id": "F_POTENTIAL", "classification": "POTENTIAL_SCIENTIFIC_OR_PRODUCT_CHOICE", "blocking": False}],
+        )
+        self.assertEqual(potential["findings"][0]["classification"], "POTENTIAL_SCIENTIFIC_OR_PRODUCT_CHOICE")
         with self.assertRaises(ValueError):
             agent_flow.normalize_adapter_result(
                 adapter_name="bad",
@@ -529,25 +616,25 @@ class AgentFlowTests(unittest.TestCase):
             agent_flow.write_json(receipts / "controller_role_receipt.json", {**base, "role": "Controller", "session_id": "same", "worktree_id": "controller", "touched_paths": ["src/calc.py"]})
             agent_flow.write_json(receipts / "verifier_role_receipt.json", {**base, "role": "Verifier", "session_id": "same", "worktree_id": "controller"})
             agent_flow.write_json(receipts / "executor_role_receipt.json", {**base, "role": "Executor", "session_id": "exec", "worktree_id": "exec"})
-            agent_flow.write_json(
-                agent_flow.result_root(target, "001_toy") / "open_findings.json",
-                {
-                    "findings": [
-                        {
-                            "finding_id": "F_BAD",
-                            "classification": "IMPLEMENTATION_BUG",
-                            "blocking": True,
-                            "owner_role": "Executor",
-                            "requirement_ids": ["REQ_EXAMPLE_001"],
-                            "summary": "bad",
-                            "observed_evidence": "unit",
-                            "required_repair": "fix",
-                            "required_regression_evidence": "test",
-                            "forbidden_workaround": "fake",
-                            "created_against_review_target_id": "stale",
-                        }
-                    ]
-                },
+            agent_flow.write_current_findings(
+                target,
+                "001_toy",
+                [
+                    {
+                        "finding_id": "F_BAD",
+                        "classification": "IMPLEMENTATION_BUG",
+                        "blocking": True,
+                        "owner_role": "Executor",
+                        "requirement_ids": ["REQ_EXAMPLE_001"],
+                        "summary": "bad",
+                        "observed_evidence": "unit",
+                        "required_repair": "fix",
+                        "required_regression_evidence": "test",
+                        "forbidden_workaround": "fake",
+                        "created_against_review_target_id": "stale",
+                    }
+                ],
+                "stale",
             )
             lines, code = agent_flow.validate_agent_flow(target)
             self.assertEqual(code, 1)
@@ -590,6 +677,173 @@ class AgentFlowTests(unittest.TestCase):
             self.assertEqual(brief["schema"], "ai-bridge.notification_brief.v1")
             self.assertTrue((agent_flow.result_root(target, "001_toy") / "notification_brief.json").exists())
 
+    def test_adversarial_transition_edges_are_rejected(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            for illegal in ["AWAIT_HUMAN_DECISION", "PLANNER_PASS_CANDIDATE"]:
+                with self.assertRaisesRegex(ValueError, "illegal transition edge"):
+                    agent_flow.apply_transition(target, "001_toy", expected_state="PLAN_REQUESTED", next_state=illegal)
+            root = agent_flow.task_root(target, "001_toy")
+            write(root / "PLANNER_DRAFT.md", "# Draft\n")
+            self.apply_next(target, "PLAN_REQUESTED", "PLAN_READY_FOR_CRITIC")
+            self.write_critic_freeze(target)
+            self.apply_next(target, "PLAN_READY_FOR_CRITIC", "PLAN_FROZEN")
+            self.apply_next(target, "PLAN_FROZEN", "CONTROLLER_INITIALIZING")
+            self.snapshot_and_bundle(target)
+            self.apply_next(target, "CONTROLLER_INITIALIZING", "VERIFIER_RUNNING")
+            with self.assertRaisesRegex(ValueError, "illegal transition edge"):
+                agent_flow.apply_transition(target, "001_toy", expected_state="VERIFIER_RUNNING", next_state="PLANNER_PASS")
+            self.write_verifier_freeze(target)
+            self.apply_next(target, "VERIFIER_RUNNING", "VERIFIER_FROZEN")
+            self.write_role_receipt(target, "Executor")
+            self.apply_next(target, "VERIFIER_FROZEN", "EXECUTOR_RUNNING")
+            with self.assertRaisesRegex(ValueError, "illegal transition edge"):
+                agent_flow.apply_transition(target, "001_toy", expected_state="EXECUTOR_RUNNING", next_state="READY_FOR_CRITIC_FINAL_AUDIT")
+
+    def test_final_critic_waits_for_real_artifact(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            root = agent_flow.task_root(target, "001_toy")
+            write(root / "PLANNER_DRAFT.md", "# Draft\n")
+            self.apply_next(target, "PLAN_REQUESTED", "PLAN_READY_FOR_CRITIC")
+            self.write_critic_freeze(target)
+            self.apply_next(target, "PLAN_READY_FOR_CRITIC", "PLAN_FROZEN")
+            self.apply_next(target, "PLAN_FROZEN", "CONTROLLER_INITIALIZING")
+            snapshot = self.snapshot_and_bundle(target)
+            self.apply_next(target, "CONTROLLER_INITIALIZING", "VERIFIER_RUNNING")
+            self.write_verifier_freeze(target)
+            self.apply_next(target, "VERIFIER_RUNNING", "VERIFIER_FROZEN")
+            self.write_role_receipt(target, "Executor")
+            self.apply_next(target, "VERIFIER_FROZEN", "EXECUTOR_RUNNING")
+            self.write_executor_result(target)
+            self.apply_next(target, "EXECUTOR_RUNNING", "EVIDENCE_RUNNING")
+            self.apply_next(target, "EVIDENCE_RUNNING", "READY_FOR_PLANNER_REVIEW")
+            self.apply_next(target, "READY_FOR_PLANNER_REVIEW", "WAITING_FOR_EXTERNAL_GPT")
+            planner_review_path = agent_flow.result_root(target, "001_toy") / "planner_reviews" / "pass.md"
+            write(planner_review_path, "Planner pass candidate only.\n")
+            request = agent_flow.load_json(root / "REQUEST.json")
+            agent_flow.write_json(
+                root / "PLANNER_PASS_CANDIDATE.json",
+                {
+                    "schema": "AI_BRIDGE_PLANNER_PASS_CANDIDATE_V1",
+                    "role": "Planner",
+                    "task_key": "001_toy",
+                    "request_nonce": request["request_nonce"],
+                    "review_target_id": snapshot["review_target_id"],
+                    "artifact_path": "results/001_toy/planner_reviews/pass.md",
+                    "artifact_sha256": agent_flow.file_sha256(planner_review_path),
+                    "decision": "PLANNER_PASS_CANDIDATE",
+                    "touched_paths": [],
+                },
+            )
+            self.apply_next(target, "WAITING_FOR_EXTERNAL_GPT", "PLANNER_PASS_CANDIDATE")
+            self.apply_next(target, "PLANNER_PASS_CANDIDATE", "READY_FOR_CRITIC_FINAL_AUDIT")
+            plan = agent_flow.plan_transition(target, "001_toy")
+            self.assertNotIn("next_state", plan)
+            self.assertEqual(plan["next_action"], "RUN_OR_WAIT_FINAL_CRITIC")
+
+    def test_old_nonce_and_old_target_artifacts_rejected(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            root = agent_flow.task_root(target, "001_toy")
+            write(root / "PLANNER_DRAFT.md", "# Draft\n")
+            self.apply_next(target, "PLAN_REQUESTED", "PLAN_READY_FOR_CRITIC")
+            self.write_critic_freeze(target)
+            freeze = agent_flow.load_json(root / "CRITIC_FREEZE.json")
+            freeze["request_nonce"] = "old"
+            agent_flow.write_json(root / "CRITIC_FREEZE.json", freeze)
+            with self.assertRaisesRegex(ValueError, "request_nonce mismatch"):
+                agent_flow.apply_transition(target, "001_toy", expected_state="PLAN_READY_FOR_CRITIC", next_state="PLAN_FROZEN")
+            freeze["request_nonce"] = agent_flow.load_json(root / "REQUEST.json")["request_nonce"]
+            agent_flow.write_json(root / "CRITIC_FREEZE.json", freeze)
+            self.apply_next(target, "PLAN_READY_FOR_CRITIC", "PLAN_FROZEN")
+            self.apply_next(target, "PLAN_FROZEN", "CONTROLLER_INITIALIZING")
+            snapshot = self.snapshot_and_bundle(target)
+            self.write_planner_and_final_pass(target, snapshot)
+            candidate = agent_flow.load_json(root / "PLANNER_PASS_CANDIDATE.json")
+            candidate["review_target_id"] = "old-target"
+            agent_flow.write_json(root / "PLANNER_PASS_CANDIDATE.json", candidate)
+            self.assertTrue(any("current_review_target_id" in error or "current review_target_id" in error or "not bound" in error for error in agent_flow.validate_planner_pass_candidate(target, "001_toy")))
+            self.write_planner_and_final_pass(target, snapshot)
+            final = agent_flow.load_json(root / "FINAL_CRITIC_AUDIT.json")
+            final["review_target_id"] = "old-target"
+            agent_flow.write_json(root / "FINAL_CRITIC_AUDIT.json", final)
+            self.assertTrue(any("review_target_id mismatch" in error for error in agent_flow.validate_final_critic_artifact(target, "001_toy")))
+
+    def test_required_evidence_file_and_sha_are_enforced(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            self.snapshot_and_bundle(target)
+            bundle_path = agent_flow.result_root(target, "001_toy") / "REVIEW_BUNDLE.json"
+            evidence_path = agent_flow.result_root(target, "001_toy") / "verification" / "unit.json"
+            evidence_path.unlink()
+            with self.assertRaisesRegex(ValueError, "required evidence file missing"):
+                agent_flow.validate_review_bundle(target, "001_toy")
+            self.snapshot_and_bundle(target)
+            bundle = agent_flow.load_json(bundle_path)
+            bundle["required_evidence"][0]["sha256"] = "bad"
+            bundle["bundle_sha256"] = agent_flow.bundle_digest(bundle)
+            agent_flow.write_json(bundle_path, bundle)
+            with self.assertRaisesRegex(ValueError, "required evidence sha256 mismatch"):
+                agent_flow.validate_review_bundle(target, "001_toy")
+
+    def test_current_finding_must_validate_before_route(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            snapshot = self.snapshot_and_bundle(target)
+            agent_flow.write_current_findings(
+                target,
+                "001_toy",
+                [
+                    {
+                        "finding_id": "F_BAD",
+                        "classification": "IMPLEMENTATION_BUG",
+                        "blocking": True,
+                        "owner_role": "Executor",
+                        "requirement_ids": ["REQ_EXAMPLE_001"],
+                        "summary": "bad",
+                        "observed_evidence": "unit",
+                        "required_repair": "fix",
+                        "required_regression_evidence": "test",
+                        "forbidden_workaround": "fake",
+                        "created_against_review_target_id": "old",
+                    }
+                ],
+                snapshot["review_target_id"],
+            )
+            with self.assertRaisesRegex(ValueError, "not bound to current review_target_id"):
+                agent_flow.route_current_findings(target, "001_toy")
+
+    def test_role_git_commit_diff_must_match_touched_paths(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            subprocess.check_call(["git", "init", "--initial-branch", "main"], cwd=target, stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "config", "user.email", "test@example.org"], cwd=target)
+            subprocess.check_call(["git", "config", "user.name", "Test User"], cwd=target)
+            subprocess.check_call(["git", "add", "."], cwd=target, stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "commit", "-m", "initial"], cwd=target, stdout=subprocess.DEVNULL)
+            write(target / "src" / "calc.py", "def add(a, b):\n    return a + b + 0\n")
+            subprocess.check_call(["git", "add", "src/calc.py"], cwd=target, stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "commit", "-m", "executor change"], cwd=target, stdout=subprocess.DEVNULL)
+            commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=target, text=True).strip()
+            self.snapshot_and_bundle(target)
+            receipt = {
+                "role": "Executor",
+                "session_id": "exec",
+                "runtime_adapter": "fake",
+                "worktree_id": "exec-wt",
+                "base_task_nonce": agent_flow.load_json(agent_flow.task_root(target, "001_toy") / "REQUEST.json")["request_nonce"],
+                "base_review_target_id": agent_flow.load_json(agent_flow.task_root(target, "001_toy") / "SOURCE_SNAPSHOT.json")["review_target_id"],
+                "allowed_write_scope": ["src/**"],
+                "start_or_resume_status": "started",
+                "produced_commit": commit,
+                "produced_evidence_id": "exec-evidence",
+                "commit_kind": "git",
+                "touched_paths": ["README.md"],
+            }
+            errors = agent_flow.validate_role_commit_diff(target, "Executor", receipt)
+            self.assertTrue(any("do not match produced_commit diff" in error for error in errors))
+
     def test_toy_a_control_plane_path(self) -> None:
         tmp, target = self.make_project()
         with tmp:
@@ -630,103 +884,129 @@ class AgentFlowTests(unittest.TestCase):
         with tmp:
             root = agent_flow.task_root(target, "001_toy")
             write(root / "PLANNER_DRAFT.md", "# Draft\n")
-            agent_flow.apply_transition(
-                target,
-                "001_toy",
-                expected_state="PLAN_REQUESTED",
-                next_state="PLAN_READY_FOR_CRITIC",
-                next_action="RUN_CRITIC_INITIAL",
-            )
+            self.apply_next(target, "PLAN_REQUESTED", "PLAN_READY_FOR_CRITIC")
             self.write_critic_freeze(target)
-            agent_flow.apply_transition(
-                target,
-                "001_toy",
-                expected_state="PLAN_READY_FOR_CRITIC",
-                next_state="PLAN_FROZEN",
-                next_action="LAUNCH_VERIFIER",
-            )
+            self.apply_next(target, "PLAN_READY_FOR_CRITIC", "PLAN_FROZEN")
+            self.apply_next(target, "PLAN_FROZEN", "CONTROLLER_INITIALIZING")
             snapshot = self.snapshot_and_bundle(target)
             self.assertTrue(any("verifier-owned freeze" in item for item in agent_flow.validate_transition_predicates(target, "001_toy", "VERIFIER_FROZEN", agent_flow.load_json(root / "CURRENT.json"), agent_flow.load_project_profile(target))))
+            self.apply_next(target, "CONTROLLER_INITIALIZING", "VERIFIER_RUNNING")
             self.write_verifier_freeze(target)
-            agent_flow.apply_transition(
-                target,
-                "001_toy",
-                expected_state="PLAN_FROZEN",
-                next_state="VERIFIER_FROZEN",
-                next_action="LAUNCH_EXECUTOR",
-            )
+            self.apply_next(target, "VERIFIER_RUNNING", "VERIFIER_FROZEN")
             self.write_role_receipt(target, "Executor")
-            agent_flow.apply_transition(
-                target,
-                "001_toy",
-                expected_state="VERIFIER_FROZEN",
-                next_state="EXECUTOR_RUNNING",
-                next_action="RUN_EXECUTOR",
-            )
+            self.apply_next(target, "VERIFIER_FROZEN", "EXECUTOR_RUNNING")
             self.assertTrue(agent_flow.validate_executor_result({"test_aware_alternate_path": True, "touched_paths": ["src/calc.py"]}))
-            current = agent_flow.load_json(root / "CURRENT.json")
-            current["state"] = "READY_FOR_PLANNER_REVIEW"
-            current["current_review_target_id"] = snapshot["review_target_id"]
-            agent_flow.write_json(root / "CURRENT.json", current)
+            self.write_executor_result(target)
+            self.apply_next(target, "EXECUTOR_RUNNING", "EVIDENCE_RUNNING")
+            self.apply_next(target, "EVIDENCE_RUNNING", "READY_FOR_PLANNER_REVIEW")
             self.assertEqual(agent_flow.validate_task_state(target, "001_toy"), [])
+            agent_flow.write_current_findings(
+                target,
+                "001_toy",
+                [
+                    {
+                        "finding_id": "F_IMPL",
+                        "classification": "IMPLEMENTATION_BUG",
+                        "blocking": True,
+                        "owner_role": "Executor",
+                        "requirement_ids": ["REQ_EXAMPLE_001"],
+                        "summary": "add implementation is wrong",
+                        "observed_evidence": "unit-add failed before repair",
+                        "required_repair": "fix src/calc.py",
+                        "required_regression_evidence": "unit-add PASS",
+                        "forbidden_workaround": "do not weaken test",
+                        "created_against_review_target_id": snapshot["review_target_id"],
+                    }
+                ],
+                snapshot["review_target_id"],
+            )
+            self.apply_next(target, "READY_FOR_PLANNER_REVIEW", "WAITING_FOR_EXTERNAL_GPT")
+            self.apply_next(target, "WAITING_FOR_EXTERNAL_GPT", "PLANNER_REVISE_EXECUTOR")
+            self.apply_next(target, "PLANNER_REVISE_EXECUTOR", "EXECUTOR_RUNNING")
+            self.write_executor_result(target)
+            agent_flow.write_current_findings(target, "001_toy", [], snapshot["review_target_id"])
+            self.apply_next(target, "EXECUTOR_RUNNING", "EVIDENCE_RUNNING")
+            self.apply_next(target, "EVIDENCE_RUNNING", "READY_FOR_PLANNER_REVIEW")
+            self.apply_next(target, "READY_FOR_PLANNER_REVIEW", "WAITING_FOR_EXTERNAL_GPT")
             self.write_planner_and_final_pass(target, snapshot)
-            agent_flow.apply_transition(
-                target,
-                "001_toy",
-                expected_state="READY_FOR_PLANNER_REVIEW",
-                next_state="PLANNER_PASS_CANDIDATE",
-                next_action="RUN_FINAL_CRITIC",
-            )
-            agent_flow.apply_transition(
-                target,
-                "001_toy",
-                expected_state="PLANNER_PASS_CANDIDATE",
-                next_state="READY_FOR_CRITIC_FINAL_AUDIT",
-                next_action="APPLY_FINAL_CRITIC_PASS",
-            )
-            agent_flow.apply_transition(
-                target,
-                "001_toy",
-                expected_state="READY_FOR_CRITIC_FINAL_AUDIT",
-                next_state="PLANNER_PASS",
-                next_action="WRITE_TERMINAL_BRIEF",
-            )
-            current = agent_flow.load_json(root / "CURRENT.json")
-            current["terminal_policy"] = "human_gate"
-            agent_flow.write_json(root / "CURRENT.json", current)
-            agent_flow.apply_transition(
-                target,
-                "001_toy",
-                expected_state="PLANNER_PASS",
-                next_state="AWAIT_HUMAN_DECISION",
-                next_action="WRITE_TERMINAL_BRIEF",
-            )
+            self.apply_next(target, "WAITING_FOR_EXTERNAL_GPT", "PLANNER_PASS_CANDIDATE")
+            self.apply_next(target, "PLANNER_PASS_CANDIDATE", "READY_FOR_CRITIC_FINAL_AUDIT")
+            self.apply_next(target, "READY_FOR_CRITIC_FINAL_AUDIT", "PLANNER_PASS")
+            self.apply_next(target, "PLANNER_PASS", "AWAIT_HUMAN_DECISION")
             brief = agent_flow.write_terminal_brief(target, "001_toy")
             self.assertEqual(brief["terminal_status"], "awaiting_human")
 
     def test_toy_b_control_plane_change_and_contract_ambiguity(self) -> None:
         tmp, target = self.make_project()
         with tmp:
+            root = agent_flow.task_root(target, "001_toy")
+            write(root / "PLANNER_DRAFT.md", "# Draft\n")
+            self.apply_next(target, "PLAN_REQUESTED", "PLAN_READY_FOR_CRITIC")
+            self.write_critic_freeze(target)
+            self.apply_next(target, "PLAN_READY_FOR_CRITIC", "PLAN_FROZEN")
+            self.apply_next(target, "PLAN_FROZEN", "CONTROLLER_INITIALIZING")
             first = self.snapshot_and_bundle(target)
             profile = agent_flow.load_project_profile(target)
             change_class = agent_flow.classify_paths(["automation/agent_flow/schema.json"], profile)
             plan = agent_flow.invalidation_plan(change_class, review_target_id=first["review_target_id"])
             self.assertEqual(change_class, "CONTROL_PLANE_ONLY_CHANGED")
             self.assertFalse(plan["heavy_verifier_required"])
-            routed = agent_flow.route_findings(
+            unchanged = agent_flow.snapshot(target, "001_toy")
+            self.assertEqual(first["review_target_id"], unchanged["review_target_id"])
+
+            self.apply_next(target, "CONTROLLER_INITIALIZING", "VERIFIER_RUNNING")
+            self.write_verifier_freeze(target)
+            self.apply_next(target, "VERIFIER_RUNNING", "VERIFIER_FROZEN")
+            self.write_role_receipt(target, "Executor")
+            self.apply_next(target, "VERIFIER_FROZEN", "EXECUTOR_RUNNING")
+            self.write_executor_result(target)
+            self.apply_next(target, "EXECUTOR_RUNNING", "EVIDENCE_RUNNING")
+            self.apply_next(target, "EVIDENCE_RUNNING", "READY_FOR_PLANNER_REVIEW")
+            agent_flow.write_current_findings(
+                target,
+                "001_toy",
                 [
                     {
                         "finding_id": "F_AMBIG",
                         "classification": "CONTRACT_AMBIGUITY",
                         "blocking": True,
+                        "owner_role": "Planner",
                         "requirement_ids": ["REQ_EXAMPLE_001"],
+                        "summary": "contract ambiguous about numeric coercion",
+                        "observed_evidence": "Planner detected ambiguous requirement wording",
+                        "required_repair": "clarify frozen contract",
+                        "required_regression_evidence": "new target Review Bundle",
+                        "forbidden_workaround": "runtime roles must not choose semantics",
+                        "created_against_review_target_id": first["review_target_id"],
                     }
-                ]
+                ],
+                first["review_target_id"],
             )
+            self.apply_next(target, "READY_FOR_PLANNER_REVIEW", "WAITING_FOR_EXTERNAL_GPT")
+            routed = agent_flow.route_current_findings(target, "001_toy")
             self.assertEqual(routed["route"], "PLANNER_INTERPRET_CONTRACT")
+            self.apply_next(target, "WAITING_FOR_EXTERNAL_GPT", "PLANNER_REVISE_BOTH")
+            self.assertEqual(agent_flow.load_json(root / "CURRENT.json")["critic_mode"], "REQUIRED_CONTRACT_REVIEW")
+
             write(agent_flow.task_root(target, "001_toy") / "FROZEN_CONTRACT.md", "# Frozen Contract\n\nREQ_EXAMPLE_001: add returns numeric sum only.\n")
-            second = agent_flow.snapshot(target, "001_toy")
+            self.write_critic_freeze(target, critic_mode="REQUIRED_CONTRACT_REVIEW")
+            second = self.snapshot_and_bundle(target)
             self.assertNotEqual(first["review_target_id"], second["review_target_id"])
+            self.apply_next(target, "PLANNER_REVISE_BOTH", "VERIFIER_RUNNING")
+            self.write_verifier_freeze(target)
+            self.apply_next(target, "VERIFIER_RUNNING", "VERIFIER_FROZEN")
+            self.apply_next(target, "VERIFIER_FROZEN", "EXECUTOR_RUNNING")
+            self.write_executor_result(target)
+            agent_flow.write_current_findings(target, "001_toy", [], second["review_target_id"])
+            self.apply_next(target, "EXECUTOR_RUNNING", "EVIDENCE_RUNNING")
+            self.apply_next(target, "EVIDENCE_RUNNING", "READY_FOR_PLANNER_REVIEW")
+            self.apply_next(target, "READY_FOR_PLANNER_REVIEW", "WAITING_FOR_EXTERNAL_GPT")
+            self.write_planner_and_final_pass(target, second)
+            self.apply_next(target, "WAITING_FOR_EXTERNAL_GPT", "PLANNER_PASS_CANDIDATE")
+            self.apply_next(target, "PLANNER_PASS_CANDIDATE", "READY_FOR_CRITIC_FINAL_AUDIT")
+            self.apply_next(target, "READY_FOR_CRITIC_FINAL_AUDIT", "PLANNER_PASS")
+            self.apply_next(target, "PLANNER_PASS", "AWAIT_HUMAN_DECISION")
+            self.assertEqual(agent_flow.write_terminal_brief(target, "001_toy")["terminal_status"], "awaiting_human")
 
 
 if __name__ == "__main__":

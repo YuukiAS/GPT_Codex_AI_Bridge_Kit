@@ -30,6 +30,7 @@ FINDING_CLASSES = {
     "CONTRACT_AMBIGUITY",
     "CONTRACT_CONTRADICTION",
     "DIAGNOSTIC_ANOMALY",
+    "POTENTIAL_SCIENTIFIC_OR_PRODUCT_CHOICE",
     "SCIENTIFIC_OR_PRODUCT_CHOICE_REQUIRED",
 }
 CHANGE_CLASSES = {
@@ -79,6 +80,58 @@ TERMINAL_NOTIFICATION_STATES = {
     "STOPPED_MAX_ROUNDS",
 }
 CRITIC_MODES = {"REQUIRED_INITIAL", "STANDBY", "REQUIRED_CONTRACT_REVIEW", "REQUIRED_FINAL_AUDIT", "COMPLETE"}
+ALLOWED_TRANSITIONS = {
+    "PLAN_REQUESTED": {"PLAN_READY_FOR_CRITIC"},
+    "PLAN_READY_FOR_CRITIC": {"PLAN_FROZEN", "NEEDS_USER_SCIENTIFIC_OR_PRODUCT_CHOICE", "BLOCKED_REQUIRED_SOURCE"},
+    "PLAN_FROZEN": {"CONTROLLER_INITIALIZING"},
+    "CONTROLLER_INITIALIZING": {"VERIFIER_RUNNING"},
+    "VERIFIER_RUNNING": {"VERIFIER_FROZEN", "BLOCKED_ROLE_ISOLATION", "STOPPED_MAX_ROUNDS"},
+    "VERIFIER_FROZEN": {"EXECUTOR_RUNNING"},
+    "EXECUTOR_RUNNING": {"EVIDENCE_RUNNING", "PLANNER_REVISE_EXECUTOR", "BLOCKED_ROLE_ISOLATION", "STOPPED_MAX_ROUNDS"},
+    "EVIDENCE_RUNNING": {"CI_RUNNING", "READY_FOR_PLANNER_REVIEW"},
+    "CI_RUNNING": {"READY_FOR_PLANNER_REVIEW", "BLOCKED_CI"},
+    "READY_FOR_PLANNER_REVIEW": {"WAITING_FOR_EXTERNAL_GPT"},
+    "WAITING_FOR_EXTERNAL_GPT": {
+        "PLANNER_REVISE_EXECUTOR",
+        "PLANNER_REVISE_VERIFIER",
+        "PLANNER_REVISE_BOTH",
+        "PLANNER_PASS_CANDIDATE",
+        "NEEDS_USER_SCIENTIFIC_OR_PRODUCT_CHOICE",
+    },
+    "PLANNER_REVISE_EXECUTOR": {"EXECUTOR_RUNNING"},
+    "PLANNER_REVISE_VERIFIER": {"VERIFIER_RUNNING"},
+    "PLANNER_REVISE_BOTH": {"VERIFIER_RUNNING", "EXECUTOR_RUNNING"},
+    "PLANNER_PASS_CANDIDATE": {"READY_FOR_CRITIC_FINAL_AUDIT"},
+    "READY_FOR_CRITIC_FINAL_AUDIT": {"PLANNER_PASS", "CRITIC_FINAL_REVISE"},
+    "CRITIC_FINAL_REVISE": {"WAITING_FOR_EXTERNAL_GPT", "PLANNER_REVISE_EXECUTOR", "PLANNER_REVISE_VERIFIER", "PLANNER_REVISE_BOTH"},
+    "PLANNER_PASS": {"AWAIT_HUMAN_DECISION"},
+    "AWAIT_HUMAN_DECISION": set(),
+    "NEEDS_USER_SCIENTIFIC_OR_PRODUCT_CHOICE": set(),
+    "BLOCKED_REQUIRED_SOURCE": set(),
+    "BLOCKED_ROLE_ISOLATION": set(),
+    "BLOCKED_CONTRACT_DRIFT": set(),
+    "BLOCKED_CI": set(),
+    "STOPPED_MAX_ROUNDS": set(),
+    "STOPPED_USER": set(),
+}
+REQUIRED_FINAL_CRITIC_CHECKS = {
+    "contract_not_silently_weakened",
+    "requirement_ledger_not_expanded_by_runtime_roles",
+    "planner_blocking_requirements_closed",
+    "verifier_no_uncited_blocking_requirement_or_threshold",
+    "executor_no_test_aware_alternate_behavior",
+    "review_bundle_bound_to_current_target",
+    "required_evidence_passed",
+    "ci_passed_when_required",
+    "no_unresolved_contract_ambiguity_or_contradiction",
+}
+EVIDENCE_SUCCESS_STATUSES = {
+    "unit_test": {"PASS", "passed", "success"},
+    "runtime_probe": {"PASS", "passed", "success"},
+    "ci": {"PASS", "passed", "success"},
+    "review": {"PASS", "passed", "success"},
+    "artifact": {"PRESENT", "PASS", "success"},
+}
 CHANGE_CLASS_PRIORITY = [
     "CONTRACT_CHANGED",
     "REQUIREMENT_LEDGER_CHANGED",
@@ -282,10 +335,27 @@ def default_profile(project_name: str) -> dict[str, Any]:
             "documentation": ["docs/**", "README.md", "CHANGELOG.md"],
         },
         "role_write_scopes": {
-            "Planner": ["automation/agent_flow/tasks/**/PLANNER_DRAFT.md", "automation/agent_flow/tasks/**/planner_reviews/**"],
-            "Critic": ["automation/agent_flow/tasks/**/critic_reviews/**", "automation/agent_flow/tasks/**/FROZEN_CONTRACT.md", "automation/agent_flow/tasks/**/REQUIREMENT_LEDGER.json"],
+            "Planner": [
+                "automation/agent_flow/tasks/**/PLANNER_DRAFT.md",
+                "automation/agent_flow/tasks/**/PLANNER_PASS_CANDIDATE.json",
+                "results/**/planner_reviews/**",
+            ],
+            "Critic": [
+                "automation/agent_flow/tasks/**/CRITIC_FREEZE.json",
+                "automation/agent_flow/tasks/**/FINAL_CRITIC_AUDIT.json",
+                "automation/agent_flow/tasks/**/FROZEN_CONTRACT.md",
+                "automation/agent_flow/tasks/**/REQUIREMENT_LEDGER.json",
+                "results/**/critic_reviews/**",
+            ],
             "Controller": ["automation/agent_flow/tasks/**/CURRENT.json", "results/**/controller_report.md", "results/**/notification_brief.json"],
-            "Verifier": ["tests/**", "verifier/**", "automation/agent_flow/tasks/**/VERIFIER_SOURCE_MANIFEST.json", "results/**/verification/**"],
+            "Verifier": [
+                "tests/**",
+                "verifier/**",
+                "automation/agent_flow/tasks/**/VERIFIER_SOURCE_MANIFEST.json",
+                "automation/agent_flow/tasks/**/VERIFIER_FREEZE.json",
+                "results/**/verification/**",
+                "results/**/findings/**",
+            ],
             "Executor": ["src/**", "app/**", "lib/**", "results/**/implementation/**"],
         },
     }
@@ -377,6 +447,7 @@ class RoleReceipt:
     start_or_resume_status: str
     produced_commit: str
     produced_evidence_id: str
+    commit_kind: str = "production"
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -389,6 +460,7 @@ class RoleReceipt:
             "start_or_resume_status": self.start_or_resume_status,
             "produced_commit": self.produced_commit,
             "produced_evidence_id": self.produced_evidence_id,
+            "commit_kind": self.commit_kind,
         }
 
 
@@ -483,6 +555,9 @@ def load_repo_schema(target: Path) -> dict[str, Any]:
         "roles": ROLES,
         "finding_classes": FINDING_CLASSES,
         "change_classes": CHANGE_CLASSES,
+        "task_states": TASK_STATES,
+        "critic_modes": CRITIC_MODES,
+        "terminal_states": TERMINAL_NOTIFICATION_STATES,
     }
     for key, values in expected.items():
         actual = set(schema.get(key, []))
@@ -490,7 +565,60 @@ def load_repo_schema(target: Path) -> dict[str, Any]:
             missing = sorted(values - actual)
             extra = sorted(actual - values)
             raise ValueError(f"schema.json drift for {key}: missing={missing} extra={extra}")
+    graph = schema.get("allowed_transitions")
+    if not isinstance(graph, dict):
+        raise ValueError("schema.json missing allowed_transitions")
+    actual_graph = {str(state): set(targets) for state, targets in graph.items() if isinstance(targets, list)}
+    if actual_graph != ALLOWED_TRANSITIONS:
+        missing_states = sorted(set(ALLOWED_TRANSITIONS) - set(actual_graph))
+        extra_states = sorted(set(actual_graph) - set(ALLOWED_TRANSITIONS))
+        drift_edges = sorted(
+            state for state in set(ALLOWED_TRANSITIONS).intersection(actual_graph) if actual_graph[state] != ALLOWED_TRANSITIONS[state]
+        )
+        raise ValueError(f"schema.json drift for allowed_transitions: missing_states={missing_states} extra_states={extra_states} drift_edges={drift_edges}")
     return schema
+
+
+def validate_task_envelope(target: Path, task_key: str) -> tuple[dict[str, Any] | None, dict[str, Any] | None, list[str]]:
+    root = task_root(target, task_key)
+    errors: list[str] = []
+    if root.name != task_key:
+        errors.append("task directory name must match task_key")
+    request_path = root / "REQUEST.json"
+    current_path = root / "CURRENT.json"
+    request = load_json(request_path) if request_path.exists() else None
+    current = load_json(current_path) if current_path.exists() else None
+    if request is None:
+        errors.append("REQUEST.json missing")
+    if current is None:
+        errors.append("CURRENT.json missing")
+    if request is None or current is None:
+        return request, current, errors
+    if request.get("schema") != "AI_BRIDGE_AGENT_FLOW_REQUEST_V1":
+        errors.append("REQUEST.schema mismatch")
+    if current.get("schema") != "AI_BRIDGE_AGENT_FLOW_CURRENT_V1":
+        errors.append("CURRENT.schema mismatch")
+    if request.get("task_key") != task_key:
+        errors.append("REQUEST.task_key must match task directory")
+    if current.get("task_key") != task_key:
+        errors.append("CURRENT.task_key must match task directory")
+    if not request.get("request_nonce"):
+        errors.append("REQUEST.request_nonce missing")
+    if not current.get("request_nonce"):
+        errors.append("CURRENT.request_nonce missing")
+    if request.get("request_nonce") != current.get("request_nonce"):
+        errors.append("REQUEST/CURRENT request_nonce mismatch")
+    if not isinstance(request.get("profile"), str) or not request.get("profile"):
+        errors.append("REQUEST.profile missing")
+    if request.get("integration_branch") != current.get("integration_branch"):
+        errors.append("REQUEST/CURRENT integration_branch mismatch")
+    if not isinstance(request.get("max_repair_rounds"), int) or request.get("max_repair_rounds") < 0:
+        errors.append("REQUEST.max_repair_rounds must be a non-negative integer")
+    if current.get("critic_mode") not in CRITIC_MODES:
+        errors.append("CURRENT.critic_mode invalid")
+    if current.get("state") not in TASK_STATES:
+        errors.append("CURRENT.state invalid")
+    return request, current, errors
 
 
 def init_task(
@@ -546,6 +674,9 @@ def init_task(
                 "planner_decision": None,
                 "final_critic_decision": None,
                 "open_findings": [],
+                "findings_ref": None,
+                "findings_sha256": None,
+                "blocking_finding_ids": [],
                 "heavy_verifier_runs": [],
                 "last_change_class": None,
                 "next_action": "RUN_PLANNER_INITIAL",
@@ -859,12 +990,21 @@ def planner_choice_is_bound(target: Path, task_key: str, finding: dict[str, Any]
     rel = finding.get("planner_classification_artifact")
     if not isinstance(rel, str) or not rel:
         return False
-    path = task_root(target, task_key) / rel
+    path = target / rel if rel.startswith(("results/", "automation/")) else task_root(target, task_key) / rel
     if not path.exists():
         return False
     artifact = load_json(path)
+    artifact_errors = validate_machine_review_artifact(
+        target,
+        task_key,
+        artifact,
+        role="Planner",
+        decision="SCIENTIFIC_OR_PRODUCT_CHOICE_REQUIRED",
+        review_target_required=True,
+    )
     return (
-        artifact.get("decision") == "SCIENTIFIC_OR_PRODUCT_CHOICE_REQUIRED"
+        not artifact_errors
+        and artifact.get("decision") == "SCIENTIFIC_OR_PRODUCT_CHOICE_REQUIRED"
         and artifact.get("finding_id") == finding.get("finding_id")
         and artifact.get("review_target_id") == finding.get("created_against_review_target_id")
     )
@@ -899,6 +1039,7 @@ def route_findings(
         "CONTRACT_AMBIGUITY": ("PLANNER_INTERPRET_CONTRACT", "Planner"),
         "CONTRACT_CONTRADICTION": ("PLANNER_TO_CRITIC_CONTRACT_REVIEW", "Planner"),
         "DIAGNOSTIC_ANOMALY": ("PLANNER_DIAGNOSTIC_REVIEW", "Planner"),
+        "POTENTIAL_SCIENTIFIC_OR_PRODUCT_CHOICE": ("PLANNER_REVIEW_POTENTIAL_USER_CHOICE", "Planner"),
         "SCIENTIFIC_OR_PRODUCT_CHOICE_REQUIRED": ("ASK_USER", "User"),
     }
     route, role = routes[classification]
@@ -916,7 +1057,7 @@ def normalize_adapter_result(
         classification = finding.get("classification")
         if classification not in FINDING_CLASSES:
             raise ValueError(f"adapter produced unsupported finding classification: {classification}")
-        if classification == "SCIENTIFIC_OR_PRODUCT_CHOICE_REQUIRED" and not finding.get("planner_classified"):
+        if classification == "SCIENTIFIC_OR_PRODUCT_CHOICE_REQUIRED":
             raise ValueError("project adapter cannot independently create a user scientific/product choice")
     return {
         "schema": "AI_BRIDGE_PROJECT_ADAPTER_RESULT_V1",
@@ -926,7 +1067,7 @@ def normalize_adapter_result(
     }
 
 
-def validate_role_receipt(receipt: dict[str, Any]) -> list[str]:
+def validate_role_receipt(receipt: dict[str, Any], *, request_nonce: str | None = None, review_target_id: str | None = None) -> list[str]:
     errors: list[str] = []
     role = receipt.get("role")
     if role not in ROLES:
@@ -948,6 +1089,37 @@ def validate_role_receipt(receipt: dict[str, Any]) -> list[str]:
     ]:
         if key not in receipt:
             errors.append(f"role receipt missing {key}")
+    if not str(receipt.get("produced_commit") or "").strip():
+        errors.append("role receipt produced_commit must be non-empty")
+    if not str(receipt.get("produced_evidence_id") or "").strip():
+        errors.append("role receipt produced_evidence_id must be non-empty")
+    if request_nonce and receipt.get("base_task_nonce") != request_nonce:
+        errors.append("role receipt base_task_nonce mismatch")
+    if review_target_id and receipt.get("base_review_target_id") not in {None, review_target_id}:
+        errors.append("role receipt base_review_target_id mismatch")
+    return errors
+
+
+def git_commit_changed_paths(target: Path, commit: str) -> tuple[list[str] | None, str | None]:
+    try:
+        subprocess.check_call(["git", "cat-file", "-e", f"{commit}^{{commit}}"], cwd=target, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        output = git_output(target, ["diff-tree", "--no-commit-id", "--name-only", "-r", commit])
+        return sorted(line.strip() for line in output.splitlines() if line.strip()), None
+    except Exception as exc:
+        return None, str(exc)
+
+
+def validate_role_commit_diff(target: Path, role: str, receipt: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    if receipt.get("commit_kind") != "git":
+        return errors
+    commit = str(receipt.get("produced_commit") or "")
+    actual, err = git_commit_changed_paths(target, commit)
+    if actual is None:
+        return [f"{role} receipt produced_commit is not a valid Git commit: {commit}"]
+    claimed = sorted(str(path) for path in receipt.get("touched_paths", []) if str(path))
+    if claimed and claimed != actual:
+        errors.append(f"{role} receipt touched_paths do not match produced_commit diff: claimed={claimed} actual={actual}")
     return errors
 
 
@@ -997,7 +1169,7 @@ def role_receipt_path(target: Path, task_key: str, role: str) -> Path:
 
 def load_role_receipts(target: Path, task_key: str) -> dict[str, dict[str, Any]]:
     receipts = {}
-    for role in ["Controller", "Verifier", "Executor"]:
+    for role in ["Planner", "Critic", "Controller", "Verifier", "Executor"]:
         path = role_receipt_path(target, task_key, role)
         if path.exists():
             receipts[role] = load_json(path)
@@ -1007,13 +1179,19 @@ def load_role_receipts(target: Path, task_key: str) -> dict[str, dict[str, Any]]
 def validate_role_receipts(target: Path, task_key: str, profile: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     receipts = load_role_receipts(target, task_key)
+    request = load_json(task_root(target, task_key) / "REQUEST.json")
+    snapshot_path = task_root(target, task_key) / "SOURCE_SNAPSHOT.json"
+    review_target_id = load_json(snapshot_path).get("review_target_id") if snapshot_path.exists() else None
     session_ids: dict[str, str] = {}
     worktree_ids: dict[str, str] = {}
-    for role in ["Controller", "Verifier", "Executor"]:
+    for role in ["Planner", "Critic", "Controller", "Verifier", "Executor"]:
         receipt = receipts.get(role)
         if not receipt:
             continue
-        errors.extend(f"{role} receipt: {item}" for item in validate_role_receipt(receipt))
+        errors.extend(
+            f"{role} receipt: {item}"
+            for item in validate_role_receipt(receipt, request_nonce=request.get("request_nonce"), review_target_id=review_target_id)
+        )
         session = str(receipt.get("session_id") or receipt.get("thread_id") or "")
         worktree = str(receipt.get("worktree_id") or "")
         if session:
@@ -1027,6 +1205,44 @@ def validate_role_receipts(target: Path, task_key: str, profile: dict[str, Any])
         touched = receipt.get("touched_paths", [])
         if isinstance(touched, list):
             errors.extend(validate_touched_paths(role, [str(path) for path in touched], profile))
+        errors.extend(validate_role_commit_diff(target, role, receipt))
+    return errors
+
+
+def validate_machine_review_artifact(
+    target: Path,
+    task_key: str,
+    artifact: dict[str, Any],
+    *,
+    role: str,
+    decision: str,
+    review_target_required: bool,
+) -> list[str]:
+    errors: list[str] = []
+    request = load_json(task_root(target, task_key) / "REQUEST.json")
+    snapshot_path = task_root(target, task_key) / "SOURCE_SNAPSHOT.json"
+    review_target_id = load_json(snapshot_path).get("review_target_id") if snapshot_path.exists() else None
+    for key in ["role", "task_key", "request_nonce", "artifact_path", "artifact_sha256", "decision", "touched_paths"]:
+        if key not in artifact:
+            errors.append(f"{role} review artifact missing {key}")
+    if errors:
+        return errors
+    if artifact.get("role") != role:
+        errors.append(f"{role} review artifact role mismatch")
+    if artifact.get("task_key") != task_key:
+        errors.append(f"{role} review artifact task_key mismatch")
+    if artifact.get("request_nonce") != request.get("request_nonce"):
+        errors.append(f"{role} review artifact request_nonce mismatch")
+    if artifact.get("decision") != decision:
+        errors.append(f"{role} review artifact decision mismatch")
+    if review_target_required and artifact.get("review_target_id") != review_target_id:
+        errors.append(f"{role} review artifact review_target_id mismatch")
+    rel = str(artifact.get("artifact_path"))
+    path = target / rel
+    if not path.exists():
+        errors.append(f"{role} review artifact path missing: {rel}")
+    elif artifact.get("artifact_sha256") != file_sha256(path):
+        errors.append(f"{role} review artifact sha256 mismatch")
     return errors
 
 
@@ -1078,6 +1294,125 @@ def validate_finding_against_ledger(
     return errors
 
 
+def current_findings_path(target: Path, task_key: str) -> Path:
+    return result_root(target, task_key) / "findings" / "CURRENT_FINDINGS.json"
+
+
+def load_current_findings(target: Path, task_key: str) -> dict[str, Any]:
+    path = current_findings_path(target, task_key)
+    if path.exists():
+        return load_json(path)
+    current = load_json(task_root(target, task_key) / "CURRENT.json")
+    legacy = current.get("open_findings", [])
+    return {
+        "schema": "AI_BRIDGE_CURRENT_FINDINGS_V1",
+        "task_key": task_key,
+        "request_nonce": current.get("request_nonce"),
+        "review_target_id": current.get("current_review_target_id"),
+        "findings": legacy if isinstance(legacy, list) else [],
+    }
+
+
+def findings_digest(payload: dict[str, Any]) -> str:
+    return payload_digest(payload, omit={"findings_sha256"})
+
+
+def validate_current_findings(target: Path, task_key: str, requirements: dict[str, dict[str, Any]] | None = None) -> tuple[dict[str, Any], list[str]]:
+    errors: list[str] = []
+    payload = load_current_findings(target, task_key)
+    request = load_json(task_root(target, task_key) / "REQUEST.json")
+    current = load_json(task_root(target, task_key) / "CURRENT.json")
+    snapshot_path = task_root(target, task_key) / "SOURCE_SNAPSHOT.json"
+    current_target = load_json(snapshot_path).get("review_target_id") if snapshot_path.exists() else current.get("current_review_target_id")
+    if payload.get("schema") != "AI_BRIDGE_CURRENT_FINDINGS_V1":
+        errors.append("CURRENT_FINDINGS schema mismatch")
+    if payload.get("task_key") != task_key:
+        errors.append("CURRENT_FINDINGS task_key mismatch")
+    if payload.get("request_nonce") != request.get("request_nonce"):
+        errors.append("CURRENT_FINDINGS request_nonce mismatch")
+    if payload.get("review_target_id") not in {None, current_target}:
+        errors.append("CURRENT_FINDINGS review_target_id mismatch")
+    if "findings_sha256" in payload and payload.get("findings_sha256") != findings_digest(payload):
+        errors.append("CURRENT_FINDINGS findings_sha256 stale")
+    if current.get("findings_ref"):
+        if current.get("findings_ref") != "results/<task_key>/findings/CURRENT_FINDINGS.json":
+            errors.append("CURRENT findings_ref must be results/<task_key>/findings/CURRENT_FINDINGS.json")
+        if current.get("findings_sha256") != payload.get("findings_sha256"):
+            errors.append("CURRENT findings_sha256 mismatch")
+    findings = payload.get("findings")
+    if not isinstance(findings, list):
+        errors.append("CURRENT_FINDINGS findings must be a list")
+        findings = []
+    if requirements is not None:
+        for finding in findings:
+            if isinstance(finding, dict):
+                errors.extend(validate_finding_against_ledger(finding, requirements, current_target))
+                if finding.get("classification") == "SCIENTIFIC_OR_PRODUCT_CHOICE_REQUIRED" and not planner_choice_is_bound(target, task_key, finding):
+                    errors.append("SCIENTIFIC_OR_PRODUCT_CHOICE_REQUIRED requires bound Planner artifact")
+            else:
+                errors.append("finding entry must be an object")
+    blocking_ids = [str(finding.get("finding_id")) for finding in findings if isinstance(finding, dict) and finding.get("blocking")]
+    if current.get("blocking_finding_ids") is not None and current.get("blocking_finding_ids") != blocking_ids:
+        errors.append("CURRENT blocking_finding_ids mismatch")
+    return payload, errors
+
+
+def write_current_findings(target: Path, task_key: str, findings: list[dict[str, Any]], review_target_id: str | None) -> dict[str, Any]:
+    request = load_json(task_root(target, task_key) / "REQUEST.json")
+    payload = {
+        "schema": "AI_BRIDGE_CURRENT_FINDINGS_V1",
+        "task_key": task_key,
+        "request_nonce": request.get("request_nonce"),
+        "review_target_id": review_target_id,
+        "findings": findings,
+    }
+    payload["findings_sha256"] = findings_digest(payload)
+    write_json(current_findings_path(target, task_key), payload)
+    current_path = task_root(target, task_key) / "CURRENT.json"
+    current = load_json(current_path)
+    current["open_findings"] = findings
+    current["findings_ref"] = "results/<task_key>/findings/CURRENT_FINDINGS.json"
+    current["findings_sha256"] = payload["findings_sha256"]
+    current["blocking_finding_ids"] = [str(finding.get("finding_id")) for finding in findings if finding.get("blocking")]
+    write_json(current_path, current)
+    return payload
+
+
+def evidence_path_allowed(rel: str, task_key: str) -> bool:
+    allowed = [
+        f"results/{task_key}/verification/**",
+        f"results/{task_key}/implementation/**",
+        f"results/{task_key}/receipts/**",
+        f"results/{task_key}/planner_reviews/**",
+        f"results/{task_key}/critic_reviews/**",
+        f"automation/agent_flow/tasks/{task_key}/**",
+    ]
+    return matches_any(rel, allowed)
+
+
+def validate_evidence_entry(target: Path, task_key: str, evidence: dict[str, Any], review_target_id: str) -> list[str]:
+    errors: list[str] = []
+    for key in ["evidence_id", "kind", "path", "sha256", "status", "required", "target_sensitive", "review_target_id"]:
+        if key not in evidence:
+            errors.append(f"required evidence missing {key}")
+    if errors:
+        return errors
+    rel = str(evidence.get("path"))
+    if not evidence_path_allowed(rel, task_key):
+        errors.append(f"required evidence path outside allowed scope: {rel}")
+    path = target / rel
+    if not path.exists() or not path.is_file():
+        errors.append(f"required evidence file missing: {rel}")
+    elif evidence.get("sha256") != file_sha256(path):
+        errors.append(f"required evidence sha256 mismatch: {rel}")
+    allowed_statuses = EVIDENCE_SUCCESS_STATUSES.get(str(evidence.get("kind")), {"PASS", "success"})
+    if evidence.get("status") not in allowed_statuses:
+        errors.append(f"required evidence status is not successful: {evidence.get('status')}")
+    if evidence.get("target_sensitive") and evidence.get("review_target_id") != review_target_id:
+        errors.append("target-sensitive evidence is bound to a different review_target_id")
+    return errors
+
+
 def validate_review_bundle(target: Path, task_key: str) -> tuple[dict[str, Any], list[str]]:
     bundle_path = result_root(target, task_key) / "REVIEW_BUNDLE.json"
     snapshot_path = task_root(target, task_key) / "SOURCE_SNAPSHOT.json"
@@ -1093,7 +1428,6 @@ def validate_review_bundle(target: Path, task_key: str) -> tuple[dict[str, Any],
         "implementation_semantic_digest_sha256",
         "verifier_semantic_digest_sha256",
         "required_evidence",
-        "open_findings",
     ]:
         if key not in bundle:
             errors.append(f"REVIEW_BUNDLE.json missing {key}")
@@ -1112,9 +1446,16 @@ def validate_review_bundle(target: Path, task_key: str) -> tuple[dict[str, Any],
             errors.append(f"REVIEW_BUNDLE.json {key} does not match SOURCE_SNAPSHOT.json")
     if "historical_runtime_manifest" in bundle or "all_historical_receipts" in bundle:
         errors.append("REVIEW_BUNDLE.json must not include giant historical runtime manifests")
-    for evidence in bundle.get("required_evidence", []) if isinstance(bundle.get("required_evidence"), list) else []:
-        if isinstance(evidence, dict) and evidence.get("target_sensitive") and evidence.get("review_target_id") != bundle.get("review_target_id"):
-            errors.append("target-sensitive evidence is bound to a different review_target_id")
+    required_evidence = bundle.get("required_evidence")
+    if not isinstance(required_evidence, list):
+        errors.append("REVIEW_BUNDLE.json required_evidence must be a list")
+        required_evidence = []
+    for evidence in required_evidence:
+        if not isinstance(evidence, dict):
+            errors.append("required evidence entry must be an object")
+            continue
+        if evidence.get("required"):
+            errors.extend(validate_evidence_entry(target, task_key, evidence, str(bundle.get("review_target_id"))))
     if errors:
         raise ValueError("; ".join(errors))
     return bundle, []
@@ -1157,6 +1498,65 @@ def validate_planner_pass_candidate(target: Path, task_key: str) -> list[str]:
         errors.append("Planner pass candidate request_nonce mismatch")
     if candidate.get("review_target_id") != snapshot_payload.get("review_target_id"):
         errors.append("Planner pass candidate is not bound to current review_target_id")
+    errors.extend(
+        validate_machine_review_artifact(
+            target,
+            task_key,
+            candidate,
+            role="Planner",
+            decision="PLANNER_PASS_CANDIDATE",
+            review_target_required=True,
+        )
+    )
+    return errors
+
+
+def validate_critic_freeze(target: Path, task_key: str) -> list[str]:
+    root = task_root(target, task_key)
+    path = root / "CRITIC_FREEZE.json"
+    if not path.exists():
+        return ["PLAN_FROZEN requires Critic freeze artifact"]
+    errors: list[str] = []
+    freeze = load_json(path)
+    request = load_json(root / "REQUEST.json")
+    required = [
+        "schema",
+        "task_key",
+        "request_nonce",
+        "decision",
+        "frozen_contract_sha256",
+        "requirement_ledger_sha256",
+        "critic_mode",
+    ]
+    for key in required:
+        if key not in freeze:
+            errors.append(f"Critic freeze artifact missing {key}")
+    if errors:
+        return errors
+    if freeze.get("schema") != "AI_BRIDGE_CRITIC_FREEZE_V1":
+        errors.append("Critic freeze artifact schema mismatch")
+    if freeze.get("task_key") != task_key:
+        errors.append("Critic freeze artifact task_key mismatch")
+    if freeze.get("request_nonce") != request.get("request_nonce"):
+        errors.append("Critic freeze artifact request_nonce mismatch")
+    if freeze.get("decision") != "PLAN_FROZEN":
+        errors.append("Critic freeze decision must be PLAN_FROZEN")
+    if freeze.get("critic_mode") not in {"REQUIRED_INITIAL", "REQUIRED_CONTRACT_REVIEW"}:
+        errors.append("Critic freeze critic_mode invalid")
+    if (root / "FROZEN_CONTRACT.md").exists() and freeze.get("frozen_contract_sha256") != file_sha256(root / "FROZEN_CONTRACT.md"):
+        errors.append("Critic freeze artifact frozen_contract_sha256 mismatch")
+    if (root / "REQUIREMENT_LEDGER.json").exists() and freeze.get("requirement_ledger_sha256") != file_sha256(root / "REQUIREMENT_LEDGER.json"):
+        errors.append("Critic freeze artifact requirement_ledger_sha256 mismatch")
+    errors.extend(
+        validate_machine_review_artifact(
+            target,
+            task_key,
+            freeze,
+            role="Critic",
+            decision="PLAN_FROZEN",
+            review_target_required=False,
+        )
+    )
     return errors
 
 
@@ -1223,13 +1623,30 @@ def validate_final_critic_artifact(target: Path, task_key: str) -> list[str]:
     if artifact.get("decision") == "CRITIC_FINAL_PASS" and artifact.get("blocking_findings"):
         errors.append("CRITIC_FINAL_PASS cannot contain blocking_findings")
     checks = artifact.get("audit_checks")
-    if not isinstance(checks, dict) or not checks or not all(value is True for value in checks.values()):
-        errors.append("Final Critic pass requires all audit_checks true")
+    if not isinstance(checks, dict):
+        errors.append("Final Critic audit_checks must be an object")
+    else:
+        missing_checks = sorted(REQUIRED_FINAL_CRITIC_CHECKS - set(checks))
+        if missing_checks:
+            errors.append(f"Final Critic missing required audit_checks: {missing_checks}")
+        for key in REQUIRED_FINAL_CRITIC_CHECKS:
+            if checks.get(key) is not True:
+                errors.append(f"Final Critic required audit_check must be true: {key}")
     touched = artifact.get("touched_paths")
     if not isinstance(touched, list):
         errors.append("Final Critic touched_paths must be an explicit list")
     elif touched:
         errors.append("Final Critic has no implementation/verifier write authority")
+    errors.extend(
+        validate_machine_review_artifact(
+            target,
+            task_key,
+            artifact,
+            role="Critic",
+            decision=str(artifact.get("decision")),
+            review_target_required=True,
+        )
+    )
     return errors
 
 
@@ -1239,6 +1656,13 @@ def has_blocking_findings(current: dict[str, Any], bundle: dict[str, Any] | None
             if isinstance(finding, dict) and finding.get("blocking"):
                 return True
     return False
+
+
+def has_current_blocking_findings(target: Path, task_key: str) -> bool:
+    findings, errors = validate_current_findings(target, task_key)
+    if errors:
+        return True
+    return any(isinstance(finding, dict) and finding.get("blocking") for finding in findings.get("findings", []))
 
 
 def validate_untracked_semantic_sources(target: Path, profile: dict[str, Any]) -> list[str]:
@@ -1263,8 +1687,7 @@ def validate_transition_predicates(target: Path, task_key: str, state: str, curr
         errors.append("PLAN_READY_FOR_CRITIC requires current PLANNER_DRAFT artifact")
     if state == "PLAN_FROZEN":
         freeze = root / "CRITIC_FREEZE.json"
-        if not freeze.exists():
-            errors.append("PLAN_FROZEN requires Critic freeze artifact")
+        errors.extend(validate_critic_freeze(target, task_key))
         if not (root / "FROZEN_CONTRACT.md").exists():
             errors.append("PLAN_FROZEN requires FROZEN_CONTRACT.md")
         if not (root / "REQUIREMENT_LEDGER.json").exists():
@@ -1274,12 +1697,6 @@ def validate_transition_predicates(target: Path, task_key: str, state: str, curr
                 validate_requirement_ledger(load_json(root / "REQUIREMENT_LEDGER.json"))
             except Exception as exc:
                 errors.append(f"PLAN_FROZEN ledger invalid: {exc}")
-        if freeze.exists() and (root / "FROZEN_CONTRACT.md").exists() and (root / "REQUIREMENT_LEDGER.json").exists():
-            freeze_payload = load_json(freeze)
-            if freeze_payload.get("frozen_contract_sha256") != file_sha256(root / "FROZEN_CONTRACT.md"):
-                errors.append("Critic freeze artifact frozen_contract_sha256 mismatch")
-            if freeze_payload.get("requirement_ledger_sha256") != file_sha256(root / "REQUIREMENT_LEDGER.json"):
-                errors.append("Critic freeze artifact requirement_ledger_sha256 mismatch")
     if state == "VERIFIER_FROZEN":
         receipt = root / "VERIFIER_FREEZE.json"
         manifest = root / "VERIFIER_SOURCE_MANIFEST.json"
@@ -1296,7 +1713,19 @@ def validate_transition_predicates(target: Path, task_key: str, state: str, curr
         if not role_receipt.exists():
             errors.append("VERIFIER_FROZEN requires Verifier role receipt")
         else:
-            errors.extend(f"Verifier role receipt: {item}" for item in validate_role_receipt(load_json(role_receipt)))
+            request = load_json(root / "REQUEST.json")
+            snapshot = load_json(snapshot_path) if snapshot_path.exists() else {}
+            errors.extend(
+                f"Verifier role receipt: {item}"
+                for item in validate_role_receipt(
+                    load_json(role_receipt),
+                    request_nonce=request.get("request_nonce"),
+                    review_target_id=snapshot.get("review_target_id"),
+                )
+            )
+    if state == "EVIDENCE_RUNNING":
+        if not (result_root(target, task_key) / "implementation" / "executor_result.json").exists():
+            errors.append("EVIDENCE_RUNNING requires Executor result artifact")
     if state == "READY_FOR_PLANNER_REVIEW":
         if not snapshot_path.exists():
             errors.append("READY_FOR_PLANNER_REVIEW requires SOURCE_SNAPSHOT.json")
@@ -1309,8 +1738,6 @@ def validate_transition_predicates(target: Path, task_key: str, state: str, curr
         if bundle_path.exists():
             try:
                 bundle, _ = validate_review_bundle(target, task_key)
-                if has_blocking_findings(current, bundle):
-                    errors.append("READY_FOR_PLANNER_REVIEW has unresolved blocking finding")
                 if profile.get("requires_ci") or profile.get("ci", {}).get("required"):
                     ci = bundle.get("ci_receipt")
                     if not isinstance(ci, dict) or ci.get("status") != "PASS":
@@ -1326,8 +1753,7 @@ def validate_transition_predicates(target: Path, task_key: str, state: str, curr
         errors.extend(validate_planner_pass_candidate(target, task_key))
         errors.extend(validate_final_critic_artifact(target, task_key))
         if bundle_path.exists():
-            bundle = load_json(bundle_path)
-            if has_blocking_findings(current, bundle):
+            if has_current_blocking_findings(target, task_key):
                 errors.append(f"{state} has unresolved blocking findings")
         if state == "AWAIT_HUMAN_DECISION" and current.get("terminal_policy") != "human_gate":
             errors.append("AWAIT_HUMAN_DECISION requires terminal_policy=human_gate")
@@ -1337,9 +1763,11 @@ def validate_transition_predicates(target: Path, task_key: str, state: str, curr
 def validate_task_state(target: Path, task_key: str, profile: dict[str, Any] | None = None) -> list[str]:
     profile = load_project_profile(target) if profile is None else profile
     root = task_root(target, task_key)
-    current = load_json(root / "CURRENT.json")
+    _, current, envelope_errors = validate_task_envelope(target, task_key)
+    if current is None:
+        return envelope_errors
     state = current.get("state")
-    errors: list[str] = []
+    errors: list[str] = list(envelope_errors)
     if state not in TASK_STATES:
         errors.append(f"invalid state: {state}")
     errors.extend(validate_transition_predicates(target, task_key, str(state), current, profile))
@@ -1370,25 +1798,15 @@ def validate_agent_flow(target: Path) -> tuple[list[str], int]:
     if tasks_dir.exists():
         for task_dir in sorted(path for path in tasks_dir.iterdir() if path.is_dir()):
             task_key = task_dir.name
-            for required in ["REQUEST.json", "CURRENT.json"]:
-                if not (task_dir / required).exists():
-                    errors.append(f"{task_key} missing {required}")
+            request, current, envelope_errors = validate_task_envelope(target, task_key)
+            errors.extend(f"{task_key}: {item}" for item in envelope_errors)
             if (task_dir / "REQUIREMENT_LEDGER.json").exists():
                 try:
                     ledger = load_json(task_dir / "REQUIREMENT_LEDGER.json")
                     validate_requirement_ledger(ledger)
                     requirements = ledger_requirements_by_id(ledger)
-                    findings_path = result_root(target, task_key) / "open_findings.json"
-                    if findings_path.exists():
-                        for finding in load_json(findings_path).get("findings", []):
-                            current_target = None
-                            snapshot_path = task_dir / "SOURCE_SNAPSHOT.json"
-                            if snapshot_path.exists():
-                                current_target = load_json(snapshot_path).get("review_target_id")
-                            errors.extend(
-                                f"{task_key}: {item}"
-                                for item in validate_finding_against_ledger(finding, requirements, current_target)
-                            )
+                    _, finding_errors = validate_current_findings(target, task_key, requirements)
+                    errors.extend(f"{task_key}: {item}" for item in finding_errors)
                 except Exception as exc:
                     errors.append(f"{task_key}: {exc}")
             if profile:
@@ -1477,6 +1895,19 @@ def integration_plan(target: Path, task_key: str, role: str, role_commit: str) -
     }
 
 
+def transition_allowed(source_state: str, next_state: str) -> bool:
+    return next_state in ALLOWED_TRANSITIONS.get(source_state, set())
+
+
+def route_current_findings(target: Path, task_key: str) -> dict[str, Any]:
+    ledger_path = task_root(target, task_key) / "REQUIREMENT_LEDGER.json"
+    requirements = ledger_requirements_by_id(load_json(ledger_path)) if ledger_path.exists() else {}
+    findings, errors = validate_current_findings(target, task_key, requirements)
+    if errors:
+        raise ValueError("; ".join(errors))
+    return route_findings(findings.get("findings", []), target=target, task_key=task_key)
+
+
 def plan_transition(target: Path, task_key: str) -> dict[str, Any]:
     profile = load_project_profile(target)
     current = load_json(task_root(target, task_key) / "CURRENT.json")
@@ -1489,19 +1920,63 @@ def plan_transition(target: Path, task_key: str) -> dict[str, Any]:
     if state == "PLAN_READY_FOR_CRITIC":
         return {"state": state, "valid": True, "next_state": "PLAN_FROZEN", "next_action": "RUN_CRITIC_INITIAL"}
     if state == "PLAN_FROZEN":
+        return {"state": state, "valid": True, "next_state": "CONTROLLER_INITIALIZING", "next_action": "INITIALIZE_CONTROLLER"}
+    if state == "CONTROLLER_INITIALIZING":
         return {"state": state, "valid": True, "next_state": "VERIFIER_RUNNING", "next_action": "LAUNCH_VERIFIER"}
+    if state == "VERIFIER_RUNNING":
+        return {"state": state, "valid": True, "next_state": "VERIFIER_FROZEN", "next_action": "WAIT_FOR_VERIFIER_FREEZE"}
     if state == "VERIFIER_FROZEN":
         return {"state": state, "valid": True, "next_state": "EXECUTOR_RUNNING", "next_action": "LAUNCH_EXECUTOR"}
+    if state == "EXECUTOR_RUNNING":
+        return {"state": state, "valid": True, "next_state": "EVIDENCE_RUNNING", "next_action": "COLLECT_RUNTIME_EVIDENCE"}
+    if state == "EVIDENCE_RUNNING":
+        if profile.get("requires_ci") or profile.get("ci", {}).get("required"):
+            return {"state": state, "valid": True, "next_state": "CI_RUNNING", "next_action": "RUN_CI"}
+        return {"state": state, "valid": True, "next_state": "READY_FOR_PLANNER_REVIEW", "next_action": "RUN_PLANNER_REVIEW"}
+    if state == "CI_RUNNING":
+        return {"state": state, "valid": True, "next_state": "READY_FOR_PLANNER_REVIEW", "next_action": "RUN_PLANNER_REVIEW"}
     if state == "READY_FOR_PLANNER_REVIEW":
         return {"state": state, "valid": True, "next_state": "WAITING_FOR_EXTERNAL_GPT", "next_action": "RUN_PLANNER_REVIEW"}
+    if state == "WAITING_FOR_EXTERNAL_GPT":
+        candidate_errors = validate_planner_pass_candidate(target, task_key)
+        if not candidate_errors:
+            return {"state": state, "valid": True, "next_state": "PLANNER_PASS_CANDIDATE", "next_action": "RUN_FINAL_CRITIC"}
+        try:
+            route = route_current_findings(target, task_key)
+        except ValueError as exc:
+            return {"state": state, "valid": False, "errors": [str(exc)], "next_action": "REPAIR_FINDINGS_ARTIFACT"}
+        route_to_state = {
+            "REPAIR_EXECUTOR": "PLANNER_REVISE_EXECUTOR",
+            "REPAIR_VERIFIER": "PLANNER_REVISE_VERIFIER",
+            "PLANNER_INTERPRET_CONTRACT": "PLANNER_REVISE_BOTH",
+            "PLANNER_TO_CRITIC_CONTRACT_REVIEW": "PLANNER_REVISE_BOTH",
+            "ASK_USER": "NEEDS_USER_SCIENTIFIC_OR_PRODUCT_CHOICE",
+        }
+        next_state = route_to_state.get(route["route"])
+        if next_state:
+            return {"state": state, "valid": True, "next_state": next_state, "next_action": route["route"], "route": route}
+        return {"state": state, "valid": True, "next_action": "WAIT_FOR_PLANNER_REVIEW_ARTIFACT"}
+    if state == "PLANNER_REVISE_EXECUTOR":
+        return {"state": state, "valid": True, "next_state": "EXECUTOR_RUNNING", "next_action": "LAUNCH_EXECUTOR_REPAIR"}
+    if state == "PLANNER_REVISE_VERIFIER":
+        return {"state": state, "valid": True, "next_state": "VERIFIER_RUNNING", "next_action": "LAUNCH_VERIFIER_REPAIR"}
+    if state == "PLANNER_REVISE_BOTH":
+        return {"state": state, "valid": True, "next_state": "VERIFIER_RUNNING", "next_action": "LAUNCH_VERIFIER_THEN_EXECUTOR_REPAIR"}
     if state == "PLANNER_PASS_CANDIDATE":
         return {"state": state, "valid": True, "next_state": "READY_FOR_CRITIC_FINAL_AUDIT", "next_action": "RUN_FINAL_CRITIC"}
     if state == "READY_FOR_CRITIC_FINAL_AUDIT":
-        return {"state": state, "valid": True, "next_state": "PLANNER_PASS", "next_action": "APPLY_FINAL_CRITIC_PASS"}
+        final_errors = validate_final_critic_artifact(target, task_key)
+        if final_errors:
+            return {"state": state, "valid": True, "next_action": "RUN_OR_WAIT_FINAL_CRITIC", "waiting_on": final_errors}
+        artifact = load_json(final_critic_artifact_path(target, task_key))
+        if artifact.get("decision") == "CRITIC_FINAL_PASS":
+            return {"state": state, "valid": True, "next_state": "PLANNER_PASS", "next_action": "APPLY_FINAL_CRITIC_PASS"}
+        return {"state": state, "valid": True, "next_state": "CRITIC_FINAL_REVISE", "next_action": "ROUTE_FINAL_CRITIC_REVISE"}
+    if state == "CRITIC_FINAL_REVISE":
+        return {"state": state, "valid": True, "next_state": "WAITING_FOR_EXTERNAL_GPT", "next_action": "RUN_PLANNER_REVIEW"}
     if state == "PLANNER_PASS":
         return {"state": state, "valid": True, "next_state": "AWAIT_HUMAN_DECISION", "next_action": "WRITE_TERMINAL_BRIEF"}
-    route = route_findings(current.get("open_findings", []), target=target, task_key=task_key)
-    return {"state": state, "valid": True, "route": route, "next_action": route["route"]}
+    return {"state": state, "valid": True, "next_action": "NO_AUTOMATIC_TRANSITION"}
 
 
 def apply_transition(target: Path, task_key: str, *, expected_state: str, next_state: str, next_action: str = "") -> dict[str, Any]:
@@ -1509,10 +1984,42 @@ def apply_transition(target: Path, task_key: str, *, expected_state: str, next_s
     current = load_json(path)
     if current.get("state") != expected_state:
         raise ValueError(f"transition expected {expected_state}, found {current.get('state')}")
+    if not transition_allowed(expected_state, next_state):
+        raise ValueError(f"illegal transition edge: {expected_state} -> {next_state}")
     errors = validate_task_state(target, task_key)
     if errors:
         raise ValueError("; ".join(errors))
     profile = load_project_profile(target)
+    snapshot_path = task_root(target, task_key) / "SOURCE_SNAPSHOT.json"
+    if snapshot_path.exists() and next_state in {
+        "VERIFIER_FROZEN",
+        "EVIDENCE_RUNNING",
+        "CI_RUNNING",
+        "READY_FOR_PLANNER_REVIEW",
+        "WAITING_FOR_EXTERNAL_GPT",
+        "PLANNER_PASS_CANDIDATE",
+        "READY_FOR_CRITIC_FINAL_AUDIT",
+        "PLANNER_PASS",
+        "AWAIT_HUMAN_DECISION",
+    }:
+        snapshot_payload = load_json(snapshot_path)
+        current["current_review_target_id"] = snapshot_payload.get("review_target_id")
+        current["frozen_contract_sha256"] = snapshot_payload.get("frozen_contract_sha256")
+        current["requirement_ledger_sha256"] = snapshot_payload.get("requirement_ledger_sha256")
+        current["implementation_semantic_digest_sha256"] = snapshot_payload.get("implementation_semantic_digest_sha256")
+        current["verifier_semantic_digest_sha256"] = snapshot_payload.get("verifier_semantic_digest_sha256")
+    if next_state == "PLAN_FROZEN":
+        current["critic_mode"] = "STANDBY"
+        if (task_root(target, task_key) / "FROZEN_CONTRACT.md").exists():
+            current["frozen_contract_sha256"] = file_sha256(task_root(target, task_key) / "FROZEN_CONTRACT.md")
+        if (task_root(target, task_key) / "REQUIREMENT_LEDGER.json").exists():
+            current["requirement_ledger_sha256"] = file_sha256(task_root(target, task_key) / "REQUIREMENT_LEDGER.json")
+    if next_state == "READY_FOR_CRITIC_FINAL_AUDIT":
+        current["critic_mode"] = "REQUIRED_FINAL_AUDIT"
+    if next_state == "PLANNER_REVISE_BOTH":
+        current["critic_mode"] = "REQUIRED_CONTRACT_REVIEW"
+    if next_state == "AWAIT_HUMAN_DECISION":
+        current["terminal_policy"] = "human_gate"
     next_errors = validate_transition_predicates(target, task_key, next_state, current, profile)
     if next_errors:
         raise ValueError("; ".join(next_errors))
@@ -1657,8 +2164,7 @@ def main(argv: list[str] | None = None) -> int:
         print(canonical_json(classify_changes(sorted(set(paths)), profile), pretty=True), end="")
         return 0
     if args.command == "route":
-        current = load_json(task_root(args.target, args.task_key) / "CURRENT.json")
-        result = route_findings(current.get("open_findings", []), target=args.target, task_key=args.task_key)
+        result = route_current_findings(args.target, args.task_key)
         print(canonical_json(result, pretty=True), end="")
         return 0
     if args.command == "transition" and args.transition_command == "plan":

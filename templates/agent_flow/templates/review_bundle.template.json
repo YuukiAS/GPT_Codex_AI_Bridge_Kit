@@ -3,7 +3,18 @@
   "frozen_contract_sha256": "",
   "implementation_semantic_digest_sha256": "",
   "open_findings": [],
-  "required_evidence": [],
+  "required_evidence": [
+    {
+      "evidence_id": "",
+      "kind": "unit_test",
+      "path": "",
+      "required": true,
+      "review_target_id": "",
+      "sha256": "",
+      "status": "PASS",
+      "target_sensitive": true
+    }
+  ],
   "requirement_ledger_sha256": "",
   "review_target_id": "",
   "schema": "AI_BRIDGE_REVIEW_BUNDLE_V1",

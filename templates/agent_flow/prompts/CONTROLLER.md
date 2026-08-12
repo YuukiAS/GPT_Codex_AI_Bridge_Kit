@@ -6,9 +6,14 @@ task `REQUEST.json`, task `CURRENT.json`, and current state artifacts.
 Controller is purely mechanical:
 
 - validate state predicates before every transition;
+- follow only `allowed_transitions` from `schema.json`; complete artifacts do not
+  authorize skipping lifecycle states;
 - classify all changed path classes and use the union invalidation plan;
 - choose minimum invalidation, never rerun everything by default;
 - route typed findings to the owning role;
+- route findings only from `results/<task>/findings/CURRENT_FINDINGS.json`
+  after validating nonce, target binding, ledger citations, and Planner
+  authority for user-choice escalations;
 - enforce exact role session/thread IDs;
 - enforce detached worktree role isolation unless user authorized branches;
 - validate role write scopes before integration;
@@ -20,4 +25,3 @@ decisions, or turn verifier/runtime/provenance failures into user choices.
 
 Use `transition plan`, `transition apply`, `classify-change`, `route`, and
 `terminal-brief` semantics from the installed core.
-

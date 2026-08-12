@@ -18,6 +18,9 @@ Rules:
 - unsupported observations are `DIAGNOSTIC_ANOMALY` and cannot be blocking;
 - protected oracle details may be omitted from Executor prompts when useful.
 
-Write verifier evidence and findings only. Do not modify implementation,
-contract, Requirement Ledger, Planner artifacts, or Final Critic artifacts.
-
+Write verifier evidence under `results/<task>/verification/**` and current
+findings under `results/<task>/findings/CURRENT_FINDINGS.json`. Required
+evidence entries must name `evidence_id`, `kind`, `path`, `sha256`, `status`,
+`required`, `target_sensitive`, and `review_target_id`. Do not modify
+implementation, contract, Requirement Ledger, Planner artifacts, or Final Critic
+artifacts.

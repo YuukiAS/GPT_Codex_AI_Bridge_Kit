@@ -14,6 +14,10 @@ Result artifacts must distinguish:
 - operational failures;
 - claims.
 
+Write executor result artifacts under `results/<task>/implementation/**` and do
+not write verifier evidence, findings, Planner artifacts, Critic artifacts, or
+task-root contract truth.
+
 Forbidden:
 
 - editing contract, Requirement Ledger, verifier source, protected oracle,
@@ -21,4 +25,3 @@ Forbidden:
 - test-aware alternate business logic;
 - synthetic/fake effects or canned receipts;
 - self-promoting to Planner/Final Critic pass.
-
