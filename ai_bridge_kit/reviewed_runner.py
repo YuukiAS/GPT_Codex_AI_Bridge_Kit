@@ -40,17 +40,22 @@ def git_output(target: Path, args: list[str]) -> str:
     return subprocess.check_output(["git", *args], cwd=target, text=True, stderr=subprocess.STDOUT).strip()
 
 
-def ensure_clean_repo(target: Path) -> None:
+def ensure_git_repo(target: Path) -> None:
     try:
         git_output(target, ["rev-parse", "--show-toplevel"])
     except Exception as exc:
         raise ValueError(f"Reviewed Handoff watcher requires a Git repository: {exc}") from exc
+
+
+def ensure_clean_repo(target: Path) -> None:
+    ensure_git_repo(target)
     dirty = git_output(target, ["status", "--porcelain"])
     if dirty:
         raise ValueError("Reviewed Handoff watcher refuses to sync or launch Codex with a dirty working tree")
 
 
 def resolve_branch(target: Path, branch: str | None) -> str:
+    ensure_git_repo(target)
     selected = branch or git_output(target, ["branch", "--show-current"])
     if not selected:
         raise ValueError("Reviewed Handoff watcher requires an existing checked-out branch, not detached HEAD")
@@ -67,7 +72,7 @@ def sync_origin_ff_only(target: Path, branch: str) -> None:
 
 
 def event_identity(task_key: str, current: dict[str, Any]) -> str:
-    # Deliberately plain operational identity, not a cryptographic workflow identity.
+    # Plain operational identity only. It is deliberately not hashed into workflow state.
     return "|".join(
         [
             task_key,
@@ -77,6 +82,17 @@ def event_identity(task_key: str, current: dict[str, Any]) -> str:
             str(current.get("implementation_commit") or ""),
         ]
     )
+
+
+def log_name(task_key: str, current: dict[str, Any]) -> str:
+    return "-".join(
+        [
+            task_key,
+            str(current.get("state") or "state").lower(),
+            f"r{current.get('review_round') or 0}",
+            f"p{current.get('plan_revision') or 0}",
+        ]
+    ) + ".log"
 
 
 def eligible_events(target: Path) -> list[tuple[str, dict[str, Any]]]:
@@ -132,12 +148,12 @@ def run_codex_event(
         return {"task_key": task_key, "event": event_identity(task_key, current), "command": command, "prompt": prompt, "launched": False}
 
     event = event_identity(task_key, current)
-    safe_event = str(abs(hash(event)))
     log_dir = log_root(target) / task_key
     log_dir.mkdir(parents=True, exist_ok=True)
-    log_path = log_dir / f"{safe_event}.log"
+    log_path = log_dir / log_name(task_key, current)
     started = time.time()
-    with log_path.open("w", encoding="utf-8") as handle:
+    with log_path.open("a", encoding="utf-8") as handle:
+        handle.write(f"\n=== watcher launch: {event} ===\n")
         proc = subprocess.run(
             command,
             cwd=target,
@@ -148,15 +164,68 @@ def run_codex_event(
             env=os.environ.copy(),
             check=False,
         )
+    post_path = rh.task_root(target, task_key) / "CURRENT.json"
+    post_current = rh.load_json(post_path) if post_path.exists() else {}
+    progressed = event_identity(task_key, post_current) != event or post_current.get("state") not in ELIGIBLE_EXECUTOR_STATES
     return {
         "task_key": task_key,
         "event": event,
         "command": command,
         "launched": True,
         "exit_code": proc.returncode,
+        "progressed": progressed,
+        "post_state": post_current.get("state"),
         "log_path": str(log_path),
         "elapsed_seconds": round(time.time() - started, 3),
     }
+
+
+def publish_operational_blocker(
+    target: Path,
+    task_key: str,
+    *,
+    branch: str,
+    event: str,
+    attempts: int,
+    log_path: str | None,
+) -> dict[str, Any]:
+    current_path = rh.task_root(target, task_key) / "CURRENT.json"
+    current = rh.load_json(current_path)
+    result_dir = rh.result_root(target, task_key)
+    result_dir.mkdir(parents=True, exist_ok=True)
+    final_path = result_dir / "FINAL_REPORT.md"
+    final_path.write_text(
+        "# Final Report\n\n"
+        "## What this task solved\n\n"
+        "Reviewed Handoff could not complete this task automatically because the local Codex watcher exhausted its bounded execution attempts. No successful final implementation is claimed.\n\n"
+        "## What changed\n\n"
+        "The workflow stopped at an operational boundary rather than silently retrying forever. Any uncommitted local changes must be inspected before resuming.\n\n"
+        "## New capabilities / behavior\n\n"
+        "No new capability is claimed until the execution blocker is resolved and the normal GPT review loop completes.\n\n"
+        "## Deliberately not adopted / unchanged\n\n"
+        "The watcher did not discard or reset potentially useful local work and did not create a new branch.\n\n"
+        "## Example usage\n\n"
+        "After resolving the local Codex/runtime problem, resume the same Reviewed Handoff task rather than creating a replacement task.\n\n"
+        "## Regression and remaining limitations\n\n"
+        f"Executor event `{event}` did not make validated workflow progress after {attempts} attempts. Inspect the local watcher log before recovery.\n\n"
+        "## Technical appendix\n\n"
+        f"- task: `{task_key}`\n- watcher log: `{log_path or 'unavailable'}`\n- state before blocker: `{current.get('state')}`\n",
+        encoding="utf-8",
+    )
+    current["state"] = "BLOCKED"
+    current["next_action"] = "HUMAN_OPERATIONAL_RECOVERY"
+    current["runner_failure"] = {"event": event, "attempts": attempts, "log_path": log_path}
+    rh.write_json(current_path, current)
+
+    rel_current = str(current_path.relative_to(target))
+    rel_final = str(final_path.relative_to(target))
+    try:
+        git_output(target, ["add", rel_current, rel_final])
+        git_output(target, ["commit", "--only", rel_current, rel_final, "-m", f"Block Reviewed Handoff task {task_key} after runner failure"])
+        git_output(target, ["push", "origin", branch])
+        return {"published": True, "state": "BLOCKED", "final_report": rel_final}
+    except Exception as exc:
+        return {"published": False, "error": str(exc), "state": "BLOCKED", "final_report": rel_final}
 
 
 def watcher_once(
@@ -188,21 +257,35 @@ def watcher_once(
         if prior.get("completed"):
             continue
         if attempts >= max_attempts_per_event:
-            continue
+            blocker = publish_operational_blocker(
+                target,
+                task_key,
+                branch=selected_branch,
+                event=event,
+                attempts=attempts,
+                log_path=prior.get("last_log_path"),
+            )
+            return {"status": "event_exhausted", "task_key": task_key, "event": event, "attempts": attempts, "blocker": blocker}
         if dry_run:
             return {"status": "dry_run", **run_codex_event(target, task_key, current, branch=selected_branch, codex_bin=codex_bin, dry_run=True)}
 
         result = run_codex_event(target, task_key, current, branch=selected_branch, codex_bin=codex_bin)
         attempts += 1
-        # Re-fetch on the next watcher cycle; Codex owns tracked state transitions.
+        completed = result.get("exit_code") == 0 and bool(result.get("progressed"))
         events[event] = {
             "attempts": attempts,
-            "completed": result.get("exit_code") == 0,
+            "completed": completed,
             "last_exit_code": result.get("exit_code"),
+            "last_progressed": result.get("progressed"),
             "last_log_path": result.get("log_path"),
         }
         write_local_state(target, local)
-        result["status"] = "codex_completed" if result.get("exit_code") == 0 else "codex_failed"
+        if completed:
+            result["status"] = "codex_progressed"
+        elif result.get("exit_code") == 0:
+            result["status"] = "codex_no_progress"
+        else:
+            result["status"] = "codex_failed"
         result["attempt"] = attempts
         return result
     return {"status": "idle", "branch": selected_branch}
@@ -261,7 +344,7 @@ def main(argv: list[str] | None = None) -> int:
             dry_run=args.dry_run,
         )
         print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
-        return 0 if result.get("status") not in {"invalid_workflow", "codex_failed"} else 1
+        return 0 if result.get("status") not in {"invalid_workflow", "codex_failed", "event_exhausted"} else 1
     if args.command == "run":
         return watcher_run(
             args.target,
