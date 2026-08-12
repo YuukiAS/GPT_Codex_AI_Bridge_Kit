@@ -31,6 +31,10 @@ class ReviewedHandoffTests(unittest.TestCase):
         template = rh.read_text(rh.reviewed_root(target) / "templates" / "PLAN.md")
         rh.write_text(rh.task_root(target, task_key) / "PLAN.md", template.replace("<TASK_KEY>", task_key))
 
+    def write_final_report(self, target: Path) -> None:
+        template = rh.read_text(rh.reviewed_root(target) / "templates" / "FINAL_REPORT.md")
+        rh.write_text(rh.result_root(target, "001_feature") / "FINAL_REPORT.md", template)
+
     def freeze_and_start(self, target: Path) -> None:
         self.write_plan(target)
         rh.apply_transition(target, "001_feature", expected_state="PLAN_REQUESTED", next_state="PLAN_FROZEN")
@@ -132,12 +136,28 @@ class ReviewedHandoffTests(unittest.TestCase):
             rh.apply_transition(target, "001_feature", expected_state="REVISE", next_state="EXECUTING")
             self.write_result(target, commit="impl-2")
             rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            with self.assertRaisesRegex(ValueError, "FINAL_REPORT"):
+                rh.record_review(target, "001_feature", decision="REVISE", body="Still broken.")
+            self.write_final_report(target)
             current = rh.record_review(target, "001_feature", decision="REVISE", body="Still broken.")
             self.assertEqual(current["state"], "AWAIT_HUMAN_DECISION")
             self.assertTrue(current["review_limit_reached"])
             self.assertEqual(current["review_round"], 2)
             with self.assertRaisesRegex(ValueError, "READY_FOR_GPT_REVIEW"):
                 rh.record_review(target, "001_feature", decision="REVISE", body="third")
+            self.assertEqual(rh.validate_task(target, "001_feature"), [])
+
+    def test_blocked_review_requires_final_report(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            self.freeze_and_start(target)
+            self.write_result(target)
+            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            with self.assertRaisesRegex(ValueError, "FINAL_REPORT"):
+                rh.record_review(target, "001_feature", decision="BLOCKED", body="External dependency unavailable.")
+            self.write_final_report(target)
+            current = rh.record_review(target, "001_feature", decision="BLOCKED", body="External dependency unavailable.")
+            self.assertEqual(current["state"], "BLOCKED")
             self.assertEqual(rh.validate_task(target, "001_feature"), [])
 
     def test_manual_pass_transition_cannot_bypass_review_record(self) -> None:
@@ -159,8 +179,7 @@ class ReviewedHandoffTests(unittest.TestCase):
             self.assertEqual(current["state"], "PASS")
             with self.assertRaisesRegex(ValueError, "FINAL_REPORT"):
                 rh.apply_transition(target, "001_feature", expected_state="PASS", next_state="AWAIT_HUMAN_DECISION")
-            template = rh.read_text(rh.reviewed_root(target) / "templates" / "FINAL_REPORT.md")
-            rh.write_text(rh.result_root(target, "001_feature") / "FINAL_REPORT.md", template)
+            self.write_final_report(target)
             current = rh.apply_transition(target, "001_feature", expected_state="PASS", next_state="AWAIT_HUMAN_DECISION")
             self.assertEqual(current["state"], "AWAIT_HUMAN_DECISION")
             self.assertEqual(rh.validate_task(target, "001_feature"), [])
@@ -181,8 +200,9 @@ class ReviewedHandoffTests(unittest.TestCase):
             rh.write_json(current_path, current)
             plan = rh.plan_transition(target, "001_feature")
             self.assertEqual(plan["next_state"], "AWAIT_HUMAN_DECISION")
-            with self.assertRaisesRegex(ValueError, "only one"):
-                rh.apply_transition(target, "001_feature", expected_state="NEEDS_GPT_PLANNER", next_state="PLAN_FROZEN")
+            self.write_final_report(target)
+            current = rh.apply_transition(target, "001_feature", expected_state="NEEDS_GPT_PLANNER", next_state="AWAIT_HUMAN_DECISION")
+            self.assertEqual(current["state"], "AWAIT_HUMAN_DECISION")
 
     def test_reviewed_handoff_contains_no_agent_flow_provenance_machinery(self) -> None:
         tmp, target = self.make_project()
