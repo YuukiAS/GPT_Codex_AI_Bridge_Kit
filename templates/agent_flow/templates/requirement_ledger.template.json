@@ -1,0 +1,20 @@
+{
+  "requirements": [
+    {
+      "blocking": true,
+      "change_requires_contract_review": false,
+      "owner_role": "Executor",
+      "requirement_id": "REQ_EXAMPLE_001",
+      "source": {
+        "clause": "Replace with frozen contract clause.",
+        "path": "automation/agent_flow/tasks/<task_key>/FROZEN_CONTRACT.md"
+      },
+      "threshold": null,
+      "threshold_provenance": null,
+      "type": "IMPLEMENTATION",
+      "verifier_authority": "Verifier may check this requirement directly."
+    }
+  ],
+  "schema": "AI_BRIDGE_REQUIREMENT_LEDGER_V1"
+}
+

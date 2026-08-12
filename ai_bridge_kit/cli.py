@@ -648,6 +648,12 @@ def build_parser() -> argparse.ArgumentParser:
     private_parser = subparsers.add_parser("private", help="Sync private Bridge Kit configuration.")
     private_parser.add_argument("private_args", nargs=argparse.REMAINDER)
 
+    agent_flow_parser = subparsers.add_parser(
+        "agent-flow",
+        help="Install, validate, and operate the optional high-risk Agent-Flow core.",
+    )
+    agent_flow_parser.add_argument("agent_flow_args", nargs=argparse.REMAINDER)
+
     prompt_parser = subparsers.add_parser("prompt", help="Print a reusable prompt or rule file.")
     prompt_parser.add_argument("name", choices=sorted(PROMPT_FILES), help="Prompt name to print.")
 
@@ -659,6 +665,10 @@ def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     if not argv:
         return init_workspace(Path.cwd().resolve())
+    if argv[0] == "agent-flow":
+        from . import agent_flow
+
+        return agent_flow.main(argv[1:])
 
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -710,6 +720,10 @@ def main(argv: list[str] | None = None) -> int:
         from . import private
 
         return private.main(args.private_args)
+    if args.command == "agent-flow":
+        from . import agent_flow
+
+        return agent_flow.main(args.agent_flow_args)
     if args.command == "prompt":
         return print_prompt(args.name)
     if args.command == "where":

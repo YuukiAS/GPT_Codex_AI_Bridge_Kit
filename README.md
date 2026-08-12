@@ -1,9 +1,9 @@
 # GPT-Codex AI Bridge Kit
 
-This kit is a lightweight file bridge for ChatGPT/GPT and Codex. It is not a
-service, agent runtime, queue, or MCP orchestration layer. Its job is to give any
-repository a stable handoff protocol made of Markdown task, result, audit, and
-controller-report files.
+This kit is a local file bridge for ChatGPT/GPT and Codex. Lite Handoff remains
+the default protocol for ordinary repositories. Host Policy, Generic Notifier,
+and Optional Agent-Flow Core are separate layers that can be adopted only when
+they are needed.
 
 The original protocol was a simple loop:
 
@@ -11,28 +11,19 @@ The original protocol was a simple loop:
 2. Codex executes the task and writes `results/<task_key>/result.md`.
 3. ChatGPT reviews the result and writes `results/<task_key>/review.md`.
 
-That loop remains valid. The kit now also defines a two-layer operating model:
-host-level Codex policy is installed once per Codex identity, while repo-level
-handoff protocol is initialized once per repository. For medium/high risk work,
-GPT remains the strategic planner, while a Codex execution controller may
-coordinate executor and auditor sessions inside a GPT-authored controller task.
-
-## Planned Agent-Flow v3
-
-A future reusable high-risk Agent-Flow mode is being stress-tested first in the
-CARE-ASE project. It is intentionally **not implemented in this kit yet**. The
-current lightweight handoff remains the active protocol until the CARE run
-finishes and the design is simplified/extracted.
-
-The blueprint is tracked in:
+That loop remains valid. The kit now defines four layers:
 
 ```text
-docs/TODO_AGENT_FLOW_V3_REUSABLE_BLUEPRINT.md
+1. Host Policy
+2. Lite Handoff
+3. Generic Notifier
+4. Optional Agent-Flow Core
 ```
 
-The planned design keeps independent Planner/Critic/Controller/Verifier/Executor
-roles for high-risk work while explicitly avoiding the over-engineered
-provenance/hash/moving-target behavior exposed by the first CARE production run.
+Host-level Codex policy is installed once per Codex identity, while repo-level
+handoff protocol is initialized once per repository. Agent-Flow is an explicit
+opt-in layer for high-risk work; it is not installed by `ai-bridge init` and does
+not replace Lite Handoff.
 
 ## Core Idea
 
@@ -63,6 +54,50 @@ ai-bridge validate --target /path/to/project
 
 No notifier, polling process, tmux session, or Agent-Flow runtime is required for
 old Lite Handoff repositories.
+
+## Optional Agent-Flow Core
+
+Agent-Flow Core adds a reusable high-risk control plane:
+
+```text
+Planner
+-> Initial Critic
+-> Controller
+-> Verifier
+-> Executor
+-> Planner repair loop
+-> Final Critic
+-> Human gate
+```
+
+It provides Project Profile, Role Authority Policy, Requirement Ledger, typed
+Finding schema, change classification, canonical implementation/verifier source
+manifests, Stable Review Snapshot, compact Review Bundle validation, deterministic
+routing, detached worktree planning, Final Critic gate checks, and terminal
+notification brief generation for the existing Generic Notifier.
+
+Install it only for repositories that need high-risk autonomous execution:
+
+```bash
+ai-bridge agent-flow install --target /path/to/project
+ai-bridge agent-flow validate --target /path/to/project
+ai-bridge agent-flow task init --target /path/to/project --task-key 001_example
+```
+
+Snapshot and validation tools:
+
+```bash
+ai-bridge agent-flow snapshot --target /path/to/project --task-key 001_example
+ai-bridge agent-flow bundle validate --target /path/to/project --task-key 001_example
+ai-bridge agent-flow classify-change --target /path/to/project --path src/example.py
+ai-bridge agent-flow route --target /path/to/project --task-key 001_example
+ai-bridge agent-flow prompt --target /path/to/project planner
+```
+
+Agent-Flow install is additive and idempotent. It does not modify `$CODEX_HOME`,
+remotes, branches, notifier state, or Lite Handoff files. Branch topology remains
+user-controlled; Verifier and Executor isolation defaults to detached worktree
+plans unless the user explicitly authorizes role branches.
 
 ## Generic Notifier
 

@@ -1,12 +1,19 @@
 # TODO — Reusable Agent-Flow v3 Blueprint
 
-Status: **DESIGN ONLY / DO NOT IMPLEMENT YET**
+Status: **CARE gate complete / design history retained**
 
-This document is a future-integration blueprint for `GPT_Codex_AI_Bridge_Kit`.
-Do not replace the current lightweight handoff protocol yet. The first real
-stress test is CARE-ASE in `YuukiAS/CARE_Challenge`. The reusable implementation
-should be extracted only after CARE reaches its full implementation-fidelity
-closure and the final Planner/Critic gate has passed.
+The CARE stress test has reached implementation-fidelity closure and the final
+Planner/Critic gate. This older blueprint is retained as design history, but
+implementation readiness and current scope now live in:
+
+```text
+docs/CARE_AGENT_FLOW_V3_POSTMORTEM_20260811.md
+docs/AGENT_FLOW_V3_POST_CARE_EXTRACTION_DECISIONS.md
+docs/V0_4_AGENT_FLOW_IMPLEMENTATION_SPEC.md
+```
+
+Do not replace Lite Handoff. Reusable Agent-Flow is now an explicit opt-in
+control-plane layer for high-risk repositories.
 
 The purpose of this TODO is to preserve the architecture, role boundaries,
 anti-overengineering lessons, and portability requirements learned from the

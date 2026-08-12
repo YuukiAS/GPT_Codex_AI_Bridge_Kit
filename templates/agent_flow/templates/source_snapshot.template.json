@@ -1,0 +1,15 @@
+{
+  "frozen_contract_sha256": "",
+  "git_locator": {
+    "branch": "",
+    "commit": ""
+  },
+  "implementation_semantic_digest_sha256": "",
+  "requirement_ledger_sha256": "",
+  "review_target_id": "",
+  "schema": "AI_BRIDGE_SOURCE_SNAPSHOT_V1",
+  "task_identity": {},
+  "task_key": "",
+  "verifier_semantic_digest_sha256": ""
+}
+

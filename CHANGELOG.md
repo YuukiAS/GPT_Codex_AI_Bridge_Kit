@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.0
+
+- Add Optional Agent-Flow Core with Project Profile installation, task
+  initialization, Requirement Ledger validation, canonical implementation and
+  verifier source manifests, Stable Review Snapshot, Review Bundle validation,
+  deterministic change classification, typed finding routing, Final Critic
+  gate checks, detached worktree planning, and terminal notification brief
+  generation for existing Generic Notifier.
+- Add `ai-bridge agent-flow ...` CLI commands while keeping Lite Handoff, Host
+  Policy, Private Bootstrap, and Generic Notifier backward compatible.
+- Convert CARE Agent-Flow lessons into generic regression and portability tests
+  without requiring CARE, GPU, Slurm, medical data, fixed branches, private
+  paths, or external services.
+
 ## 0.3.1
 
 - Change Generic Notifier email subjects and bodies to Chinese-first narrative

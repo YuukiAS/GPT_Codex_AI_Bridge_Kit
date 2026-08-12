@@ -1,0 +1,17 @@
+{
+  "routes": {
+    "CONTRACT_AMBIGUITY": "Planner",
+    "CONTRACT_CONTRADICTION": "Planner->Critic",
+    "DIAGNOSTIC_ANOMALY": "Planner",
+    "EVIDENCE_GAP": "owning role",
+    "IMPLEMENTATION_BUG": "Executor",
+    "OPERATIONAL_FAILURE": "Controller",
+    "PROVENANCE_BINDING_GAP": "Controller",
+    "RUNTIME_ENVIRONMENT_FAILURE": "Controller",
+    "SCIENTIFIC_OR_PRODUCT_CHOICE_REQUIRED": "User only after Planner classification",
+    "VERIFIER_BUG": "Verifier",
+    "VERIFIER_CONTRACT_DRIFT": "Planner adjudication"
+  },
+  "schema": "AI_BRIDGE_ROUTING_POLICY_V1"
+}
+
