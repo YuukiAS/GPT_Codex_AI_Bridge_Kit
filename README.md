@@ -241,6 +241,9 @@ ai-bridge agent-flow snapshot --target /path/to/project --task-key 001_example
 ai-bridge agent-flow bundle validate --target /path/to/project --task-key 001_example
 ai-bridge agent-flow classify-change --target /path/to/project --path src/example.py
 ai-bridge agent-flow route --target /path/to/project --task-key 001_example
+ai-bridge agent-flow transition plan --target /path/to/project --task-key 001_example
+ai-bridge agent-flow transition apply --target /path/to/project --task-key 001_example --expected-state PLAN_REQUESTED --next-state PLAN_READY_FOR_CRITIC
+ai-bridge agent-flow terminal-brief --target /path/to/project --task-key 001_example
 ai-bridge agent-flow prompt --target /path/to/project planner
 ```
 

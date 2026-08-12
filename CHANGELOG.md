@@ -13,6 +13,9 @@
 - Convert CARE Agent-Flow lessons into generic regression and portability tests
   without requiring CARE, GPU, Slurm, medical data, fixed branches, private
   paths, or external services.
+- Tighten Agent-Flow lifecycle validation with fail-closed state predicates,
+  bound Final Critic artifacts, role/session authority checks, multi-change
+  invalidation, heavy Verifier rerun guards, terminal brief generation, and CI.
 
 ## 0.3.1
 

@@ -1,4 +1,5 @@
 {
+  "bundle_sha256": "",
   "frozen_contract_sha256": "",
   "implementation_semantic_digest_sha256": "",
   "open_findings": [],
@@ -9,4 +10,3 @@
   "task_key": "",
   "verifier_semantic_digest_sha256": ""
 }
-

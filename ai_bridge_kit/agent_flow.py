@@ -78,6 +78,46 @@ TERMINAL_NOTIFICATION_STATES = {
     "NEEDS_USER_SCIENTIFIC_OR_PRODUCT_CHOICE",
     "STOPPED_MAX_ROUNDS",
 }
+CRITIC_MODES = {"REQUIRED_INITIAL", "STANDBY", "REQUIRED_CONTRACT_REVIEW", "REQUIRED_FINAL_AUDIT", "COMPLETE"}
+CHANGE_CLASS_PRIORITY = [
+    "CONTRACT_CHANGED",
+    "REQUIREMENT_LEDGER_CHANGED",
+    "IMPLEMENTATION_SOURCE_CHANGED",
+    "VERIFIER_SOURCE_CHANGED",
+    "RUNTIME_ENVIRONMENT_CHANGED",
+    "CI_WORKFLOW_CHANGED",
+    "CONTROL_PLANE_ONLY_CHANGED",
+    "RECEIPT_OR_MANIFEST_ONLY_CHANGED",
+    "CURRENT_OR_ROUTING_ONLY_CHANGED",
+    "DOC_ONLY_CHANGED",
+    "NO_RELEVANT_CHANGE",
+]
+HEAVY_VERIFIER_REASONS = {
+    "CONTRACT_CHANGED",
+    "REQUIREMENT_LEDGER_CHANGED",
+    "IMPLEMENTATION_SOURCE_CHANGED",
+    "VERIFIER_SOURCE_CHANGED",
+}
+PROFILE_REQUIRED_FIELDS = {
+    "schema": str,
+    "project": str,
+    "project_objective": str,
+    "repository_truth_sources": list,
+    "artifact_language_policy": str,
+    "contract_source_policy": dict,
+    "implementation_semantic_paths": list,
+    "verifier_semantic_paths": list,
+    "runtime_adapter": dict,
+    "ci": dict,
+    "external_boundaries": dict,
+    "expensive_operation_policy": dict,
+    "human_decision_boundary": str,
+    "notification_policy": dict,
+    "integration_branch_policy": dict,
+    "role_isolation_policy": dict,
+    "semantic_paths": dict,
+    "role_write_scopes": dict,
+}
 
 
 def kit_root() -> Path:
@@ -118,6 +158,19 @@ def sha256_text(text: str) -> str:
 
 def file_sha256(path: Path) -> str:
     return sha256_bytes(path.read_bytes())
+
+
+def payload_digest(payload: dict[str, Any], *, omit: set[str] | None = None) -> str:
+    omit = set() if omit is None else omit
+    return sha256_text(canonical_json({key: value for key, value in payload.items() if key not in omit}))
+
+
+def bundle_digest(bundle: dict[str, Any]) -> str:
+    return payload_digest(bundle, omit={"bundle_sha256"})
+
+
+def artifact_path(target: Path, task_key: str, rel: str) -> Path:
+    return task_root(target, task_key) / rel
 
 
 def rel_path(path: Path, root: Path) -> str:
@@ -169,10 +222,55 @@ def default_profile(project_name: str) -> dict[str, Any]:
     return {
         "schema": "AI_BRIDGE_PROJECT_PROFILE_V1",
         "project": project_name,
+        "project_objective": "Repository-specific high-risk Agent-Flow objective. Customize before production use.",
+        "repository_truth_sources": ["README.md", "AGENTS.md", "pyproject.toml"],
+        "artifact_language_policy": "repository/task controlled",
+        "contract_source_policy": {
+            "frozen_contract_path": "automation/agent_flow/tasks/<task_key>/FROZEN_CONTRACT.md",
+            "requirement_ledger_path": "automation/agent_flow/tasks/<task_key>/REQUIREMENT_LEDGER.json",
+        },
+        "optional_visual_source_policy": {
+            "enabled": False,
+            "manifest_path": "",
+        },
         "risk_profile": "high-risk",
         "integration_branch": "",
+        "integration_branch_policy": {
+            "default": "current_checked_out_branch",
+            "create_branch_without_user_authorization": False,
+        },
         "requires_final_critic": True,
         "requires_ci": False,
+        "ci": {
+            "required": False,
+            "workflow": "",
+        },
+        "runtime_adapter": {
+            "name": "local",
+            "requires_external_service": False,
+        },
+        "external_boundaries": {
+            "requires_private_data": False,
+            "requires_network": False,
+            "requires_gpu": False,
+        },
+        "expensive_operation_policy": {
+            "requires_explicit_user_authorization": True,
+            "examples": [],
+        },
+        "human_decision_boundary": "AWAIT_HUMAN_DECISION",
+        "notification_policy": {
+            "terminal_states": sorted(TERMINAL_NOTIFICATION_STATES),
+            "brief_path": "results/<task_key>/notification_brief.json",
+        },
+        "role_isolation_policy": {
+            "controller": "authorized integration branch",
+            "verifier": "detached worktree",
+            "executor": "detached worktree",
+            "create_role_branches_without_user_authorization": False,
+        },
+        "implementation_semantic_paths": ["src/**", "app/**", "lib/**"],
+        "verifier_semantic_paths": ["tests/**", "test/**", "verifier/**"],
         "semantic_paths": {
             "implementation": ["src/**", "app/**", "lib/**"],
             "verifier": ["tests/**", "test/**", "verifier/**"],
@@ -238,11 +336,11 @@ def install_agent_flow(target: Path, *, force: bool = False) -> tuple[str, list[
 
     profile_path = root / "PROJECT_PROFILE.json"
     existed = profile_path.exists()
-    if existed and not force:
+    if existed:
         actions.append(f"SKIP existing file: {profile_path}")
     else:
         write_json(profile_path, default_profile(target.name))
-        actions.append(f"{'OVERWRITE' if existed else 'CREATE'} project profile: {profile_path}")
+        actions.append(f"CREATE project profile: {profile_path}")
 
     return inspect_agent_flow(target).state, actions
 
@@ -255,6 +353,50 @@ class AgentFlowStatus:
     task_count: int
     current_branch: str
     project_profile: str
+
+
+@dataclass(frozen=True)
+class RoleLaunchRequest:
+    role: str
+    task_key: str
+    request_nonce: str
+    review_target_id: str | None
+    base_ref: str
+    allowed_write_scope: list[str]
+    worktree_policy: str
+
+
+@dataclass(frozen=True)
+class RoleReceipt:
+    role: str
+    session_id: str
+    runtime_adapter: str
+    worktree_id: str
+    base_task_nonce: str
+    allowed_write_scope: list[str]
+    start_or_resume_status: str
+    produced_commit: str
+    produced_evidence_id: str
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "role": self.role,
+            "session_id": self.session_id,
+            "runtime_adapter": self.runtime_adapter,
+            "worktree_id": self.worktree_id,
+            "base_task_nonce": self.base_task_nonce,
+            "allowed_write_scope": self.allowed_write_scope,
+            "start_or_resume_status": self.start_or_resume_status,
+            "produced_commit": self.produced_commit,
+            "produced_evidence_id": self.produced_evidence_id,
+        }
+
+
+class RuntimeAdapter:
+    name = "abstract"
+
+    def launch_role(self, request: RoleLaunchRequest) -> RoleReceipt:
+        raise NotImplementedError
 
 
 def inspect_agent_flow(target: Path) -> AgentFlowStatus:
@@ -302,13 +444,53 @@ def load_project_profile(target: Path) -> dict[str, Any]:
     profile = load_json(agent_root(target) / "PROJECT_PROFILE.json")
     if profile.get("schema") != "AI_BRIDGE_PROJECT_PROFILE_V1":
         raise ValueError("PROJECT_PROFILE.json schema must be AI_BRIDGE_PROJECT_PROFILE_V1")
+    for key, expected_type in PROFILE_REQUIRED_FIELDS.items():
+        if key not in profile:
+            raise ValueError(f"PROJECT_PROFILE.json missing {key}")
+        if not isinstance(profile[key], expected_type):
+            raise ValueError(f"PROJECT_PROFILE.json {key} must be {expected_type.__name__}")
     semantic_paths = profile.get("semantic_paths")
     if not isinstance(semantic_paths, dict):
         raise ValueError("PROJECT_PROFILE.json must contain semantic_paths")
-    for key in ["implementation", "verifier", "control_plane"]:
+    for key in [
+        "implementation",
+        "verifier",
+        "runtime_environment",
+        "ci_workflow",
+        "control_plane",
+        "receipts_or_manifests",
+        "current_or_routing",
+        "documentation",
+    ]:
         if not isinstance(semantic_paths.get(key), list):
             raise ValueError(f"semantic_paths.{key} must be a list")
+    if profile.get("implementation_semantic_paths") != semantic_paths.get("implementation"):
+        raise ValueError("implementation_semantic_paths must match semantic_paths.implementation")
+    if profile.get("verifier_semantic_paths") != semantic_paths.get("verifier"):
+        raise ValueError("verifier_semantic_paths must match semantic_paths.verifier")
+    if profile.get("integration_branch_policy", {}).get("create_branch_without_user_authorization"):
+        raise ValueError("Project Profile cannot authorize branch creation without explicit user metadata")
+    if profile.get("role_isolation_policy", {}).get("create_role_branches_without_user_authorization"):
+        raise ValueError("Project Profile cannot create role branches without explicit user authorization")
     return profile
+
+
+def load_repo_schema(target: Path) -> dict[str, Any]:
+    schema = load_json(agent_root(target) / "schema.json")
+    if schema.get("schema") != "AI_BRIDGE_AGENT_FLOW_SCHEMA_V1":
+        raise ValueError("schema.json schema must be AI_BRIDGE_AGENT_FLOW_SCHEMA_V1")
+    expected = {
+        "roles": ROLES,
+        "finding_classes": FINDING_CLASSES,
+        "change_classes": CHANGE_CLASSES,
+    }
+    for key, values in expected.items():
+        actual = set(schema.get(key, []))
+        if actual != values:
+            missing = sorted(values - actual)
+            extra = sorted(actual - values)
+            raise ValueError(f"schema.json drift for {key}: missing={missing} extra={extra}")
+    return schema
 
 
 def init_task(
@@ -500,9 +682,9 @@ def validate_requirement_ledger(ledger: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     entries = ledger.get("requirements")
     if not isinstance(entries, list) or not entries:
-        return ["REQUIREMENT_LEDGER.json must contain non-empty requirements list"]
+        errors.append("REQUIREMENT_LEDGER.json must contain non-empty requirements list")
     seen: set[str] = set()
-    for index, entry in enumerate(entries):
+    for index, entry in enumerate(entries if isinstance(entries, list) else []):
         if not isinstance(entry, dict):
             errors.append(f"requirements[{index}] must be an object")
             continue
@@ -519,52 +701,92 @@ def validate_requirement_ledger(ledger: dict[str, Any]) -> list[str]:
         provenance = entry.get("threshold_provenance")
         if threshold is not None and provenance not in {"frozen_contract", "requirement_ledger", "mechanically_derived_invariant"}:
             errors.append(f"{req_id or index} threshold has invalid provenance: {provenance}")
+        if threshold is not None and provenance == "mechanically_derived_invariant":
+            for key in [
+                "parent_requirement_ids",
+                "logical_derivation",
+                "why_necessary",
+                "changes_product_or_scientific_semantics",
+            ]:
+                if key not in entry:
+                    errors.append(f"{req_id or index} derived threshold missing {key}")
+            if entry.get("changes_product_or_scientific_semantics") is not False:
+                errors.append(f"{req_id or index} derived threshold must not change product/scientific semantics")
+        if threshold is not None and provenance == "requirement_ledger" and not entry.get("threshold_authority"):
+            errors.append(f"{req_id or index} requirement_ledger threshold requires threshold_authority")
     if errors:
         raise ValueError("; ".join(errors))
     return []
 
 
-def classify_paths(paths: list[str], profile: dict[str, Any]) -> str:
-    if not paths:
-        return "NO_RELEVANT_CHANGE"
+def ledger_requirements_by_id(ledger: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    return {
+        str(item.get("requirement_id")): item
+        for item in ledger.get("requirements", [])
+        if isinstance(item, dict) and item.get("requirement_id")
+    }
+
+
+def requirement_authorizes_threshold(requirement: dict[str, Any], finding: dict[str, Any]) -> bool:
+    provenance = finding.get("threshold_provenance")
+    if provenance == "frozen_contract":
+        return requirement.get("source", {}).get("path", "").endswith("FROZEN_CONTRACT.md")
+    if provenance == "requirement_ledger":
+        return requirement.get("threshold") == finding.get("threshold") and bool(requirement.get("threshold_authority"))
+    if provenance == "mechanically_derived_invariant":
+        parent_ids = finding.get("parent_requirement_ids")
+        return (
+            isinstance(parent_ids, list)
+            and bool(parent_ids)
+            and bool(finding.get("logical_derivation"))
+            and bool(finding.get("why_necessary"))
+            and finding.get("changes_product_or_scientific_semantics") is False
+        )
+    return False
+
+
+def classify_path(path: str, profile: dict[str, Any]) -> str | None:
     semantic = profile["semantic_paths"]
-    classes: list[str] = []
-    for path in paths:
-        if path.endswith("FROZEN_CONTRACT.md"):
-            classes.append("CONTRACT_CHANGED")
-        elif path.endswith("REQUIREMENT_LEDGER.json"):
-            classes.append("REQUIREMENT_LEDGER_CHANGED")
-        elif matches_any(path, semantic.get("implementation", [])):
-            classes.append("IMPLEMENTATION_SOURCE_CHANGED")
-        elif matches_any(path, semantic.get("verifier", [])):
-            classes.append("VERIFIER_SOURCE_CHANGED")
-        elif matches_any(path, semantic.get("runtime_environment", [])):
-            classes.append("RUNTIME_ENVIRONMENT_CHANGED")
-        elif matches_any(path, semantic.get("ci_workflow", [])):
-            classes.append("CI_WORKFLOW_CHANGED")
-        elif matches_any(path, semantic.get("current_or_routing", [])):
-            classes.append("CURRENT_OR_ROUTING_ONLY_CHANGED")
-        elif matches_any(path, semantic.get("control_plane", [])):
-            classes.append("CONTROL_PLANE_ONLY_CHANGED")
-        elif matches_any(path, semantic.get("receipts_or_manifests", [])):
-            classes.append("RECEIPT_OR_MANIFEST_ONLY_CHANGED")
-        elif matches_any(path, semantic.get("documentation", [])):
-            classes.append("DOC_ONLY_CHANGED")
+    if path.endswith("FROZEN_CONTRACT.md"):
+        return "CONTRACT_CHANGED"
+    if path.endswith("REQUIREMENT_LEDGER.json"):
+        return "REQUIREMENT_LEDGER_CHANGED"
+    if matches_any(path, semantic.get("implementation", [])):
+        return "IMPLEMENTATION_SOURCE_CHANGED"
+    if matches_any(path, semantic.get("verifier", [])):
+        return "VERIFIER_SOURCE_CHANGED"
+    if matches_any(path, semantic.get("runtime_environment", [])):
+        return "RUNTIME_ENVIRONMENT_CHANGED"
+    if matches_any(path, semantic.get("ci_workflow", [])):
+        return "CI_WORKFLOW_CHANGED"
+    if matches_any(path, semantic.get("current_or_routing", [])):
+        return "CURRENT_OR_ROUTING_ONLY_CHANGED"
+    if matches_any(path, semantic.get("control_plane", [])):
+        return "CONTROL_PLANE_ONLY_CHANGED"
+    if matches_any(path, semantic.get("receipts_or_manifests", [])):
+        return "RECEIPT_OR_MANIFEST_ONLY_CHANGED"
+    if matches_any(path, semantic.get("documentation", [])):
+        return "DOC_ONLY_CHANGED"
+    return None
+
+
+def classify_changes(paths: list[str], profile: dict[str, Any]) -> dict[str, Any]:
+    classes = sorted(
+        {item for item in (classify_path(path, profile) for path in paths) if item},
+        key=CHANGE_CLASS_PRIORITY.index,
+    )
     if not classes:
-        return "NO_RELEVANT_CHANGE"
-    priority = [
-        "CONTRACT_CHANGED",
-        "REQUIREMENT_LEDGER_CHANGED",
-        "IMPLEMENTATION_SOURCE_CHANGED",
-        "VERIFIER_SOURCE_CHANGED",
-        "RUNTIME_ENVIRONMENT_CHANGED",
-        "CI_WORKFLOW_CHANGED",
-        "CONTROL_PLANE_ONLY_CHANGED",
-        "RECEIPT_OR_MANIFEST_ONLY_CHANGED",
-        "CURRENT_OR_ROUTING_ONLY_CHANGED",
-        "DOC_ONLY_CHANGED",
-    ]
-    return next(item for item in priority if item in classes)
+        classes = ["NO_RELEVANT_CHANGE"]
+    primary = classes[0]
+    return {
+        "change_classes": classes,
+        "primary_change_class": primary,
+        "invalidation_plan": invalidation_plan_for_classes(classes),
+    }
+
+
+def classify_paths(paths: list[str], profile: dict[str, Any]) -> str:
+    return str(classify_changes(paths, profile)["primary_change_class"])
 
 
 def invalidation_plan(change_class: str, *, review_target_id: str | None = None, reason: str | None = None) -> dict[str, Any]:
@@ -574,38 +796,87 @@ def invalidation_plan(change_class: str, *, review_target_id: str | None = None,
         "heavy_verifier_required": False,
         "executor_restart": False,
         "verifier_restart": False,
+        "critic_refreeze_required": False,
         "runtime_probe_required": False,
         "ci_required": False,
         "lightweight_validation_only": False,
+        "requires_controller_state_validation": False,
         "review_target_id": review_target_id,
         "semantic_invalidation_reason": reason,
     }
     if change_class == "CONTRACT_CHANGED":
-        plan.update(new_semantic_target_required=True, heavy_verifier_required=True, verifier_restart=True, runtime_probe_required=True, ci_required=True)
+        plan.update(new_semantic_target_required=True, critic_refreeze_required=True, heavy_verifier_required=True, runtime_probe_required=True, ci_required=True)
     elif change_class == "REQUIREMENT_LEDGER_CHANGED":
-        plan.update(new_semantic_target_required=True, heavy_verifier_required=True, verifier_restart=True, runtime_probe_required=True)
+        plan.update(new_semantic_target_required=True, heavy_verifier_required=True, runtime_probe_required=True)
     elif change_class == "IMPLEMENTATION_SOURCE_CHANGED":
-        plan.update(heavy_verifier_required=True, executor_restart=True, runtime_probe_required=True, ci_required=True)
+        plan.update(heavy_verifier_required=True, runtime_probe_required=True, ci_required=True)
     elif change_class == "VERIFIER_SOURCE_CHANGED":
-        plan.update(heavy_verifier_required=True, verifier_restart=True, runtime_probe_required=True, ci_required=True)
+        plan.update(heavy_verifier_required=True, runtime_probe_required=True, ci_required=True)
     elif change_class == "RUNTIME_ENVIRONMENT_CHANGED":
         plan.update(runtime_probe_required=True)
     elif change_class == "CI_WORKFLOW_CHANGED":
         plan.update(ci_required=True)
     elif change_class in {"CONTROL_PLANE_ONLY_CHANGED", "RECEIPT_OR_MANIFEST_ONLY_CHANGED", "CURRENT_OR_ROUTING_ONLY_CHANGED"}:
         plan.update(lightweight_validation_only=True)
+    if change_class == "CURRENT_OR_ROUTING_ONLY_CHANGED":
+        plan.update(requires_controller_state_validation=True)
     return plan
+
+
+def invalidation_plan_for_classes(change_classes: list[str], *, review_target_id: str | None = None) -> dict[str, Any]:
+    union = {
+        "change_classes": change_classes,
+        "primary_change_class": change_classes[0] if change_classes else "NO_RELEVANT_CHANGE",
+        "new_semantic_target_required": False,
+        "heavy_verifier_required": False,
+        "executor_restart": False,
+        "verifier_restart": False,
+        "critic_refreeze_required": False,
+        "runtime_probe_required": False,
+        "ci_required": False,
+        "lightweight_validation_only": False,
+        "requires_controller_state_validation": False,
+        "review_target_id": review_target_id,
+    }
+    for change_class in change_classes:
+        plan = invalidation_plan(change_class, review_target_id=review_target_id)
+        for key, value in plan.items():
+            if isinstance(value, bool):
+                union[key] = bool(union.get(key)) or value
+    return union
 
 
 def assert_heavy_verifier_reason(current: dict[str, Any], review_target_id: str, reason: str | None) -> None:
     runs = current.get("heavy_verifier_runs")
     if not isinstance(runs, list):
         return
-    if any(run.get("review_target_id") == review_target_id for run in runs if isinstance(run, dict)) and not reason:
-        raise ValueError("second heavy verifier run for same review_target_id requires semantic invalidation reason")
+    repeated = any(run.get("review_target_id") == review_target_id for run in runs if isinstance(run, dict))
+    if repeated and reason not in HEAVY_VERIFIER_REASONS:
+        raise ValueError("second heavy verifier run for same review_target_id requires a semantic invalidation reason")
 
 
-def route_findings(findings: list[dict[str, Any]], *, controller_originated: bool = False) -> dict[str, Any]:
+def planner_choice_is_bound(target: Path, task_key: str, finding: dict[str, Any]) -> bool:
+    rel = finding.get("planner_classification_artifact")
+    if not isinstance(rel, str) or not rel:
+        return False
+    path = task_root(target, task_key) / rel
+    if not path.exists():
+        return False
+    artifact = load_json(path)
+    return (
+        artifact.get("decision") == "SCIENTIFIC_OR_PRODUCT_CHOICE_REQUIRED"
+        and artifact.get("finding_id") == finding.get("finding_id")
+        and artifact.get("review_target_id") == finding.get("created_against_review_target_id")
+    )
+
+
+def route_findings(
+    findings: list[dict[str, Any]],
+    *,
+    controller_originated: bool = False,
+    target: Path | None = None,
+    task_key: str | None = None,
+) -> dict[str, Any]:
     blocking = [item for item in findings if item.get("blocking")]
     if not blocking:
         return {"route": "READY_FOR_PLANNER_REVIEW", "target_role": "Planner"}
@@ -613,10 +884,10 @@ def route_findings(findings: list[dict[str, Any]], *, controller_originated: boo
     classification = finding.get("classification")
     if classification not in FINDING_CLASSES:
         raise ValueError(f"unsupported finding classification: {classification}")
-    if classification == "SCIENTIFIC_OR_PRODUCT_CHOICE_REQUIRED" and (
-        controller_originated or not finding.get("planner_classified")
-    ):
-        raise ValueError("Controller cannot route a user scientific/product choice without Planner classification")
+    if classification == "SCIENTIFIC_OR_PRODUCT_CHOICE_REQUIRED":
+        planner_bound = bool(target and task_key and planner_choice_is_bound(target, task_key, finding))
+        if controller_originated or not planner_bound:
+            raise ValueError("Controller cannot route a user scientific/product choice without bound Planner classification artifact")
     routes = {
         "IMPLEMENTATION_BUG": ("REPAIR_EXECUTOR", "Executor"),
         "VERIFIER_BUG": ("REPAIR_VERIFIER", "Verifier"),
@@ -666,13 +937,40 @@ def validate_role_receipt(receipt: dict[str, Any]) -> list[str]:
         receipt.get("session_id") or receipt.get("thread_id")
     ):
         errors.append(f"{role} receipt requires exact session_id or thread_id")
-    for key in ["runtime_adapter", "allowed_write_scope", "start_or_resume_status"]:
+    for key in [
+        "runtime_adapter",
+        "allowed_write_scope",
+        "start_or_resume_status",
+        "worktree_id",
+        "produced_commit",
+        "produced_evidence_id",
+        "base_task_nonce",
+    ]:
         if key not in receipt:
             errors.append(f"role receipt missing {key}")
     return errors
 
 
-def validate_executor_result(result: dict[str, Any]) -> list[str]:
+def validate_touched_paths(role: str, touched_paths: list[str], profile: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    allowed = profile.get("role_write_scopes", {}).get(role, [])
+    for path in touched_paths:
+        if allowed and not matches_any(str(path), allowed):
+            errors.append(f"{role} touched path outside allowed_write_scope: {path}")
+    if role == "Controller":
+        forbidden_patterns = [
+            *profile.get("semantic_paths", {}).get("implementation", []),
+            *profile.get("semantic_paths", {}).get("verifier", []),
+            "tests/**",
+            "verifier/**",
+        ]
+        for path in touched_paths:
+            if matches_any(str(path), forbidden_patterns):
+                errors.append(f"Controller touched forbidden implementation/verifier path: {path}")
+    return errors
+
+
+def validate_executor_result(result: dict[str, Any], profile: dict[str, Any] | None = None) -> list[str]:
     errors: list[str] = []
     if result.get("test_aware_alternate_path") or result.get("synthetic_fake_effect"):
         errors.append("Executor result uses a forbidden test-aware or synthetic path")
@@ -688,28 +986,95 @@ def validate_executor_result(result: dict[str, Any]) -> list[str]:
     for path in touched if isinstance(touched, list) else []:
         if matches_any(str(path), forbidden_patterns):
             errors.append(f"Executor touched forbidden authority path: {path}")
+    if profile and isinstance(touched, list):
+        errors.extend(validate_touched_paths("Executor", [str(path) for path in touched], profile))
+    return errors
+
+
+def role_receipt_path(target: Path, task_key: str, role: str) -> Path:
+    return result_root(target, task_key) / "receipts" / f"{role.lower()}_role_receipt.json"
+
+
+def load_role_receipts(target: Path, task_key: str) -> dict[str, dict[str, Any]]:
+    receipts = {}
+    for role in ["Controller", "Verifier", "Executor"]:
+        path = role_receipt_path(target, task_key, role)
+        if path.exists():
+            receipts[role] = load_json(path)
+    return receipts
+
+
+def validate_role_receipts(target: Path, task_key: str, profile: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    receipts = load_role_receipts(target, task_key)
+    session_ids: dict[str, str] = {}
+    worktree_ids: dict[str, str] = {}
+    for role in ["Controller", "Verifier", "Executor"]:
+        receipt = receipts.get(role)
+        if not receipt:
+            continue
+        errors.extend(f"{role} receipt: {item}" for item in validate_role_receipt(receipt))
+        session = str(receipt.get("session_id") or receipt.get("thread_id") or "")
+        worktree = str(receipt.get("worktree_id") or "")
+        if session:
+            if session in session_ids:
+                errors.append(f"{role} shares session/thread id with {session_ids[session]}")
+            session_ids[session] = role
+        if worktree:
+            if worktree in worktree_ids:
+                errors.append(f"{role} shares worktree identity with {worktree_ids[worktree]}")
+            worktree_ids[worktree] = role
+        touched = receipt.get("touched_paths", [])
+        if isinstance(touched, list):
+            errors.extend(validate_touched_paths(role, [str(path) for path in touched], profile))
     return errors
 
 
 def validate_finding(finding: dict[str, Any], ledger_ids: set[str]) -> list[str]:
+    return validate_finding_against_ledger(finding, {req_id: {"requirement_id": req_id} for req_id in ledger_ids}, None)
+
+
+def validate_finding_against_ledger(
+    finding: dict[str, Any],
+    requirements: dict[str, dict[str, Any]],
+    current_review_target_id: str | None,
+) -> list[str]:
     errors: list[str] = []
     classification = finding.get("classification")
     if classification not in FINDING_CLASSES:
         errors.append(f"invalid finding classification: {classification}")
+    if classification == "DIAGNOSTIC_ANOMALY" and finding.get("blocking"):
+        errors.append("DIAGNOSTIC_ANOMALY cannot be blocking")
     if finding.get("blocking"):
+        for key in [
+            "finding_id",
+            "classification",
+            "blocking",
+            "summary",
+            "observed_evidence",
+            "required_repair",
+            "required_regression_evidence",
+            "forbidden_workaround",
+            "created_against_review_target_id",
+        ]:
+            if key not in finding:
+                errors.append(f"blocking finding missing {key}")
+        if not (finding.get("owner_role") or finding.get("target_role")):
+            errors.append("blocking finding missing owner_role/target_role")
+        if current_review_target_id and finding.get("created_against_review_target_id") != current_review_target_id:
+            errors.append("target-sensitive finding is not bound to current review_target_id")
         req_ids = finding.get("requirement_ids")
         if classification != "DIAGNOSTIC_ANOMALY" and (not isinstance(req_ids, list) or not req_ids):
             errors.append("blocking finding must cite requirement_ids")
         for req_id in req_ids if isinstance(req_ids, list) else []:
-            if req_id not in ledger_ids:
+            if req_id not in requirements:
                 errors.append(f"blocking finding cites unknown requirement_id: {req_id}")
         threshold = finding.get("threshold")
-        if threshold is not None and finding.get("threshold_provenance") not in {
-            "frozen_contract",
-            "requirement_ledger",
-            "mechanically_derived_invariant",
-        }:
-            errors.append("Verifier cannot create uncited blocking threshold")
+        if threshold is not None:
+            req_id = req_ids[0] if isinstance(req_ids, list) and req_ids else None
+            requirement = requirements.get(str(req_id), {})
+            if not requirement_authorizes_threshold(requirement, finding):
+                errors.append("Verifier cannot create uncited blocking threshold")
     return errors
 
 
@@ -732,6 +1097,10 @@ def validate_review_bundle(target: Path, task_key: str) -> tuple[dict[str, Any],
     ]:
         if key not in bundle:
             errors.append(f"REVIEW_BUNDLE.json missing {key}")
+    if "bundle_sha256" not in bundle:
+        errors.append("REVIEW_BUNDLE.json missing bundle_sha256")
+    elif bundle.get("bundle_sha256") != bundle_digest(bundle):
+        errors.append("REVIEW_BUNDLE.json bundle_sha256 is stale")
     for key in [
         "review_target_id",
         "frozen_contract_sha256",
@@ -751,23 +1120,170 @@ def validate_review_bundle(target: Path, task_key: str) -> tuple[dict[str, Any],
     return bundle, []
 
 
-def validate_task_state(target: Path, task_key: str) -> list[str]:
-    root = task_root(target, task_key)
-    current = load_json(root / "CURRENT.json")
-    state = current.get("state")
+def final_critic_artifact_path(target: Path, task_key: str) -> Path:
+    return task_root(target, task_key) / "FINAL_CRITIC_AUDIT.json"
+
+
+def planner_pass_candidate_path(target: Path, task_key: str) -> Path:
+    return task_root(target, task_key) / "PLANNER_PASS_CANDIDATE.json"
+
+
+def current_snapshot(target: Path, task_key: str) -> dict[str, Any]:
+    return load_json(task_root(target, task_key) / "SOURCE_SNAPSHOT.json")
+
+
+def validate_planner_pass_candidate(target: Path, task_key: str) -> list[str]:
+    path = planner_pass_candidate_path(target, task_key)
+    if not path.exists():
+        return ["Planner pass candidate missing PLANNER_PASS_CANDIDATE.json"]
     errors: list[str] = []
-    if state not in TASK_STATES:
-        errors.append(f"invalid state: {state}")
+    candidate = load_json(path)
+    snapshot_path = task_root(target, task_key) / "SOURCE_SNAPSHOT.json"
+    request_path = task_root(target, task_key) / "REQUEST.json"
+    if not snapshot_path.exists():
+        return ["Planner pass candidate requires SOURCE_SNAPSHOT.json"]
+    if not request_path.exists():
+        return ["Planner pass candidate requires REQUEST.json"]
+    snapshot_payload = load_json(snapshot_path)
+    request = load_json(request_path)
+    for key in ["schema", "task_key", "request_nonce", "review_target_id", "decision"]:
+        if key not in candidate:
+            errors.append(f"Planner pass candidate missing {key}")
+    if candidate.get("decision") != "PLANNER_PASS_CANDIDATE":
+        errors.append("Planner pass candidate decision must be PLANNER_PASS_CANDIDATE")
+    if candidate.get("task_key") != task_key:
+        errors.append("Planner pass candidate task_key mismatch")
+    if candidate.get("request_nonce") != request.get("request_nonce"):
+        errors.append("Planner pass candidate request_nonce mismatch")
+    if candidate.get("review_target_id") != snapshot_payload.get("review_target_id"):
+        errors.append("Planner pass candidate is not bound to current review_target_id")
+    return errors
+
+
+def validate_final_critic_artifact(target: Path, task_key: str) -> list[str]:
+    path = final_critic_artifact_path(target, task_key)
+    if not path.exists():
+        return ["Final Critic artifact missing FINAL_CRITIC_AUDIT.json"]
+    errors: list[str] = []
+    artifact = load_json(path)
+    snapshot_path = task_root(target, task_key) / "SOURCE_SNAPSHOT.json"
+    bundle_path = result_root(target, task_key) / "REVIEW_BUNDLE.json"
+    request_path = task_root(target, task_key) / "REQUEST.json"
+    if not snapshot_path.exists():
+        errors.append("Final Critic artifact requires SOURCE_SNAPSHOT.json")
+    if not bundle_path.exists():
+        errors.append("Final Critic artifact requires REVIEW_BUNDLE.json")
+    if not request_path.exists():
+        errors.append("Final Critic artifact requires REQUEST.json")
+    if errors:
+        return errors
+    snapshot_payload = load_json(snapshot_path)
+    bundle = load_json(bundle_path)
+    request = load_json(request_path)
+    try:
+        validate_review_bundle(target, task_key)
+    except Exception as exc:
+        errors.append(f"Final Critic artifact requires valid Review Bundle: {exc}")
+    required = [
+        "schema",
+        "task_key",
+        "request_nonce",
+        "review_target_id",
+        "frozen_contract_sha256",
+        "requirement_ledger_sha256",
+        "review_bundle_sha256",
+        "planner_pass_candidate_artifact",
+        "decision",
+        "blocking_findings",
+        "audit_checks",
+        "touched_paths",
+    ]
+    for key in required:
+        if key not in artifact:
+            errors.append(f"Final Critic artifact missing {key}")
+    if errors:
+        return errors
+    if artifact.get("schema") != "AI_BRIDGE_FINAL_CRITIC_AUDIT_V1":
+        errors.append("Final Critic artifact schema must be AI_BRIDGE_FINAL_CRITIC_AUDIT_V1")
+    if artifact.get("task_key") != task_key:
+        errors.append("Final Critic artifact task_key mismatch")
+    if artifact.get("request_nonce") != request.get("request_nonce"):
+        errors.append("Final Critic artifact request_nonce mismatch")
+    for key in ["review_target_id", "frozen_contract_sha256", "requirement_ledger_sha256"]:
+        if artifact.get(key) != snapshot_payload.get(key):
+            errors.append(f"Final Critic artifact {key} mismatch")
+    if artifact.get("review_bundle_sha256") != bundle.get("bundle_sha256"):
+        errors.append("Final Critic artifact review_bundle_sha256 mismatch")
+    if bundle.get("bundle_sha256") != bundle_digest(bundle):
+        errors.append("Final Critic artifact is bound to a stale Review Bundle digest")
+    if artifact.get("planner_pass_candidate_artifact") != "PLANNER_PASS_CANDIDATE.json":
+        errors.append("Final Critic artifact must bind PLANNER_PASS_CANDIDATE.json")
+    if artifact.get("decision") not in {"CRITIC_FINAL_PASS", "CRITIC_FINAL_REVISE"}:
+        errors.append("Final Critic decision is invalid")
+    if artifact.get("decision") == "CRITIC_FINAL_PASS" and artifact.get("blocking_findings"):
+        errors.append("CRITIC_FINAL_PASS cannot contain blocking_findings")
+    checks = artifact.get("audit_checks")
+    if not isinstance(checks, dict) or not checks or not all(value is True for value in checks.values()):
+        errors.append("Final Critic pass requires all audit_checks true")
+    touched = artifact.get("touched_paths")
+    if not isinstance(touched, list):
+        errors.append("Final Critic touched_paths must be an explicit list")
+    elif touched:
+        errors.append("Final Critic has no implementation/verifier write authority")
+    return errors
+
+
+def has_blocking_findings(current: dict[str, Any], bundle: dict[str, Any] | None = None) -> bool:
+    for source in [current.get("open_findings"), bundle.get("open_findings") if bundle else None]:
+        for finding in source if isinstance(source, list) else []:
+            if isinstance(finding, dict) and finding.get("blocking"):
+                return True
+    return False
+
+
+def validate_untracked_semantic_sources(target: Path, profile: dict[str, Any]) -> list[str]:
+    try:
+        output = git_output(target, ["ls-files", "--others", "--exclude-standard"])
+    except Exception:
+        return []
+    errors: list[str] = []
+    patterns = [*profile["semantic_paths"].get("implementation", []), *profile["semantic_paths"].get("verifier", [])]
+    for path in [line.strip() for line in output.splitlines() if line.strip()]:
+        if matches_any(path, patterns):
+            errors.append(f"untracked semantic source requires commit or explicit exclusion: {path}")
+    return errors
+
+
+def validate_transition_predicates(target: Path, task_key: str, state: str, current: dict[str, Any], profile: dict[str, Any]) -> list[str]:
+    root = task_root(target, task_key)
+    errors: list[str] = []
+    snapshot_path = root / "SOURCE_SNAPSHOT.json"
+    bundle_path = result_root(target, task_key) / "REVIEW_BUNDLE.json"
     if state == "PLAN_READY_FOR_CRITIC" and not (root / "PLANNER_DRAFT.md").exists():
-        errors.append("PLAN_READY_FOR_CRITIC requires PLANNER_DRAFT.md")
+        errors.append("PLAN_READY_FOR_CRITIC requires current PLANNER_DRAFT artifact")
     if state == "PLAN_FROZEN":
+        freeze = root / "CRITIC_FREEZE.json"
+        if not freeze.exists():
+            errors.append("PLAN_FROZEN requires Critic freeze artifact")
         if not (root / "FROZEN_CONTRACT.md").exists():
             errors.append("PLAN_FROZEN requires FROZEN_CONTRACT.md")
         if not (root / "REQUIREMENT_LEDGER.json").exists():
             errors.append("PLAN_FROZEN requires REQUIREMENT_LEDGER.json")
+        if (root / "REQUIREMENT_LEDGER.json").exists():
+            try:
+                validate_requirement_ledger(load_json(root / "REQUIREMENT_LEDGER.json"))
+            except Exception as exc:
+                errors.append(f"PLAN_FROZEN ledger invalid: {exc}")
+        if freeze.exists() and (root / "FROZEN_CONTRACT.md").exists() and (root / "REQUIREMENT_LEDGER.json").exists():
+            freeze_payload = load_json(freeze)
+            if freeze_payload.get("frozen_contract_sha256") != file_sha256(root / "FROZEN_CONTRACT.md"):
+                errors.append("Critic freeze artifact frozen_contract_sha256 mismatch")
+            if freeze_payload.get("requirement_ledger_sha256") != file_sha256(root / "REQUIREMENT_LEDGER.json"):
+                errors.append("Critic freeze artifact requirement_ledger_sha256 mismatch")
     if state == "VERIFIER_FROZEN":
         receipt = root / "VERIFIER_FREEZE.json"
         manifest = root / "VERIFIER_SOURCE_MANIFEST.json"
+        role_receipt = role_receipt_path(target, task_key, "Verifier")
         if not receipt.exists() or not manifest.exists():
             errors.append("VERIFIER_FROZEN requires verifier manifest and verifier-owned freeze receipt")
         else:
@@ -777,16 +1293,56 @@ def validate_task_state(target: Path, task_key: str) -> list[str]:
                 errors.append("VERIFIER_FROZEN receipt digest does not match verifier source manifest")
             if not receipt_json.get("verifier_evidence_id"):
                 errors.append("VERIFIER_FROZEN requires verifier_evidence_id")
-    if state in {"PLANNER_PASS", "AWAIT_HUMAN_DECISION"}:
-        final = root / "FINAL_CRITIC_AUDIT.json"
-        if not final.exists():
-            errors.append(f"{state} requires FINAL_CRITIC_AUDIT.json")
+        if not role_receipt.exists():
+            errors.append("VERIFIER_FROZEN requires Verifier role receipt")
         else:
-            final_json = load_json(final)
-            if final_json.get("decision") != "CRITIC_FINAL_PASS":
-                errors.append(f"{state} requires CRITIC_FINAL_PASS")
-            if final_json.get("touched_paths"):
-                errors.append("Final Critic has no implementation/verifier write authority")
+            errors.extend(f"Verifier role receipt: {item}" for item in validate_role_receipt(load_json(role_receipt)))
+    if state == "READY_FOR_PLANNER_REVIEW":
+        if not snapshot_path.exists():
+            errors.append("READY_FOR_PLANNER_REVIEW requires SOURCE_SNAPSHOT.json")
+        if not bundle_path.exists():
+            errors.append("READY_FOR_PLANNER_REVIEW requires REVIEW_BUNDLE.json")
+        if snapshot_path.exists():
+            snapshot_payload = load_json(snapshot_path)
+            if current.get("current_review_target_id") != snapshot_payload.get("review_target_id"):
+                errors.append("CURRENT current_review_target_id must match SOURCE_SNAPSHOT")
+        if bundle_path.exists():
+            try:
+                bundle, _ = validate_review_bundle(target, task_key)
+                if has_blocking_findings(current, bundle):
+                    errors.append("READY_FOR_PLANNER_REVIEW has unresolved blocking finding")
+                if profile.get("requires_ci") or profile.get("ci", {}).get("required"):
+                    ci = bundle.get("ci_receipt")
+                    if not isinstance(ci, dict) or ci.get("status") != "PASS":
+                        errors.append("READY_FOR_PLANNER_REVIEW requires CI PASS")
+            except Exception as exc:
+                errors.append(f"READY_FOR_PLANNER_REVIEW bundle invalid: {exc}")
+        errors.extend(validate_untracked_semantic_sources(target, profile))
+    if state == "PLANNER_PASS_CANDIDATE":
+        errors.extend(validate_planner_pass_candidate(target, task_key))
+    if state == "READY_FOR_CRITIC_FINAL_AUDIT":
+        errors.extend(validate_planner_pass_candidate(target, task_key))
+    if state in {"PLANNER_PASS", "AWAIT_HUMAN_DECISION"}:
+        errors.extend(validate_planner_pass_candidate(target, task_key))
+        errors.extend(validate_final_critic_artifact(target, task_key))
+        if bundle_path.exists():
+            bundle = load_json(bundle_path)
+            if has_blocking_findings(current, bundle):
+                errors.append(f"{state} has unresolved blocking findings")
+        if state == "AWAIT_HUMAN_DECISION" and current.get("terminal_policy") != "human_gate":
+            errors.append("AWAIT_HUMAN_DECISION requires terminal_policy=human_gate")
+    return errors
+
+
+def validate_task_state(target: Path, task_key: str, profile: dict[str, Any] | None = None) -> list[str]:
+    profile = load_project_profile(target) if profile is None else profile
+    root = task_root(target, task_key)
+    current = load_json(root / "CURRENT.json")
+    state = current.get("state")
+    errors: list[str] = []
+    if state not in TASK_STATES:
+        errors.append(f"invalid state: {state}")
+    errors.extend(validate_transition_predicates(target, task_key, str(state), current, profile))
     return errors
 
 
@@ -796,6 +1352,10 @@ def validate_agent_flow(target: Path) -> tuple[list[str], int]:
     errors: list[str] = []
     if status.missing:
         errors.extend(f"missing {item}" for item in status.missing)
+    try:
+        load_repo_schema(target)
+    except Exception as exc:
+        errors.append(f"schema drift: {exc}")
     try:
         profile = load_project_profile(target)
     except Exception as exc:
@@ -817,15 +1377,50 @@ def validate_agent_flow(target: Path) -> tuple[list[str], int]:
                 try:
                     ledger = load_json(task_dir / "REQUIREMENT_LEDGER.json")
                     validate_requirement_ledger(ledger)
-                    ledger_ids = {str(item.get("requirement_id")) for item in ledger.get("requirements", []) if isinstance(item, dict)}
+                    requirements = ledger_requirements_by_id(ledger)
                     findings_path = result_root(target, task_key) / "open_findings.json"
                     if findings_path.exists():
                         for finding in load_json(findings_path).get("findings", []):
-                            errors.extend(validate_finding(finding, ledger_ids))
+                            current_target = None
+                            snapshot_path = task_dir / "SOURCE_SNAPSHOT.json"
+                            if snapshot_path.exists():
+                                current_target = load_json(snapshot_path).get("review_target_id")
+                            errors.extend(
+                                f"{task_key}: {item}"
+                                for item in validate_finding_against_ledger(finding, requirements, current_target)
+                            )
                 except Exception as exc:
                     errors.append(f"{task_key}: {exc}")
+            if profile:
+                errors.extend(f"{task_key}: {item}" for item in validate_role_receipts(target, task_key, profile))
+            for name, role in [
+                ("controller_result.json", "Controller"),
+                ("executor_result.json", "Executor"),
+                ("verifier_result.json", "Verifier"),
+            ]:
+                path = result_root(target, task_key) / "implementation" / name
+                if not path.exists():
+                    path = result_root(target, task_key) / "verification" / name
+                if path.exists() and profile:
+                    payload = load_json(path)
+                    touched = payload.get("touched_paths", [])
+                    if isinstance(touched, list):
+                        errors.extend(
+                            f"{task_key}: {item}"
+                            for item in validate_touched_paths(role, [str(item) for item in touched], profile)
+                        )
+                    if role == "Executor":
+                        errors.extend(f"{task_key}: {item}" for item in validate_executor_result(payload, profile))
             if (task_dir / "CURRENT.json").exists():
-                errors.extend(f"{task_key}: {item}" for item in validate_task_state(target, task_key))
+                errors.extend(f"{task_key}: {item}" for item in validate_task_state(target, task_key, profile or None))
+                current = load_json(task_dir / "CURRENT.json")
+                review_target_id = current.get("current_review_target_id")
+                reason = current.get("semantic_invalidation_reason")
+                if review_target_id:
+                    try:
+                        assert_heavy_verifier_reason(current, str(review_target_id), reason)
+                    except Exception as exc:
+                        errors.append(f"{task_key}: {exc}")
             if (result_root(target, task_key) / "REVIEW_BUNDLE.json").exists():
                 try:
                     validate_review_bundle(target, task_key)
@@ -856,6 +1451,88 @@ def worktree_plan(target: Path, role: str, base_ref: str = "HEAD") -> dict[str, 
         "command": ["git", "worktree", "add", "--detach", f"<state-home>/{target.name}/{role.lower()}", base_ref],
         "policy": "detached worktree; explicit user authorization required before creating role branches",
     }
+
+
+def integration_branch_ready(target: Path, current: dict[str, Any]) -> bool:
+    branch = str(current.get("integration_branch") or current_branch(target))
+    if branch in {"", "UNKNOWN", "DETACHED"}:
+        return False
+    try:
+        branches = git_output(target, ["branch", "--format", "%(refname:short)"]).splitlines()
+    except Exception:
+        return False
+    return branch in branches
+
+
+def integration_plan(target: Path, task_key: str, role: str, role_commit: str) -> dict[str, Any]:
+    current = load_json(task_root(target, task_key) / "CURRENT.json")
+    if not integration_branch_ready(target, current):
+        raise ValueError("Controller integration requires a valid existing authorized integration branch")
+    return {
+        "role": role,
+        "role_commit": role_commit,
+        "integration_branch": current.get("integration_branch") or current_branch(target),
+        "branch_created": False,
+        "policy": "Controller integrates exact role commit SHA into authorized existing branch only",
+    }
+
+
+def plan_transition(target: Path, task_key: str) -> dict[str, Any]:
+    profile = load_project_profile(target)
+    current = load_json(task_root(target, task_key) / "CURRENT.json")
+    state = current.get("state")
+    errors = validate_task_state(target, task_key, profile)
+    if errors:
+        return {"state": state, "valid": False, "errors": errors, "next_action": "REPAIR_STATE_EVIDENCE"}
+    if state == "PLAN_REQUESTED":
+        return {"state": state, "valid": True, "next_state": "PLAN_READY_FOR_CRITIC", "next_action": "RUN_PLANNER_INITIAL"}
+    if state == "PLAN_READY_FOR_CRITIC":
+        return {"state": state, "valid": True, "next_state": "PLAN_FROZEN", "next_action": "RUN_CRITIC_INITIAL"}
+    if state == "PLAN_FROZEN":
+        return {"state": state, "valid": True, "next_state": "VERIFIER_RUNNING", "next_action": "LAUNCH_VERIFIER"}
+    if state == "VERIFIER_FROZEN":
+        return {"state": state, "valid": True, "next_state": "EXECUTOR_RUNNING", "next_action": "LAUNCH_EXECUTOR"}
+    if state == "READY_FOR_PLANNER_REVIEW":
+        return {"state": state, "valid": True, "next_state": "WAITING_FOR_EXTERNAL_GPT", "next_action": "RUN_PLANNER_REVIEW"}
+    if state == "PLANNER_PASS_CANDIDATE":
+        return {"state": state, "valid": True, "next_state": "READY_FOR_CRITIC_FINAL_AUDIT", "next_action": "RUN_FINAL_CRITIC"}
+    if state == "READY_FOR_CRITIC_FINAL_AUDIT":
+        return {"state": state, "valid": True, "next_state": "PLANNER_PASS", "next_action": "APPLY_FINAL_CRITIC_PASS"}
+    if state == "PLANNER_PASS":
+        return {"state": state, "valid": True, "next_state": "AWAIT_HUMAN_DECISION", "next_action": "WRITE_TERMINAL_BRIEF"}
+    route = route_findings(current.get("open_findings", []), target=target, task_key=task_key)
+    return {"state": state, "valid": True, "route": route, "next_action": route["route"]}
+
+
+def apply_transition(target: Path, task_key: str, *, expected_state: str, next_state: str, next_action: str = "") -> dict[str, Any]:
+    path = task_root(target, task_key) / "CURRENT.json"
+    current = load_json(path)
+    if current.get("state") != expected_state:
+        raise ValueError(f"transition expected {expected_state}, found {current.get('state')}")
+    errors = validate_task_state(target, task_key)
+    if errors:
+        raise ValueError("; ".join(errors))
+    profile = load_project_profile(target)
+    next_errors = validate_transition_predicates(target, task_key, next_state, current, profile)
+    if next_errors:
+        raise ValueError("; ".join(next_errors))
+    current["state"] = next_state
+    if next_action:
+        current["next_action"] = next_action
+    write_json(path, current)
+    return current
+
+
+def write_terminal_brief(target: Path, task_key: str) -> dict[str, Any]:
+    errors = validate_task_state(target, task_key)
+    if errors:
+        raise ValueError("; ".join(errors))
+    brief = terminal_notification_brief(target, task_key)
+    if brief is None:
+        raise ValueError("task is not in a terminal/user-decision notifiable state")
+    path = result_root(target, task_key) / "notification_brief.json"
+    write_json(path, brief)
+    return brief
 
 
 def terminal_notification_brief(target: Path, task_key: str) -> dict[str, Any] | None:
@@ -913,6 +1590,22 @@ def build_parser() -> argparse.ArgumentParser:
     route.add_argument("--target", type=Path, default=Path.cwd())
     route.add_argument("--task-key", required=True)
 
+    transition = sub.add_parser("transition")
+    transition_sub = transition.add_subparsers(dest="transition_command")
+    transition_plan = transition_sub.add_parser("plan")
+    transition_plan.add_argument("--target", type=Path, default=Path.cwd())
+    transition_plan.add_argument("--task-key", required=True)
+    transition_apply = transition_sub.add_parser("apply")
+    transition_apply.add_argument("--target", type=Path, default=Path.cwd())
+    transition_apply.add_argument("--task-key", required=True)
+    transition_apply.add_argument("--expected-state", required=True)
+    transition_apply.add_argument("--next-state", required=True)
+    transition_apply.add_argument("--next-action", default="")
+
+    terminal = sub.add_parser("terminal-brief")
+    terminal.add_argument("--target", type=Path, default=Path.cwd())
+    terminal.add_argument("--task-key", required=True)
+
     prompt = sub.add_parser("prompt")
     prompt.add_argument("--target", type=Path, default=Path.cwd())
     prompt.add_argument("role", choices=sorted(role.lower() for role in ROLES))
@@ -961,13 +1654,33 @@ def main(argv: list[str] | None = None) -> int:
         paths = list(args.path)
         if args.base and args.head:
             paths.extend(changed_paths(args.target, args.base, args.head))
-        change_class = classify_paths(sorted(set(paths)), profile)
-        print(canonical_json({"change_class": change_class, "invalidation": invalidation_plan(change_class)}, pretty=True), end="")
+        print(canonical_json(classify_changes(sorted(set(paths)), profile), pretty=True), end="")
         return 0
     if args.command == "route":
         current = load_json(task_root(args.target, args.task_key) / "CURRENT.json")
-        result = route_findings(current.get("open_findings", []))
+        result = route_findings(current.get("open_findings", []), target=args.target, task_key=args.task_key)
         print(canonical_json(result, pretty=True), end="")
+        return 0
+    if args.command == "transition" and args.transition_command == "plan":
+        print(canonical_json(plan_transition(args.target, args.task_key), pretty=True), end="")
+        return 0
+    if args.command == "transition" and args.transition_command == "apply":
+        print(
+            canonical_json(
+                apply_transition(
+                    args.target,
+                    args.task_key,
+                    expected_state=args.expected_state,
+                    next_state=args.next_state,
+                    next_action=args.next_action,
+                ),
+                pretty=True,
+            ),
+            end="",
+        )
+        return 0
+    if args.command == "terminal-brief":
+        print(canonical_json(write_terminal_brief(args.target, args.task_key), pretty=True), end="")
         return 0
     if args.command == "prompt":
         print(role_prompt(args.target, args.role))
