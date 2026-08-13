@@ -35,6 +35,64 @@ class ReviewedHandoffTests(unittest.TestCase):
         template = rh.read_text(rh.reviewed_root(target) / "templates" / "FINAL_REPORT.md")
         rh.write_text(rh.result_root(target, "001_feature") / "FINAL_REPORT.md", template)
 
+    def remote_write_review_transaction(self, target: Path, *, decision: str, body: str = "Remote GPT review.") -> dict:
+        root = rh.task_root(target, "001_feature")
+        result_dir = rh.result_root(target, "001_feature")
+        current = rh.load_json(root / "CURRENT.json")
+        next_round = int(current.get("review_round", 0)) + 1
+        commit = str(current.get("implementation_commit") or "")
+        review_path = result_dir / f"REVIEW_{next_round}.md"
+        header = (
+            "---\n"
+            f"schema: {rh.REVIEW_SCHEMA}\n"
+            "task_key: 001_feature\n"
+            f"review_round: {next_round}\n"
+            f"decision: {decision}\n"
+            f"implementation_commit: {commit}\n"
+            "---\n\n"
+        )
+        rh.write_text(review_path, header + body.rstrip() + "\n")
+        current["review_round"] = next_round
+        current["last_review_decision"] = decision
+        if current.get("state") == "WAITING_FOR_CI" and decision == "REVISE":
+            current["ci_status"] = "FAIL"
+        if decision == "PASS":
+            self.write_final_report(target)
+            current["state"] = "AWAIT_HUMAN_DECISION"
+            current["human_gate_reason"] = "PASS"
+            current["next_action"] = "PRESENT_FINAL_REPORT"
+        elif decision == "BLOCKED":
+            self.write_final_report(target)
+            current["state"] = "BLOCKED"
+            current["next_action"] = "PRESENT_FINAL_REPORT"
+        elif next_round >= int(current.get("max_review_rounds", 2)):
+            self.write_final_report(target)
+            current["state"] = "AWAIT_HUMAN_DECISION"
+            current["review_limit_reached"] = True
+            current["human_gate_reason"] = "REVIEW_LIMIT"
+            current["next_action"] = "PRESENT_FINAL_REPORT"
+        else:
+            current["state"] = "REVISE"
+            current["next_action"] = "RUN_CODEX_REPAIR"
+        rh.write_json(root / "CURRENT.json", current)
+        return current
+
+    def remote_write_planner_transaction(self, target: Path, *, needs_user: bool = False) -> dict:
+        root = rh.task_root(target, "001_feature")
+        current = rh.load_json(root / "CURRENT.json")
+        if needs_user:
+            self.write_final_report(target)
+            current["state"] = "AWAIT_HUMAN_DECISION"
+            current["human_gate_reason"] = "PLANNER_DECISION"
+            current["next_action"] = "PRESENT_FINAL_REPORT"
+        else:
+            self.write_plan(target)
+            current["plan_revision"] = int(current.get("plan_revision", 0)) + 1
+            current["state"] = "PLAN_FROZEN"
+            current["next_action"] = "RUN_CODEX_EXECUTOR"
+        rh.write_json(root / "CURRENT.json", current)
+        return current
+
     def freeze_and_start(self, target: Path) -> None:
         self.write_plan(target)
         rh.apply_transition(target, "001_feature", expected_state="PLAN_REQUESTED", next_state="PLAN_FROZEN")
@@ -170,6 +228,148 @@ class ReviewedHandoffTests(unittest.TestCase):
             self.assertEqual(plan["next_action"], "WAIT_FOR_CI")
             self.assertNotIn("next_state", plan)
             self.assertEqual(before, after)
+
+    def test_scheduled_prompt_uses_github_transactions_not_local_transition_cli(self) -> None:
+        prompt = rh.read_text(Path("templates/reviewed_handoff/prompts/REVIEWER_SCHEDULED_TASK.md"))
+        self.assertIn("GitHub connector", prompt)
+        self.assertIn("先写 GPT 拥有的 artifact", prompt)
+        self.assertIn("最后写 `automation/reviewed_handoff/tasks/<task_key>/CURRENT.json`", prompt)
+        self.assertIn("artifact-only commit 不代表新 workflow state", prompt)
+        self.assertIn("本地 watcher 只以 `CURRENT.json` 作为 routing source of truth", prompt)
+        self.assertNotIn("reviewed-handoff transition apply", prompt)
+        self.assertNotIn("reviewed-handoff review record", prompt)
+
+    def test_remote_ci_pass_transaction_matches_valid_ready_state(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            root = rh.task_root(target, "001_feature")
+            current = rh.load_json(root / "CURRENT.json")
+            current["ci_required"] = True
+            current["ci_status"] = "PENDING"
+            rh.write_json(root / "CURRENT.json", current)
+            self.freeze_and_start(target)
+            self.write_result(target, commit="impl-ci", ci_status="PENDING")
+            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="WAITING_FOR_CI")
+            current = rh.load_json(root / "CURRENT.json")
+            current["ci_status"] = "PASS"
+            current["state"] = "READY_FOR_GPT_REVIEW"
+            current["next_action"] = "WAIT_SCHEDULED_GPT_REVIEW"
+            rh.write_json(root / "CURRENT.json", current)
+            self.assertEqual(rh.validate_task(target, "001_feature"), [])
+
+    def test_remote_ci_fail_transactions_use_review_budget(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            root = rh.task_root(target, "001_feature")
+            current = rh.load_json(root / "CURRENT.json")
+            current["ci_required"] = True
+            current["ci_status"] = "PENDING"
+            rh.write_json(root / "CURRENT.json", current)
+            self.freeze_and_start(target)
+            self.write_result(target, commit="impl-ci-1", ci_status="PENDING")
+            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="WAITING_FOR_CI")
+            current = self.remote_write_review_transaction(target, decision="REVISE", body="CI failed.")
+            self.assertEqual(current["state"], "REVISE")
+            self.assertEqual(current["ci_status"], "FAIL")
+            self.assertEqual(current["review_round"], 1)
+            self.assertEqual(rh.validate_task(target, "001_feature"), [])
+
+            rh.apply_transition(target, "001_feature", expected_state="REVISE", next_state="EXECUTING")
+            self.write_result(target, commit="impl-ci-2", ci_status="PENDING")
+            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="WAITING_FOR_CI")
+            current = self.remote_write_review_transaction(target, decision="REVISE", body="CI failed again.")
+            self.assertEqual(current["state"], "AWAIT_HUMAN_DECISION")
+            self.assertEqual(current["review_round"], 2)
+            self.assertTrue(current["review_limit_reached"])
+            self.assertEqual(current["human_gate_reason"], "REVIEW_LIMIT")
+            self.assertEqual(rh.validate_task(target, "001_feature"), [])
+
+    def test_remote_ci_unavailable_routes_blocked_with_final_report(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            root = rh.task_root(target, "001_feature")
+            current = rh.load_json(root / "CURRENT.json")
+            current["ci_required"] = True
+            current["ci_status"] = "PENDING"
+            rh.write_json(root / "CURRENT.json", current)
+            self.freeze_and_start(target)
+            self.write_result(target, commit="impl-ci", ci_status="PENDING")
+            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="WAITING_FOR_CI")
+            before = rh.load_json(root / "CURRENT.json")
+            self.write_final_report(target)
+            current = dict(before)
+            current["state"] = "BLOCKED"
+            current["next_action"] = "PRESENT_FINAL_REPORT"
+            current["runner_failure"] = {"source": "github_checks", "reason": "status_unavailable"}
+            rh.write_json(root / "CURRENT.json", current)
+            self.assertEqual(rh.validate_task(target, "001_feature"), [])
+            self.assertEqual(rh.load_json(root / "CURRENT.json")["ci_status"], "PENDING")
+
+    def test_remote_reviewer_pass_and_revise_transactions_validate(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            self.freeze_and_start(target)
+            self.write_result(target, commit="impl-pass")
+            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            current = self.remote_write_review_transaction(target, decision="PASS", body="Plan satisfied.")
+            self.assertEqual(current["state"], "AWAIT_HUMAN_DECISION")
+            self.assertEqual(current["human_gate_reason"], "PASS")
+            self.assertEqual(rh.validate_task(target, "001_feature"), [])
+
+        tmp, target = self.make_project()
+        with tmp:
+            self.freeze_and_start(target)
+            self.write_result(target, commit="impl-revise")
+            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            current = self.remote_write_review_transaction(target, decision="REVISE", body="Needs minimal repair.")
+            self.assertEqual(current["state"], "REVISE")
+            self.assertEqual(current["review_round"], 1)
+            self.assertEqual(rh.validate_task(target, "001_feature"), [])
+
+            rh.apply_transition(target, "001_feature", expected_state="REVISE", next_state="EXECUTING")
+            self.write_result(target, commit="impl-revise-2")
+            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            current = self.remote_write_review_transaction(target, decision="REVISE", body="Still not closed.")
+            self.assertEqual(current["state"], "AWAIT_HUMAN_DECISION")
+            self.assertTrue(current["review_limit_reached"])
+            self.assertEqual(current["human_gate_reason"], "REVIEW_LIMIT")
+            self.assertEqual(rh.validate_task(target, "001_feature"), [])
+
+    def test_remote_planner_transactions_validate_revision_and_human_gate(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            self.freeze_and_start(target)
+            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="NEEDS_GPT_PLANNER")
+            current = self.remote_write_planner_transaction(target)
+            self.assertEqual(current["state"], "PLAN_FROZEN")
+            self.assertEqual(current["plan_revision"], 1)
+            self.assertEqual(rh.validate_task(target, "001_feature"), [])
+
+            rh.apply_transition(target, "001_feature", expected_state="PLAN_FROZEN", next_state="EXECUTING")
+            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="NEEDS_GPT_PLANNER")
+            current = self.remote_write_planner_transaction(target, needs_user=True)
+            self.assertEqual(current["state"], "AWAIT_HUMAN_DECISION")
+            self.assertEqual(current["human_gate_reason"], "PLANNER_DECISION")
+            self.assertEqual(rh.validate_task(target, "001_feature"), [])
+
+    def test_generic_reviewed_handoff_prompts_do_not_contain_ai_skills_policy(self) -> None:
+        checked = [
+            Path("templates/reviewed_handoff/prompts/PLANNER.md"),
+            Path("templates/reviewed_handoff/prompts/REVIEWER_SCHEDULED_TASK.md"),
+            Path("docs/V0_5_REVIEWED_HANDOFF_IMPLEMENTATION_SPEC.md"),
+        ]
+        banned = [
+            "AI_Skills_Collection",
+            "marketplacePluginBudget",
+            "venue-templates",
+            "registry.json",
+            "skill/plugin",
+            "plugin/skill",
+        ]
+        for path in checked:
+            text = rh.read_text(path)
+            for term in banned:
+                self.assertNotIn(term, text, f"{term} leaked into {path}")
 
     def test_result_frontmatter_cannot_override_current_ci_truth(self) -> None:
         tmp, target = self.make_project()

@@ -189,6 +189,16 @@ Do not add Agent-Flow provenance machinery to Reviewed Handoff unless a concrete
 
 A repository using Reviewed Handoff should normally have one ChatGPT Scheduled Task. Each run reads the repository's `schema.json`, scheduled reviewer prompt, and all task `CURRENT.json` files.
 
+The Scheduled Task uses GitHub as its transaction surface. It reads tracked workflow artifacts, repository state, and GitHub Actions/checks through the GitHub connector; it does not run the target machine's local `ai-bridge` CLI. Local CLI commands remain for the Codex watcher, local debugging, deterministic validation, and human/manual operation.
+
+Every GPT-owned state change follows the same transaction rule:
+
+1. write the model-owned artifact first, such as `PLAN.md`, `REVIEW_<round>.md`, or `FINAL_REPORT.md`;
+2. update `automation/reviewed_handoff/tasks/<task_key>/CURRENT.json` last;
+3. re-read the final files and self-check the resulting `state`, `review_round`, `plan_revision`, `ci_status`, round limits, and final-report requirements.
+
+The preferred form is a single Git commit containing the complete transaction. If the GitHub connector cannot conveniently modify all files atomically, artifact commit(s) are allowed before the final `CURRENT.json` commit. An artifact-only commit is not a new workflow state. The local watcher continues to use `CURRENT.json` as the routing source of truth and must fail closed after fetch if validation rejects the remote transaction.
+
 It processes only states that explicitly require GPT work, primarily:
 
 ```text
@@ -201,6 +211,12 @@ PASS
 No matching task means no side effects and no user notification.
 
 The same scheduled task can perform the one allowed Planner re-entry and the Reviewer role. It must never impersonate Codex Executor. Executor wake-up belongs to the local watcher.
+
+For `WAITING_FOR_CI`, pending/running GitHub checks require strict no-write behavior. CI PASS means the Scheduled Task writes `CURRENT.ci_status=PASS`, `state=READY_FOR_GPT_REVIEW`, and the correct `next_action`, then may continue Reviewer work in the same run. CI FAIL is recorded as a normal `REVISE` review artifact and consumes the same review-round budget as any Reviewer finding: first failure enters `REVISE`; second failure requires `REVIEW_2.md`, `FINAL_REPORT.md`, `review_limit_reached=true`, `human_gate_reason=REVIEW_LIMIT`, and `AWAIT_HUMAN_DECISION`. If CI status is genuinely unavailable because checks, permissions, or GitHub service state cannot be determined, the Scheduled Task must write a final report and route to `BLOCKED`; it must not synthesize PASS.
+
+For `READY_FOR_GPT_REVIEW`, the remote Reviewer writes `REVIEW_<round>.md` before changing state. PASS also writes `FINAL_REPORT.md` and reaches `AWAIT_HUMAN_DECISION` with `human_gate_reason=PASS`; if the current state graph requires an intermediate `PASS` state, the Scheduled Task may use two mechanical `CURRENT.json` transactions. First `REVISE` reaches `REVISE`. Second `REVISE` writes `REVIEW_2.md` and `FINAL_REPORT.md`, sets `review_limit_reached=true`, and reaches the human gate. `BLOCKED` writes `FINAL_REPORT.md` before entering `BLOCKED`.
+
+For `NEEDS_GPT_PLANNER`, the remote Planner reads the task context, makes at most one minimal re-plan, writes `PLAN.md` first, and writes `CURRENT.json` last with `plan_revision += 1` and `state=PLAN_FROZEN`. A second material re-plan requirement, or any required product/scientific decision, writes `FINAL_REPORT.md` first and then routes `CURRENT.json` to `AWAIT_HUMAN_DECISION` with `human_gate_reason=PLANNER_DECISION`.
 
 ## Final report
 
