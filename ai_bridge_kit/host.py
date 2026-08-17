@@ -435,17 +435,31 @@ def _execpolicy_decision(rules_path: Path, command: list[str]) -> tuple[str | No
         lower = result.stdout.lower()
         if "allow" in lower:
             return "allow", output
-        if "no matching" in lower or "ask" in lower:
+        if "prompt" in lower or "ask" in lower:
+            return "prompt", output
+        if "forbidden" in lower or "deny" in lower:
+            return "forbidden", output
+        if "no matching" in lower:
             return "no_match", output
         return None, output
-    decision = str(payload.get("decision") or payload.get("outcome") or "").lower()
+    decision = str(payload.get("decision") or payload.get("outcome") or "").lower().replace("-", "_")
     if payload.get("matchedRules") == [] and not decision:
         return "no_match", output
     if decision == "allow":
         return "allow", output
-    if decision in {"ask", "deny", "none", "no_match", "no-match"}:
+    if decision in {"prompt", "ask"}:
+        return "prompt", output
+    if decision in {"forbidden", "deny"}:
+        return "forbidden", output
+    if decision in {"none", "no_match"}:
         return "no_match", output
     return decision or None, output
+
+
+def _effective_execpolicy_decision(decision: str | None) -> str | None:
+    if decision == "no_match":
+        return "prompt"
+    return decision
 
 
 def _with_incompatible(status: HostStatus) -> HostStatus:
@@ -492,20 +506,38 @@ def validate_host_policy(codex_home: Path, cwd: Path | None = None) -> tuple[Hos
         lines.append("Feature availability: default_mode_request_user_input and memories available/enabled")
 
     rules_path = codex_home / RULES_RELATIVE_PATH
-    checks = [
-        (["git", "push", "origin", "main"], "allow"),
-        (["git", "push", "upstream", "main"], "no_match"),
-        (["git", "push", "--set-upstream", "origin", "main"], "allow"),
-        (["git", "push", "-u", "origin", "main"], "allow"),
+    checks: list[tuple[list[str], str, str]] = [
+        (["git", "commit", "-m", "test"], "allow", "direct"),
+        (["git", "commit", "--amend", "--no-edit"], "allow", "direct"),
+        (["git", "push", "origin", "main"], "allow", "direct"),
+        (["git", "push", "origin", "test-branch"], "prompt", "effective"),
+        (["git", "push", "upstream", "main"], "no_match", "direct"),
+        (["git", "switch", "main"], "prompt", "effective"),
+        (["git", "switch", "-c", "test-branch"], "prompt", "effective"),
+        (["git", "checkout", "-b", "test-branch"], "prompt", "effective"),
+        (["git", "branch", "test-branch"], "prompt", "effective"),
+        (["git", "branch", "-d", "test-branch"], "prompt", "effective"),
+        (["git", "branch", "-D", "test-branch"], "prompt", "effective"),
+        (["git", "branch", "-m", "old-branch", "new-branch"], "prompt", "effective"),
+        (["git", "worktree", "add", "../wt", "-b", "test-branch"], "prompt", "effective"),
+        (["git", "push", "-u", "origin", "test-branch"], "prompt", "effective"),
+        (["git", "push", "--set-upstream", "origin", "test-branch"], "prompt", "effective"),
+        (["git", "push", "origin", "--delete", "test-branch"], "prompt", "effective"),
+        (["git", "push", "origin", "--force", "main"], "prompt", "effective"),
+        (["git", "push", "origin", "main", "--force"], "prompt", "effective"),
+        (["git", "push", "origin", "main", "--force-with-lease"], "prompt", "effective"),
+        (["git", "push", "origin", "main", "-f"], "prompt", "effective"),
     ]
-    for command, expected in checks:
+    for command, expected, comparison in checks:
         decision, raw = _execpolicy_decision(rules_path, command)
+        observed = _effective_execpolicy_decision(decision) if comparison == "effective" else decision
         label = " ".join(command)
-        if decision == expected:
-            lines.append(f"Execpolicy: {label} => {decision}")
+        if observed == expected:
+            suffix = f" ({decision})" if comparison == "effective" and decision != observed else ""
+            lines.append(f"Execpolicy: {label} => {observed}{suffix}")
         else:
             exit_code = 1
-            lines.append(f"Execpolicy mismatch: {label} => {decision or 'unknown'} expected {expected}")
+            lines.append(f"Execpolicy mismatch: {label} => {observed or 'unknown'} expected {expected}")
             if raw:
                 lines.append(f"Execpolicy raw output: {raw}")
 

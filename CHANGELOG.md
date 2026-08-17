@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Correct Host Policy Git authorization semantics: ordinary commits on the
+  selected branch are preauthorized, ordinary `origin/main` pushes remain
+  preauthorized, and arbitrary remote branch pushes plus branch topology changes
+  such as switch/checkout/worktree add/upstream setup/remote branch deletion now
+  route to user confirmation.
+- Expand Host Policy validation to exercise real `codex execpolicy check`
+  outcomes for commit, ordinary push, upstream push, branch mutation, and remote
+  branch mutation commands.
+
 ## 0.5.0
 
 - Add Reviewed Handoff as a bounded middle workflow between Lite Handoff and high-risk Agent-Flow.

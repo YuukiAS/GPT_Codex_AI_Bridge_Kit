@@ -1,17 +1,107 @@
 prefix_rule(
-    pattern = ["git", "push", "origin"],
+    pattern = ["git", "commit"],
     decision = "allow",
-    justification = "The user permanently authorizes ordinary Git pushes to the configured origin remote across trusted development repositories without manual or automatic approval review.",
+    justification = "The user permanently authorizes normal commits on the already selected current branch across trusted development repositories without repeated manual or automatic approval review.",
 )
 
 prefix_rule(
     pattern = ["git", "push", "--set-upstream", "origin"],
-    decision = "allow",
-    justification = "The user permanently authorizes first Git pushes to origin with upstream tracking without manual or automatic approval review.",
+    decision = "prompt",
+    justification = "Setting upstream may create or change a remote branch relationship, which is a branch-topology decision that requires explicit user authorization.",
 )
 
 prefix_rule(
     pattern = ["git", "push", "-u", "origin"],
+    decision = "prompt",
+    justification = "Setting upstream may create or change a remote branch relationship, which is a branch-topology decision that requires explicit user authorization.",
+)
+
+prefix_rule(
+    pattern = ["git", "push", "origin", "--delete"],
+    decision = "prompt",
+    justification = "Deleting a remote branch changes branch topology and requires explicit user authorization.",
+)
+
+prefix_rule(
+    pattern = ["git", "push", "origin", "--force"],
+    decision = "prompt",
+    justification = "Force pushing rewrites remote history and requires explicit user authorization.",
+)
+
+prefix_rule(
+    pattern = ["git", "push", "origin", "--force-with-lease"],
+    decision = "prompt",
+    justification = "Force pushing rewrites remote history and requires explicit user authorization.",
+)
+
+prefix_rule(
+    pattern = ["git", "push", "origin", "-f"],
+    decision = "prompt",
+    justification = "Force pushing rewrites remote history and requires explicit user authorization.",
+)
+
+prefix_rule(
+    pattern = ["git", "push", "origin", "main", "--force"],
+    decision = "prompt",
+    justification = "Force pushing rewrites remote history and requires explicit user authorization.",
+)
+
+prefix_rule(
+    pattern = ["git", "push", "origin", "main", "--force-with-lease"],
+    decision = "prompt",
+    justification = "Force pushing rewrites remote history and requires explicit user authorization.",
+)
+
+prefix_rule(
+    pattern = ["git", "push", "origin", "main", "-f"],
+    decision = "prompt",
+    justification = "Force pushing rewrites remote history and requires explicit user authorization.",
+)
+
+prefix_rule(
+    pattern = ["git", "push", "origin", "main"],
     decision = "allow",
-    justification = "The user permanently authorizes first Git pushes to origin with upstream tracking without manual or automatic approval review.",
+    justification = "The user permanently authorizes ordinary pushes to the already authorized origin/main branch without repeated manual or automatic approval review.",
+)
+
+prefix_rule(
+    pattern = ["git", "switch"],
+    decision = "prompt",
+    justification = "Changing the current branch is a branch-selection decision that requires explicit user authorization.",
+)
+
+prefix_rule(
+    pattern = ["git", "checkout"],
+    decision = "prompt",
+    justification = "Checkout can change the current branch or working tree state and requires explicit user authorization when used by Codex.",
+)
+
+prefix_rule(
+    pattern = ["git", "worktree", "add"],
+    decision = "prompt",
+    justification = "Adding a worktree can implicitly create or select another branch and requires explicit user authorization.",
+)
+
+prefix_rule(
+    pattern = ["git", "branch", "-d"],
+    decision = "prompt",
+    justification = "Deleting a branch changes branch topology and requires explicit user authorization.",
+)
+
+prefix_rule(
+    pattern = ["git", "branch", "-D"],
+    decision = "prompt",
+    justification = "Deleting a branch changes branch topology and requires explicit user authorization.",
+)
+
+prefix_rule(
+    pattern = ["git", "branch", "-m"],
+    decision = "prompt",
+    justification = "Renaming a branch changes branch topology and requires explicit user authorization.",
+)
+
+prefix_rule(
+    pattern = ["git", "branch", "-M"],
+    decision = "prompt",
+    justification = "Renaming a branch changes branch topology and requires explicit user authorization.",
 )

@@ -34,10 +34,15 @@ These are suggestions for host/project rules, not a broad approval bypass:
 - read-only repository inspection
 - repository test runner commands
 - lint and format commands
-- ordinary `git push origin ...` when the user has authorized it
+- ordinary `git commit ...` on the already selected current branch
+- ordinary `git push origin main` or project-specific ordinary pushes to an
+  already authorized current branch
 
 Do not globally allow:
 
+- branch creation, switching, deletion, or renaming;
+- first pushes to arbitrary remote branch names;
+- upstream creation or changes;
 - force push;
 - broad destructive reset;
 - broad `rm -rf`;

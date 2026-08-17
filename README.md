@@ -96,17 +96,16 @@ memories = true
 
 Host Policy 还在全局 `AGENTS.md` 中维护长期行为约束：用户可见的进度说明、计划、风险解释、测试总结和完成报告默认使用自然的简体中文；代码、路径、命令、配置键、状态名和精确错误信息保持原始技术字面量。Goal mode 把过长目标保存成 `$CODEX_HOME/attachments/.../goal-objective.md` 是正常机制，不需要每个 Goal 再重复写“请用中文”。
 
-Git 方面，Codex 默认继续当前已经 checkout 的 branch。未经用户针对新 branch 的明确授权，不得因为“修改很大”“PR 更安全”或“main 是干净基线”而自行创建 branch 或 PR，也不得自行 force push、删除远端 branch/tag 或修改 remote。
+Git 方面，Codex 默认继续当前已经 checkout 的 branch。当前分支上的普通开发、`git commit ...` 和明确获授权分支的普通 `origin` push 是长期预授权动作，不应因为文件多、commit message 长、当前分支是 `main` 或 feature 已完成而反复询问。未经用户针对具体分支动作的明确授权，不得因为“修改很大”“PR 更安全”或“main 是干净基线”而自行创建、切换、checkout、重命名或删除 branch，也不得自行创建 PR、force push、删除远端 branch/tag、设置 upstream 或修改 remote。
 
-`$CODEX_HOME/rules/ai-bridge-global.rules` 则用于减少普通 push 的审批等待。目前长期授权的 execpolicy 前缀是：
+`$CODEX_HOME/rules/ai-bridge-global.rules` 则用于减少普通开发动作的审批等待。目前长期授权的 execpolicy 前缀是：
 
 ```text
-git push origin ...
-git push --set-upstream origin ...
-git push -u origin ...
+git commit ...
+git push origin main
 ```
 
-这意味着普通 `origin` push 可以跳过人工审批和 auto-review。危险 Git 行为仍由全局行为政策禁止；不要把这组前缀理解成对 force push、远端删除或 remote 修改的授权。项目自己的 `.codex/config.toml` 或 `.codex/rules/` 仍可进一步收紧这些默认策略。
+这意味着当前分支上的普通 commit 和默认 `origin/main` push 可以跳过人工审批和 auto-review。其他长期分支如果也需要同样低打扰，应由项目规则或用户明确授权补充，不靠全局 `git push origin ...` 宽前缀猜测。`git push origin <new-branch>`、`git push -u origin ...`、`git push --set-upstream origin ...`、`git push origin --delete ...`、常见 force-push 形态、branch switch/checkout/worktree add/branch 删除重命名等都必须回到用户确认。危险 Git 行为仍由全局行为政策禁止；execpolicy 技术上匹配某条命令不代表可以绕过“分支策略由用户决定”。项目自己的 `.codex/config.toml` 或 `.codex/rules/` 仍可进一步收紧这些默认策略。
 
 ## Lite Handoff：每个项目默认的 GPT ↔ Codex 交接层
 

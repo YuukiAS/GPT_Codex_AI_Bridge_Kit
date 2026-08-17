@@ -9,6 +9,9 @@ from ai_bridge_kit.host import (
     HOST_BEGIN_MARKER,
     HOST_END_MARKER,
     NARRATIVE_POLICY_MARKERS,
+    RULES_RELATIVE_PATH,
+    _effective_execpolicy_decision,
+    _execpolicy_decision,
     config_values,
     desired_agents_block,
     desired_rules_text,
@@ -207,8 +210,61 @@ memories = false
 
             self.assertEqual(status.overall_state, "configured")
             self.assertEqual(exit_code, 0, "\n".join(lines))
+            self.assertTrue(any("git commit -m test => allow" in line for line in lines))
+            self.assertTrue(any("git commit --amend --no-edit => allow" in line for line in lines))
             self.assertTrue(any("git push origin main => allow" in line for line in lines))
+            self.assertTrue(any("git push origin test-branch => prompt" in line for line in lines))
             self.assertTrue(any("git push upstream main => no_match" in line for line in lines))
+            self.assertTrue(any("git switch main => prompt" in line for line in lines))
+            self.assertTrue(any("git switch -c test-branch => prompt" in line for line in lines))
+            self.assertTrue(any("git checkout -b test-branch => prompt" in line for line in lines))
+            self.assertTrue(any("git branch test-branch => prompt" in line for line in lines))
+            self.assertTrue(any("git branch -d test-branch => prompt" in line for line in lines))
+            self.assertTrue(any("git branch -m old-branch new-branch => prompt" in line for line in lines))
+            self.assertTrue(any("git worktree add ../wt -b test-branch => prompt" in line for line in lines))
+            self.assertTrue(any("git push -u origin test-branch => prompt" in line for line in lines))
+            self.assertTrue(any("git push --set-upstream origin test-branch => prompt" in line for line in lines))
+            self.assertTrue(any("git push origin --delete test-branch => prompt" in line for line in lines))
+            self.assertTrue(any("git push origin --force main => prompt" in line for line in lines))
+            self.assertTrue(any("git push origin main --force => prompt" in line for line in lines))
+            self.assertTrue(any("git push origin main --force-with-lease => prompt" in line for line in lines))
+            self.assertTrue(any("git push origin main -f => prompt" in line for line in lines))
+
+    def test_execpolicy_git_authorization_semantics_with_real_codex_cli_when_available(self) -> None:
+        if shutil.which("codex") is None:
+            self.skipTest("codex CLI is not installed")
+        with tempfile.TemporaryDirectory() as tmp:
+            codex_home = Path(tmp)
+            install_host_policy(codex_home)
+            rules_path = codex_home / RULES_RELATIVE_PATH
+            expectations = {
+                ("git", "commit", "-m", "test"): "allow",
+                ("git", "commit", "--amend", "--no-edit"): "allow",
+                ("git", "push", "origin", "main"): "allow",
+                ("git", "push", "origin", "test-branch"): "prompt",
+                ("git", "push", "upstream", "main"): "no_match",
+                ("git", "switch", "main"): "prompt",
+                ("git", "switch", "-c", "test-branch"): "prompt",
+                ("git", "checkout", "-b", "test-branch"): "prompt",
+                ("git", "branch", "test-branch"): "prompt",
+                ("git", "branch", "-d", "test-branch"): "prompt",
+                ("git", "branch", "-D", "test-branch"): "prompt",
+                ("git", "branch", "-m", "old-branch", "new-branch"): "prompt",
+                ("git", "worktree", "add", "../wt", "-b", "test-branch"): "prompt",
+                ("git", "push", "-u", "origin", "test-branch"): "prompt",
+                ("git", "push", "--set-upstream", "origin", "test-branch"): "prompt",
+                ("git", "push", "origin", "--delete", "test-branch"): "prompt",
+                ("git", "push", "origin", "--force", "main"): "prompt",
+                ("git", "push", "origin", "main", "--force"): "prompt",
+                ("git", "push", "origin", "main", "--force-with-lease"): "prompt",
+                ("git", "push", "origin", "main", "-f"): "prompt",
+            }
+
+            for command, expected in expectations.items():
+                with self.subTest(command=" ".join(command)):
+                    decision, raw = _execpolicy_decision(rules_path, list(command))
+                    observed = decision if expected == "no_match" else _effective_execpolicy_decision(decision)
+                    self.assertEqual(observed, expected, raw)
 
 
 if __name__ == "__main__":

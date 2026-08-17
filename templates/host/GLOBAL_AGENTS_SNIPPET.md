@@ -6,11 +6,17 @@ The user is usually the sole developer in these repositories, so branch topology
 is a project decision controlled by the user.
 
 - Continue working on the currently checked-out branch by default.
-- Do not create any new Git branch without explicit user authorization for that
-  branch.
-- This includes `git switch -c ...`, `git checkout -b ...`,
-  `git branch <new-branch>`, `git worktree` creating a new branch, or creating a
-  new remote branch because the current branch feels inconvenient to push.
+- Normal development on the currently checked-out branch is preauthorized:
+  stage intended files and create ordinary commits without repeatedly asking the
+  user. Ordinary pushes are preauthorized only for explicitly allowed targets,
+  with the default host rule covering `git push origin main`.
+- Do not create, switch, checkout, rename, delete, or otherwise change Git
+  branches without explicit user authorization for that specific branch action.
+- This includes `git switch ...`, `git switch -c ...`, `git checkout ...`,
+  `git checkout -b ...`, `git branch <new-branch>`, `git branch -d/-D/-m ...`,
+  `git worktree add ...` when it creates or selects a branch, setting upstream,
+  deleting remote branches, or creating a new remote branch because the current
+  branch feels inconvenient to push.
 - Large scope, many files, incomplete implementation, perceived PR safety, or a
   clean `main` baseline are not authorization to create a branch.
 - Explain the risk and ask the user before creating a branch when branch
@@ -18,8 +24,8 @@ is a project decision controlled by the user.
 - If the user explicitly selected an existing branch, continue on that branch
   without asking repeatedly.
 - Do not create pull requests unless requested.
-- Ordinary commits and authorized pushes on the current branch follow the active
-  Git policy.
+- Branch topology and branch selection are user decisions; ordinary commits on
+  the selected branch are not branch decisions.
 - Never force push, use `--force-with-lease`, delete remote branches or tags, or
   modify/add/remove/remap Git remotes without explicit authorization.
 
