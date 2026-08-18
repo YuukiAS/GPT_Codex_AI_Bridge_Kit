@@ -30,10 +30,14 @@ These are suggestions for host/project rules, not a broad approval bypass:
 - `git status`
 - `git diff`
 - `git log`
-- `git fetch`
+- ordinary `git fetch origin main`
+- ordinary `git pull --ff-only origin main` after confirming the working tree is
+  clean
 - read-only repository inspection
 - repository test runner commands
 - lint and format commands
+- ordinary `git add ...` for task-owned repository files, with staged diff
+  inspection before commit
 - ordinary `git commit ...` on the already selected current branch
 - ordinary `git push origin main` or project-specific ordinary pushes to an
   already authorized current branch
@@ -42,9 +46,11 @@ Do not globally allow:
 
 - branch creation, switching, deletion, or renaming;
 - first pushes to arbitrary remote branch names;
+- rebase pull or autostash pull;
 - upstream creation or changes;
 - force push;
 - broad destructive reset;
+- restore/clean operations that discard user work;
 - broad `rm -rf`;
 - secret upload;
 - production deployment;

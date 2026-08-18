@@ -507,6 +507,12 @@ def validate_host_policy(codex_home: Path, cwd: Path | None = None) -> tuple[Hos
 
     rules_path = codex_home / RULES_RELATIVE_PATH
     checks: list[tuple[list[str], str, str]] = [
+        (["git", "fetch", "origin", "main"], "allow", "direct"),
+        (["git", "pull", "--ff-only", "origin", "main"], "allow", "direct"),
+        (["git", "pull", "--rebase", "origin", "main"], "prompt", "effective"),
+        (["git", "pull", "--ff-only", "--autostash", "origin", "main"], "prompt", "effective"),
+        (["git", "pull", "--ff-only", "origin", "main", "--autostash"], "prompt", "effective"),
+        (["git", "add", "README.md"], "allow", "direct"),
         (["git", "commit", "-m", "test"], "allow", "direct"),
         (["git", "commit", "--amend", "--no-edit"], "allow", "direct"),
         (["git", "push", "origin", "main"], "allow", "direct"),
@@ -516,6 +522,12 @@ def validate_host_policy(codex_home: Path, cwd: Path | None = None) -> tuple[Hos
         (["git", "switch", "-c", "test-branch"], "prompt", "effective"),
         (["git", "checkout", "-b", "test-branch"], "prompt", "effective"),
         (["git", "branch", "test-branch"], "prompt", "effective"),
+        (["git", "reset", "--hard"], "prompt", "effective"),
+        (["git", "clean", "-fd"], "prompt", "effective"),
+        (["git", "restore", "README.md"], "prompt", "effective"),
+        (["git", "remote", "add", "mirror", "https://example.invalid/repo.git"], "prompt", "effective"),
+        (["git", "remote", "remove", "origin"], "prompt", "effective"),
+        (["git", "remote", "set-url", "origin", "https://example.invalid/repo.git"], "prompt", "effective"),
         (["git", "branch", "-d", "test-branch"], "prompt", "effective"),
         (["git", "branch", "-D", "test-branch"], "prompt", "effective"),
         (["git", "branch", "-m", "old-branch", "new-branch"], "prompt", "effective"),

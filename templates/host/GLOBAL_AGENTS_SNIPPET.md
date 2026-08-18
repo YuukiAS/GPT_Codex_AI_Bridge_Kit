@@ -7,9 +7,15 @@ is a project decision controlled by the user.
 
 - Continue working on the currently checked-out branch by default.
 - Normal development on the currently checked-out branch is preauthorized:
-  stage intended files and create ordinary commits without repeatedly asking the
-  user. Ordinary pushes are preauthorized only for explicitly allowed targets,
-  with the default host rule covering `git push origin main`.
+  fetch `origin/main`, fast-forward pull the already selected `main` branch when
+  the working tree is clean, stage task-owned files, create ordinary commits,
+  and push to the explicitly allowed `origin/main` target without repeatedly
+  asking the user.
+- Check the working tree before synchronization. If it is dirty, determine
+  ownership first. Do not default to `git pull --ff-only --autostash ...`,
+  `git stash`, `git reset --hard`, or `git restore ...`.
+- Before committing, inspect `git diff --cached --stat` and `git diff --cached`
+  so unrelated files, generated noise, or secrets are not included.
 - Do not create, switch, checkout, rename, delete, or otherwise change Git
   branches without explicit user authorization for that specific branch action.
 - This includes `git switch ...`, `git switch -c ...`, `git checkout ...`,
@@ -26,7 +32,8 @@ is a project decision controlled by the user.
 - Do not create pull requests unless requested.
 - Branch topology and branch selection are user decisions; ordinary commits on
   the selected branch are not branch decisions.
-- Never force push, use `--force-with-lease`, delete remote branches or tags, or
+- Never rebase pull, autostash pull, force push, use `--force-with-lease`,
+  delete remote branches or tags, reset/clean/restore user work, or
   modify/add/remove/remap Git remotes without explicit authorization.
 
 Even if a broad execpolicy rule technically matches a dangerous Git command,

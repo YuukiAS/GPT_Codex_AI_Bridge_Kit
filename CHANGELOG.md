@@ -3,13 +3,15 @@
 ## Unreleased
 
 - Correct Host Policy Git authorization semantics: ordinary commits on the
-  selected branch are preauthorized, ordinary `origin/main` pushes remain
-  preauthorized, and arbitrary remote branch pushes plus branch topology changes
-  such as switch/checkout/worktree add/upstream setup/remote branch deletion now
-  route to user confirmation.
+  selected branch are preauthorized, safe `origin/main` fetch and fast-forward
+  pull are preauthorized, ordinary task-owned staging and `origin/main` pushes
+  remain preauthorized, and arbitrary remote branch pushes plus branch topology
+  changes such as switch/checkout/worktree add/upstream setup/remote branch
+  deletion now route to user confirmation.
 - Expand Host Policy validation to exercise real `codex execpolicy check`
-  outcomes for commit, ordinary push, upstream push, branch mutation, and remote
-  branch mutation commands.
+  outcomes for safe sync, staging, commit, ordinary push, unsafe pull, upstream
+  push, branch mutation, destructive Git, remote mutation, and remote branch
+  mutation commands.
 
 ## 0.5.0
 

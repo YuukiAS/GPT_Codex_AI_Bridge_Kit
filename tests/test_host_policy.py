@@ -210,6 +210,12 @@ memories = false
 
             self.assertEqual(status.overall_state, "configured")
             self.assertEqual(exit_code, 0, "\n".join(lines))
+            self.assertTrue(any("git fetch origin main => allow" in line for line in lines))
+            self.assertTrue(any("git pull --ff-only origin main => allow" in line for line in lines))
+            self.assertTrue(any("git pull --rebase origin main => prompt" in line for line in lines))
+            self.assertTrue(any("git pull --ff-only --autostash origin main => prompt" in line for line in lines))
+            self.assertTrue(any("git pull --ff-only origin main --autostash => prompt" in line for line in lines))
+            self.assertTrue(any("git add README.md => allow" in line for line in lines))
             self.assertTrue(any("git commit -m test => allow" in line for line in lines))
             self.assertTrue(any("git commit --amend --no-edit => allow" in line for line in lines))
             self.assertTrue(any("git push origin main => allow" in line for line in lines))
@@ -219,6 +225,12 @@ memories = false
             self.assertTrue(any("git switch -c test-branch => prompt" in line for line in lines))
             self.assertTrue(any("git checkout -b test-branch => prompt" in line for line in lines))
             self.assertTrue(any("git branch test-branch => prompt" in line for line in lines))
+            self.assertTrue(any("git reset --hard => prompt" in line for line in lines))
+            self.assertTrue(any("git clean -fd => prompt" in line for line in lines))
+            self.assertTrue(any("git restore README.md => prompt" in line for line in lines))
+            self.assertTrue(any("git remote add mirror https://example.invalid/repo.git => prompt" in line for line in lines))
+            self.assertTrue(any("git remote remove origin => prompt" in line for line in lines))
+            self.assertTrue(any("git remote set-url origin https://example.invalid/repo.git => prompt" in line for line in lines))
             self.assertTrue(any("git branch -d test-branch => prompt" in line for line in lines))
             self.assertTrue(any("git branch -m old-branch new-branch => prompt" in line for line in lines))
             self.assertTrue(any("git worktree add ../wt -b test-branch => prompt" in line for line in lines))
@@ -238,6 +250,12 @@ memories = false
             install_host_policy(codex_home)
             rules_path = codex_home / RULES_RELATIVE_PATH
             expectations = {
+                ("git", "fetch", "origin", "main"): "allow",
+                ("git", "pull", "--ff-only", "origin", "main"): "allow",
+                ("git", "pull", "--rebase", "origin", "main"): "prompt",
+                ("git", "pull", "--ff-only", "--autostash", "origin", "main"): "prompt",
+                ("git", "pull", "--ff-only", "origin", "main", "--autostash"): "prompt",
+                ("git", "add", "README.md"): "allow",
                 ("git", "commit", "-m", "test"): "allow",
                 ("git", "commit", "--amend", "--no-edit"): "allow",
                 ("git", "push", "origin", "main"): "allow",
@@ -247,6 +265,12 @@ memories = false
                 ("git", "switch", "-c", "test-branch"): "prompt",
                 ("git", "checkout", "-b", "test-branch"): "prompt",
                 ("git", "branch", "test-branch"): "prompt",
+                ("git", "reset", "--hard"): "prompt",
+                ("git", "clean", "-fd"): "prompt",
+                ("git", "restore", "README.md"): "prompt",
+                ("git", "remote", "add", "mirror", "https://example.invalid/repo.git"): "prompt",
+                ("git", "remote", "remove", "origin"): "prompt",
+                ("git", "remote", "set-url", "origin", "https://example.invalid/repo.git"): "prompt",
                 ("git", "branch", "-d", "test-branch"): "prompt",
                 ("git", "branch", "-D", "test-branch"): "prompt",
                 ("git", "branch", "-m", "old-branch", "new-branch"): "prompt",

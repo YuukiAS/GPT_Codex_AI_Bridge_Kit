@@ -1,4 +1,52 @@
 prefix_rule(
+    pattern = ["git", "fetch", "origin", "main"],
+    decision = "allow",
+    justification = "The user permanently authorizes safe synchronization reads for origin/main; fetch updates local Git metadata but does not change branch topology or working tree contents.",
+)
+
+prefix_rule(
+    pattern = ["git", "pull", "--rebase"],
+    decision = "prompt",
+    justification = "Rebase rewrites local history and requires explicit user authorization.",
+)
+
+prefix_rule(
+    pattern = ["git", "pull", "--ff-only", "--autostash"],
+    decision = "prompt",
+    justification = "Autostash hides dirty-working-tree ownership questions and requires explicit user authorization.",
+)
+
+prefix_rule(
+    pattern = ["git", "pull", "--autostash"],
+    decision = "prompt",
+    justification = "Autostash hides dirty-working-tree ownership questions and requires explicit user authorization.",
+)
+
+prefix_rule(
+    pattern = ["git", "pull", "--ff-only", "origin", "main", "--autostash"],
+    decision = "prompt",
+    justification = "Autostash hides dirty-working-tree ownership questions and requires explicit user authorization.",
+)
+
+prefix_rule(
+    pattern = ["git", "pull", "--ff-only", "origin", "main", "--rebase"],
+    decision = "prompt",
+    justification = "Rebase rewrites local history and requires explicit user authorization.",
+)
+
+prefix_rule(
+    pattern = ["git", "pull", "--ff-only", "origin", "main"],
+    decision = "allow",
+    justification = "The user permanently authorizes fast-forward-only synchronization of the already selected main branch from origin/main.",
+)
+
+prefix_rule(
+    pattern = ["git", "add"],
+    decision = "allow",
+    justification = "The user permanently authorizes staging task-owned repository files before an ordinary commit; Codex must inspect the staged diff before committing.",
+)
+
+prefix_rule(
     pattern = ["git", "commit"],
     decision = "allow",
     justification = "The user permanently authorizes normal commits on the already selected current branch across trusted development repositories without repeated manual or automatic approval review.",
@@ -80,6 +128,42 @@ prefix_rule(
     pattern = ["git", "worktree", "add"],
     decision = "prompt",
     justification = "Adding a worktree can implicitly create or select another branch and requires explicit user authorization.",
+)
+
+prefix_rule(
+    pattern = ["git", "reset", "--hard"],
+    decision = "prompt",
+    justification = "Hard reset can discard work and requires explicit user authorization.",
+)
+
+prefix_rule(
+    pattern = ["git", "clean"],
+    decision = "prompt",
+    justification = "Cleaning untracked files can discard work and requires explicit user authorization.",
+)
+
+prefix_rule(
+    pattern = ["git", "restore"],
+    decision = "prompt",
+    justification = "Restore can discard working tree or staged changes and requires explicit user authorization.",
+)
+
+prefix_rule(
+    pattern = ["git", "remote", "add"],
+    decision = "prompt",
+    justification = "Adding a remote changes repository publication targets and requires explicit user authorization.",
+)
+
+prefix_rule(
+    pattern = ["git", "remote", "remove"],
+    decision = "prompt",
+    justification = "Removing a remote changes repository publication targets and requires explicit user authorization.",
+)
+
+prefix_rule(
+    pattern = ["git", "remote", "set-url"],
+    decision = "prompt",
+    justification = "Changing a remote URL changes repository publication targets and requires explicit user authorization.",
 )
 
 prefix_rule(

@@ -61,16 +61,19 @@ memories = true
 
 安装必须非破坏式保留其他 TOML 配置，并在修改已有文件前创建 backup。不要通过 `approval_policy = "never"`、`danger-full-access` 或泛化 shell/python allow 解决审批问题。
 
-全局 Host AGENTS 必须继续维持这些长期行为：用户可见 narrative 默认使用自然简体中文；会实质改变架构、范围、部署、branch 策略、外部行为或科学/产品语义的歧义应询问用户；普通局部实现细节自行完成；当前已选分支上的普通 commit 可自动完成，明确获授权的普通 `origin` push 可自动完成；未经明确授权不得创建、切换、checkout、重命名或删除 branch，不得创建 PR、设置/改变 upstream、创建新远端分支、force push、删除远端 branch/tag 或修改 remote。
+全局 Host AGENTS 必须继续维持这些长期行为：用户可见 narrative 默认使用自然简体中文；会实质改变架构、范围、部署、branch 策略、外部行为或科学/产品语义的歧义应询问用户；普通局部实现细节自行完成；当前已选 `main` 分支上的 `git fetch origin main`、clean worktree 下的 `git pull --ff-only origin main`、task-owned 文件的 `git add ...`、普通 commit 和 `git push origin main` 可自动完成；同步前检查 working tree，dirty 时先判断 ownership，不得默认 autostash/stash/reset/restore；commit 前检查 staged diff；未经明确授权不得创建、切换、checkout、重命名或删除 branch，不得创建 PR、设置/改变 upstream、创建新远端分支、rebase/autostash pull、force push、删除远端 branch/tag、reset/clean/restore 用户工作或修改 remote。
 
 全局 execpolicy 目前只维护当前分支普通开发所需的低打扰前缀：
 
 ```text
+git fetch origin main
+git pull --ff-only origin main
+git add ...
 git commit ...
 git push origin main
 ```
 
-这些规则用于跳过当前已选分支上普通 commit 和默认 `origin/main` push 的 manual/auto review。其他长期分支如果也需要低打扰 push，应由项目规则或用户明确授权补充，不得靠泛化 `git push origin ...` 猜测。`git push -u origin ...`、`git push --set-upstream origin ...`、`git push origin <new-branch>`、`git push origin --delete ...`、force push、创建或改变 upstream、创建新远端分支等不是普通 push，必须先问用户。它们也不是对危险 Git 行为的授权；危险操作仍受 Host AGENTS 行为规则禁止。
+这些规则用于跳过当前已选 `main` 分支安全同步、task-owned staging、普通 commit 和默认 `origin/main` push 的 manual/auto review。其他长期分支如果也需要低打扰 push，应由项目规则或用户明确授权补充，不得靠泛化 `git push origin ...` 猜测。`git pull --rebase ...`、`git pull ... --autostash`、`git push -u origin ...`、`git push --set-upstream origin ...`、`git push origin <new-branch>`、`git push origin --delete ...`、force push、创建或改变 upstream、创建新远端分支等不是普通同步或普通 push，必须先问用户。它们也不是对危险 Git 行为的授权；危险操作仍受 Host AGENTS 行为规则禁止。
 
 ## 3. 新 repository：默认先装 Lite Handoff
 
@@ -290,11 +293,11 @@ ai-bridge agent-flow task init \
 
 ## 9. Git 与 branch 规则
 
-在本仓库及通过本 Kit 管理的 repository 中，默认继续当前 branch。当前已选分支上的普通 commit 是预授权开发动作；明确获授权的普通 `origin` push 可按 Host Policy 或项目规则自动执行。未经用户明确授权，不得执行任何会创建、切换、checkout、重命名或删除 branch 的命令，包括 `git switch`、`git switch -c`、`git checkout`、`git checkout -b`、`git branch <new>`、`git branch -d/-D/-m`、通过 worktree 创建或选择 branch，或把新 remote branch / upstream 当作“不推当前 branch”的替代方案。
+在本仓库及通过本 Kit 管理的 repository 中，默认继续当前 branch。当前已选 `main` 分支上的 `git fetch origin main`、clean worktree 下的 `git pull --ff-only origin main`、task-owned 文件 staging、普通 commit 和 `git push origin main` 是预授权开发动作；其他明确获授权的普通 `origin` push 可按项目规则执行。未经用户明确授权，不得执行任何会创建、切换、checkout、重命名或删除 branch 的命令，包括 `git switch`、`git switch -c`、`git checkout`、`git checkout -b`、`git branch <new>`、`git branch -d/-D/-m`、通过 worktree 创建或选择 branch，或把新 remote branch / upstream 当作“不推当前 branch”的替代方案。
 
 Reviewed Handoff watcher 只能同步和使用用户已经授权且当前 checkout 的 branch，不得自动 switch branch。Agent-Flow 为 Verifier/Executor 做角色隔离时，优先使用 detached worktree；如果确实需要长期 role branch，先向用户请求该 branch 的明确授权。
 
-当前已选分支上的普通 commit 和普通已授权 `origin` push 可按 Host Policy 执行。不得自动 force push、`--force-with-lease`、删除远端 branch/tag、设置/改变 upstream、创建新远端分支、添加/删除/重定向 remote。
+当前已选 `main` 分支上的安全同步、task-owned staging、普通 commit 和 `origin/main` push 可按 Host Policy 执行。不得自动 rebase/autostash pull、force push、`--force-with-lease`、删除远端 branch/tag、设置/改变 upstream、创建新远端分支、reset/clean/restore 用户工作、添加/删除/重定向 remote。
 
 ## 10. 修改本仓库时的文档规则
 
