@@ -24,6 +24,18 @@ Bridge Kit 的能力按作用域分成机器层、项目层和任务层。真正
 
 配置前必须先确认用户要处理的是“新机器/新 Codex identity”“新 repository”“中档 Reviewed Handoff”“通知能力”还是“某个具体高风险任务”。不要因为用户说“把 Bridge Kit 配上”就静默安装全部可选层。
 
+对既有 repository 做安装、升级或盘点时，必须先做真实 workflow inventory，再决定是否更新 repo 内模板。不要只按猜测目录或截图标签判断。至少检查这些标准位置和关键文件：
+
+```text
+automation/reviewed_handoff/
+automation/agent_flow/
+automation/reviewed_handoff/tasks/*/CURRENT.json
+automation/agent_flow/tasks/*/CURRENT.json
+automation/agent_flow/ROLE_AUTHORITY_POLICY.md
+```
+
+判断规则是：只有 Lite Handoff 时通常只更新 Host Policy；发现 `automation/reviewed_handoff/` 时应按 Reviewed Handoff 更新控制模板/提示词；发现 `automation/agent_flow/` 时应按 Agent-Flow 更新控制模板/提示词；发现自定义 Planner/Reviewer 状态机时，先读取其 schema、state ownership、`next_action` 和 workflow contract，再判断是否需要同步 External GPT wait 规则。若用户点名某个 repo “不可能没有”，必须重新查标准控制目录、关键 state 文件和 `AGENTS.md`/`prompts` 中的 workflow marker，不能沿用先前结论。
+
 ## 2. 新机器 / 新 Codex identity
 
 先确保本 package 可执行，然后安装 Host Policy。一个物理机器上如果存在不同 `$CODEX_HOME`，它们是不同 Codex identity，应分别处理。
