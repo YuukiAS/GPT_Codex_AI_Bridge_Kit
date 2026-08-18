@@ -24,3 +24,9 @@ Executor owns implementation and authorized runtime evidence. It cannot edit
 the contract, Requirement Ledger, verifier, protected oracle, or Final Critic
 artifacts, and cannot self-promote to pass.
 
+External GPT waiting is not a role failure. When `CURRENT` routes to Planner,
+Critic, Final Critic, or an equivalent external reasoning owner, absence of a
+fresh artifact is `waiting_external_review`. Controller may keep polling
+lightly, but must not consume repair/critic/heavy-verifier budget or write a
+terminal blocker unless there is concrete evidence that the external dependency
+cannot recover automatically.

@@ -1,6 +1,6 @@
 # Reviewed Handoff v0.5 Implementation Spec
 
-Status: implementation candidate for audit before `v0.5.0` tag.
+Status: shipped in `v0.5.0`; `v0.5.1` adds the generic External GPT wait contract without changing the role model.
 
 ## Product role
 
@@ -105,6 +105,20 @@ For CI-required tasks, Codex Executor must stop at `WAITING_FOR_CI` with `CURREN
 
 `AWAIT_HUMAN_DECISION` and `BLOCKED` are user-facing terminal states. Every terminal state must have a structurally valid `FINAL_REPORT.md`; the user should never have to reconstruct the outcome from CI logs or Reviewer artifacts.
 
+## External GPT wait contract
+
+When Executor has completed the authorized implementation, the implementation/result commits have been published, and `CURRENT` says the next action belongs to an external GPT Planner/Reviewer/Critic-style role, the task is `waiting_external_review`, not blocked.
+
+Reviewed Handoff examples are `NEEDS_GPT_PLANNER`, `READY_FOR_GPT_REVIEW`, and `WAITING_FOR_CI` after CI has produced a PASS/FAIL state that requires Scheduled GPT to write the next transaction. The generic Bridge Kit policy must not rely only on these exact strings. It should prefer state ownership, `next_action`, role policy, repository schema, and the workflow contract.
+
+`MIN_EXTERNAL_GPT_WAIT = 2 hours` is the minimum normal grace period from the first published handoff into an external-GPT-owned state. It is not an automatic deadline. After two hours, continued silence is still waiting if repository state is valid, the implementation/result artifacts are intact, the Scheduled GPT/GitHub connector mechanism exists, and there is no concrete connector/auth/scheduler/schema/artifact-access/user-decision/workflow-contract failure.
+
+Pure waiting must not increment `review_round`, `plan_revision`, Executor retry counters, repair budget, or blocked-audit attempts. A round advances only when a fresh external decision is written. A repair round advances only when Codex receives and executes a fresh `REVISE`.
+
+Stale review artifacts are not fresh decisions. A `REVIEW_<n>.md` whose `implementation_commit` does not match the current `CURRENT.implementation_commit` is historical context only; it must not drive `REVISE`, `PASS`, or `BLOCKED`, and it must not be replayed by the watcher.
+
+External-review `BLOCKED` requires observed evidence that waiting cannot recover automatically: disabled/deleted/expired Scheduled GPT automation, repeated connector/auth failure, missing external role installation, invalid repository state, inaccessible required review artifact, visual-review access impossibility, required user product/scientific/branch decision, or a workflow-defined hard deadline. Every such blocker must state the actual failure, observed evidence, why waiting longer cannot resolve it, and the recovery action.
+
 ## Review limit
 
 `max_review_rounds` is 1 or 2 and defaults to 2.
@@ -149,6 +163,8 @@ The watcher performs only operational orchestration:
 It does not create or switch branches, does not use persistent thread IDs, does not create role worktrees, and does not maintain receipts or cryptographic event identities. The event key is a plain local tuple of task/state/review round/plan revision/implementation locator.
 
 Codex exit code 0 alone is not progress. An event that does not move task state is retried only a bounded number of times. Exhausted attempts publish an operational `BLOCKED` plus `FINAL_REPORT.md` rather than retrying forever or discarding local work.
+
+Bounded retry applies only to Executor-owned events that should have produced progress but did not, for example `PLAN_FROZEN -> codex exec -> PLAN_FROZEN`. It does not apply after Executor has successfully handed off to a GPT-owned state such as `READY_FOR_GPT_REVIEW` or `NEEDS_GPT_PLANNER`. In that case a stable repository state is expected while Scheduled GPT has not yet written a fresh decision.
 
 ## Reviewer authority
 
@@ -252,3 +268,10 @@ Before tagging `v0.5.0`:
 - watcher reacts only to Executor-owned states and never creates/switches branches;
 - no Agent-Flow provenance fields appear in Reviewed Handoff current state;
 - GitHub Actions is green on Python 3.9 and current Python.
+
+For `v0.5.1`, the release gate additionally requires:
+
+- Host Policy managed `AGENTS.md` contains the generic external GPT wait policy;
+- Reviewed Handoff reports external silence before and after 2 hours as `waiting_external_review`, not `BLOCKED`;
+- stale `REVIEW_<n>.md` artifacts are detected by `implementation_commit` mismatch and do not replay old `REVISE`;
+- watcher bounded retry behavior remains intact for true Executor no-progress events.

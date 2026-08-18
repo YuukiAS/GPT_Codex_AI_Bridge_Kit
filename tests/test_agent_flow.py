@@ -5,6 +5,7 @@ import io
 import subprocess
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from ai_bridge_kit import agent_flow
@@ -766,6 +767,108 @@ class AgentFlowTests(unittest.TestCase):
             plan = agent_flow.plan_transition(target, "001_toy")
             self.assertNotIn("next_state", plan)
             self.assertEqual(plan["next_action"], "RUN_OR_WAIT_FINAL_CRITIC")
+            self.assertEqual(plan["operational_status"], "waiting_external_review")
+            self.assertEqual(plan["external_owner"], "Final Critic")
+
+    def test_planner_wait_is_not_blocked_before_or_after_two_hours(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            root = agent_flow.task_root(target, "001_toy")
+            snapshot = self.snapshot_and_bundle(target)
+            current = agent_flow.load_json(root / "CURRENT.json")
+            started = datetime(2026, 8, 18, 10, 0, tzinfo=timezone.utc)
+            current["state"] = "WAITING_FOR_EXTERNAL_GPT"
+            current["current_review_target_id"] = snapshot["review_target_id"]
+            current["next_action"] = "RUN_PLANNER_REVIEW"
+            current["external_wait_started_at"] = started.isoformat()
+            agent_flow.write_json(root / "CURRENT.json", current)
+
+            early = agent_flow.agent_flow_external_wait_status(target, "001_toy", now=started + timedelta(minutes=30))
+            late = agent_flow.agent_flow_external_wait_status(target, "001_toy", now=started + timedelta(minutes=121))
+            plan = agent_flow.plan_transition(target, "001_toy")
+
+            self.assertEqual(early["operational_status"], "waiting_external_review")
+            self.assertTrue(early["within_minimum_grace"])
+            self.assertFalse(early["may_block"])
+            self.assertEqual(late["operational_status"], "waiting_external_review")
+            self.assertFalse(late["within_minimum_grace"])
+            self.assertFalse(late["may_block"])
+            self.assertEqual(plan["next_action"], "WAIT_FOR_PLANNER_REVIEW_ARTIFACT")
+            self.assertNotIn("next_state", plan)
+
+    def test_stale_agent_flow_planner_findings_do_not_route_repair(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            root = agent_flow.task_root(target, "001_toy")
+            snapshot = self.snapshot_and_bundle(target)
+            current = agent_flow.load_json(root / "CURRENT.json")
+            current["state"] = "WAITING_FOR_EXTERNAL_GPT"
+            current["current_review_target_id"] = snapshot["review_target_id"]
+            current["next_action"] = "RUN_PLANNER_REVIEW"
+            agent_flow.write_json(root / "CURRENT.json", current)
+            agent_flow.write_current_findings(
+                target,
+                "001_toy",
+                [
+                    {
+                        "finding_id": "F_OLD",
+                        "classification": "IMPLEMENTATION_BUG",
+                        "blocking": True,
+                        "owner_role": "Executor",
+                        "requirement_ids": ["REQ_EXAMPLE_001"],
+                        "summary": "old finding",
+                        "observed_evidence": "old review",
+                        "required_repair": "old repair",
+                        "required_regression_evidence": "old evidence",
+                        "forbidden_workaround": "old workaround",
+                        "created_against_review_target_id": "old-target",
+                    }
+                ],
+                "old-target",
+            )
+
+            status = agent_flow.agent_flow_external_wait_status(target, "001_toy")
+            plan = agent_flow.plan_transition(target, "001_toy")
+
+            self.assertEqual(status["operational_status"], "waiting_external_review")
+            self.assertTrue(status["stale_decision"])
+            self.assertEqual(plan["next_action"], "WAIT_FOR_PLANNER_REVIEW_ARTIFACT")
+            self.assertNotIn("next_state", plan)
+
+    def test_agent_flow_critic_wait_is_external_wait(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            root = agent_flow.task_root(target, "001_toy")
+            snapshot = self.snapshot_and_bundle(target)
+            request = agent_flow.load_json(root / "REQUEST.json")
+            planner_review_path = agent_flow.result_root(target, "001_toy") / "planner_reviews" / "pass.md"
+            write(planner_review_path, "Planner pass candidate for current target.\n")
+            agent_flow.write_json(
+                root / "PLANNER_PASS_CANDIDATE.json",
+                {
+                    "schema": "AI_BRIDGE_PLANNER_PASS_CANDIDATE_V1",
+                    "role": "Planner",
+                    "task_key": "001_toy",
+                    "request_nonce": request["request_nonce"],
+                    "review_target_id": snapshot["review_target_id"],
+                    "artifact_path": "results/001_toy/planner_reviews/pass.md",
+                    "artifact_sha256": agent_flow.file_sha256(planner_review_path),
+                    "decision": "PLANNER_PASS_CANDIDATE",
+                    "touched_paths": [],
+                },
+            )
+            current = agent_flow.load_json(root / "CURRENT.json")
+            current["state"] = "READY_FOR_CRITIC_FINAL_AUDIT"
+            current["current_review_target_id"] = snapshot["review_target_id"]
+            current["next_action"] = "RUN_OR_WAIT_FINAL_CRITIC"
+            agent_flow.write_json(root / "CURRENT.json", current)
+
+            plan = agent_flow.plan_transition(target, "001_toy")
+
+            self.assertEqual(plan["operational_status"], "waiting_external_review")
+            self.assertEqual(plan["external_owner"], "Final Critic")
+            self.assertFalse(plan["may_block"])
+            self.assertNotIn("next_state", plan)
 
     def test_old_nonce_and_old_target_artifacts_rejected(self) -> None:
         tmp, target = self.make_project()

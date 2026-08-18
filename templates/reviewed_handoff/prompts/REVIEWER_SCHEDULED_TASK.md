@@ -10,6 +10,8 @@ automation/reviewed_handoff/tasks/*/CURRENT.json
 
 只处理机器状态明确需要 GPT 的 task。没有待处理 task 时无副作用退出：不写 commit、不重复 review、不通知用户。Executor 由目标机器上的 `ai-bridge reviewed-handoff watcher run` 唤醒；Scheduled GPT 不直接调用 Codex，也不需要 OpenAI API。
 
+如果 task 已经由 Executor 成功交棒到 GPT-owned state，但当前 run 没有产生新的 Planner/Reviewer decision，这不是 `BLOCKED`。保持 repository state 不变并等待下一次 Scheduled Task。正常 minimum grace 是 `MIN_EXTERNAL_GPT_WAIT = 2 hours`；超过 2 小时后也不能仅因没有新回复而 blocking，除非有明确 connector/auth/scheduler/schema/artifact-access/user-decision/workflow-contract failure。
+
 Scheduled GPT 的真实执行面是 GitHub connector，不是目标机器 shell。每个 GPT-owned transition 都使用 GitHub tracked files 作为 transaction surface：
 
 1. 读取 repository state、GitHub Actions/checks 和相关 task artifacts；
@@ -48,6 +50,8 @@ Reviewer 必须独立读取：
 - 当前 implementation commit 的真实 CI/check 状态（若项目要求 CI）；
 - 现有测试与必要的 user-facing artifacts；
 - 之前的 REVIEW_<n>.md，仅用于检查 blocker closure。
+
+先确认现有 `REVIEW_<n>.md` 是否真的是当前 implementation 的 fresh review。只有 `implementation_commit` 等于当前 `CURRENT.implementation_commit` 的 review 才能驱动 `PASS`、`REVISE` 或 `BLOCKED`；旧 commit 上的 review 是 stale context，不得重复执行旧 `REVISE`，也不得消耗新的 review/repair budget。
 
 `base_commit..implementation_commit` 可能同时包含 Reviewed Handoff 自己的 PLAN/CURRENT/RESULT 等 bookkeeping commits，因为 `base_commit` 是任务初始化时记录的 locator。不要因为这些合法 workflow 文件本身存在于 diff 就把它们当作产品实现或 regression。实现审核应聚焦冻结 Plan 定义的项目代码、配置、文档和 user-facing artifacts。相反，如果真实 diff 显示 Executor 修改了 `REQUEST.md`、`PLAN.md`、既有 `REVIEW_<n>.md`、`FINAL_REPORT.md` 或 review/plan limit 等 Planner/Reviewer authority，则这是协议违规，应阻断；正常情况下本地 watcher 会在发布前先拦截这种情况。
 

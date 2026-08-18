@@ -19,3 +19,5 @@ Planner 必须明确：
 计划冻结后写入当前 task 的 `PLAN.md`，使用模板规定的 frontmatter 和章节。若当前 Planner 通过 GitHub connector 工作，先写 `PLAN.md`，最后写 `CURRENT.json` 并把 `CURRENT.state` 推进到 `PLAN_FROZEN`。不要假设 Planner 可以运行目标机器上的 local CLI。
 
 执行期间如果 `CURRENT.state=NEEDS_GPT_PLANNER`，Scheduled GPT 可以做一次最小 re-plan：只解决 Codex 已证实无法从冻结 Plan 推导的歧义，不得借机重新设计整个任务。修改 `PLAN.md` 后将 `plan_revision` 加一并在最后写 `CURRENT.json` 恢复 `PLAN_FROZEN`。若已经做过一次 re-plan，或必须由用户改变产品/科学语义，先写 `FINAL_REPORT.md`，最后写 `CURRENT.json` 进入 `AWAIT_HUMAN_DECISION`。
+
+如果本次 Scheduled Task 没有写出新的 Planner decision，保持 `CURRENT.state=NEEDS_GPT_PLANNER` 不变。外部 Planner 尚未回复属于 `waiting_external_review`，不消耗 `plan_revision`、review/repair round 或 blocked-audit attempts；只有明确的 connector/auth/scheduler/schema/artifact 访问故障，或确实需要用户作新产品/科学/branch 决策时，才允许进入终态。

@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from . import external_wait
+
 
 SCHEMA_NAME = "AI_BRIDGE_REVIEWED_HANDOFF_SCHEMA_V1"
 CURRENT_SCHEMA = "AI_BRIDGE_REVIEWED_CURRENT_V1"
@@ -43,6 +45,10 @@ ALLOWED_TRANSITIONS: dict[str, set[str]] = {
 
 REVIEW_DECISIONS = {"PASS", "REVISE", "BLOCKED"}
 TERMINAL_STATES = {"AWAIT_HUMAN_DECISION", "BLOCKED"}
+EXTERNAL_WAIT_STATE_OWNERS = {
+    "NEEDS_GPT_PLANNER": "Planner",
+    "READY_FOR_GPT_REVIEW": "Reviewer",
+}
 FINAL_REPORT_HEADINGS = [
     "## What this task solved",
     "## What changed",
@@ -355,6 +361,37 @@ def validate_review_file(path: Path, task_key: str, expected_round: int | None =
     return data, errors
 
 
+def latest_review_metadata(target: Path, task_key: str) -> tuple[dict[str, str] | None, Path | None, list[str]]:
+    reviews = review_files(target, task_key)
+    if not reviews:
+        return None, None, []
+    latest = reviews[-1]
+    data, errors = validate_review_file(latest, task_key, expected_round=len(reviews))
+    return data, latest, errors
+
+
+def reviewed_external_wait_status(target: Path, task_key: str, *, now: Any = None) -> dict[str, Any]:
+    current = load_json(task_root(target, task_key) / "CURRENT.json")
+    state = str(current.get("state") or "")
+    owner_map = dict(EXTERNAL_WAIT_STATE_OWNERS)
+    if state == "WAITING_FOR_CI" and current.get("ci_status") in {"PASS", "FAIL"}:
+        owner_map["WAITING_FOR_CI"] = "Reviewer"
+    latest, latest_path, review_errors = latest_review_metadata(target, task_key)
+    status = external_wait.build_wait_status(
+        current,
+        current_identity=str(current.get("implementation_commit") or ""),
+        latest_decision_identity=(latest or {}).get("implementation_commit"),
+        latest_decision_path=str(latest_path.relative_to(target)) if latest_path else None,
+        latest_decision=(latest or {}).get("decision"),
+        state_owner_map=owner_map,
+        external_failure_evidence=review_errors,
+        now=now,
+    )
+    if status["operational_status"] == "not_external_gpt_wait" and state == "WAITING_FOR_CI":
+        status["wait_owner"] = "CI"
+    return status
+
+
 def validate_task(target: Path, task_key: str) -> list[str]:
     target = target.resolve()
     root = task_root(target, task_key)
@@ -532,16 +569,37 @@ def plan_transition(target: Path, task_key: str) -> dict[str, Any]:
     if state == "WAITING_FOR_CI":
         ci_status = current.get("ci_status")
         if ci_status == "PASS":
-            return {"state": state, "valid": True, "next_state": "READY_FOR_GPT_REVIEW", "next_action": "RUN_GPT_REVIEW"}
+            return {
+                "state": state,
+                "valid": True,
+                "next_state": "READY_FOR_GPT_REVIEW",
+                "next_action": "RUN_GPT_REVIEW",
+                **reviewed_external_wait_status(target, task_key),
+            }
         if ci_status == "FAIL":
-            return {"state": state, "valid": True, "next_action": "RECORD_CI_FAILURE_REVIEW"}
+            return {
+                "state": state,
+                "valid": True,
+                "next_action": "RECORD_CI_FAILURE_REVIEW",
+                **reviewed_external_wait_status(target, task_key),
+            }
         return {"state": state, "valid": True, "next_action": "WAIT_FOR_CI"}
     if state == "NEEDS_GPT_PLANNER":
         if current.get("plan_revision", 0) >= current.get("max_plan_revisions", 1):
             return {"state": state, "valid": True, "next_state": "AWAIT_HUMAN_DECISION", "next_action": "HUMAN_PLAN_DECISION"}
-        return {"state": state, "valid": True, "next_action": "WAIT_SCHEDULED_GPT_PLANNER"}
+        return {
+            "state": state,
+            "valid": True,
+            "next_action": "WAIT_SCHEDULED_GPT_PLANNER",
+            **reviewed_external_wait_status(target, task_key),
+        }
     if state == "READY_FOR_GPT_REVIEW":
-        return {"state": state, "valid": True, "next_action": "WAIT_SCHEDULED_GPT_REVIEW"}
+        return {
+            "state": state,
+            "valid": True,
+            "next_action": "WAIT_SCHEDULED_GPT_REVIEW",
+            **reviewed_external_wait_status(target, task_key),
+        }
     if state == "REVISE":
         if current.get("review_round", 0) >= current.get("max_review_rounds", 2):
             return {"state": state, "valid": True, "next_state": "AWAIT_HUMAN_DECISION", "next_action": "HUMAN_REVIEW_DECISION"}

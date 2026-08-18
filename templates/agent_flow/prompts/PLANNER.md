@@ -45,3 +45,8 @@ Allowed decisions:
 For `PLANNER_PASS_CANDIDATE`, also write task-root
 `PLANNER_PASS_CANDIDATE.json` bound to the current `request_nonce`,
 `review_target_id`, and planner review artifact path/SHA256.
+
+If this run cannot produce a fresh Planner decision, leave `CURRENT` unchanged
+and let the workflow remain `waiting_external_review`. Do not reuse old Planner
+artifacts whose `review_target_id` does not match the current target, and do
+not consume repair or blocked-audit budget for silence alone.

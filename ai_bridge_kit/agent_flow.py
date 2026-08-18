@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from . import external_wait
+
 
 AGENT_FLOW_REL = Path("automation") / "agent_flow"
 RESULTS_REL = Path("results")
@@ -79,6 +81,15 @@ TERMINAL_NOTIFICATION_STATES = {
     "AWAIT_HUMAN_DECISION",
     "NEEDS_USER_SCIENTIFIC_OR_PRODUCT_CHOICE",
     "STOPPED_MAX_ROUNDS",
+}
+EXTERNAL_WAIT_STATE_OWNERS = {
+    "PLAN_REQUESTED": "Planner",
+    "PLAN_READY_FOR_CRITIC": "Critic",
+    "READY_FOR_PLANNER_REVIEW": "Planner",
+    "WAITING_FOR_EXTERNAL_GPT": "Planner",
+    "CONTRACT_REVIEW_REQUIRED": "Critic",
+    "READY_FOR_CRITIC_FINAL_AUDIT": "Final Critic",
+    "CRITIC_FINAL_REVISE": "Planner",
 }
 CRITIC_MODES = {"REQUIRED_INITIAL", "STANDBY", "REQUIRED_CONTRACT_REVIEW", "REQUIRED_FINAL_AUDIT", "COMPLETE"}
 ALLOWED_TRANSITIONS = {
@@ -1869,6 +1880,7 @@ def validate_transition_predicates(target: Path, task_key: str, state: str, curr
     if state in {
         "VERIFIER_FROZEN",
         "READY_FOR_PLANNER_REVIEW",
+        "WAITING_FOR_EXTERNAL_GPT",
         "PLANNER_PASS_CANDIDATE",
         "READY_FOR_CRITIC_FINAL_AUDIT",
         "PLANNER_PASS",
@@ -2167,6 +2179,83 @@ def route_current_findings(target: Path, task_key: str) -> dict[str, Any]:
     return route_findings(findings.get("findings", []), target=target, task_key=task_key)
 
 
+def _decision_from_json(path: Path, *, identity_key: str = "review_target_id") -> tuple[str | None, str | None, str | None]:
+    if not path.exists():
+        return None, None, None
+    payload = load_json(path)
+    identity = payload.get(identity_key)
+    decision = payload.get("decision")
+    return str(identity) if identity else None, str(decision) if decision else None, str(path)
+
+
+def _planner_findings_decision(target: Path, task_key: str) -> tuple[str | None, str | None, str | None]:
+    path = current_findings_path(target, task_key)
+    payload = load_current_findings(target, task_key)
+    findings = payload.get("findings")
+    if isinstance(findings, list) and findings:
+        return (
+            str(payload.get("review_target_id") or ""),
+            "PLANNER_FINDINGS",
+            str(path) if path.exists() else f"results/{task_key}/findings/CURRENT_FINDINGS.json",
+        )
+    return None, None, None
+
+
+def latest_external_decision_metadata(target: Path, task_key: str, state: str) -> tuple[str | None, str | None, str | None]:
+    root = task_root(target, task_key)
+    if state == "WAITING_FOR_EXTERNAL_GPT":
+        identity, decision, path = _decision_from_json(root / "PLANNER_PASS_CANDIDATE.json")
+        if identity or decision:
+            return identity, decision, path
+        return _planner_findings_decision(target, task_key)
+    if state == "READY_FOR_CRITIC_FINAL_AUDIT":
+        return _decision_from_json(root / "FINAL_CRITIC_AUDIT.json")
+    if state == "PLAN_READY_FOR_CRITIC":
+        return _decision_from_json(root / "CRITIC_FREEZE.json", identity_key="request_nonce")
+    if state == "CONTRACT_REVIEW_REQUIRED":
+        return _decision_from_json(root / "CRITIC_FREEZE.json")
+    return None, None, None
+
+
+def _rel_locator(target: Path, path: str | None) -> str | None:
+    if not path:
+        return None
+    raw = Path(path)
+    try:
+        return str(raw.relative_to(target))
+    except ValueError:
+        return path
+
+
+def agent_flow_external_wait_status(target: Path, task_key: str, *, now: Any = None) -> dict[str, Any]:
+    current = load_json(task_root(target, task_key) / "CURRENT.json")
+    state = str(current.get("state") or "")
+    identity = str(current.get("current_review_target_id") or "")
+    if state == "PLAN_READY_FOR_CRITIC":
+        identity = str(current.get("request_nonce") or identity)
+    decision_identity, decision, path = latest_external_decision_metadata(target, task_key, state)
+    return external_wait.build_wait_status(
+        current,
+        current_identity=identity,
+        latest_decision_identity=decision_identity,
+        latest_decision=decision,
+        latest_decision_path=_rel_locator(target, path),
+        state_owner_map=EXTERNAL_WAIT_STATE_OWNERS,
+        now=now,
+    )
+
+
+def _stale_external_decision_errors(errors: list[str]) -> bool:
+    if not errors:
+        return False
+    stale_markers = [
+        "review_target_id mismatch",
+        "not bound to current_review_target_id",
+        "current review_target_id",
+    ]
+    return all(any(marker in error for marker in stale_markers) for error in errors)
+
+
 def plan_transition(target: Path, task_key: str) -> dict[str, Any]:
     profile = load_project_profile(target)
     current = load_json(task_root(target, task_key) / "CURRENT.json")
@@ -2175,9 +2264,21 @@ def plan_transition(target: Path, task_key: str) -> dict[str, Any]:
     if errors:
         return {"state": state, "valid": False, "errors": errors, "next_action": "REPAIR_STATE_EVIDENCE"}
     if state == "PLAN_REQUESTED":
-        return {"state": state, "valid": True, "next_state": "PLAN_READY_FOR_CRITIC", "next_action": "RUN_PLANNER_INITIAL"}
+        return {
+            "state": state,
+            "valid": True,
+            "next_state": "PLAN_READY_FOR_CRITIC",
+            "next_action": "RUN_PLANNER_INITIAL",
+            **agent_flow_external_wait_status(target, task_key),
+        }
     if state == "PLAN_READY_FOR_CRITIC":
-        return {"state": state, "valid": True, "next_state": "PLAN_FROZEN", "next_action": "RUN_CRITIC_INITIAL"}
+        return {
+            "state": state,
+            "valid": True,
+            "next_state": "PLAN_FROZEN",
+            "next_action": "RUN_CRITIC_INITIAL",
+            **agent_flow_external_wait_status(target, task_key),
+        }
     if state == "PLAN_FROZEN":
         return {"state": state, "valid": True, "next_state": "CONTROLLER_INITIALIZING", "next_action": "INITIALIZE_CONTROLLER"}
     if state == "CONTROLLER_INITIALIZING":
@@ -2195,7 +2296,13 @@ def plan_transition(target: Path, task_key: str) -> dict[str, Any]:
     if state == "CI_RUNNING":
         return {"state": state, "valid": True, "next_state": "READY_FOR_PLANNER_REVIEW", "next_action": "RUN_PLANNER_REVIEW"}
     if state == "READY_FOR_PLANNER_REVIEW":
-        return {"state": state, "valid": True, "next_state": "WAITING_FOR_EXTERNAL_GPT", "next_action": "RUN_PLANNER_REVIEW"}
+        return {
+            "state": state,
+            "valid": True,
+            "next_state": "WAITING_FOR_EXTERNAL_GPT",
+            "next_action": "RUN_PLANNER_REVIEW",
+            **agent_flow_external_wait_status(target, task_key),
+        }
     if state == "WAITING_FOR_EXTERNAL_GPT":
         candidate_errors = validate_planner_pass_candidate(target, task_key)
         if not candidate_errors:
@@ -2203,6 +2310,14 @@ def plan_transition(target: Path, task_key: str) -> dict[str, Any]:
         try:
             route = route_current_findings(target, task_key)
         except ValueError as exc:
+            split_errors = [item.strip() for item in str(exc).split(";") if item.strip()]
+            if _stale_external_decision_errors(split_errors):
+                return {
+                    "state": state,
+                    "valid": True,
+                    "next_action": "WAIT_FOR_PLANNER_REVIEW_ARTIFACT",
+                    **agent_flow_external_wait_status(target, task_key),
+                }
             return {"state": state, "valid": False, "errors": [str(exc)], "next_action": "REPAIR_FINDINGS_ARTIFACT"}
         route_to_state = {
             "REPAIR_EXECUTOR": "PLANNER_REVISE_EXECUTOR",
@@ -2214,7 +2329,12 @@ def plan_transition(target: Path, task_key: str) -> dict[str, Any]:
         next_state = route_to_state.get(route["route"])
         if next_state:
             return {"state": state, "valid": True, "next_state": next_state, "next_action": route["route"], "route": route}
-        return {"state": state, "valid": True, "next_action": "WAIT_FOR_PLANNER_REVIEW_ARTIFACT"}
+        return {
+            "state": state,
+            "valid": True,
+            "next_action": "WAIT_FOR_PLANNER_REVIEW_ARTIFACT",
+            **agent_flow_external_wait_status(target, task_key),
+        }
     if state == "PLANNER_REVISE_EXECUTOR":
         return {"state": state, "valid": True, "next_state": "EXECUTOR_RUNNING", "next_action": "LAUNCH_EXECUTOR_REPAIR"}
     if state == "PLANNER_REVISE_VERIFIER":
@@ -2224,20 +2344,38 @@ def plan_transition(target: Path, task_key: str) -> dict[str, Any]:
     if state == "CONTRACT_REVIEW_REQUIRED":
         resume_errors = validate_contract_review_resume(target, task_key, current, profile)
         if resume_errors:
-            return {"state": state, "valid": True, "next_action": "RUN_OR_WAIT_CONTRACT_CRITIC_REVIEW", "waiting_on": resume_errors}
+            return {
+                "state": state,
+                "valid": True,
+                "next_action": "RUN_OR_WAIT_CONTRACT_CRITIC_REVIEW",
+                "waiting_on": resume_errors,
+                **agent_flow_external_wait_status(target, task_key),
+            }
         return {"state": state, "valid": True, "next_state": "PLANNER_REVISE_BOTH", "next_action": "RESUME_AFTER_CONTRACT_REFREEZE"}
     if state == "PLANNER_PASS_CANDIDATE":
         return {"state": state, "valid": True, "next_state": "READY_FOR_CRITIC_FINAL_AUDIT", "next_action": "RUN_FINAL_CRITIC"}
     if state == "READY_FOR_CRITIC_FINAL_AUDIT":
         final_errors = validate_final_critic_artifact(target, task_key)
         if final_errors:
-            return {"state": state, "valid": True, "next_action": "RUN_OR_WAIT_FINAL_CRITIC", "waiting_on": final_errors}
+            return {
+                "state": state,
+                "valid": True,
+                "next_action": "RUN_OR_WAIT_FINAL_CRITIC",
+                "waiting_on": final_errors,
+                **agent_flow_external_wait_status(target, task_key),
+            }
         artifact = load_json(final_critic_artifact_path(target, task_key))
         if artifact.get("decision") == "CRITIC_FINAL_PASS":
             return {"state": state, "valid": True, "next_state": "PLANNER_PASS", "next_action": "APPLY_FINAL_CRITIC_PASS"}
         return {"state": state, "valid": True, "next_state": "CRITIC_FINAL_REVISE", "next_action": "ROUTE_FINAL_CRITIC_REVISE"}
     if state == "CRITIC_FINAL_REVISE":
-        return {"state": state, "valid": True, "next_state": "WAITING_FOR_EXTERNAL_GPT", "next_action": "RUN_PLANNER_REVIEW"}
+        return {
+            "state": state,
+            "valid": True,
+            "next_state": "WAITING_FOR_EXTERNAL_GPT",
+            "next_action": "RUN_PLANNER_REVIEW",
+            **agent_flow_external_wait_status(target, task_key),
+        }
     if state == "PLANNER_PASS":
         return {"state": state, "valid": True, "next_state": "AWAIT_HUMAN_DECISION", "next_action": "WRITE_TERMINAL_BRIEF"}
     return {"state": state, "valid": True, "next_action": "NO_AUTOMATIC_TRANSITION"}

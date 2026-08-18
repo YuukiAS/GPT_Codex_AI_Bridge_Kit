@@ -75,6 +75,22 @@ git push origin main
 
 这些规则用于跳过当前已选 `main` 分支安全同步、task-owned staging、普通 commit 和默认 `origin/main` push 的 manual/auto review。其他长期分支如果也需要低打扰 push，应由项目规则或用户明确授权补充，不得靠泛化 `git push origin ...` 猜测。`git pull --rebase ...`、`git pull ... --autostash`、`git push -u origin ...`、`git push --set-upstream origin ...`、`git push origin <new-branch>`、`git push origin --delete ...`、force push、创建或改变 upstream、创建新远端分支等不是普通同步或普通 push，必须先问用户。它们也不是对危险 Git 行为的授权；危险操作仍受 Host AGENTS 行为规则禁止。
 
+### External Planner / Reviewer Waiting
+
+全局 Host AGENTS 还必须携带通用 external GPT 等待规则。只要 repository-controlled workflow 明确表示下一动作属于外部 GPT Planner、Reviewer、Critic、Final Critic 或同类 reasoning role，尚未出现新 decision 就是正常等待，不是实现失败。
+
+这条规则适用于 Lite/custom repository workflow、Reviewed Handoff、Agent-Flow，以及以后安装的 Planner-driven workflow。识别时优先看当前 state ownership、`next_action`、role policy、repository schema 和 workflow contract；不要只靠固定状态字符串。`READY_FOR_GPT_REVIEW`、`NEEDS_GPT_PLANNER`、`READY_FOR_PLANNER_REVIEW`、`WAITING_FOR_EXTERNAL_GPT`、`READY_FOR_CRITIC_FINAL_AUDIT` 等只是常见例子。
+
+外部 GPT 等待的正常最短窗口是 `MIN_EXTERNAL_GPT_WAIT = 2 hours`，从本轮实现正式发布并交棒到 external-GPT-owned state 起算。2 小时是 minimum grace，不是自动 `BLOCKED` deadline。超过 2 小时后，只要 repository state 仍合法、implementation/result 仍完整、外部 GPT 机制仍存在，且没有明确 connector/auth/scheduler/schema/artifact-access/user-decision/workflow-contract failure，就继续视为 `waiting_external_review`。
+
+等待期间使用低频检查，通常只刷新授权 branch、读取 `CURRENT`/workflow state、比较当前 implementation/review target 与最新 external decision、必要时检查 CI/check 状态。纯等待不得消耗 `review_round`、`repair_round`、`plan_revision`、`retry_count`、`critic_round`、blocked-audit attempts 或 Executor retry budget。
+
+旧 review 不等于新 review。凡是 `reviewed_commit`、`implementation_commit`、`review_target_id`、snapshot identity 或当前 round 不匹配当前实现/review target 的 Planner/Reviewer/Critic artifact，都只能视为 stale decision；不能重复执行旧 `REVISE`，也不能把 stale artifact 当成新 PASS/BLOCKED。
+
+如果当前 Codex activity 无法继续保持 Goal，只能报告 `waiting_external_review`，并保持 repository tracked workflow state 不变；不得写 terminal `FINAL_REPORT.md`，不得把 workflow state 改成 `BLOCKED`，不得要求用户重置 `CURRENT` 或伪造 Planner decision。
+
+只有存在可观察证据时才允许 external-review `BLOCKED`：例如 Scheduled GPT automation 明确 disabled/deleted/expired，connector/auth 重复失败，外部角色安装缺失，repository state 非法，必需 review artifact 无法访问，visual review 环境确定无法读取必要图片，用户必须做新的产品/科学/branch 决策，或 workflow 规定的真实 hard deadline 已过。每个 `BLOCKED` 必须写明 actual failure、observed evidence、为什么继续等待不能自动恢复，以及 recovery action。
+
 ## 3. 新 repository：默认先装 Lite Handoff
 
 绝大多数正式 repository 应先使用 Lite Handoff，而不是 Reviewed Handoff 或 Agent-Flow。

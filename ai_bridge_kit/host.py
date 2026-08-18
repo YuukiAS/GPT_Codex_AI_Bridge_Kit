@@ -22,6 +22,13 @@ NARRATIVE_POLICY_MARKERS = [
     "Repository artifacts are a separate concern from interactive narrative",
     "repository/task-specific language policy",
 ]
+EXTERNAL_WAIT_POLICY_MARKERS = [
+    "## External Planner / Reviewer Waiting",
+    "MIN_EXTERNAL_GPT_WAIT = 2 hours",
+    "waiting_external_review",
+    "Stale Planner/Reviewer/Critic artifacts are not new decisions",
+    "must not consume `review_round`, `repair_round`",
+]
 
 REQUIRED_CONFIG = {
     ("", "approval_policy"): '"on-request"',

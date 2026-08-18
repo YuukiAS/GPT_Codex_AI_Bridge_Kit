@@ -175,6 +175,21 @@ def eligible_events(target: Path) -> list[tuple[str, dict[str, Any]]]:
     return events
 
 
+def external_wait_events(target: Path) -> list[tuple[str, dict[str, Any]]]:
+    tasks_dir = rh.reviewed_root(target) / "tasks"
+    if not tasks_dir.exists():
+        return []
+    waiting: list[tuple[str, dict[str, Any]]] = []
+    for task_dir in sorted(path for path in tasks_dir.iterdir() if path.is_dir()):
+        current_path = task_dir / "CURRENT.json"
+        if not current_path.exists():
+            continue
+        status = rh.reviewed_external_wait_status(target, task_dir.name)
+        if status.get("operational_status") == "waiting_external_review":
+            waiting.append((task_dir.name, status))
+    return waiting
+
+
 def changed_paths(target: Path, pre_head: str, post_head: str) -> list[str]:
     if pre_head == post_head:
         return []
@@ -542,6 +557,10 @@ def watcher_once(
             result["status"] = "codex_failed"
         result["attempt"] = attempts
         return result
+    waiting = external_wait_events(target)
+    if waiting:
+        task_key, status = waiting[0]
+        return {"status": "waiting_external_review", "branch": selected_branch, "task_key": task_key, **status}
     return {"status": "idle", "branch": selected_branch}
 
 
@@ -563,6 +582,7 @@ def watcher_run(
         "codex_unpublished_progress",
     }
     while True:
+        result: dict[str, Any] = {}
         try:
             result = watcher_once(target, branch=branch, codex_bin=codex_bin, sync=True, dry_run=False)
             print(json.dumps(result, ensure_ascii=False, sort_keys=True), flush=True)
@@ -575,7 +595,8 @@ def watcher_run(
         cycles += 1
         if max_cycles is not None and cycles >= max_cycles:
             return 0
-        time.sleep(max(5, interval_seconds))
+        sleep_seconds = max(600, interval_seconds) if result.get("status") == "waiting_external_review" else max(5, interval_seconds)
+        time.sleep(sleep_seconds)
 
 
 def build_parser() -> argparse.ArgumentParser:

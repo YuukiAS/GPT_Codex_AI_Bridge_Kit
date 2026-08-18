@@ -38,3 +38,8 @@ explicit `touched_paths`.
 
 Final Critic cannot edit implementation or verifier sources. Output decision is
 only `CRITIC_FINAL_PASS` or `CRITIC_FINAL_REVISE`.
+
+If the external Critic or Final Critic cannot complete in the current scheduled
+run, preserve `CURRENT` and report `waiting_external_review`. Silence is not a
+blocker, and stale Critic artifacts for an old `request_nonce` or
+`review_target_id` must not drive the current transition.

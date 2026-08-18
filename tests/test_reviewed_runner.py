@@ -74,7 +74,37 @@ class ReviewedRunnerTests(unittest.TestCase):
             subprocess.check_call(["git", "add", str(current_path.relative_to(target))], cwd=target)
             subprocess.check_call(["git", "commit", "-m", "wait planner"], cwd=target, stdout=subprocess.DEVNULL)
             result = runner.watcher_once(target, branch="main", sync=False, dry_run=True)
-            self.assertEqual(result["status"], "idle")
+            self.assertEqual(result["status"], "waiting_external_review")
+            self.assertEqual(result["external_owner"], "Planner")
+
+    def test_watcher_reports_external_wait_without_consuming_executor_attempts(self) -> None:
+        tmp, target, state_home = self.make_project()
+        with tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(state_home)}):
+            (target / "src.py").write_text("VALUE = 2\n", encoding="utf-8")
+            subprocess.check_call(["git", "add", "src.py"], cwd=target)
+            subprocess.check_call(["git", "commit", "-m", "implementation"], cwd=target, stdout=subprocess.DEVNULL)
+            implementation_commit = runner.git_output(target, ["rev-parse", "HEAD"])
+            result_path = rh.result_root(target, "001_feature") / "RESULT.md"
+            result_template = rh.read_text(rh.reviewed_root(target) / "templates" / "RESULT.md")
+            rh.write_text(
+                result_path,
+                result_template.replace("<TASK_KEY>", "001_feature").replace("<COMMIT>", implementation_commit),
+            )
+            current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+            current = rh.load_json(current_path)
+            current["state"] = "READY_FOR_GPT_REVIEW"
+            current["implementation_commit"] = implementation_commit
+            current["ci_status"] = "NOT_REQUIRED"
+            current["next_action"] = "WAIT_SCHEDULED_GPT_REVIEW"
+            rh.write_json(current_path, current)
+            subprocess.check_call(["git", "add", str(result_path.relative_to(target)), str(current_path.relative_to(target))], cwd=target)
+            subprocess.check_call(["git", "commit", "-m", "handoff to reviewer"], cwd=target, stdout=subprocess.DEVNULL)
+
+            result = runner.watcher_once(target, branch="main", sync=False)
+
+            self.assertEqual(result["status"], "waiting_external_review")
+            self.assertEqual(result["external_owner"], "Reviewer")
+            self.assertFalse((runner.state_path(target)).exists())
 
     def test_exit_zero_without_state_progress_is_not_marked_complete(self) -> None:
         tmp, target, state_home = self.make_project()

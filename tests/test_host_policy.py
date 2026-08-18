@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from ai_bridge_kit.host import (
+    EXTERNAL_WAIT_POLICY_MARKERS,
     HOST_BEGIN_MARKER,
     HOST_END_MARKER,
     NARRATIVE_POLICY_MARKERS,
@@ -119,6 +120,8 @@ memories = false
             agents_text = (codex_home / "AGENTS.md").read_text(encoding="utf-8")
 
             for marker in NARRATIVE_POLICY_MARKERS:
+                self.assertIn(marker, agents_text)
+            for marker in EXTERNAL_WAIT_POLICY_MARKERS:
                 self.assertIn(marker, agents_text)
             self.assertIn(
                 "narrative_language: zh-CN",

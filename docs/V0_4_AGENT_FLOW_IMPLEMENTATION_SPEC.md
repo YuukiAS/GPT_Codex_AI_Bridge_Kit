@@ -533,6 +533,45 @@ Write decision/review artifacts before updating `CURRENT.json` to the correspond
 
 ---
 
+## 8.1 External GPT wait contract
+
+As of Bridge Kit `0.5.1`, Agent-Flow uses the generic External GPT wait
+contract. When the current state or `next_action` is owned by an external
+Planner, Critic, Final Critic, or equivalent reasoning role, absence of a fresh
+artifact is `waiting_external_review`, not a terminal blocker.
+
+Covered states include `PLAN_REQUESTED`, `PLAN_READY_FOR_CRITIC`,
+`READY_FOR_PLANNER_REVIEW`, `WAITING_FOR_EXTERNAL_GPT`,
+`CONTRACT_REVIEW_REQUIRED`, `READY_FOR_CRITIC_FINAL_AUDIT`, and
+`CRITIC_FINAL_REVISE`. These are examples, not the whole detection rule:
+Controller should prefer state ownership, `next_action`, role policy,
+repository schema, and workflow contract.
+
+`MIN_EXTERNAL_GPT_WAIT = 2 hours` is the minimum normal grace period after a
+published handoff to an external GPT role. It is not an automatic deadline.
+After 2 hours, silence remains waiting if state/evidence are valid and there is
+no concrete connector/auth/scheduler/schema/artifact-access/user-decision or
+workflow-contract failure.
+
+Waiting does not consume `max_repair_rounds`, Critic lifecycle budget, heavy
+Verifier rerun budget, blocked-audit attempts, or semantic invalidation budget.
+Rounds and repair attempts move only after a fresh external decision for the
+current `request_nonce` and `review_target_id`.
+
+Stale Planner/Critic artifacts are historical context. A Planner finding,
+Planner pass candidate, Critic freeze, or Final Critic audit bound to an old
+`request_nonce` or `review_target_id` must not trigger repair, final pass, or
+terminal block for the current target.
+
+External-review `BLOCKED` requires observed evidence that waiting cannot recover
+automatically, such as a disabled/deleted/expired scheduled automation,
+repeated connector/auth failure, missing external role installation, invalid
+repository state, inaccessible required artifacts, visual-review access
+impossibility, a required user product/scientific/branch decision, or a
+workflow-defined hard deadline.
+
+---
+
 ## 9. Semantic source manifests and Stable Review Snapshot
 
 This is a central v0.4 requirement.
@@ -744,7 +783,11 @@ PLANNER_PASS_CANDIDATE
 
 If a real contract ambiguity/contradiction emerges, route to contract review rather than silently rewriting the frozen contract.
 
-Planner should not turn ordinary implementation bugs into user questions.
+Planner should not turn ordinary implementation bugs into user questions. If
+Planner cannot write a fresh decision for the current `review_target_id` in the
+current run, leave `CURRENT` unchanged and report `waiting_external_review`.
+Old Planner findings or pass candidates for a previous target are stale context
+only.
 
 ---
 
@@ -800,6 +843,11 @@ CRITIC_FINAL_REVISE
 ```
 
 Final Critic must not edit implementation/verifier code.
+
+If Critic or Final Critic has not produced a fresh artifact for the current
+`request_nonce`/`review_target_id`, Controller must wait. Silence and stale
+Critic artifacts are not `BLOCKED` and do not consume repair or heavy-verifier
+budget.
 
 ---
 

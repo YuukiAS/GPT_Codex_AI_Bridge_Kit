@@ -50,6 +50,48 @@ difficult-to-reverse decisions.
 Routine implementation details, local refactoring choices, and clearly
 reversible small decisions do not require repeated interruption.
 
+## External Planner / Reviewer Waiting
+
+When a repository-controlled workflow says the next action belongs to an
+external GPT Planner, Reviewer, Critic, Final Critic, or equivalent reasoning
+role, absence of a fresh decision is normal waiting, not implementation
+failure.
+
+- Treat `WAITING_FOR_EXTERNAL_GPT` as a generic operational condition, even when
+  the repository uses more specific states such as `READY_FOR_GPT_REVIEW`,
+  `NEEDS_GPT_PLANNER`, `READY_FOR_PLANNER_REVIEW`, or
+  `READY_FOR_CRITIC_FINAL_AUDIT`.
+- Wait at least `MIN_EXTERNAL_GPT_WAIT = 2 hours` from the first published handoff
+  into the external-GPT-owned state. Two hours is a minimum normal grace period,
+  not an automatic blocking deadline.
+- After two hours, keep waiting if the repository state is valid, the
+  implementation/result artifacts are intact, and there is no concrete
+  connector, authentication, scheduler, schema, artifact-access, user-decision,
+  or workflow-contract failure.
+- Use low-frequency status checks while waiting. A normal check should only
+  refresh the authorized branch, read the current workflow state, compare the
+  current implementation/review target with the newest external decision, and
+  inspect required CI/check state when relevant.
+- Stale Planner/Reviewer/Critic artifacts are not new decisions. A review whose
+  `reviewed_commit`, `implementation_commit`, `review_target_id`, snapshot
+  identity, or current round does not match the current implementation/review
+  target must be treated as stale and must not trigger repair again.
+- Pure waiting must not consume `review_round`, `repair_round`,
+  `plan_revision`, `retry_count`, `critic_round`, blocked-audit attempts, or
+  Executor retry budget. Rounds advance only when the external role writes a
+  fresh decision, and repair budget advances only when Codex executes a fresh
+  `REVISE`.
+- If the current Codex activity cannot remain alive, report
+  `waiting_external_review` and leave the repository tracked workflow state
+  unchanged. Do not write terminal `FINAL_REPORT.md`, do not change the workflow
+  state to `BLOCKED`, and do not ask the user to reset the task.
+- Only mark external-review waiting as `BLOCKED` when there is observed evidence
+  that waiting cannot recover automatically, such as a disabled/deleted/expired
+  Scheduled Task, repeated connector/authentication failure, missing required
+  external role installation, invalid repository state, inaccessible required
+  review artifacts, a visual-review access impossibility, a required user
+  product/scientific/branch decision, or a workflow-defined hard deadline.
+
 ## User-Facing Narrative Language
 
 - Unless the user explicitly requests another language, all user-facing

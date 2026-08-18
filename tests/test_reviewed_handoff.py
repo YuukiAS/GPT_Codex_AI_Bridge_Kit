@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 import subprocess
 import tempfile
 import unittest
@@ -256,6 +257,85 @@ class ReviewedHandoffTests(unittest.TestCase):
             current["next_action"] = "WAIT_SCHEDULED_GPT_REVIEW"
             rh.write_json(root / "CURRENT.json", current)
             self.assertEqual(rh.validate_task(target, "001_feature"), [])
+
+    def test_external_review_silence_under_and_over_two_hours_is_waiting_not_blocked(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            self.freeze_and_start(target)
+            self.write_result(target, commit="2c54c52f287be94c5919bc5886fb52804f94fc49")
+            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+            current = rh.load_json(current_path)
+            started = datetime(2026, 8, 18, 10, 0, tzinfo=timezone.utc)
+            current["external_wait_started_at"] = started.isoformat()
+            rh.write_json(current_path, current)
+
+            early = rh.reviewed_external_wait_status(target, "001_feature", now=started + timedelta(minutes=119))
+            late = rh.reviewed_external_wait_status(target, "001_feature", now=started + timedelta(minutes=121))
+
+            self.assertEqual(early["operational_status"], "waiting_external_review")
+            self.assertEqual(early["external_owner"], "Reviewer")
+            self.assertTrue(early["within_minimum_grace"])
+            self.assertFalse(early["may_block"])
+            self.assertEqual(late["operational_status"], "waiting_external_review")
+            self.assertFalse(late["within_minimum_grace"])
+            self.assertFalse(late["may_block"])
+            self.assertEqual(rh.load_json(current_path)["review_round"], 0)
+            self.assertEqual(rh.load_json(current_path)["state"], "READY_FOR_GPT_REVIEW")
+
+    def test_stale_review_does_not_trigger_repeat_revise(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            self.freeze_and_start(target)
+            new_commit = "2c54c52f287be94c5919bc5886fb52804f94fc49"
+            old_commit = "846e3d96c2037e3efc1bb9e325f61ea8097ae32d"
+            self.write_result(target, commit=new_commit)
+            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            rh.write_text(
+                rh.result_root(target, "001_feature") / "REVIEW_1.md",
+                "---\n"
+                f"schema: {rh.REVIEW_SCHEMA}\n"
+                "task_key: 001_feature\n"
+                "review_round: 1\n"
+                "decision: REVISE\n"
+                f"implementation_commit: {old_commit}\n"
+                "---\n\n"
+                "Old Planner/Reviewer decision for an earlier implementation.\n",
+            )
+            current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+            current = rh.load_json(current_path)
+            current["review_round"] = 1
+            current["last_review_decision"] = "REVISE"
+            rh.write_json(current_path, current)
+
+            status = rh.reviewed_external_wait_status(target, "001_feature")
+            plan = rh.plan_transition(target, "001_feature")
+
+            self.assertEqual(status["operational_status"], "waiting_external_review")
+            self.assertTrue(status["stale_decision"])
+            self.assertFalse(status["fresh_decision"])
+            self.assertEqual(status["current_identity"], new_commit)
+            self.assertEqual(status["latest_decision_identity"], old_commit)
+            self.assertEqual(plan["next_action"], "WAIT_SCHEDULED_GPT_REVIEW")
+            self.assertNotIn("next_state", plan)
+            self.assertEqual(rh.load_json(current_path)["review_round"], 1)
+            self.assertEqual(rh.load_json(current_path)["state"], "READY_FOR_GPT_REVIEW")
+
+    def test_fresh_review_normally_routes_repair(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            self.freeze_and_start(target)
+            current_commit = "2c54c52f287be94c5919bc5886fb52804f94fc49"
+            self.write_result(target, commit=current_commit)
+            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+
+            current = rh.record_review(target, "001_feature", decision="REVISE", body="Fresh review for current implementation.")
+            plan = rh.plan_transition(target, "001_feature")
+
+            self.assertEqual(current["review_round"], 1)
+            self.assertEqual(current["state"], "REVISE")
+            self.assertEqual(plan["next_state"], "EXECUTING")
+            self.assertEqual(plan["next_action"], "RUN_CODEX_REPAIR")
 
     def test_remote_ci_fail_transactions_use_review_budget(self) -> None:
         tmp, target = self.make_project()

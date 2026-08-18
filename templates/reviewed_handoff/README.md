@@ -31,7 +31,17 @@ ai-bridge reviewed-handoff watcher run \
 ai-bridge reviewed-handoff watcher once --target /path/to/project --branch <branch> --dry-run
 ```
 
-Watcher 不创建 branch/PR，不使用 persistent Codex thread receipt，也不建立 SHA event graph。机器本地的 event 去重和日志位于 `${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}/reviewed-handoff/<repo>/`，不会写进目标 repository。Codex exit code 为 0 也不自动视为成功：只有 task state 真正离开原 executor event 才算有进展；同一 event 的执行尝试有界，耗尽后进入可见的 `BLOCKED`，而不是无限重试。
+Watcher 不创建 branch/PR，不使用 persistent Codex thread receipt，也不建立 SHA event graph。机器本地的 event 去重和日志位于 `${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}/reviewed-handoff/<repo>/`，不会写进目标 repository。Codex exit code 为 0 也不自动视为成功：只有 task state 真正离开原 executor event 才算有进展；同一 executor event 的执行尝试有界，耗尽后进入可见的 `BLOCKED`，而不是无限重试。
+
+## External GPT wait contract
+
+Executor 成功发布实现并把 `CURRENT` 推进到 GPT-owned state 后，外部 GPT 尚未产出新 decision 属于正常等待，不属于 watcher retry，也不属于 `BLOCKED`。常见等待态包括 `NEEDS_GPT_PLANNER`、`READY_FOR_GPT_REVIEW`，以及 `WAITING_FOR_CI` 在 CI 已经 PASS/FAIL 后需要 Scheduled GPT 继续写 review/transition 的阶段。
+
+等待从本轮实现首次正式发布并交棒给外部 GPT 起算，正常 minimum grace 是 `MIN_EXTERNAL_GPT_WAIT = 2 hours`。2 小时不是自动 deadline；超过 2 小时后，只要 repository state 合法、`RESULT.md` 和 `implementation_commit` 仍完整、Scheduled GPT/GitHub connector 没有明确失败，就继续报告 `waiting_external_review`，而不是写 terminal `FINAL_REPORT.md` 或把 `CURRENT.state` 改成 `BLOCKED`。
+
+旧 review 只能作为历史上下文。`REVIEW_<n>.md` 的 `implementation_commit` 必须等于当前 `CURRENT.implementation_commit` 才是 fresh decision；不匹配时视为 stale review，不得重复执行旧 `REVISE`，也不得把旧 PASS/BLOCKED 当成当前实现的结论。等待期间不得增加 `review_round`、`plan_revision`、Executor retry 或 blocked-audit attempts。
+
+只有出现具体不可自动恢复的外部故障证据时才允许 `BLOCKED`，例如 Scheduled GPT 被禁用/删除/过期、GitHub connector/auth 重复失败、workflow 安装损坏、必需 artifact 无法访问、repository state 非法，或确实需要用户作新的产品/科学/branch 决策。每个 `BLOCKED` 必须写清 actual failure、observed evidence、为什么继续等待不能恢复，以及 recovery action。
 
 Reviewed Handoff 刻意不使用 Agent-Flow 的 Requirement Ledger、Stable Review Snapshot、角色 receipt graph 或 provenance hash graph。`base_commit` 与 `implementation_commit` 只作为 Git 定位信息；review 是否通过取决于冻结 Plan、当前 diff、真实测试/CI 和 regression risk。
 

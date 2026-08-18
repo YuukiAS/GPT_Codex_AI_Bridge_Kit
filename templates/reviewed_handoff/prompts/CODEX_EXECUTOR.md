@@ -29,4 +29,6 @@ Executor 没有 Planner/Reviewer authority。不得修改：
 
 **不要执行 `git push`。** Reviewed Handoff watcher 是 Executor event 的唯一 publisher：它会在 Codex 退出后检查真实 commit diff、Planner/Reviewer authority、CURRENT protected fields 和 workflow validity，只有验证通过才把 clean commits push 到当前授权 branch。Codex 进程中的 pre-push guard 是预期行为，不应尝试绕过。
 
+一旦实现已经提交并交棒到 `READY_FOR_GPT_REVIEW`、`WAITING_FOR_CI` 或 `NEEDS_GPT_PLANNER`，外部 GPT/CI 暂时没有新结果不是 Executor failure。不要因此增加 review/repair budget，不要重复执行旧 review，也不要把任务改成 `BLOCKED`。后续由 watcher/Scheduled GPT 根据 `waiting_external_review` 继续低频等待。
+
 `base_commit` / `implementation_commit` 只是 Reviewer 定位真实 diff 的 Git locator，不是 workflow identity。不得新增 hash/receipt/manifest 链。

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.5.1
+
 - Correct Host Policy Git authorization semantics: ordinary commits on the
   selected branch are preauthorized, safe `origin/main` fetch and fast-forward
   pull are preauthorized, ordinary task-owned staging and `origin/main` pushes
@@ -12,6 +14,19 @@
   outcomes for safe sync, staging, commit, ordinary push, unsafe pull, upstream
   push, branch mutation, destructive Git, remote mutation, and remote branch
   mutation commands.
+- Add the generic External GPT wait contract across Host Policy, Reviewed
+  Handoff, and Agent-Flow. External Planner/Reviewer/Critic silence now reports
+  `waiting_external_review` instead of terminal blocking, with
+  `MIN_EXTERNAL_GPT_WAIT = 2 hours` as a minimum grace period rather than an
+  automatic deadline.
+- Detect stale external decisions by the workflow's existing identity semantics:
+  Reviewed Handoff compares `REVIEW_<n>.md` `implementation_commit` against the
+  current `CURRENT.implementation_commit`, while Agent-Flow keeps using
+  `request_nonce` and `review_target_id`. Stale reviews no longer replay old
+  `REVISE` decisions or consume review/repair budget.
+- Keep Reviewed Handoff watcher bounded retry for real Executor no-progress
+  events, while reporting successful handoff states as
+  `waiting_external_review` without incrementing local Executor attempts.
 
 ## 0.5.0
 

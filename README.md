@@ -98,6 +98,8 @@ Host Policy 还在全局 `AGENTS.md` 中维护长期行为约束：用户可见�
 
 Git 方面，Codex 默认继续当前已经 checkout 的 branch。当前已选 `main` 分支上的普通 `git fetch origin main`、clean worktree 下的 `git pull --ff-only origin main`、task-owned 文件的 `git add ...`、`git commit ...` 和 `git push origin main` 是低打扰开发动作，不应仅因为 sandbox 要写 `.git`，或因为文件多、commit message 长、feature 已完成而反复询问。同步前必须先检查 working tree；如果 dirty，先判断修改 ownership，不得默认 `git pull --ff-only --autostash ...`、`git stash`、`git reset --hard` 或 `git restore ...`。提交前必须检查 `git diff --cached --stat` 和 `git diff --cached`，避免提交无关文件或 secret。未经用户针对具体分支动作的明确授权，不得因为“修改很大”“PR 更安全”或“main 是干净基线”而自行创建、切换、checkout、重命名或删除 branch，也不得自行创建 PR、force push、删除远端 branch/tag、设置 upstream 或修改 remote。
 
+Host Policy 还定义了一条通用 external GPT 等待规则：当 repository workflow 已经把下一步交给外部 GPT Planner、Reviewer、Critic、Final Critic 或同类 reasoning role 时，尚未出现新 decision 是 `waiting_external_review`，不是 `BLOCKED`。正常最短等待窗口是 `MIN_EXTERNAL_GPT_WAIT = 2 hours`；2 小时不是自动截止线。只要仓库状态合法、实现和结果 artifact 完整、外部 GPT/connector/scheduler 没有明确失败，就继续低频等待。旧 review 只有在 `implementation_commit`、`review_target_id`、snapshot identity 或当前 round 匹配当前目标时才是 fresh decision；不匹配就是 stale context，不能重复触发旧 `REVISE`，也不能消耗 review/repair budget。
+
 `$CODEX_HOME/rules/ai-bridge-global.rules` 则用于减少普通开发动作的审批等待。目前长期授权的 execpolicy 前缀是：
 
 ```text
@@ -197,11 +199,15 @@ ai-bridge reviewed-handoff watcher run \
 
 Watcher 只同步当前已经 checkout/授权的 branch，不创建 branch/PR。机器本地的事件去重与日志放在 `${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}/reviewed-handoff/<repo>/`，不进入 repository。Codex 返回 0 也不自动算完成，只有任务状态真正推进才算 executor event 成功；同一 event 的自动尝试有界，避免死循环。
 
+Executor 成功发布实现并进入 `READY_FOR_GPT_REVIEW`、`NEEDS_GPT_PLANNER` 或 CI 已完成后等待 Reviewer 处理的 `WAITING_FOR_CI` 时，watcher 会把它报告为 `waiting_external_review`。这类等待不计入 executor retry，不写 terminal `FINAL_REPORT.md`，也不把 `CURRENT.state` 改成 `BLOCKED`。只有 Scheduled GPT 明确被禁用/删除/过期、GitHub connector/auth 重复失败、workflow state 非法、必需 review artifact 无法访问，或确实需要用户作新产品/科学/branch 决策时，才允许 terminal blocking。
+
 Reviewed Handoff 的默认 review 上限是两轮：第一轮 `REVISE` 允许一次 Codex repair；第二轮仍 `REVISE` 必须停在 `AWAIT_HUMAN_DECISION`。执行中如果出现冻结 Plan 无法安全推导的实质歧义，Scheduled GPT 最多允许一次最小 re-plan；再次需要改变 Plan 则交给用户。所有终态都必须生成 `FINAL_REPORT.md`，因此用户回来后只需要读一份面向人的报告。
 
 如果任务要求 GitHub CI，Codex Executor 只能把任务推进到 `WAITING_FOR_CI` 并保持 `CURRENT.ci_status=PENDING`；真实 CI 结果由 Scheduled GPT 从 GitHub checks 读取。`CURRENT.ci_status` 是唯一机器真值，`RESULT.md` 只记录执行叙述。CI locator 使用包含 `WAITING_FOR_CI` 的当前 branch tip，不要求它等于 `implementation_commit`，也不引入 hash/receipt 链。
 
 Reviewed Handoff 刻意**不**使用 Agent-Flow 的 `review_target_id`、Requirement Ledger、semantic source manifest、role receipt graph、Review Bundle SHA 或 Final Critic。`base_commit` / `implementation_commit` 只是让 GPT 定位真实 diff 的 Git locator。如果某项任务真的需要这些证明机制，应直接升级到 Agent-Flow，而不是把 Reviewed Handoff 继续加重。
+
+对于旧版本误退出的任务，比如 Executor 已完成并把仓库停在 `READY_FOR_EXTERNAL_PLANNER_REVIEW` 或 `READY_FOR_GPT_REVIEW`，但 Codex Goal 因旧 blocked-audit 规则结束，升级 Host Policy/Bridge Kit 后不需要重置 `CURRENT`，也不要伪造 Planner decision。重新进入 session 后同步 `main`、读取 `CURRENT`、确认当前 `implementation_commit`，把旧 commit 上的 Planner/Reviewer review 识别为 stale，然后继续等待新的 external GPT review 即可。
 
 详细规格见 `docs/V0_5_REVIEWED_HANDOFF_IMPLEMENTATION_SPEC.md`。
 
@@ -271,6 +277,8 @@ Planner
 这里的重点不是“多几个 Agent”，而是把不同判断权分开。Planner 负责用户目标和实现审查；Critic 负责初始合同审计、必要的合同复审和最终独立闭环；Controller 只做机械路由；Verifier 只能依据冻结 requirement 建立验证 oracle；Executor 只负责实现，不能改合同或验证规则，也不能自行宣布最终通过。
 
 Agent-Flow 还使用 Stable Review Snapshot，把真正影响语义的合同、Requirement Ledger、实现源码和 Verifier 源码与 Controller receipt、CURRENT 状态、文档、通知等控制平面变化分开。目标是只有语义变化才触发昂贵重验证，receipt-only、state-only 或 control-plane-only 修改不能默认“为了安全全部重跑”。详细设计和当前实现约束见 `docs/V0_4_AGENT_FLOW_IMPLEMENTATION_SPEC.md`。
+
+Agent-Flow 也使用同一 external GPT wait contract。`PLAN_REQUESTED`、`PLAN_READY_FOR_CRITIC`、`READY_FOR_PLANNER_REVIEW`、`WAITING_FOR_EXTERNAL_GPT`、`CONTRACT_REVIEW_REQUIRED`、`READY_FOR_CRITIC_FINAL_AUDIT` 等由 Planner/Critic/Final Critic 拥有下一步的状态，在没有 fresh artifact 时都只是等待。fresh 判断继续使用 Agent-Flow 自己的 `request_nonce`、`review_target_id` 和 Review Bundle 绑定；旧 target 的 Planner findings、Planner pass candidate 或 Final Critic audit 不会触发当前目标的 repair/pass/block。
 
 Anti-overengineering 原则也在这里生效：Agent-Flow 只对合同、Requirement Ledger、实现语义源码和验证语义源码建立稳定 `review_target_id`。Git 提交、状态文件、通知、普通 receipt 和文档变化可以作为 provenance 或说明，但不应因为自身变化触发新的语义审核对象或昂贵重跑。设计目标是严格验证业务/科学语义，而不是建立复杂的 provenance 链。
 
