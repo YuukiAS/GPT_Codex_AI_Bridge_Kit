@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import subprocess
 import tempfile
 import unittest
 import urllib.error
@@ -52,7 +53,7 @@ class VisualReviewTests(unittest.TestCase):
                 "inputs": [{"logical_id": "primary", "path": "results/001_visual/visual_review/primary.png"}],
             },
         )
-        return tmp, target, manifest, image.parent / "VISUAL_REVIEW.json"
+        return tmp, target, manifest, Path("results/001_visual/visual_review/VISUAL_REVIEW.json")
 
     def model_payload(self, decision: str = "PASS") -> dict:
         return {
@@ -82,7 +83,7 @@ class VisualReviewTests(unittest.TestCase):
             with self.assertRaisesRegex(visual_review.VisualReviewError, visual_review.SECRET_NAME):
                 visual_review.run_visual_review(target, manifest, output, api_key="", opener=opener)
             self.assertEqual(calls, [])
-            self.assertFalse(output.exists())
+            self.assertFalse((target / output).exists())
 
     def test_mock_responses_api_generates_schema_compliant_review(self) -> None:
         tmp, target, manifest, output = self.make_project()
@@ -122,14 +123,14 @@ class VisualReviewTests(unittest.TestCase):
 
             with self.assertRaisesRegex(visual_review.VisualReviewError, "not valid JSON"):
                 visual_review.run_visual_review(target, manifest, output, api_key="sk-secret", opener=opener)
-            self.assertFalse(output.exists())
+            self.assertFalse((target / output).exists())
 
             def incomplete_opener(*_args, **_kwargs):
                 return FakeResponse({"status": "completed", "output_text": json.dumps({"overall_decision": "PASS"})})
 
             with self.assertRaisesRegex(visual_review.VisualReviewError, "missing item_reviews"):
                 visual_review.run_visual_review(target, manifest, output, api_key="sk-secret", opener=incomplete_opener)
-            self.assertFalse(output.exists())
+            self.assertFalse((target / output).exists())
 
     def test_api_failure_fails_closed_without_secret_in_error(self) -> None:
         tmp, target, manifest, output = self.make_project()
@@ -140,7 +141,7 @@ class VisualReviewTests(unittest.TestCase):
             with self.assertRaises(visual_review.VisualReviewError) as caught:
                 visual_review.run_visual_review(target, manifest, output, api_key="sk-secret-value", opener=opener)
             self.assertNotIn("sk-secret-value", str(caught.exception))
-            self.assertFalse(output.exists())
+            self.assertFalse((target / output).exists())
 
     def test_identity_and_image_sha_mismatch_are_rejected(self) -> None:
         tmp, target, manifest, output = self.make_project()
@@ -150,9 +151,9 @@ class VisualReviewTests(unittest.TestCase):
 
             artifact = visual_review.run_visual_review(target, manifest, output, api_key="sk-secret", opener=opener)
             artifact["images"][0]["sha256"] = "bad"
-            visual_review.write_json(output, artifact)
+            visual_review.write_json(target / output, artifact)
             errors = visual_review.validate_visual_review_payload(
-                visual_review.load_json(output),
+                visual_review.load_json(target / output),
                 expected={"implementation_commit": "other-impl"},
             )
             self.assertTrue(any("identity binding mismatch" in item for item in errors))
@@ -170,3 +171,81 @@ class VisualReviewTests(unittest.TestCase):
             target.mkdir()
             code = bridge_cli.main(["visual-review", "preflight", "--target", str(target)])
             self.assertEqual(code, 0)
+
+    def test_install_renders_pinned_bridge_kit_source_for_consumer_repo(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            consumer = Path(tmp) / "consumer"
+            consumer.mkdir()
+            (consumer / "pyproject.toml").write_text("[project]\nname = 'consumer'\n", encoding="utf-8")
+            pinned_ref = "0123456789abcdef0123456789abcdef01234567"
+
+            actions = visual_review.install_visual_review(consumer, bridge_kit_ref=pinned_ref)
+            workflow = (consumer / ".github" / "workflows" / "ai-bridge-visual-review.yml").read_text(encoding="utf-8")
+
+            self.assertTrue(any("ai-bridge-visual-review.yml" in action for action in actions))
+            self.assertFalse((consumer / "ai_bridge_kit").exists())
+            self.assertIn(f"git+{visual_review.CANONICAL_BRIDGE_KIT_REPO}@{pinned_ref}", workflow)
+            self.assertNotIn("pip install -e '.[visual-review]'", workflow)
+            self.assertNotIn("pip install -e .", workflow)
+            self.assertIn("paths-ignore:\n      - 'results/**/visual_review/**'", workflow)
+
+    def make_git_consumer(self) -> tuple[tempfile.TemporaryDirectory[str], Path, str]:
+        tmp = tempfile.TemporaryDirectory()
+        target = Path(tmp.name) / "consumer"
+        target.mkdir()
+        subprocess.check_call(["git", "init", "--initial-branch", "main"], cwd=target, stdout=subprocess.DEVNULL)
+        subprocess.check_call(["git", "config", "user.email", "test@example.org"], cwd=target)
+        subprocess.check_call(["git", "config", "user.name", "Test User"], cwd=target)
+        (target / "README.md").write_text("# Consumer\n", encoding="utf-8")
+        subprocess.check_call(["git", "add", "README.md"], cwd=target)
+        subprocess.check_call(["git", "commit", "-m", "initial"], cwd=target, stdout=subprocess.DEVNULL)
+        return tmp, target, "results/001_visual/visual_review/VISUAL_REVIEW.json"
+
+    def test_visual_evidence_writeback_detects_untracked_unchanged_and_modified(self) -> None:
+        tmp, target, output = self.make_git_consumer()
+        with tmp:
+            output_path = target / output
+            output_path.parent.mkdir(parents=True)
+            output_path.write_text('{"schema":"test","status":"PASS"}\n', encoding="utf-8")
+            self.assertTrue(visual_review.visual_evidence_commit_needed(target, output))
+            staged = subprocess.check_output(["git", "diff", "--cached", "--name-only"], cwd=target, text=True)
+            self.assertIn(output, staged.splitlines())
+            subprocess.check_call(["git", "commit", "-m", "add visual evidence"], cwd=target, stdout=subprocess.DEVNULL)
+
+            self.assertFalse(visual_review.visual_evidence_commit_needed(target, output))
+            staged = subprocess.check_output(["git", "diff", "--cached", "--name-only"], cwd=target, text=True)
+            self.assertEqual(staged.strip(), "")
+
+            output_path.write_text('{"schema":"test","status":"REVISE"}\n', encoding="utf-8")
+            self.assertTrue(visual_review.visual_evidence_commit_needed(target, output))
+            staged = subprocess.check_output(["git", "diff", "--cached", "--name-only"], cwd=target, text=True)
+            self.assertIn(output, staged.splitlines())
+            subprocess.check_call(["git", "commit", "-m", "update visual evidence"], cwd=target, stdout=subprocess.DEVNULL)
+            latest_subject = subprocess.check_output(["git", "log", "-1", "--pretty=%s"], cwd=target, text=True).strip()
+            self.assertEqual(latest_subject, "update visual evidence")
+
+    def test_arbitrary_visual_review_output_paths_are_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "project"
+            target.mkdir()
+            bad_paths = [
+                "../VISUAL_REVIEW.json",
+                "src/VISUAL_REVIEW.json",
+                "automation/agent_flow/tasks/001/CURRENT.json",
+                ".github/workflows/visual.yml",
+                "results/other/visual_review/VISUAL_REVIEW.json",
+                "results/001_visual/visual_review/CURRENT.json",
+                "results/001_visual/visual_review/FROZEN_CONTRACT.md",
+                "results/001_visual/visual_review/REQUIREMENT_LEDGER.json",
+            ]
+            for bad in bad_paths:
+                with self.subTest(path=bad):
+                    with self.assertRaises(visual_review.VisualReviewError):
+                        visual_review.validate_visual_output_path(target, "001_visual", bad)
+
+            allowed = visual_review.validate_visual_output_path(
+                target,
+                "001_visual",
+                "results/001_visual/visual_review/VISUAL_REVIEW.json",
+            )
+            self.assertEqual(allowed, target / "results/001_visual/visual_review/VISUAL_REVIEW.json")

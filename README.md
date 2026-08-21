@@ -326,6 +326,8 @@ ai-bridge visual-review install --target /path/to/project
 ai-bridge visual-review preflight --target /path/to/project
 ```
 
+`install` 写入 consumer repository 的 GitHub Actions workflow 会安装 canonical Bridge Kit Git source，并 pin 到执行安装时的 Bridge Kit Git ref；它不会 vendor copy `ai_bridge_kit/`，也不会在 consumer repo 内运行 `pip install -e .`。如果当前安装环境无法解析 Bridge Kit Git commit，可显式传入 `--bridge-kit-ref <ref-or-commit>`。
+
 统一 GitHub Secret 名为：
 
 ```text
@@ -358,6 +360,8 @@ Agent-Flow 通过 Project Profile 现有的 `optional_visual_source_policy` opt-
 ```text
 results/<task_key>/visual_review/VISUAL_REVIEW.json
 ```
+
+workflow 只允许写回 repository-relative 的 `results/<task_key>/visual_review/**` 生成证据路径，并对 `results/**/visual_review/**` 设置 `paths-ignore`，避免单纯证据提交再次触发 visual job。缺少 `OPENAI_VISUAL_REVIEW_API_KEY` 时 job 只跳过 live visual review，不伪造 PASS，也不把缺 secret 当成普通 CI 失败。
 
 后续某个项目如果需要 research presentation、scientific figure、frontend UI 或 rendered report 的具体 rubric，只应在该项目的 visual input manifest / adapter 中提供，不应写死进 Bridge Kit core。
 

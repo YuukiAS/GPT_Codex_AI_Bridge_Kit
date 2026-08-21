@@ -12,6 +12,11 @@ trusted branch push / workflow_dispatch
 → existing Reviewer / Planner / Final Critic reads tracked evidence
 ```
 
+The installed workflow installs the canonical Bridge Kit Git source pinned to
+the ref rendered at install time. It does not vendor-copy `ai_bridge_kit/` into
+the consumer repository and does not run `pip install -e .` against the
+consumer project.
+
 Use the repository secret name `OPENAI_VISUAL_REVIEW_API_KEY`. In the workflow, map it only inside the visual review job:
 
 ```yaml
@@ -37,3 +42,8 @@ ai-bridge visual-review preflight --target <repo>
 ```
 
 This checks whether visual review is configured, whether a GitHub workflow references the standard secret name, and, when `gh` is available and logged in, whether `gh secret list` shows `OPENAI_VISUAL_REVIEW_API_KEY`. It never reads the secret value.
+
+Generated evidence must stay under the repository-relative path
+`results/<task_key>/visual_review/**`. The workflow ignores
+`results/**/visual_review/**` push changes so an evidence-only commit does not
+retrigger the visual review job.

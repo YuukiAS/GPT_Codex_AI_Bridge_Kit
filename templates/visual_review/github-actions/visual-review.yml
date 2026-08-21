@@ -15,7 +15,7 @@ on:
     branches:
       - main
     paths-ignore:
-      - 'results/**/visual_review/VISUAL_REVIEW.json'
+      - 'results/**/visual_review/**'
 
 permissions:
   contents: write
@@ -29,6 +29,7 @@ jobs:
       OPENAI_VISUAL_REVIEW_MODEL: ${{ vars.OPENAI_VISUAL_REVIEW_MODEL }}
       AI_BRIDGE_VISUAL_REVIEW_MANIFEST: ${{ github.event.inputs.manifest || vars.AI_BRIDGE_VISUAL_REVIEW_MANIFEST }}
       AI_BRIDGE_VISUAL_REVIEW_OUTPUT: ${{ github.event.inputs.output || vars.AI_BRIDGE_VISUAL_REVIEW_OUTPUT }}
+      AI_BRIDGE_KIT_PIP_SPEC: __AI_BRIDGE_KIT_PIP_SPEC__
     steps:
       - uses: actions/checkout@v4
         with:
@@ -39,7 +40,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install Bridge Kit visual review extra
-        run: python -m pip install -e '.[visual-review]'
+        run: python -m pip install "${AI_BRIDGE_KIT_PIP_SPEC}"
 
       - name: Refuse missing visual review secret
         shell: bash
@@ -68,12 +69,20 @@ jobs:
         if: env.AI_BRIDGE_VISUAL_REVIEW_SKIP != '1'
         shell: bash
         run: |
-          if git diff --quiet -- "${AI_BRIDGE_VISUAL_REVIEW_OUTPUT}"; then
+          set +e
+          ai-bridge visual-review writeback-needed \
+            --target . \
+            --output "${AI_BRIDGE_VISUAL_REVIEW_OUTPUT}"
+          writeback_status="$?"
+          set -e
+          if [ "${writeback_status}" -eq 0 ]; then
             echo "No visual review evidence changes."
             exit 0
           fi
+          if [ "${writeback_status}" -ne 1 ]; then
+            exit "${writeback_status}"
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- "${AI_BRIDGE_VISUAL_REVIEW_OUTPUT}"
           git commit -m "Add AI Bridge visual review evidence"
           git push

@@ -785,6 +785,19 @@ class AgentFlowTests(unittest.TestCase):
             self.assertFalse(plan["heavy_verifier_required"])
             self.assertTrue(plan["lightweight_validation_only"])
 
+    def test_optional_visual_source_policy_disabled_preserves_existing_flow(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            profile = agent_flow.load_project_profile(target)
+            self.assertFalse(profile["optional_visual_source_policy"]["enabled"])
+            snapshot = self.snapshot_and_bundle(target)
+            status = agent_flow.agent_flow_visual_review_status(target, "001_toy", profile)
+            self.assertEqual(status["status"], "NOT_REQUIRED")
+            bundle, errors = agent_flow.validate_review_bundle(target, "001_toy")
+            self.assertEqual(errors, [])
+            self.assertFalse(any(item.get("kind") == "visual_review" for item in bundle["required_evidence"]))
+            self.assertIn("review_target_id", snapshot)
+
     def test_detached_worktree_plan_does_not_create_branch(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "project"

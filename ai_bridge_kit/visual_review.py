@@ -26,6 +26,7 @@ DEFAULT_PRIVACY_POLICY = "PUBLIC_SAFE_ONLY"
 DECISIONS = {"PASS", "REVISE", "BLOCKED"}
 WORKFLOW_TYPES = {"reviewed_handoff", "agent_flow", "generic"}
 API_URL = "https://api.openai.com/v1/responses"
+CANONICAL_BRIDGE_KIT_REPO = "https://github.com/YuukiAS/GPT_Codex_AI_Bridge_Kit.git"
 
 
 class VisualReviewError(ValueError):
@@ -61,6 +62,45 @@ def write_json(path: Path, payload: dict[str, Any]) -> None:
 
 def rel_path(path: Path, root: Path) -> str:
     return path.resolve().relative_to(root.resolve()).as_posix()
+
+
+def repository_relative_path(path: Path | str) -> str:
+    raw = Path(path)
+    if raw.is_absolute() or ".." in raw.parts:
+        raise VisualReviewError("path must be repository-relative and must not contain '..'")
+    rel = raw.as_posix().strip()
+    if not rel or rel == ".":
+        raise VisualReviewError("path must be a repository-relative file path")
+    return rel
+
+
+def validate_visual_output_path(target: Path, task_key: str, output_path: Path | str) -> Path:
+    rel = validate_generated_visual_evidence_path(output_path)
+    expected_prefix = f"results/{task_key}/visual_review/"
+    if not rel.startswith(expected_prefix):
+        raise VisualReviewError(f"visual review output must be under {expected_prefix}")
+    return target / rel
+
+
+def validate_generated_visual_evidence_path(output_path: Path | str) -> str:
+    rel = repository_relative_path(output_path)
+    if not re.fullmatch(r"results/[^/]+/visual_review/.+", rel):
+        raise VisualReviewError("visual review write-back path must be under results/<task_key>/visual_review/")
+    if rel.endswith("/"):
+        raise VisualReviewError("visual review write-back path must be a file path")
+    protected_names = {
+        "CURRENT.json",
+        "FROZEN_CONTRACT.md",
+        "FROZEN_CONTRACT.json",
+        "REQUIREMENT_LEDGER.md",
+        "REQUIREMENT_LEDGER.json",
+    }
+    if Path(rel).name in protected_names:
+        raise VisualReviewError("visual review output must be generated visual evidence, not workflow control files")
+    blocked_parts = {".github", "src", "automation"}
+    if blocked_parts.intersection(Path(rel).parts):
+        raise VisualReviewError("visual review output must not target source, automation, or workflow paths")
+    return rel
 
 
 def logical_mime_type(path: Path) -> str:
@@ -455,6 +495,7 @@ def run_visual_review(
 ) -> dict[str, Any]:
     target = target.resolve()
     manifest = normalize_manifest(target, load_json(manifest_path))
+    output_file = validate_visual_output_path(target, str(manifest["task_key"]), output_path)
     manifest_for_request = _manifest_with_absolute_paths(target, manifest)
     selected_model = model or os.environ.get(MODEL_ENV) or DEFAULT_MODEL
     selected_key = api_key if api_key is not None else (os.environ.get(SECRET_NAME, "") or os.environ.get("OPENAI_API_KEY", ""))
@@ -468,8 +509,48 @@ def run_visual_review(
     errors = validate_visual_review_payload(artifact)
     if errors:
         raise VisualReviewError("; ".join(errors))
-    write_json(output_path, artifact)
+    write_json(output_file, artifact)
     return artifact
+
+
+def git_current_commit(path: Path) -> str | None:
+    try:
+        commit = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"],
+            cwd=path,
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+    except Exception:
+        return None
+    return commit if re.fullmatch(r"[0-9a-f]{40}", commit) else None
+
+
+def bridge_kit_pip_spec(ref: str | None = None) -> str:
+    selected_ref = ref or git_current_commit(kit_root())
+    if not selected_ref:
+        raise VisualReviewError("cannot determine Bridge Kit Git commit; pass --bridge-kit-ref explicitly")
+    if not re.fullmatch(r"[A-Za-z0-9._/-]+", selected_ref):
+        raise VisualReviewError("Bridge Kit ref contains unsupported characters")
+    return f"gpt-codex-ai-bridge-kit[visual-review] @ git+{CANONICAL_BRIDGE_KIT_REPO}@{selected_ref}"
+
+
+def visual_evidence_commit_needed(target: Path, output_path: Path | str) -> bool:
+    rel = validate_generated_visual_evidence_path(output_path)
+    subprocess.check_call(["git", "add", "--", rel], cwd=target)
+    result = subprocess.run(
+        ["git", "diff", "--cached", "--quiet", "--", rel],
+        cwd=target,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    if result.returncode not in {0, 1}:
+        raise subprocess.CalledProcessError(
+            result.returncode,
+            ["git", "diff", "--cached", "--quiet", "--", rel],
+        )
+    return result.returncode == 1
 
 
 def gh_repo_slug(target: Path) -> str | None:
@@ -579,16 +660,31 @@ def copy_file(src: Path, dst: Path, *, force: bool, actions: list[str]) -> None:
     actions.append(f"COPY {'overwrite' if existed else 'create'}: {dst}")
 
 
-def install_visual_review(target: Path, *, force: bool = False) -> list[str]:
+def write_rendered_file(src: Path, dst: Path, replacements: dict[str, str], *, force: bool, actions: list[str]) -> None:
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    if dst.exists() and not force:
+        actions.append(f"SKIP existing file: {dst}")
+        return
+    text = src.read_text(encoding="utf-8")
+    for key, value in replacements.items():
+        text = text.replace(key, value)
+    existed = dst.exists()
+    dst.write_text(text, encoding="utf-8")
+    actions.append(f"COPY {'overwrite' if existed else 'create'}: {dst}")
+
+
+def install_visual_review(target: Path, *, force: bool = False, bridge_kit_ref: str | None = None) -> list[str]:
     target = target.resolve()
     source = kit_root() / "templates" / "visual_review"
     if not source.exists():
         raise VisualReviewError("visual review templates are missing from the Bridge Kit installation")
     actions: list[str] = []
+    pip_spec = bridge_kit_pip_spec(bridge_kit_ref)
     copy_file(source / "README.md", target / "docs" / "AI_BRIDGE_VISUAL_REVIEW.md", force=force, actions=actions)
-    copy_file(
+    write_rendered_file(
         source / "github-actions" / "visual-review.yml",
         target / ".github" / "workflows" / "ai-bridge-visual-review.yml",
+        {"__AI_BRIDGE_KIT_PIP_SPEC__": pip_spec},
         force=force,
         actions=actions,
     )
@@ -607,6 +703,7 @@ def build_parser() -> argparse.ArgumentParser:
     install_cmd = sub.add_parser("install")
     install_cmd.add_argument("--target", type=Path, default=Path.cwd())
     install_cmd.add_argument("--force", action="store_true")
+    install_cmd.add_argument("--bridge-kit-ref")
     preflight_cmd = sub.add_parser("preflight")
     preflight_cmd.add_argument("--target", type=Path, default=Path.cwd())
     preflight_cmd.add_argument("--repo")
@@ -618,6 +715,9 @@ def build_parser() -> argparse.ArgumentParser:
     run_cmd.add_argument("--timeout", type=float, default=60.0)
     validate_cmd = sub.add_parser("validate")
     validate_cmd.add_argument("--path", type=Path, required=True)
+    writeback_cmd = sub.add_parser("writeback-needed")
+    writeback_cmd.add_argument("--target", type=Path, default=Path.cwd())
+    writeback_cmd.add_argument("--output", type=Path, required=True)
     return parser
 
 
@@ -626,7 +726,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(sys.argv[1:] if argv is None else argv)
     if args.command == "install":
         try:
-            actions = install_visual_review(args.target, force=args.force)
+            actions = install_visual_review(args.target, force=args.force, bridge_kit_ref=args.bridge_kit_ref)
         except VisualReviewError as exc:
             print(f"ERROR: {exc}", file=sys.stderr)
             return 1
@@ -651,6 +751,17 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"ERROR {error}")
             return 1
         print("Visual Review validation passed.")
+        return 0
+    if args.command == "writeback-needed":
+        try:
+            needed = visual_evidence_commit_needed(args.target, args.output)
+        except (VisualReviewError, subprocess.CalledProcessError) as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 2
+        if needed:
+            print("Visual review evidence changes staged.")
+            return 1
+        print("No visual review evidence changes.")
         return 0
     parser.print_help()
     return 0

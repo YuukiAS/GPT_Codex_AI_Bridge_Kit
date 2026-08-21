@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+## 0.5.3
+
+- Harden Visual Review GitHub Actions installation for consumer repositories by
+  rendering a pinned canonical Bridge Kit Git source instead of installing the
+  consumer repository with `pip install -e .`.
+- Fix first-run Visual Review evidence write-back by staging the generated
+  evidence path before checking the cached diff, so untracked
+  `VISUAL_REVIEW.json` files are committed.
+- Restrict generated visual evidence paths to repository-relative
+  `results/<task_key>/visual_review/**` locations and ignore the full visual
+  evidence directory in the workflow trigger to avoid evidence-only retriggers.
+- Preserve the existing `OPENAI_VISUAL_REVIEW_API_KEY` secret contract and
+  missing-secret skip behavior without changing role/state/schema/rubric scope.
+
 ## 0.5.2
 
 - Add shared optional Visual Review core with a single `ai_bridge_kit.visual_review`
