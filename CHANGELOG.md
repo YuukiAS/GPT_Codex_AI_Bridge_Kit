@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## 0.5.4
+
+- Change the Shared Visual Review production default model from
+  `gpt-4.1-mini` to `gpt-5.6-terra` for generic, Reviewed Handoff, Agent-Flow,
+  and future consumer repositories that do not set a model override.
+- Keep `OPENAI_VISUAL_REVIEW_MODEL` as the optional repository/environment
+  override, with explicit CLI `--model` still taking priority over the
+  environment variable and shared default.
+- Preserve the per-consumer `OPENAI_VISUAL_REVIEW_API_KEY` secret contract; the
+  model default change does not introduce shared API keys or role-specific model
+  configuration.
+
 ## 0.5.3
 
 - Harden Visual Review GitHub Actions installation for consumer repositories by

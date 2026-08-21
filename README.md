@@ -341,7 +341,9 @@ env:
   OPENAI_API_KEY: ${{ secrets.OPENAI_VISUAL_REVIEW_API_KEY }}
 ```
 
-模型名不是 secret，可用 GitHub Actions Variable 或普通环境变量 `OPENAI_VISUAL_REVIEW_MODEL` 配置。推荐在 OpenAI 中建立独立 project：
+默认 production Visual Review model 为 `gpt-5.6-terra`。普通 consumer repository 不需要设置模型变量；只有项目有明确质量、成本、权限或模型冻结需求时，才设置 GitHub Actions Variable 或普通环境变量 `OPENAI_VISUAL_REVIEW_MODEL` 作为高级 override。显式 CLI `--model` 优先于 `OPENAI_VISUAL_REVIEW_MODEL`，后者优先于 Bridge Kit shared default。
+
+模型名不是 secret。推荐在 OpenAI 中建立独立 project：
 
 ```text
 OpenAI Project: AI Bridge Visual Review

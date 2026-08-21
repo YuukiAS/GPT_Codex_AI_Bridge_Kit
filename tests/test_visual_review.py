@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import subprocess
 import tempfile
 import unittest
@@ -114,6 +115,77 @@ class VisualReviewTests(unittest.TestCase):
             self.assertIn("input_image", json.dumps(captured["body"]))
             self.assertEqual(captured["timeout"], 12)
             self.assertNotIn("sk-test-secret", json.dumps(captured["body"]))
+
+    def test_default_model_uses_shared_production_default(self) -> None:
+        tmp, target, manifest, output = self.make_project()
+        with tmp:
+            previous = os.environ.pop(visual_review.MODEL_ENV, None)
+            captured: dict = {}
+
+            def opener(request, timeout):
+                captured["body"] = json.loads(request.data.decode("utf-8"))
+                return FakeResponse({"status": "completed", "output_text": json.dumps(self.model_payload())})
+
+            try:
+                artifact = visual_review.run_visual_review(target, manifest, output, api_key="sk-secret", opener=opener)
+            finally:
+                if previous is not None:
+                    os.environ[visual_review.MODEL_ENV] = previous
+
+            self.assertEqual(visual_review.DEFAULT_MODEL, "gpt-5.6-terra")
+            self.assertEqual(captured["body"]["model"], "gpt-5.6-terra")
+            self.assertEqual(artifact["review_model"], "gpt-5.6-terra")
+
+    def test_environment_model_override_is_supported(self) -> None:
+        tmp, target, manifest, output = self.make_project()
+        with tmp:
+            previous = os.environ.get(visual_review.MODEL_ENV)
+            os.environ[visual_review.MODEL_ENV] = "gpt-test-override"
+            captured: dict = {}
+
+            def opener(request, timeout):
+                captured["body"] = json.loads(request.data.decode("utf-8"))
+                return FakeResponse({"status": "completed", "output_text": json.dumps(self.model_payload())})
+
+            try:
+                artifact = visual_review.run_visual_review(target, manifest, output, api_key="sk-secret", opener=opener)
+            finally:
+                if previous is None:
+                    os.environ.pop(visual_review.MODEL_ENV, None)
+                else:
+                    os.environ[visual_review.MODEL_ENV] = previous
+
+            self.assertEqual(captured["body"]["model"], "gpt-test-override")
+            self.assertEqual(artifact["review_model"], "gpt-test-override")
+
+    def test_explicit_model_override_wins_over_environment(self) -> None:
+        tmp, target, manifest, output = self.make_project()
+        with tmp:
+            previous = os.environ.get(visual_review.MODEL_ENV)
+            os.environ[visual_review.MODEL_ENV] = "gpt-test-env"
+            captured: dict = {}
+
+            def opener(request, timeout):
+                captured["body"] = json.loads(request.data.decode("utf-8"))
+                return FakeResponse({"status": "completed", "output_text": json.dumps(self.model_payload())})
+
+            try:
+                artifact = visual_review.run_visual_review(
+                    target,
+                    manifest,
+                    output,
+                    api_key="sk-secret",
+                    model="gpt-explicit",
+                    opener=opener,
+                )
+            finally:
+                if previous is None:
+                    os.environ.pop(visual_review.MODEL_ENV, None)
+                else:
+                    os.environ[visual_review.MODEL_ENV] = previous
+
+            self.assertEqual(captured["body"]["model"], "gpt-explicit")
+            self.assertEqual(artifact["review_model"], "gpt-explicit")
 
     def test_malformed_model_output_fails_closed(self) -> None:
         tmp, target, manifest, output = self.make_project()
