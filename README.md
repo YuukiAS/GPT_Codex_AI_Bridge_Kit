@@ -307,6 +307,60 @@ ai-bridge agent-flow terminal-brief --target /path/to/project --task-key 001_exa
 ai-bridge agent-flow prompt --target /path/to/project planner
 ```
 
+## Visual Review：共享、可选、由 GitHub Actions 调用 OpenAI 的视觉证据
+
+Visual Review 是 Bridge Kit 自身提供的横向能力，可由 Reviewed Handoff 和 Agent-Flow 共同使用。它不是新的 GPT role，也不是 Presentation 专属实现。共享层只负责：
+
+```text
+visual source manifest
+→ image SHA / identity binding
+→ OpenAI Responses API with image input
+→ structured VISUAL_REVIEW.json
+→ deterministic validation
+```
+
+默认 live API caller 是 GitHub Actions。Planner、Critic、Controller、Verifier、Executor、Scheduled GPT、本地 Codex 和 watcher 都只读 repository 中 tracked 的 `VISUAL_REVIEW.json`，不需要也不应该接触 API key value。
+
+```bash
+ai-bridge visual-review install --target /path/to/project
+ai-bridge visual-review preflight --target /path/to/project
+```
+
+统一 GitHub Secret 名为：
+
+```text
+OPENAI_VISUAL_REVIEW_API_KEY
+```
+
+workflow 中只在 visual job 局部映射：
+
+```yaml
+env:
+  OPENAI_API_KEY: ${{ secrets.OPENAI_VISUAL_REVIEW_API_KEY }}
+```
+
+模型名不是 secret，可用 GitHub Actions Variable 或普通环境变量 `OPENAI_VISUAL_REVIEW_MODEL` 配置。推荐在 OpenAI 中建立独立 project：
+
+```text
+OpenAI Project: AI Bridge Visual Review
+```
+
+并为每个启用视觉审查的 repository 创建单独的 project-scoped restricted key，例如 `AI_Skills_Collection key`、`TRACE key` 或 `CARE_Challenge key`。Bridge Kit 不创建、不读取、不打印 secret value；preflight 最多通过 `gh secret list --repo OWNER/REPO` 检查 secret 名称是否存在。
+
+默认隐私策略是 `PUBLIC_SAFE_ONLY`。安装 Visual Review 不等于允许自动上传私有数据；patient images、private clinical data、未公开研究图像、credentials、private screenshots 和未授权 proprietary assets 都必须 fail closed，除非任务或 Project Profile 有明确外部上传授权。
+
+Reviewed Handoff 通过 task `CURRENT.json` 中的 `visual_review_required=true` opt-in。它只把视觉证据绑定到 `task_key`、`implementation_commit` 和 input image hashes，不引入 Agent-Flow 的 `request_nonce`、Requirement Ledger、Stable Review Snapshot 或 `review_target_id`。视觉证据尚未产生时，Reviewer 等待 `VISUAL_REVIEW.json`，不会消耗 review round；stale implementation evidence 不能用于 PASS。
+
+Agent-Flow 通过 Project Profile 现有的 `optional_visual_source_policy` opt-in。启用后，`VISUAL_REVIEW.json` 必须绑定当前 `request_nonce`、`review_target_id`、冻结合同 digest、Requirement Ledger digest、`SOURCE_SNAPSHOT` 中的 implementation/verifier semantic digest 和 input image hashes。Visual Review 是 review evidence，不改变 `review_target_id`，不会因为 evidence commit 触发新的 semantic target 或 heavy Verifier rerun。
+
+默认 tracked evidence 路径是：
+
+```text
+results/<task_key>/visual_review/VISUAL_REVIEW.json
+```
+
+后续某个项目如果需要 research presentation、scientific figure、frontend UI 或 rendered report 的具体 rubric，只应在该项目的 visual input manifest / adapter 中提供，不应写死进 Bridge Kit core。
+
 ## 如何选择
 
 如果只是给一台新机器建立长期 Codex 默认行为，配置 Host Policy；如果只是让一个新 repository 能被 GPT 和 Codex 稳定交接，安装 Lite Handoff。普通明确需求直接交给 Codex 完成时，继续使用 Lite。

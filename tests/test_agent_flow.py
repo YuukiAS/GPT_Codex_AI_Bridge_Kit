@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from ai_bridge_kit import agent_flow
+from ai_bridge_kit import visual_review
 from ai_bridge_kit.cli import main
 
 
@@ -109,6 +110,77 @@ class AgentFlowTests(unittest.TestCase):
         agent_flow.write_json(agent_flow.result_root(target, "001_toy") / "REVIEW_BUNDLE.json", bundle)
         agent_flow.write_current_findings(target, "001_toy", [], snapshot["review_target_id"])
         return snapshot
+
+    def enable_visual_policy(self, target: Path) -> None:
+        profile = agent_flow.load_project_profile(target)
+        profile["optional_visual_source_policy"] = {
+            "enabled": True,
+            "manifest_path": "results/001_toy/visual_review/visual_inputs.json",
+            "evidence_path": "results/001_toy/visual_review/VISUAL_REVIEW.json",
+            "privacy_policy": "PUBLIC_SAFE_ONLY",
+        }
+        agent_flow.write_json(agent_flow.agent_root(target) / "PROJECT_PROFILE.json", profile)
+
+    def write_agent_visual_review(self, target: Path, snapshot: dict[str, str], *, review_target_id: str | None = None) -> dict:
+        visual_dir = agent_flow.result_root(target, "001_toy") / "visual_review"
+        image = visual_dir / "primary.png"
+        image.parent.mkdir(parents=True, exist_ok=True)
+        image.write_bytes(
+            b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+            b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\rIDATx\x9cc\xf8\xff\xff?"
+            b"\x00\x05\xfe\x02\xfeA\xe2U\xa7\x00\x00\x00\x00IEND\xaeB`\x82"
+        )
+        request = agent_flow.load_json(agent_flow.task_root(target, "001_toy") / "REQUEST.json")
+        bindings = {
+            "request_nonce": request["request_nonce"],
+            "review_target_id": review_target_id or snapshot["review_target_id"],
+            "frozen_contract_sha256": snapshot["frozen_contract_sha256"],
+            "requirement_ledger_sha256": snapshot["requirement_ledger_sha256"],
+            "implementation_semantic_digest_sha256": snapshot["implementation_semantic_digest_sha256"],
+            "verifier_semantic_digest_sha256": snapshot["verifier_semantic_digest_sha256"],
+        }
+        manifest = {
+            "schema": visual_review.VISUAL_INPUT_MANIFEST_SCHEMA,
+            "task_key": "001_toy",
+            "workflow_type": "agent_flow",
+            "review_kind": "synthetic",
+            "privacy_policy": "PUBLIC_SAFE_ONLY",
+            "rubric": {"instructions": "Synthetic visual fixture must pass."},
+            "identity_bindings": bindings,
+            "inputs": [{"logical_id": "primary", "path": "results/001_toy/visual_review/primary.png"}],
+        }
+        normalized = visual_review.normalize_manifest(target, manifest)
+        artifact = visual_review.assemble_visual_review(
+            manifest=normalized,
+            model_output={
+                "overall_decision": "PASS",
+                "item_reviews": [{"item_id": "primary", "decision": "PASS", "summary": "ok", "observations": [], "requirement_ids": []}],
+                "blocking_findings": [],
+                "non_blocking_notes": [],
+            },
+            model="gpt-test",
+        )
+        visual_review.write_json(visual_dir / "VISUAL_REVIEW.json", artifact)
+        return artifact
+
+    def add_visual_review_to_bundle(self, target: Path, snapshot: dict[str, str], artifact: dict) -> None:
+        path = agent_flow.result_root(target, "001_toy") / "visual_review" / "VISUAL_REVIEW.json"
+        bundle_path = agent_flow.result_root(target, "001_toy") / "REVIEW_BUNDLE.json"
+        bundle = agent_flow.load_json(bundle_path)
+        bundle["required_evidence"].append(
+            {
+                "evidence_id": artifact["evidence_id"],
+                "kind": "visual_review",
+                "path": "results/001_toy/visual_review/VISUAL_REVIEW.json",
+                "sha256": agent_flow.file_sha256(path),
+                "status": artifact["status"],
+                "required": True,
+                "target_sensitive": True,
+                "review_target_id": snapshot["review_target_id"],
+            }
+        )
+        bundle["bundle_sha256"] = agent_flow.bundle_digest(bundle)
+        agent_flow.write_json(bundle_path, bundle)
 
     def write_planner_and_final_pass(self, target: Path, snapshot: dict[str, str]) -> None:
         root = agent_flow.task_root(target, "001_toy")
@@ -676,6 +748,42 @@ class AgentFlowTests(unittest.TestCase):
             profile_text = agent_flow.canonical_json(agent_flow.load_project_profile(target))
             for token in ["CARE", "MyoPS", "nnU-Net", "Slurm", "route_portfolio", "dataset_split"]:
                 self.assertNotIn(token, profile_text)
+
+    def test_visual_review_binds_current_review_target_and_bundle(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            self.enable_visual_policy(target)
+            snapshot = self.snapshot_and_bundle(target)
+            artifact = self.write_agent_visual_review(target, snapshot)
+            self.add_visual_review_to_bundle(target, snapshot, artifact)
+            status = agent_flow.agent_flow_visual_review_status(target, "001_toy", agent_flow.load_project_profile(target))
+            self.assertEqual(status["status"], "PASS")
+            bundle, errors = agent_flow.validate_review_bundle(target, "001_toy")
+            self.assertEqual(errors, [])
+            self.assertTrue(any(item["kind"] == "visual_review" for item in bundle["required_evidence"]))
+
+    def test_stale_visual_review_target_is_rejected(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            self.enable_visual_policy(target)
+            snapshot = self.snapshot_and_bundle(target)
+            artifact = self.write_agent_visual_review(target, snapshot, review_target_id="old-target")
+            self.add_visual_review_to_bundle(target, snapshot, artifact)
+            with self.assertRaisesRegex(ValueError, "identity binding mismatch"):
+                agent_flow.validate_review_bundle(target, "001_toy")
+            status = agent_flow.agent_flow_visual_review_status(target, "001_toy", agent_flow.load_project_profile(target))
+            self.assertEqual(status["status"], "INVALID")
+
+    def test_visual_evidence_only_change_does_not_require_heavy_verifier(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            profile = agent_flow.load_project_profile(target)
+            change_class = agent_flow.classify_paths(["results/001_toy/visual_review/VISUAL_REVIEW.json"], profile)
+            self.assertEqual(change_class, "RECEIPT_OR_MANIFEST_ONLY_CHANGED")
+            plan = agent_flow.invalidation_plan(change_class, review_target_id="target-1")
+            self.assertFalse(plan["new_semantic_target_required"])
+            self.assertFalse(plan["heavy_verifier_required"])
+            self.assertTrue(plan["lightweight_validation_only"])
 
     def test_detached_worktree_plan_does_not_create_branch(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

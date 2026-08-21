@@ -234,6 +234,29 @@ For `READY_FOR_GPT_REVIEW`, the remote Reviewer writes `REVIEW_<round>.md` befor
 
 For `NEEDS_GPT_PLANNER`, the remote Planner reads the task context, makes at most one minimal re-plan, writes `PLAN.md` first, and writes `CURRENT.json` last with `plan_revision += 1` and `state=PLAN_FROZEN`. A second material re-plan requirement, or any required product/scientific decision, writes `FINAL_REPORT.md` first and then routes `CURRENT.json` to `AWAIT_HUMAN_DECISION` with `human_gate_reason=PLANNER_DECISION`.
 
+## Optional Visual Review evidence
+
+Reviewed Handoff may opt into the shared Bridge Kit Visual Review evidence producer. This is not a new role and must not import Agent-Flow machinery into Reviewed Handoff.
+
+Opt-in is task-local via `CURRENT.visual_review_required=true`. The default evidence path is:
+
+```text
+results/<task_key>/visual_review/VISUAL_REVIEW.json
+```
+
+For Reviewed Handoff, valid visual evidence is bound to:
+
+```text
+task_key
+implementation_commit
+input image SHA-256 values
+visual manifest / rubric identity
+```
+
+It must not add `request_nonce`, Requirement Ledger, Stable Review Snapshot, `review_target_id`, role receipt graph, Review Bundle hash, Final Critic, or semantic source manifests.
+
+The Scheduled Reviewer must check `VISUAL_REVIEW.json` before writing `REVIEW_<round>.md`. Missing visual evidence means wait for external visual evidence and do not consume `review_round`. Stale evidence whose `implementation_commit` does not match current `CURRENT.implementation_commit` is invalid and cannot support PASS. A model `REVISE` or `BLOCKED` decision is evidence for the existing Reviewer to consume; it does not create a Visual Reviewer role or a new top-level workflow state.
+
 ## Final report
 
 The final report is user-facing and required for all terminal states. Its first sections describe:

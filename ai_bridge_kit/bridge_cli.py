@@ -13,6 +13,10 @@ def main(argv: list[str] | None = None) -> int:
         from . import reviewed_handoff
 
         return reviewed_handoff.main(args[1:])
+    if args and args[0] == "visual-review":
+        from . import visual_review
+
+        return visual_review.main(args[1:])
 
     from .cli import main as legacy_main
 

@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from . import external_wait
+from . import visual_review
 
 
 AGENT_FLOW_REL = Path("automation") / "agent_flow"
@@ -144,6 +145,7 @@ EVIDENCE_SUCCESS_STATUSES = {
     "runtime_probe": {"PASS", "passed", "success"},
     "ci": {"PASS", "passed", "success"},
     "review": {"PASS", "passed", "success"},
+    "visual_review": {"PASS"},
     "artifact": {"PRESENT", "PASS", "success"},
 }
 CHANGE_CLASS_PRIORITY = [
@@ -184,6 +186,7 @@ PROFILE_REQUIRED_FIELDS = {
     "role_isolation_policy": dict,
     "semantic_paths": dict,
     "role_write_scopes": dict,
+    "optional_visual_source_policy": dict,
 }
 
 
@@ -344,7 +347,7 @@ def default_profile(project_name: str) -> dict[str, Any]:
             "runtime_environment": ["requirements*.txt", "pyproject.toml", "package*.json", "Dockerfile"],
             "ci_workflow": [".github/workflows/**"],
             "control_plane": ["automation/agent_flow/**"],
-            "receipts_or_manifests": ["results/**/receipts/**", "results/**/notification_brief.json"],
+            "receipts_or_manifests": ["results/**/receipts/**", "results/**/notification_brief.json", "results/**/visual_review/**"],
             "current_or_routing": ["automation/agent_flow/tasks/**/CURRENT.json"],
             "documentation": ["docs/**", "README.md", "CHANGELOG.md"],
         },
@@ -554,6 +557,18 @@ def load_project_profile(target: Path) -> dict[str, Any]:
         raise ValueError("implementation_semantic_paths must match semantic_paths.implementation")
     if profile.get("verifier_semantic_paths") != semantic_paths.get("verifier"):
         raise ValueError("verifier_semantic_paths must match semantic_paths.verifier")
+    visual_policy = profile.get("optional_visual_source_policy")
+    if visual_policy.get("enabled") is not False and visual_policy.get("enabled") is not True:
+        raise ValueError("optional_visual_source_policy.enabled must be boolean")
+    if visual_policy.get("enabled"):
+        manifest_path = str(visual_policy.get("manifest_path") or "")
+        if not manifest_path or Path(manifest_path).is_absolute() or ".." in Path(manifest_path).parts:
+            raise ValueError("optional_visual_source_policy.manifest_path must be repository-relative when enabled")
+        privacy_policy = visual_policy.get("privacy_policy", visual_review.DEFAULT_PRIVACY_POLICY)
+        if privacy_policy != visual_review.DEFAULT_PRIVACY_POLICY and not visual_policy.get("external_upload_authorization"):
+            raise ValueError("optional_visual_source_policy requires explicit external_upload_authorization for non-public data")
+        if profile.get("external_boundaries", {}).get("requires_private_data") and not visual_policy.get("external_upload_authorization"):
+            raise ValueError("private-data Agent-Flow visual review requires explicit external_upload_authorization")
     if profile.get("integration_branch_policy", {}).get("create_branch_without_user_authorization"):
         raise ValueError("Project Profile cannot authorize branch creation without explicit user metadata")
     if profile.get("role_isolation_policy", {}).get("create_role_branches_without_user_authorization"):
@@ -1533,11 +1548,57 @@ def evidence_path_allowed(rel: str, task_key: str) -> bool:
         f"results/{task_key}/verification/**",
         f"results/{task_key}/implementation/**",
         f"results/{task_key}/receipts/**",
+        f"results/{task_key}/visual_review/**",
         f"results/{task_key}/planner_reviews/**",
         f"results/{task_key}/critic_reviews/**",
         f"automation/agent_flow/tasks/{task_key}/**",
     ]
     return matches_any(rel, allowed)
+
+
+def visual_policy_enabled(profile: dict[str, Any]) -> bool:
+    return profile.get("optional_visual_source_policy", {}).get("enabled") is True
+
+
+def agent_flow_visual_review_path(target: Path, task_key: str, profile: dict[str, Any]) -> Path:
+    policy = profile.get("optional_visual_source_policy", {})
+    rel = str(policy.get("evidence_path") or f"results/{task_key}/visual_review/VISUAL_REVIEW.json")
+    if Path(rel).is_absolute() or ".." in Path(rel).parts:
+        raise ValueError("optional_visual_source_policy.evidence_path must be repository-relative")
+    return target / rel
+
+
+def agent_flow_visual_expected_bindings(target: Path, task_key: str) -> dict[str, Any]:
+    root = task_root(target, task_key)
+    request = load_json(root / "REQUEST.json")
+    snapshot_payload = load_json(root / "SOURCE_SNAPSHOT.json")
+    return {
+        "task_key": task_key,
+        "workflow_type": "agent_flow",
+        "request_nonce": request.get("request_nonce"),
+        "review_target_id": snapshot_payload.get("review_target_id"),
+        "frozen_contract_sha256": snapshot_payload.get("frozen_contract_sha256"),
+        "requirement_ledger_sha256": snapshot_payload.get("requirement_ledger_sha256"),
+        "implementation_semantic_digest_sha256": snapshot_payload.get("implementation_semantic_digest_sha256"),
+        "verifier_semantic_digest_sha256": snapshot_payload.get("verifier_semantic_digest_sha256"),
+    }
+
+
+def agent_flow_visual_review_status(target: Path, task_key: str, profile: dict[str, Any]) -> dict[str, Any]:
+    if not visual_policy_enabled(profile):
+        return {"required": False, "status": "NOT_REQUIRED", "errors": []}
+    path = agent_flow_visual_review_path(target, task_key, profile)
+    rel = rel_path(path, target)
+    if not path.exists():
+        return {"required": True, "status": "PENDING", "path": rel, "errors": ["visual review evidence pending"]}
+    try:
+        payload = load_json(path)
+    except Exception as exc:
+        return {"required": True, "status": "INVALID", "path": rel, "errors": [f"VISUAL_REVIEW.json unreadable: {exc}"]}
+    errors = visual_review.validate_visual_review_payload(payload, expected=agent_flow_visual_expected_bindings(target, task_key))
+    if errors:
+        return {"required": True, "status": "INVALID", "path": rel, "errors": errors}
+    return {"required": True, "status": payload.get("overall_decision"), "path": rel, "errors": []}
 
 
 def validate_evidence_entry(target: Path, task_key: str, evidence: dict[str, Any], review_target_id: str) -> list[str]:
@@ -1568,7 +1629,19 @@ def validate_evidence_entry(target: Path, task_key: str, evidence: dict[str, Any
                 errors.append(f"required evidence artifact evidence_id mismatch: {rel}")
             if artifact.get("status") != evidence.get("status"):
                 errors.append(f"required evidence artifact status mismatch: {rel}")
-            if evidence.get("target_sensitive") and artifact.get("review_target_id") != evidence.get("review_target_id"):
+            if evidence.get("kind") == "visual_review":
+                errors.extend(
+                    f"required visual review evidence invalid: {item}"
+                    for item in visual_review.validate_visual_review_payload(
+                        artifact,
+                        expected={
+                            "task_key": task_key,
+                            "workflow_type": "agent_flow",
+                            "review_target_id": evidence.get("review_target_id"),
+                        },
+                    )
+                )
+            elif evidence.get("target_sensitive") and artifact.get("review_target_id") != evidence.get("review_target_id"):
                 errors.append(f"required evidence artifact review_target_id mismatch: {rel}")
     allowed_statuses = EVIDENCE_SUCCESS_STATUSES.get(str(evidence.get("kind")), {"PASS", "success"})
     if evidence.get("status") not in allowed_statuses:
@@ -1977,6 +2050,18 @@ def validate_transition_predicates(target: Path, task_key: str, state: str, curr
                     ]
                     if not ci_evidence:
                         errors.append("READY_FOR_PLANNER_REVIEW requires CI evidence artifact PASS")
+                if visual_policy_enabled(profile):
+                    visual_status = agent_flow_visual_review_status(target, task_key, profile)
+                    if visual_status.get("status") == "PENDING":
+                        errors.append("READY_FOR_PLANNER_REVIEW requires visual review evidence before Planner review")
+                    elif visual_status.get("status") == "INVALID":
+                        errors.extend(str(item) for item in visual_status.get("errors", []))
+                    visual_evidence = [
+                        evidence for evidence in bundle.get("required_evidence", [])
+                        if isinstance(evidence, dict) and evidence.get("kind") == "visual_review" and evidence.get("required")
+                    ]
+                    if not visual_evidence:
+                        errors.append("READY_FOR_PLANNER_REVIEW requires Visual Review evidence in Review Bundle")
             except Exception as exc:
                 errors.append(f"READY_FOR_PLANNER_REVIEW bundle invalid: {exc}")
         errors.extend(validate_untracked_semantic_sources(target, profile))
@@ -2290,6 +2375,14 @@ def plan_transition(target: Path, task_key: str) -> dict[str, Any]:
     if state == "EXECUTOR_RUNNING":
         return {"state": state, "valid": True, "next_state": "EVIDENCE_RUNNING", "next_action": "COLLECT_RUNTIME_EVIDENCE"}
     if state == "EVIDENCE_RUNNING":
+        visual_status = agent_flow_visual_review_status(target, task_key, profile)
+        if visual_status.get("required") and visual_status.get("status") == "PENDING":
+            return {
+                "state": state,
+                "valid": True,
+                "next_action": "WAIT_FOR_VISUAL_REVIEW_EVIDENCE",
+                "visual_review": visual_status,
+            }
         if profile.get("requires_ci") or profile.get("ci", {}).get("required"):
             return {"state": state, "valid": True, "next_state": "CI_RUNNING", "next_action": "RUN_CI"}
         return {"state": state, "valid": True, "next_state": "READY_FOR_PLANNER_REVIEW", "next_action": "RUN_PLANNER_REVIEW"}

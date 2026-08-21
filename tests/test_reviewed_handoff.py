@@ -8,6 +8,7 @@ from pathlib import Path
 
 from ai_bridge_kit import bridge_cli
 from ai_bridge_kit import reviewed_handoff as rh
+from ai_bridge_kit import visual_review
 
 
 class ReviewedHandoffTests(unittest.TestCase):
@@ -112,6 +113,45 @@ class ReviewedHandoffTests(unittest.TestCase):
         )
         rh.write_text(rh.result_root(target, "001_feature") / "RESULT.md", text)
 
+    def require_visual_review(self, target: Path) -> None:
+        current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+        current = rh.load_json(current_path)
+        current["visual_review_required"] = True
+        current["visual_review_evidence_path"] = "results/001_feature/visual_review/VISUAL_REVIEW.json"
+        rh.write_json(current_path, current)
+
+    def write_visual_review(self, target: Path, implementation_commit: str, decision: str = "PASS") -> None:
+        visual_dir = rh.result_root(target, "001_feature") / "visual_review"
+        image = visual_dir / "primary.png"
+        image.parent.mkdir(parents=True, exist_ok=True)
+        image.write_bytes(
+            b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+            b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\rIDATx\x9cc\xf8\xff\xff?"
+            b"\x00\x05\xfe\x02\xfeA\xe2U\xa7\x00\x00\x00\x00IEND\xaeB`\x82"
+        )
+        manifest = {
+            "schema": visual_review.VISUAL_INPUT_MANIFEST_SCHEMA,
+            "task_key": "001_feature",
+            "workflow_type": "reviewed_handoff",
+            "review_kind": "synthetic",
+            "privacy_policy": "PUBLIC_SAFE_ONLY",
+            "rubric": {"instructions": "Synthetic visual fixture must pass."},
+            "identity_bindings": {"implementation_commit": implementation_commit},
+            "inputs": [{"logical_id": "primary", "path": "results/001_feature/visual_review/primary.png"}],
+        }
+        normalized = visual_review.normalize_manifest(target, manifest)
+        artifact = visual_review.assemble_visual_review(
+            manifest=normalized,
+            model_output={
+                "overall_decision": decision,
+                "item_reviews": [{"item_id": "primary", "decision": decision, "summary": "ok", "observations": [], "requirement_ids": []}],
+                "blocking_findings": [],
+                "non_blocking_notes": [],
+            },
+            model="gpt-test",
+        )
+        visual_review.write_json(visual_dir / "VISUAL_REVIEW.json", artifact)
+
     def test_bridge_cli_routes_reviewed_handoff_without_touching_legacy_cli(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "project"
@@ -184,6 +224,44 @@ class ReviewedHandoffTests(unittest.TestCase):
             advanced = rh.apply_transition(target, "001_feature", expected_state="WAITING_FOR_CI", next_state="READY_FOR_GPT_REVIEW")
             self.assertEqual(advanced["state"], "READY_FOR_GPT_REVIEW")
             self.assertEqual(advanced["ci_status"], "PASS")
+
+    def test_visual_review_pending_does_not_consume_review_round(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            self.require_visual_review(target)
+            self.freeze_and_start(target)
+            self.write_result(target, commit="impl-visual")
+            ready = rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            self.assertEqual(ready["state"], "READY_FOR_GPT_REVIEW")
+            plan = rh.plan_transition(target, "001_feature")
+            self.assertEqual(plan["next_action"], "WAIT_FOR_VISUAL_REVIEW_EVIDENCE")
+            with self.assertRaisesRegex(ValueError, "visual review evidence pending"):
+                rh.record_review(target, "001_feature", decision="PASS", body="Looks good.")
+            current = rh.load_json(rh.task_root(target, "001_feature") / "CURRENT.json")
+            self.assertEqual(current["review_round"], 0)
+
+    def test_current_visual_review_can_be_consumed_by_reviewer(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            self.require_visual_review(target)
+            self.freeze_and_start(target)
+            self.write_result(target, commit="impl-visual")
+            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            self.write_visual_review(target, implementation_commit="impl-visual")
+            current = rh.record_review(target, "001_feature", decision="PASS", body="Plan and visual evidence satisfied.")
+            self.assertEqual(current["state"], "PASS")
+            self.assertEqual(current["review_round"], 1)
+
+    def test_stale_visual_review_is_rejected(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            self.require_visual_review(target)
+            self.freeze_and_start(target)
+            self.write_result(target, commit="impl-current")
+            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            self.write_visual_review(target, implementation_commit="impl-old")
+            with self.assertRaisesRegex(ValueError, "identity binding mismatch"):
+                rh.record_review(target, "001_feature", decision="PASS", body="Cannot use stale visual evidence.")
 
     def test_ci_failure_uses_normal_review_round_budget(self) -> None:
         tmp, target = self.make_project()

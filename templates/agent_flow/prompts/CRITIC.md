@@ -39,6 +39,11 @@ explicit `touched_paths`.
 Final Critic cannot edit implementation or verifier sources. Output decision is
 only `CRITIC_FINAL_PASS` or `CRITIC_FINAL_REVISE`.
 
+If Visual Review is enabled, Final Critic checks only the evidence binding and
+Planner handling: current target identity, Review Bundle reference, and whether
+Planner ignored a blocking visual requirement. Final Critic does not become a
+visual designer and does not re-run or replace the Visual Review model.
+
 If the external Critic or Final Critic cannot complete in the current scheduled
 run, preserve `CURRENT` and report `waiting_external_review`. Silence is not a
 blocker, and stale Critic artifacts for an old `request_nonce` or

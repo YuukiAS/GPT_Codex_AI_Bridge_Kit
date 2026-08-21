@@ -1156,6 +1156,43 @@ Agent-Flow may reference the same `task_key` and `results/<task_key>/` conventio
 
 ---
 
+## Optional shared Visual Review evidence
+
+Agent-Flow may opt into the shared Bridge Kit Visual Review evidence producer through Project Profile `optional_visual_source_policy`. This policy is the canonical visual configuration surface; do not add a competing Agent-Flow-specific visual review client or a new visual role.
+
+Default policy:
+
+```json
+{
+  "enabled": false,
+  "manifest_path": ""
+}
+```
+
+When enabled, `VISUAL_REVIEW.json` is review evidence. It must be bound to the current Agent-Flow identity:
+
+```text
+task_key
+request_nonce
+review_target_id
+frozen_contract_sha256
+requirement_ledger_sha256
+implementation_semantic_digest_sha256
+verifier_semantic_digest_sha256
+input image SHA-256 values
+visual manifest / rubric identity
+```
+
+Visual Review evidence must not change `review_target_id`, must not trigger heavy Verifier rerun by itself, and should classify as evidence / receipt / manifest change unless a Project Profile explicitly makes some visual configuration file a semantic source. Controller owns only mechanical checks: whether visual review is required, whether the evidence exists, whether it binds the current target, and whether the Review Bundle references it. Controller must not judge visual quality.
+
+Verifier may produce deterministic visual-adjacent evidence such as render success, file existence, image dimensions, corruption checks, blank detection, and expected artifact presence when those checks derive from frozen requirements. Verifier must not pretend those checks are model visual judgment.
+
+Planner consumes current `VISUAL_REVIEW.json` alongside the frozen contract, Requirement Ledger, Verifier evidence, implementation evidence, CI, and Review Bundle. Final Critic checks that visual evidence belongs to the current target and that Planner did not ignore a blocking visual requirement; it does not become a visual designer.
+
+Default privacy policy is `PUBLIC_SAFE_ONLY`. If `external_boundaries.requires_private_data=true`, Visual Review must fail closed unless `optional_visual_source_policy.external_upload_authorization` explicitly permits external upload for the current project/task.
+
+---
+
 ## 24. Versioning and recovery
 
 Before v0.4 implementation changes begin, protect the current v0.3.1 baseline.

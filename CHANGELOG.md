@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+## 0.5.2
+
+- Add shared optional Visual Review core with a single `ai_bridge_kit.visual_review`
+  implementation for visual source manifests, image SHA binding, OpenAI
+  Responses API image input, Structured Outputs validation, and tracked
+  `VISUAL_REVIEW.json` evidence.
+- Add `ai-bridge visual-review install|preflight|run|validate`, GitHub Actions
+  templates, and the standard `OPENAI_VISUAL_REVIEW_API_KEY` secret contract
+  with metadata-only preflight.
+- Wire Visual Review into Reviewed Handoff as lightweight
+  `implementation_commit`-bound evidence that can wait without consuming review
+  rounds.
+- Wire Visual Review into Agent-Flow through existing
+  `optional_visual_source_policy`, current `review_target_id` binding, Review
+  Bundle evidence validation, and evidence-only change classification.
+- Keep default behavior unchanged when visual review is not enabled and keep
+  OpenAI SDK out of the default dependency set.
+
 ## 0.5.1
 
 - Correct Host Policy Git authorization semantics: ordinary commits on the

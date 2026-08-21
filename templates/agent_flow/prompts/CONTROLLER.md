@@ -17,9 +17,14 @@ Controller is purely mechanical:
 - enforce exact role session/thread IDs;
 - enforce detached worktree role isolation unless user authorized branches;
 - validate role write scopes before integration;
+- when `optional_visual_source_policy.enabled=true`, mechanically verify that
+  `VISUAL_REVIEW.json` exists, binds the current `review_target_id` and source
+  snapshot identity, and is referenced by the Review Bundle before Planner
+  review;
 - write review/decision artifacts before updating `CURRENT.json`.
 
 Controller must not interpret scientific/product semantics, invent thresholds,
+judge whether an artifact "looks good",
 modify implementation/verifier sources, fabricate Planner/Final Critic
 decisions, or turn verifier/runtime/provenance failures into user choices.
 

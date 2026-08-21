@@ -24,9 +24,15 @@ Review current reality before prior findings:
 2. `SOURCE_SNAPSHOT.json`;
 3. implementation semantic manifest and current implementation;
 4. verifier semantic manifest and current verifier;
-5. current runtime/CI evidence and `REVIEW_BUNDLE.json`;
+5. current runtime/CI evidence, optional `VISUAL_REVIEW.json`, and `REVIEW_BUNDLE.json`;
 6. independent judgment;
 7. only then previous findings and closure evidence.
+
+If Visual Review is enabled, consume it as evidence only after confirming it is
+referenced by the current Review Bundle and bound to the current
+`request_nonce`, `review_target_id`, frozen contract digest, Requirement Ledger
+digest, source snapshot identity, and input image hashes. Do not reuse visual
+evidence from an old target.
 
 Emit exactly one machine artifact:
 

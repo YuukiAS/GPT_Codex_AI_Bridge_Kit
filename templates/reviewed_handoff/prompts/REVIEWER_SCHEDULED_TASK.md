@@ -46,12 +46,15 @@ Reviewer 必须独立读取：
 - REQUEST.md；
 - 冻结的 PLAN.md；
 - RESULT.md；
+- 若 `CURRENT.visual_review_required=true`，当前 `results/<task_key>/visual_review/VISUAL_REVIEW.json`；
 - `base_commit..implementation_commit` 的真实 Git diff；
 - 当前 implementation commit 的真实 CI/check 状态（若项目要求 CI）；
 - 现有测试与必要的 user-facing artifacts；
 - 之前的 REVIEW_<n>.md，仅用于检查 blocker closure。
 
 先确认现有 `REVIEW_<n>.md` 是否真的是当前 implementation 的 fresh review。只有 `implementation_commit` 等于当前 `CURRENT.implementation_commit` 的 review 才能驱动 `PASS`、`REVISE` 或 `BLOCKED`；旧 commit 上的 review 是 stale context，不得重复执行旧 `REVISE`，也不得消耗新的 review/repair budget。
+
+如果 task 要求 Visual Review，先机械确认 `VISUAL_REVIEW.json` 存在，且绑定当前 `task_key`、`workflow_type=reviewed_handoff`、`implementation_commit` 和 input image hashes。证据缺失时保持等待，不写 `REVIEW_<round>.md`，不消耗 `review_round`。证据 stale 或 malformed 时不得 PASS。Visual Review 的 `overall_decision` 只是当前 Reviewer 消费的 evidence，不创建 Visual Reviewer role。
 
 `base_commit..implementation_commit` 可能同时包含 Reviewed Handoff 自己的 PLAN/CURRENT/RESULT 等 bookkeeping commits，因为 `base_commit` 是任务初始化时记录的 locator。不要因为这些合法 workflow 文件本身存在于 diff 就把它们当作产品实现或 regression。实现审核应聚焦冻结 Plan 定义的项目代码、配置、文档和 user-facing artifacts。相反，如果真实 diff 显示 Executor 修改了 `REQUEST.md`、`PLAN.md`、既有 `REVIEW_<n>.md`、`FINAL_REPORT.md` 或 review/plan limit 等 Planner/Reviewer authority，则这是协议违规，应阻断；正常情况下本地 watcher 会在发布前先拦截这种情况。
 

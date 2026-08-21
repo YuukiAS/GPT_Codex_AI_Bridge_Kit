@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from . import external_wait
+from . import visual_review
 
 
 SCHEMA_NAME = "AI_BRIDGE_REVIEWED_HANDOFF_SCHEMA_V1"
@@ -240,6 +241,8 @@ def init_task(
     objective: str = "",
     max_review_rounds: int = 2,
     ci_required: bool = False,
+    visual_review_required: bool = False,
+    visual_review_manifest_path: str = "",
 ) -> list[str]:
     target = target.resolve()
     if not TASK_KEY_RE.fullmatch(task_key):
@@ -275,6 +278,10 @@ def init_task(
         "last_review_decision": None,
         "next_action": "RUN_GPT_PLANNER",
     }
+    if visual_review_required:
+        current["visual_review_required"] = True
+        current["visual_review_manifest_path"] = visual_review_manifest_path or f"results/{task_key}/visual_review/visual_inputs.json"
+        current["visual_review_evidence_path"] = f"results/{task_key}/visual_review/VISUAL_REVIEW.json"
     write_json(root / "CURRENT.json", current)
     return [
         f"CREATE {root / 'REQUEST.md'}",
@@ -319,6 +326,44 @@ def validate_result_file(path: Path, task_key: str, current: dict[str, Any]) -> 
     if data.get("implementation_commit") != commit:
         errors.append("RESULT.md implementation_commit must match CURRENT")
     return errors
+
+
+def visual_review_evidence_path(target: Path, task_key: str, current: dict[str, Any]) -> Path:
+    rel = str(current.get("visual_review_evidence_path") or f"results/{task_key}/visual_review/VISUAL_REVIEW.json")
+    if Path(rel).is_absolute() or ".." in Path(rel).parts:
+        raise ValueError("visual_review_evidence_path must be repository-relative")
+    return target.resolve() / rel
+
+
+def reviewed_visual_review_status(target: Path, task_key: str, current: dict[str, Any]) -> dict[str, Any]:
+    if not current.get("visual_review_required"):
+        return {"required": False, "status": "NOT_REQUIRED", "errors": []}
+    path = visual_review_evidence_path(target, task_key, current)
+    if not path.exists():
+        return {
+            "required": True,
+            "status": "PENDING",
+            "path": str(path.relative_to(target.resolve())),
+            "errors": ["visual review evidence pending"],
+        }
+    try:
+        payload = load_json(path)
+    except Exception as exc:
+        return {"required": True, "status": "INVALID", "path": str(path.relative_to(target.resolve())), "errors": [f"VISUAL_REVIEW.json unreadable: {exc}"]}
+    expected = {
+        "task_key": task_key,
+        "workflow_type": "reviewed_handoff",
+        "implementation_commit": str(current.get("implementation_commit") or ""),
+    }
+    errors = visual_review.validate_visual_review_payload(payload, expected=expected)
+    decision = payload.get("overall_decision")
+    if errors:
+        return {"required": True, "status": "INVALID", "path": str(path.relative_to(target.resolve())), "errors": errors}
+    if decision == "BLOCKED":
+        return {"required": True, "status": "BLOCKED", "path": str(path.relative_to(target.resolve())), "errors": []}
+    if decision == "REVISE":
+        return {"required": True, "status": "REVISE", "path": str(path.relative_to(target.resolve())), "errors": []}
+    return {"required": True, "status": "PASS", "path": str(path.relative_to(target.resolve())), "errors": []}
 
 
 def validate_final_report(path: Path) -> list[str]:
@@ -467,6 +512,18 @@ def validate_task(target: Path, task_key: str) -> list[str]:
         elif ci_status not in {"NOT_REQUIRED", "PASS"}:
             errors.append(f"{state} requires ci_status=NOT_REQUIRED or PASS when CI is not required")
 
+        visual_status = reviewed_visual_review_status(target, task_key, current)
+        if visual_status.get("required"):
+            status = visual_status.get("status")
+            if status == "INVALID":
+                errors.extend(str(item) for item in visual_status.get("errors", []))
+            elif status == "PENDING" and state != "READY_FOR_GPT_REVIEW":
+                errors.append(f"{state} requires current VISUAL_REVIEW.json before leaving visual evidence pending")
+            elif state == "PASS" and status != "PASS":
+                errors.append("PASS requires visual review PASS evidence")
+            elif state == "AWAIT_HUMAN_DECISION" and current.get("human_gate_reason") == "PASS" and status != "PASS":
+                errors.append("PASS human gate requires visual review PASS evidence")
+
     reviews = review_files(target, task_key)
     if len(reviews) > 2:
         errors.append("Reviewed Handoff allows at most two GPT review artifacts")
@@ -594,6 +651,14 @@ def plan_transition(target: Path, task_key: str) -> dict[str, Any]:
             **reviewed_external_wait_status(target, task_key),
         }
     if state == "READY_FOR_GPT_REVIEW":
+        visual_status = reviewed_visual_review_status(target, task_key, current)
+        if visual_status.get("required") and visual_status.get("status") == "PENDING":
+            return {
+                "state": state,
+                "valid": True,
+                "next_action": "WAIT_FOR_VISUAL_REVIEW_EVIDENCE",
+                "visual_review": visual_status,
+            }
         return {
             "state": state,
             "valid": True,
@@ -719,6 +784,15 @@ def record_review(
     errors = validate_task(target, task_key)
     if errors:
         raise ValueError("; ".join(errors))
+    visual_status = reviewed_visual_review_status(target, task_key, current)
+    if visual_status.get("required"):
+        status = visual_status.get("status")
+        if status == "PENDING":
+            raise ValueError("visual review evidence pending; GPT review round must not be consumed")
+        if status == "INVALID":
+            raise ValueError("; ".join(str(item) for item in visual_status.get("errors", [])))
+        if decision == "PASS" and status != "PASS":
+            raise ValueError(f"GPT review PASS requires visual review PASS evidence, found {status}")
     next_round = int(current.get("review_round", 0)) + 1
     max_rounds = int(current.get("max_review_rounds", 2))
     if next_round > max_rounds:
@@ -797,6 +871,8 @@ def build_parser() -> argparse.ArgumentParser:
     task_init.add_argument("--objective", default="")
     task_init.add_argument("--max-review-rounds", type=int, default=2)
     task_init.add_argument("--ci-required", action="store_true")
+    task_init.add_argument("--visual-review-required", action="store_true")
+    task_init.add_argument("--visual-review-manifest-path", default="")
 
     transition = sub.add_parser("transition")
     transition_sub = transition.add_subparsers(dest="transition_command")
@@ -850,6 +926,8 @@ def main(argv: list[str] | None = None) -> int:
             objective=args.objective,
             max_review_rounds=args.max_review_rounds,
             ci_required=args.ci_required,
+            visual_review_required=args.visual_review_required,
+            visual_review_manifest_path=args.visual_review_manifest_path,
         ):
             print(action)
         return 0
