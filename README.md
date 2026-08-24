@@ -1,89 +1,63 @@
 # GPT-Codex AI Bridge Kit
 
-这是一个用于 ChatGPT/GPT 与 Codex 协作的本地工作流工具包。它的目标不是再造一个复杂的 Agent 平台，而是把长期配置、项目交接、独立 GPT 复核、高风险任务闭环和终态通知拆成彼此独立的层，让不同项目只安装自己真正需要的部分。
+这是一个用来组织 **ChatGPT/GPT 与 Codex 协作** 的本地工具包。
 
-最重要的理解方式不是“有几个安装等级”，而是分成三个作用域：**机器层、项目层和任务层**。其中真正需要安装的只有机器层和项目层；Reviewed Handoff task 与 Agent-Flow task 都只是某一次工作的运行实例，不是新的安装层。
+它解决的问题很实际：项目做久以后，真正麻烦的往往不是“让 Codex 写代码”，而是怎么让不同机器上的 Codex 遵守同一套长期规则，怎么把 GPT 的规划稳定交给 Codex，怎么在重要任务结束前增加独立复核，以及怎么把论文、通知、视觉检查这些能力接进现有科研仓库，而不是每个项目重新搭一套脚手架。
+
+这个仓库的原则是：**默认保持简单，需要什么再加什么。** 普通项目只需要机器级规则和基础交接；只有确实需要时，才启用独立复核、高风险闭环、邮件通知、Overleaf 同步或视觉复核。
+
+当前版本：`0.6.0`。
+
+## 一眼看懂：我到底该装什么
+
+整个工具包分成三层。
 
 ```text
-机器层
-└── Host Policy                    每个 CODEX_HOME 安装一次
+机器层：一台机器 / 一个 CODEX_HOME 配一次
+└── Host Policy
 
-项目层
-├── Lite Handoff                   每个正式项目默认安装
-├── Reviewed Handoff               需要 GPT 规划 + 独立复核时可选
-├── Generic Notifier               需要终态邮件时可选安装
-├── Overleaf Bridge                需要把论文子目录同步到 Overleaf 时可选
-└── Agent-Flow Core                高风险项目显式安装
+项目层：每个 Git 仓库按需安装
+├── Lite Handoff          基础 GPT ↔ Codex 交接，默认推荐
+├── Reviewed Handoff      GPT 先规划，Codex 执行，再由 GPT 独立复核
+├── Generic Notifier      任务结束后发邮件
+├── Overleaf Bridge       只把论文目录同步到 Overleaf
+├── Visual Review         对图片、PPT 截图等做独立视觉检查
+└── Agent-Flow Core       高风险任务的严格闭环
 
-任务层
-├── Lite task                      一份轻量任务交接文件
-├── Reviewed Handoff task          一次最多两轮 GPT review 的中档工作流
-└── Agent-Flow task                一次独立的高风险工作流实例
+任务层：某一次具体工作的实例
+├── Lite 任务
+├── Reviewed Handoff 任务
+└── Agent-Flow 任务
 ```
 
-## 新机器和新项目应该怎么装
+绝大多数新项目建议从这里开始：
 
-一台新的服务器、工作站、WSL 环境或其他独立 Codex identity，首先安装本工具包，然后配置一次 Host Policy。`CODEX_HOME` 不同时，应视为不同的 Codex identity，分别安装。
+```text
+Host Policy + Lite Handoff
+```
+
+不要因为项目大、文件多、运行时间长，就自动启用 Agent-Flow。是否需要更重的流程，取决于“错误通过的代价”，而不是代码行数。
+
+---
+
+## 1. 新机器：先配置 Codex 的长期规则
+
+先安装本仓库：
 
 ```bash
 pip install -e /path/to/GPT_Codex_AI_Bridge_Kit
+```
+
+然后对当前 `CODEX_HOME` 安装机器级规则：
+
+```bash
 ai-bridge host install
 ai-bridge host validate
 ```
 
-随后，每个正式 repository 单独初始化 Lite Handoff。普通开发到这里通常已经足够，不需要因为项目文件很多、修改范围大或存在 Controller 就自动安装更重的 workflow。
+如果一台机器上存在多个不同的 `CODEX_HOME`，它们应视为不同的 Codex 身份，分别配置。
 
-```bash
-ai-bridge init --target /path/to/project
-ai-bridge validate --target /path/to/project
-```
-
-如果任务需要 GPT 先冻结产品/语义决策、Codex 执行后再由独立 GPT 审核一到两轮，但又不值得引入 Agent-Flow 的 Requirement Ledger、独立 Verifier 和 Final Critic，可以叠加 Reviewed Handoff：
-
-```bash
-ai-bridge reviewed-handoff install --target /path/to/project
-ai-bridge reviewed-handoff validate --target /path/to/project
-```
-
-如果这个项目需要任务结束后自动发邮件，再配置 Generic Notifier；如果项目要执行科研架构重构、昂贵训练、数据敏感逻辑、生产部署或其他“错误通过的代价很高”的任务，再显式安装 Agent-Flow。
-
-```bash
-# 可选：终态邮件
-cd /path/to/project
-ai-bridge private sync --profile notifier
-ai-bridge notifier send-test
-
-# 可选：高风险 Agent-Flow
-ai-bridge agent-flow install --target /path/to/project
-ai-bridge agent-flow validate --target /path/to/project
-```
-
-如果是科研 monorepo，并且只想把论文目录同步给 Overleaf，可以叠加 Overleaf Bridge。Overleaf 本身不能从一个 GitHub monorepo 中只 Pull 某个子目录；Overleaf Bridge 是在本地把配置的 manuscript publication root 投影到 Overleaf Git project。
-
-```bash
-ai-bridge overleaf install \
-  --target /path/to/research-repo \
-  --paper-root paper/manuscript
-
-ai-bridge overleaf connect \
-  --target /path/to/research-repo \
-  --remote-url https://git@git.overleaf.com/<PROJECT_ID> \
-  --bootstrap
-```
-
-换句话说，推荐默认路径是 **Host Policy + Lite Handoff**。Reviewed Handoff、Notifier、Overleaf Bridge 和 Agent-Flow 都是按需叠加的能力，不应静默安装。
-
-## Host Policy：一台机器上的 Codex 长期怎么工作
-
-Host Policy 属于机器层，写入当前实际使用的 `$CODEX_HOME`，而不是某个 repository。Codex Home 的解析顺序是显式 `--codex-home`、环境变量 `$CODEX_HOME`、最后才是 `~/.codex`。所有 host 命令都会打印最终使用的路径，避免在多服务器、多账户、Windows/WSL 并存时修改错身份。
-
-```bash
-ai-bridge host install
-ai-bridge host status
-ai-bridge host validate
-```
-
-它非破坏式维护以下文件，并在改动前把原文件备份到 `$CODEX_HOME/ai-bridge-kit/backups/<timestamp>/`：
+Host Policy 主要管理：
 
 ```text
 $CODEX_HOME/config.toml
@@ -91,108 +65,174 @@ $CODEX_HOME/AGENTS.md
 $CODEX_HOME/rules/ai-bridge-global.rules
 ```
 
-当前长期配置保持：
+它负责的是长期行为，例如：
 
-```toml
-approval_policy = "on-request"
-sandbox_mode = "workspace-write"
-approvals_reviewer = "auto_review"
+- 用户可见的进度、计划、测试结果和完成报告默认使用自然中文；
+- 普通局部实现由 Codex 自行判断，真正会改变架构、范围、部署、Git 分支策略或科研语义的歧义才询问用户；
+- 当前 `main` 分支上的安全 `fetch`、快进 `pull`、正常 `add/commit/push origin main` 尽量减少重复授权；
+- `force push`、改 remote、删除分支、`reset --hard`、`git clean` 等危险操作仍然不能因为“自动化”而放开；
+- 如果下一步明确属于外部 GPT Planner/Reviewer/Critic，等待 GPT 不应被误判为任务失败。
 
-[sandbox_workspace_write]
-network_access = true
+Host Policy 会尽量非破坏式修改已有配置，并在需要时创建备份。
 
-[features]
-default_mode_request_user_input = true
-memories = true
-```
+---
 
-`default_mode_request_user_input = true` 的目的，是让 Codex 在默认协作模式下遇到会实质改变架构、范围、部署方式、Git 工作流或科学/产品语义的歧义时可以直接询问用户，而不需要为了提问专门进入 Plan mode。普通实现细节仍应自行判断，不应不断打断用户。`memories = true` 用于辅助长期上下文，但 repository 中的协议、任务和结果文件仍然是项目状态的权威来源。
+## 2. 新项目：默认安装 Lite Handoff
 
-Host Policy 还在全局 `AGENTS.md` 中维护长期行为约束：用户可见的进度说明、计划、风险解释、测试总结和完成报告默认使用自然的简体中文；代码、路径、命令、配置键、状态名和精确错误信息保持原始技术字面量。Goal mode 把过长目标保存成 `$CODEX_HOME/attachments/.../goal-objective.md` 是正常机制，不需要每个 Goal 再重复写“请用中文”。
-
-Git 方面，Codex 默认继续当前已经 checkout 的 branch。当前已选 `main` 分支上的普通 `git fetch origin main`、clean worktree 下的 `git pull --ff-only origin main`、task-owned 文件的 `git add ...`、`git commit ...` 和 `git push origin main` 是低打扰开发动作，不应仅因为 sandbox 要写 `.git`，或因为文件多、commit message 长、feature 已完成而反复询问。同步前必须先检查 working tree；如果 dirty，先判断修改 ownership，不得默认 `git pull --ff-only --autostash ...`、`git stash`、`git reset --hard` 或 `git restore ...`。提交前必须检查 `git diff --cached --stat` 和 `git diff --cached`，避免提交无关文件或 secret。未经用户针对具体分支动作的明确授权，不得因为“修改很大”“PR 更安全”或“main 是干净基线”而自行创建、切换、checkout、重命名或删除 branch，也不得自行创建 PR、force push、删除远端 branch/tag、设置 upstream 或修改 remote。
-
-Host Policy 还定义了一条通用 external GPT 等待规则：当 repository workflow 已经把下一步交给外部 GPT Planner、Reviewer、Critic、Final Critic 或同类 reasoning role 时，尚未出现新 decision 是 `waiting_external_review`，不是 `BLOCKED`。正常最短等待窗口是 `MIN_EXTERNAL_GPT_WAIT = 2 hours`；2 小时不是自动截止线。只要仓库状态合法、实现和结果 artifact 完整、外部 GPT/connector/scheduler 没有明确失败，就继续低频等待。旧 review 只有在 `implementation_commit`、`review_target_id`、snapshot identity 或当前 round 匹配当前目标时才是 fresh decision；不匹配就是 stale context，不能重复触发旧 `REVISE`，也不能消耗 review/repair budget。
-
-`$CODEX_HOME/rules/ai-bridge-global.rules` 则用于减少普通开发动作的审批等待。目前长期授权的 execpolicy 前缀是：
-
-```text
-git fetch origin main
-git pull --ff-only origin main
-git add ...
-git commit ...
-git push origin main
-```
-
-这意味着当前 `main` 分支的安全同步、staging、普通 commit 和默认 `origin/main` push 可以跳过人工审批和 auto-review。其他长期分支如果也需要同样低打扰，应由项目规则或用户明确授权补充，不靠全局 `git push origin ...` 宽前缀猜测。`git pull --rebase ...`、`git pull ... --autostash`、`git push origin <new-branch>`、`git push -u origin ...`、`git push --set-upstream origin ...`、`git push origin --delete ...`、常见 force-push 形态、branch switch/checkout/worktree add/branch 删除重命名、`git reset --hard`、`git clean`、`git restore` 和 remote 增删改都必须回到用户确认。危险 Git 行为仍由全局行为政策禁止；execpolicy 技术上匹配某条命令不代表可以绕过“分支策略由用户决定”。项目自己的 `.codex/config.toml` 或 `.codex/rules/` 仍可进一步收紧这些默认策略。
-
-## Lite Handoff：每个项目默认的 GPT ↔ Codex 交接层
-
-Lite Handoff 是本工具包最基础、也最常用的项目层。它适合普通功能开发、修 bug、文档更新、常规重构，以及虽然工作量不小、但不需要独立 GPT 复核或五角色证据闭环的任务。
+进入一个正式 Git 仓库后：
 
 ```bash
 ai-bridge init --target /path/to/project
 ai-bridge validate --target /path/to/project
 ```
 
-初始化后，项目会得到一套可以随 repository 一起版本控制的交接结构：
+它会给项目建立一套轻量、可版本控制的 GPT ↔ Codex 交接结构。核心关系可以理解成：
 
 ```text
-AGENTS.md
-
-prompts/
-├── AGENT_RULES.md
-├── CHATGPT_RULES.md
-├── HANDOFF_ROLES.md
-├── HANDOFF_STATE_MACHINE.md
-├── CONTROLLER_TASK_PROTOCOL.md
-├── tasks/
-└── templates/
-
-results/
-docs/notes/
-docs/wiki/
-
-.agents/skills/agent-task-executor/SKILL.md
-```
-
-最简单的 Lite 流程仍然只是：GPT 写任务，Codex 执行并写结果，之后按需要再由 GPT 审查。
-
-```text
+GPT 写清楚要做什么
+        ↓
 prompts/tasks/<task_key>.md
         ↓
-Codex
+Codex 执行
         ↓
 results/<task_key>/result.md
         ↓
-可选 review
+需要时再由 GPT 复核
 ```
 
-Lite 并不等于“只能做小修改”。它仍然支持 Controller task、审计、自动 commit/push 等现有 Handoff 能力。它与更重模式的主要区别不是代码量，而是证明和独立复核负担。
-
-`ai-bridge init` 只管理 repository 内的 Handoff 文件。它可以显示 Host Policy 状态，但不会静默修改 `$CODEX_HOME`；同样也不会自动安装 Reviewed Handoff、Notifier、Overleaf Bridge 或 Agent-Flow。
-
-## Overleaf Bridge：只把论文 publication root 投影到 Overleaf
-
-Overleaf Bridge 是 v0.6 新增的可选项目层能力，面向常见科研 monorepo：代码、数据、结果、项目文档和论文在同一个 GitHub repository 中，但 Overleaf 只应该看到 `paper/manuscript` 这样的论文 publication root。
-
-它不把 Overleaf 加成 consumer repository 的第二个 remote，也不修改 `origin`、branch topology 或 GitHub workflow。Bridge Kit 在机器本地维护独立状态：
+常见目录包括：
 
 ```text
-${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}/overleaf/<repo-id>/
-├── connection.json
-└── mirror/
+AGENTS.md
+prompts/
+results/
+docs/
+.agents/skills/agent-task-executor/
 ```
 
-consumer repository 中只提交小型项目合同：
+Lite Handoff 并不意味着“只能做小任务”。普通功能开发、修 bug、文档整理、常规重构，甚至较大的实现，只要不要求独立角色闭环，通常都够用。
+
+`ai-bridge init` 只配置当前项目，不会偷偷修改你的 `$CODEX_HOME`，也不会自动安装下面那些可选能力。
+
+---
+
+## 3. Reviewed Handoff：需要 GPT 先定方案、完成后再独立复核
+
+如果某项工作不能让 Codex 一边执行一边自己决定产品语义或科研方向，但又没有必要上最重的 Agent-Flow，可以使用 Reviewed Handoff。
+
+最直观的流程是：
 
 ```text
-automation/overleaf/
-├── README.md
-└── config.toml
+GPT Planner
+先把方案写清楚并冻结
+        ↓
+Codex Executor
+按方案实现
+        ↓
+GPT Reviewer
+读取真实 Git diff、测试和结果独立复核
+        ↓
+必要时允许一轮 Codex 返修
+        ↓
+最终交给用户
 ```
 
-典型配置是：
+安装：
+
+```bash
+ai-bridge reviewed-handoff install --target /path/to/project
+ai-bridge reviewed-handoff validate --target /path/to/project
+```
+
+创建具体任务：
+
+```bash
+ai-bridge reviewed-handoff task init \
+  --target /path/to/project \
+  --task-key 001_example \
+  --objective "这里写任务目标"
+```
+
+这套流程默认最多两轮 GPT 复核。第一轮如果返回 `REVISE`，允许 Codex 自动返修一次；第二轮仍未通过，就进入人工决策，不继续无限循环。
+
+GPT 侧可以通过 ChatGPT「安排任务」定期查看 GitHub 中的任务状态；Codex 侧可以运行轻量监视器，在 `PLAN_FROZEN` 或 `REVISE` 时启动执行：
+
+```bash
+ai-bridge reviewed-handoff watcher run \
+  --target /path/to/project \
+  --branch <existing-authorized-branch>
+```
+
+监视器不会自行创建分支或 PR。外部 GPT 尚未给出新决定时，属于正常等待，而不是 `BLOCKED`。
+
+详细状态规则和边界见：
+
+```text
+docs/V0_5_REVIEWED_HANDOFF_IMPLEMENTATION_SPEC.md
+```
+
+---
+
+## 4. Overleaf Bridge：一个科研仓库里同时管代码和论文
+
+这是 v0.6 新增的能力。
+
+它针对很常见的科研项目结构：
+
+```text
+research-repo/
+├── code/
+├── analysis/
+├── data/
+├── results/
+├── docs/
+└── paper/
+    ├── manuscript/
+    ├── notes/
+    └── submission/
+```
+
+我们希望 Codex 在整个仓库根目录工作，这样它写论文时可以同时检查代码、实验结果和研究文档；但 Overleaf 只应该看到真正的论文源码，例如 `paper/manuscript/`。
+
+### 为什么不能直接用 Overleaf 的 GitHub 同步
+
+Overleaf 的 GitHub 同步面向整个 GitHub 仓库，不能只选一个子目录。因此这里不用“让 Overleaf 从 GitHub 拉 `paper/manuscript/`”这种方式。
+
+Overleaf Bridge 的做法是：
+
+```text
+完整科研 GitHub 仓库
+        │
+        ├── Codex 读取整个项目
+        │
+        └── paper/manuscript/
+                 │
+                 ▼
+        本机的 Overleaf Git 镜像
+                 │
+                 ▼
+             Overleaf
+```
+
+科研仓库本身不会增加一个 `overleaf` remote，也不会改变 `origin` 或分支结构。
+
+### 第一次安装
+
+先在科研仓库中指定论文根目录：
+
+```bash
+ai-bridge overleaf install \
+  --target /path/to/research-repo \
+  --paper-root paper/manuscript
+```
+
+项目里会保存可版本控制的配置：
+
+```text
+automation/overleaf/config.toml
+```
+
+例如：
 
 ```toml
 schema_version = 1
@@ -202,20 +242,99 @@ remote_branch = "master"
 exclude_paths = []
 ```
 
-首次使用时，用户先在 Overleaf 创建 Blank Project，删除默认 `main.tex`，取得 Git URL，然后运行：
+然后在 Overleaf 创建一个空白项目，删除默认 `main.tex`，取得它的 Git URL，再执行：
 
 ```bash
-ai-bridge overleaf install \
-  --target /path/to/research-repo \
-  --paper-root paper/manuscript
-
 ai-bridge overleaf connect \
   --target /path/to/research-repo \
   --remote-url https://git@git.overleaf.com/<PROJECT_ID> \
   --bootstrap
 ```
 
-之后按需执行：
+Overleaf 的 token 不写入本仓库，也不写入 `connection.json`；认证交给正常的 Git credential helper。
+
+### 日常怎么用
+
+Codex 在本地写完论文后，推荐顺序是：
+
+```text
+修改论文
+→ 本地编译 / 检查
+→ commit
+→ git push origin main
+→ ai-bridge overleaf status
+→ ai-bridge overleaf push
+```
+
+如果导师或合作者直接在 Overleaf 修改：
+
+```text
+ai-bridge overleaf status
+→ ai-bridge overleaf pull
+→ 检查 git diff
+→ 本地重新编译
+→ commit
+→ git push origin main
+```
+
+`pull` 只把 Overleaf 修改带回论文目录，不会替你自动 commit，也不会自动推 GitHub。
+
+### 为什么不会轻易覆盖双方修改
+
+Bridge 会记录上一次成功同步时的内容摘要，并比较：
+
+```text
+上次同步版本
+本地论文
+Overleaf 当前版本
+```
+
+因此能区分：
+
+- 只有本地改了：可以 `push`；
+- 只有 Overleaf 改了：可以 `pull`；
+- 两边内容相同：刷新同步基线即可；
+- 两边都从上次同步后发生不同修改：判定为分叉，拒绝自动覆盖。
+
+`connect`、`push` 和 `pull` 还要求真正要发布的论文目录处于干净状态。未提交、未跟踪或被忽略但实际存在的论文文件不会被悄悄覆盖。
+
+### `exclude_paths` 是干什么的
+
+它只适合排除 **Overleaf 编译不需要**、但你想留在 GitHub 或本地的辅助文件，例如：
+
+```text
+AGENTS.md
+README.md
+main.pdf
+作者自己的本地说明
+```
+
+以下文件如果参与论文编译，就不能排除：
+
+```text
+.tex
+.bib
+.sty
+.cls
+LaTeX 实际引用的图片
+LaTeX 实际引用的表格或其他资源
+```
+
+所有 Overleaf 编译真正需要的文件，都应该位于 `paper_root` 内并参与同步。
+
+### 多台机器怎么办
+
+下面这些属于每台机器自己的本地状态：
+
+```text
+${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}/overleaf/<repo-id>/
+├── connection.json
+└── mirror/
+```
+
+如果同一个项目在 Mac、工作站和服务器上都要直接操作 Overleaf，每台机器各自 `connect` 一次即可。不要把上述本地状态提交进 GitHub。
+
+常用命令：
 
 ```bash
 ai-bridge overleaf status --target /path/to/research-repo
@@ -224,291 +343,263 @@ ai-bridge overleaf pull --target /path/to/research-repo
 ai-bridge overleaf validate --target /path/to/research-repo
 ```
 
-`push` 会先更新机器本地 Overleaf mirror，再比较 baseline、local publication digest 和 remote digest。只有 local ahead 且 remote 未变时才发布；remote ahead 或 diverged 都会拒绝。`pull` 只有在 remote ahead 且 local 未变时才把 Overleaf 改动导入 `paper_root`，并把改动留在 working tree，等待用户或 Codex review、LaTeX compile、commit，再通过正常 `origin/main` workflow 推送。
+Overleaf Bridge **不会自动实时同步**。它就是一个按需、可检查、尽量不覆盖别人修改的论文同步层。
 
-`connect --bootstrap`、普通 `connect`、`push` 和 `pull` 都要求非 excluded 的 publication root 是干净的：tracked/staged/deleted/renamed/untracked manuscript 文件如果还没提交，Bridge Kit 会先拒绝同步，避免把未提交内容作为 baseline 或覆盖本地草稿。`exclude_paths` 只适合放 `AGENTS.md`、局部 README、编译出的 `main.pdf`、本地 author notes 等不参与 Overleaf 编译的 GitHub-only 文件；`.tex`、`.bib`、`.sty`、`.cls`、LaTeX 使用的 figures/tables/assets 不应 exclude。
+---
 
-同一个 GitHub repo 在多台机器上工作时，每台要执行 Overleaf 操作的机器都需要自己的 `ai-bridge overleaf connect`。`connection.json` 和 `mirror/` 是 machine-local state，不进入 GitHub。Overleaf Bridge 不会自动同步，也不会在普通 `git push origin main` 后自动运行；如果 local 和 Overleaf 都从上次 baseline 后发生变化，它会 fail closed，而不是自动 merge 或猜测覆盖方向。
+## 5. Generic Notifier：任务结束后发邮件
 
-Bridge Kit 不接收 `--token` 或 `--password`，不把 token 写入 URL、`connection.json` 或 tracked config，也不实现自己的 credential database。第一次访问真实 Overleaf 时，让 Git 按 Overleaf 当前 token authentication 流程请求 credential；后续可使用用户自己的 Git credential helper。
+Notifier 只负责通知，不负责决定任务是不是完成。
 
-## Reviewed Handoff：GPT 规划、Codex 执行、GPT 最多复核两轮
-
-Reviewed Handoff 是 v0.5 新增的中档模式。它面向这样一类任务：Lite 只让 Codex 自己执行和总结显得太松，但 Agent-Flow 的独立 Critic、Verifier、Requirement Ledger、Stable Review Snapshot 又明显太重。例如外部 repository/skill intake、中等规模重构、第三方能力引入、文档体系迁移、普通产品 feature 等。
-
-```text
-GPT Planner
-→ local Codex watcher launches Executor
-→ Scheduled GPT Reviewer
-→ optional Codex repair
-→ Scheduled GPT Reviewer
-→ Human reads FINAL_REPORT.md
-```
-
-Planner 负责先把语义、产品和架构取舍冻结进 `PLAN.md`，Executor 不再自行重新发明这些决定。Reviewer 只依据冻结 Plan、真实 Git diff、当前测试/CI 和相关 regression boundary 审核，不允许因为“还可以更优雅”而扩大 scope。
-
-安装一次 Reviewed Handoff Core：
-
-```bash
-ai-bridge reviewed-handoff install --target /path/to/project
-ai-bridge reviewed-handoff validate --target /path/to/project
-```
-
-每项任务单独初始化：
-
-```bash
-ai-bridge reviewed-handoff task init \
-  --target /path/to/project \
-  --task-key 001_external_repo_intake \
-  --objective "Evaluate and integrate selected external capabilities"
-```
-
-GPT 侧异步唤醒使用 ChatGPT「安排任务」周期检查 GitHub 上的 `CURRENT.json`；没有待审任务时无副作用退出。这里不需要 OpenAI API。Codex 侧由机器上的轻量 watcher 负责在 `PLAN_FROZEN` 或 `REVISE` 时启动 Executor：
-
-```bash
-ai-bridge reviewed-handoff watcher run \
-  --target /path/to/project \
-  --branch <existing-authorized-branch>
-```
-
-Watcher 只同步当前已经 checkout/授权的 branch，不创建 branch/PR。机器本地的事件去重与日志放在 `${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}/reviewed-handoff/<repo>/`，不进入 repository。Codex 返回 0 也不自动算完成，只有任务状态真正推进才算 executor event 成功；同一 event 的自动尝试有界，避免死循环。
-
-Executor 成功发布实现并进入 `READY_FOR_GPT_REVIEW`、`NEEDS_GPT_PLANNER` 或 CI 已完成后等待 Reviewer 处理的 `WAITING_FOR_CI` 时，watcher 会把它报告为 `waiting_external_review`。这类等待不计入 executor retry，不写 terminal `FINAL_REPORT.md`，也不把 `CURRENT.state` 改成 `BLOCKED`。只有 Scheduled GPT 明确被禁用/删除/过期、GitHub connector/auth 重复失败、workflow state 非法、必需 review artifact 无法访问，或确实需要用户作新产品/科学/branch 决策时，才允许 terminal blocking。
-
-Reviewed Handoff 的默认 review 上限是两轮：第一轮 `REVISE` 允许一次 Codex repair；第二轮仍 `REVISE` 必须停在 `AWAIT_HUMAN_DECISION`。执行中如果出现冻结 Plan 无法安全推导的实质歧义，Scheduled GPT 最多允许一次最小 re-plan；再次需要改变 Plan 则交给用户。所有终态都必须生成 `FINAL_REPORT.md`，因此用户回来后只需要读一份面向人的报告。
-
-如果任务要求 GitHub CI，Codex Executor 只能把任务推进到 `WAITING_FOR_CI` 并保持 `CURRENT.ci_status=PENDING`；真实 CI 结果由 Scheduled GPT 从 GitHub checks 读取。`CURRENT.ci_status` 是唯一机器真值，`RESULT.md` 只记录执行叙述。CI locator 使用包含 `WAITING_FOR_CI` 的当前 branch tip，不要求它等于 `implementation_commit`，也不引入 hash/receipt 链。
-
-Reviewed Handoff 刻意**不**使用 Agent-Flow 的 `review_target_id`、Requirement Ledger、semantic source manifest、role receipt graph、Review Bundle SHA 或 Final Critic。`base_commit` / `implementation_commit` 只是让 GPT 定位真实 diff 的 Git locator。如果某项任务真的需要这些证明机制，应直接升级到 Agent-Flow，而不是把 Reviewed Handoff 继续加重。
-
-对于旧版本误退出的任务，比如 Executor 已完成并把仓库停在 `READY_FOR_EXTERNAL_PLANNER_REVIEW` 或 `READY_FOR_GPT_REVIEW`，但 Codex Goal 因旧 blocked-audit 规则结束，升级 Host Policy/Bridge Kit 后不需要重置 `CURRENT`，也不要伪造 Planner decision。重新进入 session 后同步 `main`、读取 `CURRENT`、确认当前 `implementation_commit`，把旧 commit 上的 Planner/Reviewer review 识别为 stale，然后继续等待新的 external GPT review 即可。
-
-详细规格见 `docs/V0_5_REVIEWED_HANDOFF_IMPLEMENTATION_SPEC.md`。
-
-## Generic Notifier：可选的终态邮件能力
-
-Notifier 是横向可选能力，不决定任务是否完成，只负责把已经合法到达的终态发送给用户。默认推荐 one-shot，而不是常驻轮询进程。
-
-项目第一次启用时，先从用户已经配置好的私有来源拉取邮件配置，再发送一次真实测试邮件：
+如果项目需要终态邮件，先同步私有配置并发一封真实测试邮件：
 
 ```bash
 cd /path/to/project
-export AI_BRIDGE_PRIVATE_RCLONE_SOURCE='<remote>:Private/GPT_Codex_AI_Bridge_Kit/notifier.env'
 ai-bridge private sync --profile notifier
 ai-bridge notifier send-test
 ```
 
-Bridge Kit 不负责创建 rclone OAuth、不生成 Google token，也不会把本地 secret 上传回远端。私有配置默认落在 `.ai-bridge/private/notifier.env`，并尽量限制为用户可读写。
-
-任务真正结束时，工作流生成：
+任务完成后，工作流可以生成：
 
 ```text
 results/<task_key>/notification_brief.json
 ```
 
-然后直接发送：
+再发送：
 
 ```bash
 ai-bridge notifier send results/<task_key>/notification_brief.json
 ```
 
-`send` 是推荐路径；`once` 和 `run` 只作为兼容的扫描/轮询模式存在。tmux、systemd、nohup 等进程托管方式都不是 Bridge Kit 的安装依赖。
+推荐这种一次性发送方式，不要求为了通知常驻一个 tmux、systemd 或后台轮询进程。
 
-目前通知器使用 SMTP/STARTTLS。所需私有键包括：
+邮件密码等秘密配置保存在本地私有文件，不应提交到项目仓库。
 
-```text
-AI_BRIDGE_NOTIFY_SMTP_USER
-AI_BRIDGE_NOTIFY_SMTP_PASSWORD
-AI_BRIDGE_NOTIFY_FROM
-AI_BRIDGE_NOTIFY_TO
-AI_BRIDGE_NOTIFY_SUBJECT_PREFIX
-```
+---
 
-## Agent-Flow Core：高风险项目才安装的闭环控制层
+## 6. Visual Review：给图片和视觉产物增加独立检查
 
-Agent-Flow 是项目层的可选高风险工作流。它适用于科研架构实现、昂贵训练或计算、数据/安全敏感逻辑、生产部署、重要迁移，以及其他“false PASS 比多做一次验证更贵”的任务。
+Visual Review 用来检查真正需要“看图”才能判断的问题，例如：
 
-```bash
-ai-bridge agent-flow install --target /path/to/project
-ai-bridge agent-flow validate --target /path/to/project
-```
+- PPT 或 PDF 页面是否排版异常；
+- 图中文字是否被裁切；
+- 视觉结果是否符合给定检查标准；
+- 某个实现是否与参考截图明显不一致。
 
-安装后，项目会增加独立的 `automation/agent_flow/` 控制平面，其中包含 Project Profile、角色权限、状态 schema、Planner/Critic/Controller/Verifier/Executor 提示模板以及 Requirement Ledger、source manifest、Review Bundle 等模板。它不会修改 `$CODEX_HOME`、不会替换 Lite Handoff，也不会为了角色隔离自行创建 branch。
+它不是新的工作流角色，而是给 Reviewed Handoff、Agent-Flow 或普通项目提供一份可验证的视觉证据。
 
-高风险流程的目标结构是：
-
-```text
-Planner
-→ Initial Critic
-→ Controller
-→ Verifier
-→ Executor
-→ Planner repair loop
-→ Final Critic
-→ Human gate
-```
-
-这里的重点不是“多几个 Agent”，而是把不同判断权分开。Planner 负责用户目标和实现审查；Critic 负责初始合同审计、必要的合同复审和最终独立闭环；Controller 只做机械路由；Verifier 只能依据冻结 requirement 建立验证 oracle；Executor 只负责实现，不能改合同或验证规则，也不能自行宣布最终通过。
-
-Agent-Flow 还使用 Stable Review Snapshot，把真正影响语义的合同、Requirement Ledger、实现源码和 Verifier 源码与 Controller receipt、CURRENT 状态、文档、通知等控制平面变化分开。目标是只有语义变化才触发昂贵重验证，receipt-only、state-only 或 control-plane-only 修改不能默认“为了安全全部重跑”。详细设计和当前实现约束见 `docs/V0_4_AGENT_FLOW_IMPLEMENTATION_SPEC.md`。
-
-Agent-Flow 也使用同一 external GPT wait contract。`PLAN_REQUESTED`、`PLAN_READY_FOR_CRITIC`、`READY_FOR_PLANNER_REVIEW`、`WAITING_FOR_EXTERNAL_GPT`、`CONTRACT_REVIEW_REQUIRED`、`READY_FOR_CRITIC_FINAL_AUDIT` 等由 Planner/Critic/Final Critic 拥有下一步的状态，在没有 fresh artifact 时都只是等待。fresh 判断继续使用 Agent-Flow 自己的 `request_nonce`、`review_target_id` 和 Review Bundle 绑定；旧 target 的 Planner findings、Planner pass candidate 或 Final Critic audit 不会触发当前目标的 repair/pass/block。
-
-Anti-overengineering 原则也在这里生效：Agent-Flow 只对合同、Requirement Ledger、实现语义源码和验证语义源码建立稳定 `review_target_id`。Git 提交、状态文件、通知、普通 receipt 和文档变化可以作为 provenance 或说明，但不应因为自身变化触发新的语义审核对象或昂贵重跑。设计目标是严格验证业务/科学语义，而不是建立复杂的 provenance 链。
-
-## Agent-Flow task：不是新的安装层
-
-Agent-Flow Core 在一个 repository 中只需要安装一次，但同一个项目可能先后执行多个完全不同的高风险任务。每个任务都需要独立的 objective、request nonce、冻结合同、Requirement Ledger、review target、修复历史和最终人工决策，因此需要单独创建 task 实例。
-
-```bash
-ai-bridge agent-flow task init \
-  --target /path/to/project \
-  --task-key 001_registration_refactor
-```
-
-这一步不是“再安装一层 Agent-Flow”，而只是创建一次工作流实例。
-
-Agent-Flow 的辅助工具包括：
-
-```bash
-ai-bridge agent-flow snapshot --target /path/to/project --task-key 001_example
-ai-bridge agent-flow bundle validate --target /path/to/project --task-key 001_example
-ai-bridge agent-flow classify-change --target /path/to/project --path src/example.py
-ai-bridge agent-flow route --target /path/to/project --task-key 001_example
-ai-bridge agent-flow transition plan --target /path/to/project --task-key 001_example
-ai-bridge agent-flow transition apply --target /path/to/project --task-key 001_example --expected-state PLAN_REQUESTED --next-state PLAN_READY_FOR_CRITIC
-ai-bridge agent-flow terminal-brief --target /path/to/project --task-key 001_example
-ai-bridge agent-flow prompt --target /path/to/project planner
-```
-
-## Visual Review：共享、可选、由 GitHub Actions 调用 OpenAI 的视觉证据
-
-Visual Review 是 Bridge Kit 自身提供的横向能力，可由 Reviewed Handoff 和 Agent-Flow 共同使用。它不是新的 GPT role，也不是 Presentation 专属实现。共享层只负责：
-
-```text
-visual source manifest
-→ image SHA / identity binding
-→ OpenAI Responses API with image input
-→ structured VISUAL_REVIEW.json
-→ deterministic validation
-```
-
-默认 live API caller 是 GitHub Actions。Planner、Critic、Controller、Verifier、Executor、Scheduled GPT、本地 Codex 和 watcher 都只读 repository 中 tracked 的 `VISUAL_REVIEW.json`，不需要也不应该接触 API key value。
+安装和预检：
 
 ```bash
 ai-bridge visual-review install --target /path/to/project
 ai-bridge visual-review preflight --target /path/to/project
 ```
 
-`install` 写入 consumer repository 的 GitHub Actions workflow 会安装 canonical Bridge Kit Git source，并 pin 到执行安装时的 Bridge Kit Git ref；它不会 vendor copy `ai_bridge_kit/`，也不会在 consumer repo 内运行 `pip install -e .`。如果当前安装环境无法解析 Bridge Kit Git commit，可显式传入 `--bridge-kit-ref <ref-or-commit>`。
-
-统一 GitHub Secret 名为：
+默认通过 GitHub Actions 调用 OpenAI 图像输入能力。GitHub Secret 名称统一为：
 
 ```text
 OPENAI_VISUAL_REVIEW_API_KEY
 ```
 
-workflow 中只在 visual job 局部映射：
-
-```yaml
-env:
-  OPENAI_API_KEY: ${{ secrets.OPENAI_VISUAL_REVIEW_API_KEY }}
-```
-
-默认 production Visual Review model 为 `gpt-5.6-terra`。普通 consumer repository 不需要设置模型变量；只有项目有明确质量、成本、权限或模型冻结需求时，才设置 GitHub Actions Variable 或普通环境变量 `OPENAI_VISUAL_REVIEW_MODEL` 作为高级 override。显式 CLI `--model` 优先于 `OPENAI_VISUAL_REVIEW_MODEL`，后者优先于 Bridge Kit shared default。
-
-模型名不是 secret。推荐在 OpenAI 中建立独立 project：
+默认模型为：
 
 ```text
-OpenAI Project: AI Bridge Visual Review
+gpt-5.6-terra
 ```
 
-并为每个启用视觉审查的 repository 创建单独的 project-scoped restricted key，例如 `AI_Skills_Collection key`、`TRACE key` 或 `CARE_Challenge key`。Bridge Kit 不创建、不读取、不打印 secret value；preflight 最多通过 `gh secret list --repo OWNER/REPO` 检查 secret 名称是否存在。
-
-默认隐私策略是 `PUBLIC_SAFE_ONLY`。安装 Visual Review 不等于允许自动上传私有数据；patient images、private clinical data、未公开研究图像、credentials、private screenshots 和未授权 proprietary assets 都必须 fail closed，除非任务或 Project Profile 有明确外部上传授权。
-
-Reviewed Handoff 通过 task `CURRENT.json` 中的 `visual_review_required=true` opt-in。它只把视觉证据绑定到 `task_key`、`implementation_commit` 和 input image hashes，不引入 Agent-Flow 的 `request_nonce`、Requirement Ledger、Stable Review Snapshot 或 `review_target_id`。视觉证据尚未产生时，Reviewer 等待 `VISUAL_REVIEW.json`，不会消耗 review round；stale implementation evidence 不能用于 PASS。
-
-Agent-Flow 通过 Project Profile 现有的 `optional_visual_source_policy` opt-in。启用后，`VISUAL_REVIEW.json` 必须绑定当前 `request_nonce`、`review_target_id`、冻结合同 digest、Requirement Ledger digest、`SOURCE_SNAPSHOT` 中的 implementation/verifier semantic digest 和 input image hashes。Visual Review 是 review evidence，不改变 `review_target_id`，不会因为 evidence commit 触发新的 semantic target 或 heavy Verifier rerun。
-
-默认 tracked evidence 路径是：
+生成的结果通常写到：
 
 ```text
 results/<task_key>/visual_review/VISUAL_REVIEW.json
 ```
 
-workflow 只允许写回 repository-relative 的 `results/<task_key>/visual_review/**` 生成证据路径，并对 `results/**/visual_review/**` 设置 `paths-ignore`，避免单纯证据提交再次触发 visual job。缺少 `OPENAI_VISUAL_REVIEW_API_KEY` 时 job 只跳过 live visual review，不伪造 PASS，也不把缺 secret 当成普通 CI 失败。
+Bridge Kit 不会把 API key 写进仓库，也不会打印 secret 值。
 
-后续某个项目如果需要 research presentation、scientific figure、frontend UI 或 rendered report 的具体 rubric，只应在该项目的 visual input manifest / adapter 中提供，不应写死进 Bridge Kit core。
+默认隐私策略是保守的：安装视觉复核能力不等于允许自动上传患者影像、私有临床数据、未公开科研图片、凭据或其他敏感内容。没有明确外部上传授权时应拒绝。
 
-## 如何选择
+---
 
-如果只是给一台新机器建立长期 Codex 默认行为，配置 Host Policy；如果只是让一个新 repository 能被 GPT 和 Codex 稳定交接，安装 Lite Handoff。普通明确需求直接交给 Codex 完成时，继续使用 Lite。
+## 7. Agent-Flow：只有高风险任务才用
 
-如果任务里真正需要 GPT 先做语义/产品判断，再让 Codex 实现，并希望实现后由独立 GPT 审核一到两轮，优先使用 Reviewed Handoff。**大量文件、复杂实现本身不要求 Agent-Flow；是否需要独立合同/Verifier/Final Critic 才是升级高风险模式的关键。**
+Agent-Flow 面向“错误通过的代价很高”的任务，例如：
 
-如果希望任务完成或真正阻塞时收到邮件，再加 Notifier。需要把 monorepo 中的论文 publication root 同步给 Overleaf 时，再加 Overleaf Bridge；不要因为“可能以后会用”就在所有 repository 中预装私有通知配置或 Overleaf 连接。
+- 科研方法或系统架构的大改；
+- 昂贵训练或长时间计算；
+- 数据、安全或隐私敏感逻辑；
+- 生产部署；
+- 重要迁移；
+- 必须能证明“为什么可以判定通过”的工作。
 
-如果某个项目确实需要高风险、长链路、独立验证的自动闭环，再安装 Agent-Flow。不要为了“更严谨”把 Agent-Flow 的 provenance 机制复制进 Reviewed Handoff。
-
-## 验证与维护
-
-主机层使用：
-
-```bash
-ai-bridge host status
-ai-bridge host validate
-```
-
-Lite Handoff 使用：
+安装：
 
 ```bash
-ai-bridge validate --target /path/to/project
-ai-bridge validate --target /path/to/project --strict
-```
-
-Reviewed Handoff 使用：
-
-```bash
-ai-bridge reviewed-handoff status --target /path/to/project
-ai-bridge reviewed-handoff validate --target /path/to/project
-ai-bridge reviewed-handoff watcher once --target /path/to/project --branch <branch> --dry-run
-```
-
-Agent-Flow 使用：
-
-```bash
-ai-bridge agent-flow status --target /path/to/project
+ai-bridge agent-flow install --target /path/to/project
 ai-bridge agent-flow validate --target /path/to/project
 ```
 
-Notifier 使用：
+它会增加 `automation/agent_flow/` 控制目录，但不会替换 Lite Handoff，也不会自行创建 Git 分支。
 
-```bash
-ai-bridge notifier status
-```
-
-Overleaf Bridge 使用：
-
-```bash
-ai-bridge overleaf status --target /path/to/project
-ai-bridge overleaf validate --target /path/to/project
-```
-
-Host Policy 安装是非破坏式的；Lite、Reviewed Handoff 和 Agent-Flow 初始化也应保持幂等。不要通过手工复制 `$CODEX_HOME` 文件到项目目录来“统一配置”，也不要把 repository 的 workflow 模板反向当成服务器全局策略。
-
-## 仓库内容和进一步文档
-
-`chatgpt/` 保存 GPT 侧可复用提示，`codex/` 保存 Codex 启动提示和 repo-local skill，`templates/` 保存 Lite、Host、Reviewed Handoff、Overleaf Bridge 和 Agent-Flow 的 desired-state 模板，`ai_bridge_kit/` 是 CLI 与核心实现，`tests/` 是回归测试。长期协议细节放在 `docs/`，README 只负责告诉人“这套工具是什么、该装什么、什么时候装”。
-
-当前核心规格包括：
+整体分工可以直观理解成：
 
 ```text
-docs/V0_5_REVIEWED_HANDOFF_IMPLEMENTATION_SPEC.md
-docs/V0_6_OVERLEAF_BRIDGE_IMPLEMENTATION_SPEC.md
-docs/V0_4_AGENT_FLOW_IMPLEMENTATION_SPEC.md
-docs/AGENT_FLOW_V3_POST_CARE_EXTRACTION_DECISIONS.md
-docs/CARE_AGENT_FLOW_V3_POSTMORTEM_20260811.md
+Planner      决定要实现什么
+Critic       检查方案和最终闭环是否真的成立
+Controller   只负责机械路由，不替人做判断
+Verifier     根据冻结要求建立验证标准
+Executor     只负责实现
+Human        最终保留人工决定权
 ```
 
-如果以后让 Codex 在新服务器或新 repository 上配置这套工具，根目录 `AGENTS.md` 是机器执行入口；README 是给人阅读和理解整体模型的入口。
+Agent-Flow 比 Reviewed Handoff 更重，因为它会显式保存冻结要求、验证依据、稳定审查对象和最终独立检查。它的目的不是“堆更多 Agent”，而是避免同一个角色既写要求、又改实现、又自己宣布通过。
+
+一个项目只需安装一次 Agent-Flow Core；每个高风险任务再单独创建任务实例：
+
+```bash
+ai-bridge agent-flow task init \
+  --target /path/to/project \
+  --task-key 001_example
+```
+
+详细设计见：
+
+```text
+docs/V0_4_AGENT_FLOW_IMPLEMENTATION_SPEC.md
+```
+
+---
+
+## 8. 常见选择
+
+### 普通代码仓库
+
+```text
+Host Policy
++ Lite Handoff
+```
+
+### 需要 GPT 先做方案、Codex 实现、GPT 再独立看一遍
+
+```text
+Host Policy
++ Lite Handoff
++ Reviewed Handoff
+```
+
+### 科研仓库同时放代码和论文，并希望用 Overleaf 协作
+
+```text
+Host Policy
++ Lite Handoff
++ Overleaf Bridge
+```
+
+### 需要完成后邮件提醒
+
+在上述任意组合上再加：
+
+```text
+Generic Notifier
+```
+
+### 图片/PPT/视觉结果必须真正看图审核
+
+按需增加：
+
+```text
+Visual Review
+```
+
+### 高风险科研、生产或安全敏感任务
+
+```text
+Host Policy
++ Lite Handoff
++ Agent-Flow Core
+```
+
+不要同时把所有可选层都装上，除非项目确实同时需要它们。
+
+---
+
+## 9. 常用命令速查
+
+```bash
+# 机器级长期规则
+ai-bridge host install
+ai-bridge host status
+ai-bridge host validate
+
+# 普通项目交接
+ai-bridge init --target /path/to/project
+ai-bridge validate --target /path/to/project
+
+# 独立 GPT 复核
+ai-bridge reviewed-handoff install --target /path/to/project
+ai-bridge reviewed-handoff validate --target /path/to/project
+
+# Overleaf
+ai-bridge overleaf install --target /path/to/project --paper-root paper/manuscript
+ai-bridge overleaf connect --target /path/to/project --remote-url <OVERLEAF_GIT_URL> --bootstrap
+ai-bridge overleaf status --target /path/to/project
+ai-bridge overleaf push --target /path/to/project
+ai-bridge overleaf pull --target /path/to/project
+ai-bridge overleaf validate --target /path/to/project
+
+# 视觉检查
+ai-bridge visual-review install --target /path/to/project
+ai-bridge visual-review preflight --target /path/to/project
+
+# 邮件通知
+ai-bridge private sync --profile notifier
+ai-bridge notifier send-test
+
+# 高风险闭环
+ai-bridge agent-flow install --target /path/to/project
+ai-bridge agent-flow validate --target /path/to/project
+```
+
+---
+
+## 10. 设计原则
+
+这套工具长期遵守几条简单原则：
+
+1. **项目本身才是权威来源。** 任务状态、论文、实现和结果应留在 Git 或明确的本地状态中，不依赖某个 Codex 对话线程记住一切。
+2. **默认轻量。** 普通任务不要为了“显得可靠”而强行使用高风险闭环。
+3. **角色分工要有意义。** 独立复核的价值在于判断权分离，不在于角色数量。
+4. **Git 操作尽量安全且低打扰。** 正常开发可以自动化，改变分支结构和破坏性操作必须保守。
+5. **秘密信息不进仓库。** 邮件密码、Overleaf token、OpenAI API key 等都应保存在合适的私有位置。
+6. **等待不是失败。** 当任务明确交给外部 GPT 处理时，短时间没有新决定属于正常等待。
+7. **对真实风险严格，对形式主义克制。** 需要证明时就建立证据链；普通任务不为了流程漂亮增加无必要复杂度。
+
+---
+
+## 11. 进一步阅读
+
+快速上手：
+
+```text
+QUICKSTART.md
+```
+
+主要实现规格：
+
+```text
+docs/V0_4_AGENT_FLOW_IMPLEMENTATION_SPEC.md
+docs/V0_5_REVIEWED_HANDOFF_IMPLEMENTATION_SPEC.md
+docs/V0_6_OVERLEAF_BRIDGE_IMPLEMENTATION_SPEC.md
+```
+
+版本变化：
+
+```text
+CHANGELOG.md
+```
+
+仓库维护规则：
+
+```text
+AGENTS.md
+```
+
+如果只是第一次使用，不需要先读完这些规格。通常从本文的“新机器”“新项目”和对应的可选能力开始即可。
