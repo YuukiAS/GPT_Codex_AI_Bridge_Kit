@@ -226,6 +226,10 @@ ai-bridge overleaf validate --target /path/to/research-repo
 
 `push` 会先更新机器本地 Overleaf mirror，再比较 baseline、local publication digest 和 remote digest。只有 local ahead 且 remote 未变时才发布；remote ahead 或 diverged 都会拒绝。`pull` 只有在 remote ahead 且 local 未变时才把 Overleaf 改动导入 `paper_root`，并把改动留在 working tree，等待用户或 Codex review、LaTeX compile、commit，再通过正常 `origin/main` workflow 推送。
 
+`connect --bootstrap`、普通 `connect`、`push` 和 `pull` 都要求非 excluded 的 publication root 是干净的：tracked/staged/deleted/renamed/untracked manuscript 文件如果还没提交，Bridge Kit 会先拒绝同步，避免把未提交内容作为 baseline 或覆盖本地草稿。`exclude_paths` 只适合放 `AGENTS.md`、局部 README、编译出的 `main.pdf`、本地 author notes 等不参与 Overleaf 编译的 GitHub-only 文件；`.tex`、`.bib`、`.sty`、`.cls`、LaTeX 使用的 figures/tables/assets 不应 exclude。
+
+同一个 GitHub repo 在多台机器上工作时，每台要执行 Overleaf 操作的机器都需要自己的 `ai-bridge overleaf connect`。`connection.json` 和 `mirror/` 是 machine-local state，不进入 GitHub。Overleaf Bridge 不会自动同步，也不会在普通 `git push origin main` 后自动运行；如果 local 和 Overleaf 都从上次 baseline 后发生变化，它会 fail closed，而不是自动 merge 或猜测覆盖方向。
+
 Bridge Kit 不接收 `--token` 或 `--password`，不把 token 写入 URL、`connection.json` 或 tracked config，也不实现自己的 credential database。第一次访问真实 Overleaf 时，让 Git 按 Overleaf 当前 token authentication 流程请求 credential；后续可使用用户自己的 Git credential helper。
 
 ## Reviewed Handoff：GPT 规划、Codex 执行、GPT 最多复核两轮

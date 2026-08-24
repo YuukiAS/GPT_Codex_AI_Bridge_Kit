@@ -36,7 +36,7 @@ class OverleafBridgeTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def make_project(self) -> Path:
-        target = self.root / "research"
+        target = self.root / f"research-{len(list(self.root.glob('research-*')))}"
         (target / "paper" / "manuscript" / "sections").mkdir(parents=True)
         (target / "code").mkdir()
         (target / "results").mkdir()
@@ -56,7 +56,7 @@ class OverleafBridgeTests(unittest.TestCase):
         return target
 
     def make_empty_remote(self) -> Path:
-        remote = self.root / "overleaf.git"
+        remote = self.root / f"overleaf-{len(list(self.root.glob('overleaf-*.git')))}.git"
         git_call(self.root, "init", "--bare", "--initial-branch", "master", str(remote))
         return remote
 
@@ -232,6 +232,56 @@ class OverleafBridgeTests(unittest.TestCase):
         self.assertEqual((target / "code" / "analysis.py").read_text(encoding="utf-8"), "print('not paper')\n")
         self.assertIn("sections/methods.tex", overleaf.changed_publishable_paths(overleaf.load_config(target)))
 
+    def test_pull_refuses_untracked_conflict_without_touching_files_or_baseline(self) -> None:
+        target = self.make_project()
+        remote = self.make_empty_remote()
+        self.install(target)
+        self.connect_bootstrap(target, remote)
+        before_connection = json.loads(overleaf.connection_path(target).read_text(encoding="utf-8"))
+        self.make_remote_edit(remote, {"sections/method.tex": "remote method\n"})
+        local_path = target / "paper" / "manuscript" / "sections" / "method.tex"
+        local_path.write_text("local untracked method\n", encoding="utf-8")
+
+        with self.assertRaisesRegex(overleaf.OverleafError, "uncommitted or untracked changes"):
+            overleaf.pull_overleaf(target)
+
+        self.assertEqual(local_path.read_text(encoding="utf-8"), "local untracked method\n")
+        after_connection = json.loads(overleaf.connection_path(target).read_text(encoding="utf-8"))
+        self.assertEqual(after_connection["last_synced_digest"], before_connection["last_synced_digest"])
+
+    def test_pull_refuses_ignored_publication_file_without_touching_it(self) -> None:
+        target = self.make_project()
+        (target / ".gitignore").write_text("paper/manuscript/cache/\n", encoding="utf-8")
+        git_call(target, "add", ".gitignore")
+        git_call(target, "commit", "-m", "ignore manuscript cache")
+        remote = self.make_empty_remote()
+        self.install(target)
+        self.connect_bootstrap(target, remote)
+        self.make_remote_edit(remote, {"cache/generated.tex": "remote generated\n"})
+        local_path = target / "paper" / "manuscript" / "cache" / "generated.tex"
+        local_path.parent.mkdir(parents=True)
+        local_path.write_text("local ignored generated\n", encoding="utf-8")
+
+        with self.assertRaisesRegex(overleaf.OverleafError, "uncommitted or untracked changes"):
+            overleaf.pull_overleaf(target)
+
+        self.assertEqual(local_path.read_text(encoding="utf-8"), "local ignored generated\n")
+
+    def test_pull_refuses_tracked_uncommitted_modification_without_touching_file(self) -> None:
+        target = self.make_project()
+        remote = self.make_empty_remote()
+        self.install(target)
+        self.connect_bootstrap(target, remote)
+        self.make_remote_edit(remote, {"sections/method.tex": "remote method\n"})
+        main = target / "paper" / "manuscript" / "main.tex"
+        main.write_text("local dirty main\n", encoding="utf-8")
+
+        with self.assertRaisesRegex(overleaf.OverleafError, "uncommitted or untracked changes"):
+            overleaf.pull_overleaf(target)
+
+        self.assertEqual(main.read_text(encoding="utf-8"), "local dirty main\n")
+        self.assertFalse((target / "paper" / "manuscript" / "sections" / "method.tex").exists())
+
     def test_diverged_local_and_remote_fail_closed(self) -> None:
         target = self.make_project()
         remote = self.make_empty_remote()
@@ -248,6 +298,116 @@ class OverleafBridgeTests(unittest.TestCase):
             overleaf.pull_overleaf(target)
         self.assertEqual((target / "paper" / "manuscript" / "main.tex").read_text(encoding="utf-8"), "local edit\n")
         self.assertEqual(self.remote_text(remote, "main.tex"), "remote edit")
+
+    def test_connect_bootstrap_refuses_dirty_publication_root(self) -> None:
+        for dirty_kind in ["tracked", "untracked"]:
+            with self.subTest(dirty_kind=dirty_kind):
+                target = self.make_project()
+                remote = self.make_empty_remote()
+                self.install(target)
+                if dirty_kind == "tracked":
+                    (target / "paper" / "manuscript" / "main.tex").write_text("dirty tracked\n", encoding="utf-8")
+                else:
+                    (target / "paper" / "manuscript" / "sections" / "new.tex").write_text("dirty untracked\n", encoding="utf-8")
+
+                with self.assertRaisesRegex(overleaf.OverleafError, "publication root has uncommitted or untracked changes"):
+                    overleaf.connect_overleaf(target, remote_url=str(remote), bootstrap=True)
+
+                self.assertFalse(overleaf.connection_path(target).exists())
+                refs = subprocess.run(
+                    ["git", "show-ref", "--heads"],
+                    cwd=remote,
+                    text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                )
+                self.assertEqual(refs.stdout.strip(), "")
+
+    def test_connect_without_bootstrap_refuses_dirty_publication_root(self) -> None:
+        target = self.make_project()
+        remote = self.make_seeded_remote(
+            {
+                "main.tex": "\\input{sections/intro}\n",
+                "sections/intro.tex": "Intro v1\n",
+                "AGENTS.md": "local manuscript rules\n",
+                "main.pdf": "compiled\n",
+            }
+        )
+        self.install(target)
+        (target / "paper" / "manuscript" / "main.tex").write_text("\\input{sections/intro}\n% dirty\n", encoding="utf-8")
+
+        with self.assertRaisesRegex(overleaf.OverleafError, "publication root has uncommitted or untracked changes"):
+            overleaf.connect_overleaf(target, remote_url=str(remote), bootstrap=False)
+
+        self.assertFalse(overleaf.connection_path(target).exists())
+
+    def test_push_refuses_dirty_publication_root(self) -> None:
+        target = self.make_project()
+        remote = self.make_empty_remote()
+        self.install(target)
+        self.connect_bootstrap(target, remote)
+        (target / "paper" / "manuscript" / "main.tex").write_text("dirty tracked\n", encoding="utf-8")
+
+        with self.assertRaisesRegex(overleaf.OverleafError, "publication root has uncommitted or untracked changes"):
+            overleaf.push_overleaf(target)
+
+    def test_excluded_dirty_paths_do_not_block_status_or_sync(self) -> None:
+        target = self.make_project()
+        remote = self.make_empty_remote()
+        self.install(target)
+        config = target / "automation" / "overleaf" / "config.toml"
+        config.write_text(
+            config.read_text(encoding="utf-8").replace("exclude_paths = []", 'exclude_paths = ["AGENTS.md"]'),
+            encoding="utf-8",
+        )
+        self.connect_bootstrap(target, remote)
+        (target / "paper" / "manuscript" / "AGENTS.md").write_text("local excluded dirty\n", encoding="utf-8")
+
+        status = "\n".join(overleaf.status_overleaf(target))
+        result = overleaf.push_overleaf(target)
+
+        self.assertIn("publishable_uncommitted_changes: false", status)
+        self.assertIn("Already synced", "\n".join(result))
+
+    def test_status_dirty_next_action_prioritizes_local_cleanup(self) -> None:
+        target = self.make_project()
+        remote = self.make_empty_remote()
+        self.install(target)
+        self.connect_bootstrap(target, remote)
+        (target / "paper" / "manuscript" / "sections" / "draft.tex").write_text("untracked draft\n", encoding="utf-8")
+
+        status = "\n".join(overleaf.status_overleaf(target))
+
+        self.assertIn("publishable_uncommitted_changes: true", status)
+        self.assertIn("changed_paths: sections/draft.tex", status)
+        self.assertIn("next: review and commit or discard local manuscript changes before synchronization", status)
+        self.assertNotIn("next: ai-bridge overleaf push", status)
+        self.assertNotIn("next: ai-bridge overleaf pull", status)
+
+    def test_connection_secret_like_fields_fail_closed_without_leakage(self) -> None:
+        target = self.make_project()
+        remote = self.make_empty_remote()
+        self.install(target)
+        self.connect_bootstrap(target, remote)
+        connection_path = overleaf.connection_path(target)
+        payload = json.loads(connection_path.read_text(encoding="utf-8"))
+        payload["token"] = "DO_NOT_PRINT_ME"
+        connection_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        cfg = overleaf.load_config(target)
+
+        with self.assertRaisesRegex(overleaf.OverleafError, "secret-like field: token") as caught:
+            overleaf.load_connection(cfg)
+        self.assertNotIn("DO_NOT_PRINT_ME", str(caught.exception))
+
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            code = bridge_cli.main(["overleaf", "validate", "--target", str(target)])
+        combined = stdout.getvalue() + stderr.getvalue()
+        self.assertEqual(code, 1)
+        self.assertIn("secret-like field: token", combined)
+        self.assertNotIn("DO_NOT_PRINT_ME", combined)
 
     def test_equivalent_content_refreshes_baseline_without_spurious_commit(self) -> None:
         target = self.make_project()

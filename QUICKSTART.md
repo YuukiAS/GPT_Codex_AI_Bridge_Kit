@@ -129,3 +129,7 @@ ai-bridge overleaf validate --target /path/to/research-repo
 ```
 
 `push` 会拒绝覆盖未拉取的 Overleaf 远端修改；`pull` 会把 Overleaf 改动留在本地 working tree，不会自动 commit 或 `git push origin main`。Overleaf token 由 Git credential helper 处理，不写入 Bridge Kit config。
+
+同步前先让非 excluded 的 `paper_root` 保持 clean：tracked、staged、deleted、renamed 或 untracked manuscript 文件都应先 review/compile/commit，避免未提交草稿被用作 baseline 或被 pull 覆盖。`exclude_paths` 只用于不参与 Overleaf 编译的 GitHub-only 文件；编译需要的 `.tex`、`.bib`、figures、tables 和 style/class 文件必须留在 publication projection 中。
+
+每台机器的 `connection.json` 和 `mirror/` 都在 `${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}/overleaf/<repo-id>/`，不提交到 GitHub；多台机器要各自 `connect`。Overleaf Bridge 不会自动同步，local 和 Overleaf 双边变化时会 fail closed。

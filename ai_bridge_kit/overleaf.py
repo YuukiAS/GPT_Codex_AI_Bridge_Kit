@@ -92,6 +92,17 @@ def write_json(path: Path, payload: dict[str, Any]) -> None:
     write_text(path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
 
 
+def assert_no_secret_keys(payload: Any, *, context: str) -> None:
+    if isinstance(payload, dict):
+        for key, value in payload.items():
+            if SECRET_KEY_RE.search(str(key)):
+                raise OverleafError(f"{context} must not contain secret-like field: {key}")
+            assert_no_secret_keys(value, context=context)
+    elif isinstance(payload, list):
+        for item in payload:
+            assert_no_secret_keys(item, context=context)
+
+
 def run_git(cwd: Path, args: list[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(
         ["git", *args],
@@ -385,6 +396,7 @@ def load_connection(cfg: OverleafConfig) -> dict[str, Any]:
     if not path.exists():
         raise OverleafError("Overleaf Bridge is not connected; run ai-bridge overleaf connect first")
     data = load_json(path)
+    assert_no_secret_keys(data, context="connection.json")
     if data.get("schema") != CONNECTION_SCHEMA:
         raise OverleafError("connection.json schema mismatch")
     remote_url = sanitize_remote_url(str(data.get("remote_url") or ""))
@@ -395,9 +407,7 @@ def load_connection(cfg: OverleafConfig) -> dict[str, Any]:
 
 
 def save_connection(cfg: OverleafConfig, payload: dict[str, Any]) -> None:
-    text = json.dumps(payload, indent=2, sort_keys=True)
-    if SECRET_KEY_RE.search(text.replace('"remote_url"', "")):
-        raise OverleafError("connection metadata must not contain token/password/secret fields")
+    assert_no_secret_keys(payload, context="connection metadata")
     write_json(connection_path(cfg.target), payload)
 
 
@@ -535,8 +545,11 @@ def push_mirror(cfg: OverleafConfig, mirror: Path) -> None:
     run_git(mirror, ["push", "origin", cfg.remote_branch])
 
 
-def changed_publishable_paths(cfg: OverleafConfig) -> list[str]:
-    out = run_git(cfg.target, ["status", "--porcelain=v1", "-z", "--", cfg.paper_root.as_posix()]).stdout
+def publication_dirty_paths(cfg: OverleafConfig) -> list[str]:
+    out = run_git(
+        cfg.target,
+        ["status", "--porcelain=v1", "-z", "-uall", "--ignored=matching", "--", cfg.paper_root.as_posix()],
+    ).stdout
     items = [item for item in out.split("\0") if item]
     paths: set[str] = set()
     index = 0
@@ -555,6 +568,19 @@ def changed_publishable_paths(cfg: OverleafConfig) -> list[str]:
                 paths.add(pub_rel)
         index += 1
     return sorted(paths)
+
+
+def changed_publishable_paths(cfg: OverleafConfig) -> list[str]:
+    return publication_dirty_paths(cfg)
+
+
+def require_clean_publication_root(cfg: OverleafConfig, *, operation: str) -> None:
+    dirty = publication_dirty_paths(cfg)
+    if dirty:
+        raise OverleafError(
+            f"{operation} refused: publication root has uncommitted or untracked changes: "
+            + ", ".join(dirty)
+        )
 
 
 def validate_target_remotes(cfg: OverleafConfig) -> list[str]:
@@ -614,6 +640,13 @@ def validate_overleaf(target: Path) -> tuple[list[str], int]:
             lines.append("OK publication paths remain inside paper_root")
         except OverleafError as exc:
             errors.append(str(exc))
+        connection = connection_path(cfg.target)
+        if connection.exists():
+            try:
+                load_connection(cfg)
+                lines.append("OK connection.json contains no secret-like fields")
+            except OverleafError as exc:
+                errors.append(str(exc))
         lines.extend(latex_escape_warnings(cfg))
     except OverleafError as exc:
         errors.append(str(exc))
@@ -629,6 +662,8 @@ def validate_overleaf(target: Path) -> tuple[list[str], int]:
 def connect_overleaf(target: Path, *, remote_url: str, bootstrap: bool = False) -> list[str]:
     cfg = load_config(target)
     safe_url = sanitize_remote_url(remote_url)
+    operation = "bootstrap" if bootstrap else "connect"
+    require_clean_publication_root(cfg, operation=operation)
     mirror = ensure_mirror(cfg, safe_url)
     local = local_projection(cfg)
     remote = remote_projection(cfg, mirror)
@@ -674,9 +709,7 @@ def connect_overleaf(target: Path, *, remote_url: str, bootstrap: bool = False) 
 def push_overleaf(target: Path) -> list[str]:
     cfg = load_config(target)
     conn = load_connection(cfg)
-    changed = changed_publishable_paths(cfg)
-    if changed:
-        raise OverleafError("push refused: publishable manuscript changes are uncommitted: " + ", ".join(changed))
+    require_clean_publication_root(cfg, operation="push")
     mirror = ensure_mirror(cfg, conn["remote_url"])
     local = local_projection(cfg)
     remote = remote_projection(cfg, mirror)
@@ -724,6 +757,7 @@ def pull_overleaf(target: Path) -> list[str]:
     cfg = load_config(target)
     conn = load_connection(cfg)
     mirror = ensure_mirror(cfg, conn["remote_url"])
+    require_clean_publication_root(cfg, operation="pull")
     local = local_projection(cfg)
     remote = remote_projection(cfg, mirror)
     condition = classify_sync(local.digest, remote.digest, conn.get("last_synced_digest"))
@@ -800,19 +834,22 @@ def status_overleaf(target: Path) -> list[str]:
     except OverleafError as exc:
         condition = "unknown"
         lines.append(f"sync_error: {exc}")
-    changed = changed_publishable_paths(cfg)
+    changed = publication_dirty_paths(cfg)
     lines.append(f"sync: {condition}")
     lines.append(f"publishable_uncommitted_changes: {str(bool(changed)).lower()}")
     if changed:
         lines.append("changed_paths: " + ", ".join(changed))
-    next_action = {
-        "synced": "no action needed",
-        "local_ahead": "ai-bridge overleaf push",
-        "remote_ahead": "ai-bridge overleaf pull",
-        "equivalent": "ai-bridge overleaf push or pull to refresh baseline",
-        "diverged": "resolve divergence manually",
-        "unknown": "validate connection and baseline",
-    }.get(condition, "validate connection and baseline")
+    if changed:
+        next_action = "review and commit or discard local manuscript changes before synchronization"
+    else:
+        next_action = {
+            "synced": "no action needed",
+            "local_ahead": "ai-bridge overleaf push",
+            "remote_ahead": "ai-bridge overleaf pull",
+            "equivalent": "ai-bridge overleaf push or pull to refresh baseline",
+            "diverged": "resolve divergence manually",
+            "unknown": "validate connection and baseline",
+        }.get(condition, "validate connection and baseline")
     lines.append(f"next: {next_action}")
     return lines
 

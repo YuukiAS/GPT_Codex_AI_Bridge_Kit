@@ -17,6 +17,10 @@
 - Add local Git/bare-remote regression tests for bootstrap, projection
   flattening, excludes, deletion, pull import, divergence, equivalent content,
   token leakage, validation, and router compatibility.
+- Harden first-consumer safety before TRACE adaptation by requiring a clean
+  non-excluded publication root for connect/bootstrap/push/pull, refusing dirty
+  or untracked manuscript pull overwrite risks, validating secret-like
+  `connection.json` fields, and expanding the consumer Overleaf README.
 
 ## 0.5.4
 
