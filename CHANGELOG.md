@@ -2,11 +2,6 @@
 
 ## Unreleased
 
-- Fix Overleaf Bridge branch compatibility by resolving the project remote
-  branch during `connect` instead of storing a fixed `master` branch in tracked
-  repository config. The resolved branch remains machine-local connection
-  metadata and can be `main`, `master`, or another branch declared by Overleaf.
-
 ## 0.6.0
 
 - Add optional project-level Overleaf Bridge with
@@ -26,6 +21,11 @@
   non-excluded publication root for connect/bootstrap/push/pull, refusing dirty
   or untracked manuscript pull overwrite risks, validating secret-like
   `connection.json` fields, and expanding the consumer Overleaf README.
+- Detect the actual Overleaf remote branch during `connect` instead of assuming
+  `master`, keeping the resolved branch in machine-local `connection.json` so
+  projects using `main`, `master`, or another declared branch remain compatible.
+- Validate the Overleaf Bridge path with a real research-repository bootstrap
+  and bidirectional Overleaf pull/push smoke test.
 
 ## 0.5.4
 
@@ -152,3 +152,27 @@
 - Keep Agent-Flow v3 as design-only TODO pending CARE closure.
 - Record redacted real Gmail notifier E2E receipt in
   `docs/releases/0.3.0_notifier_e2e_redacted.json`.
+
+## 0.2.1
+
+- Bump the package version after Host Policy narrative-language work.
+- Keep user-facing Host Policy guidance oriented around natural Simplified
+  Chinese while preserving technical literals.
+
+## 0.2.0
+
+- Add Codex Host Policy management as a machine-level layer separate from
+  repository handoff setup.
+- Add `ai-bridge host install|status|validate` for `$CODEX_HOME` configuration,
+  global `AGENTS.md` guidance, and low-friction safe Git policy rules.
+- Keep project initialization focused on repository handoff files instead of
+  silently changing machine-level Codex configuration.
+
+## 0.1.0
+
+- Add the initial Lite Handoff repository protocol for GPT-authored task files,
+  Codex execution results, and GPT review.
+- Add the base `prompts/tasks/<task_key>.md` and `results/<task_key>/result.md`
+  workflow shape, with repository initialization and validation entry points.
+- Add the repo-local Codex executor skill/frontmatter validation used by the
+  early handoff flow.

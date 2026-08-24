@@ -8,6 +8,28 @@
 
 当前版本：`0.6.0`。
 
+## 功能与版本
+
+| 能力 | 首次引入 | 作用 |
+|---|---:|---|
+| Lite Handoff | `0.1.0` | 最基础的 GPT → Codex → 复核文件交接 |
+| Host Policy | `0.2.0` | 一台机器上的 Codex 长期配置、Git 行为和通用规则 |
+| Generic Notifier | `0.3.0` | 任务合法终态后发送邮件通知 |
+| Agent-Flow Core | `0.4.0` | 高风险任务的严格多角色验证闭环 |
+| Reviewed Handoff | `0.5.0` | GPT 规划、Codex 执行、GPT 最多两轮独立复核 |
+| Visual Review | `0.5.2` | 对图片、PPT 截图等生成可验证视觉证据 |
+| Overleaf Bridge | `0.6.0` | 科研单一仓库中只把论文目录安全同步到 Overleaf |
+
+本项目采用 `0.x` 迭代方式。每个 `0.x` 小版本通常代表一项可独立使用的能力进入稳定工作流；后面的补丁版本主要用于安全性、兼容性和默认行为修正。这不是严格的 Semantic Versioning 承诺，而是当前阶段的版本阅读方式。
+
+`0.2.1`、`0.3.1`、`0.5.1`、`0.5.3`、`0.5.4` 主要是已有能力的行为完善、安全修复或默认配置更新，不是新的顶层安装层：
+
+- `0.2.1`：完善 Host Policy 的用户可见中文叙述策略。
+- `0.3.1`：Notifier 输出改为中文优先。
+- `0.5.1`：稳定 External GPT 等待规则和 Host Policy Git 授权语义。
+- `0.5.3`：稳定 Visual Review 的 GitHub Actions 安装和证据文件写回。
+- `0.5.4`：更新 Visual Review 默认模型。
+
 ## 一眼看懂：我到底该装什么
 
 整个工具包分成三层。
@@ -40,7 +62,7 @@ Host Policy + Lite Handoff
 
 ---
 
-## 1. 新机器：先配置 Codex 的长期规则
+## 1. Host Policy（`0.2.0` 引入）：先配置 Codex 的长期规则
 
 先安装本仓库：
 
@@ -77,7 +99,7 @@ Host Policy 会尽量非破坏式修改已有配置，并在需要时创建备�
 
 ---
 
-## 2. 新项目：默认安装 Lite Handoff
+## 2. Lite Handoff（`0.1.0` 引入）：新项目默认安装
 
 进入一个正式 Git 仓库后：
 
@@ -116,7 +138,7 @@ Lite Handoff 并不意味着“只能做小任务”。普通功能开发、修 
 
 ---
 
-## 3. Reviewed Handoff：需要 GPT 先定方案、完成后再独立复核
+## 3. Reviewed Handoff（`0.5.0` 引入）：需要 GPT 先定方案、完成后再独立复核
 
 如果某项工作不能让 Codex 一边执行一边自己决定产品语义或科研方向，但又没有必要上最重的 Agent-Flow，可以使用 Reviewed Handoff。
 
@@ -173,9 +195,9 @@ docs/V0_5_REVIEWED_HANDOFF_IMPLEMENTATION_SPEC.md
 
 ---
 
-## 4. Overleaf Bridge：一个科研仓库里同时管代码和论文
+## 4. Overleaf Bridge（`0.6.0` 引入）：一个科研仓库里同时管代码和论文
 
-这是 v0.6 新增的能力。
+这是 `0.6.0` 引入的能力，已完成真实科研仓库与 Overleaf 的双向端到端验证。
 
 它针对很常见的科研项目结构：
 
@@ -350,7 +372,7 @@ Overleaf Bridge **不会自动实时同步**。它就是一个按需、可检查
 
 ---
 
-## 5. Generic Notifier：任务结束后发邮件
+## 5. Generic Notifier（`0.3.0` 引入）：任务结束后发邮件
 
 Notifier 只负责通知，不负责决定任务是不是完成。
 
@@ -380,7 +402,7 @@ ai-bridge notifier send results/<task_key>/notification_brief.json
 
 ---
 
-## 6. Visual Review：给图片和视觉产物增加独立检查
+## 6. Visual Review（`0.5.2` 引入）：给图片和视觉产物增加独立检查
 
 Visual Review 用来检查真正需要“看图”才能判断的问题，例如：
 
@@ -422,7 +444,7 @@ Bridge Kit 不会把 API key 写进仓库，也不会打印 secret 值。
 
 ---
 
-## 7. Agent-Flow：只有高风险任务才用
+## 7. Agent-Flow Core（`0.4.0` 引入）：只有高风险任务才用
 
 Agent-Flow 面向“错误通过的代价很高”的任务，例如：
 
