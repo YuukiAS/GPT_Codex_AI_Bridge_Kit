@@ -153,6 +153,8 @@ ${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}/overleaf/<repo-id>/
 
 不要把另一台机器的 `~/.ai-bridge/overleaf/...` 复制进 GitHub。
 
+Overleaf 项目的默认分支可能是 `main`、`master` 或项目声明的其他名称。Bridge Kit 会在 `connect` 时读取真实远端分支，并把它保存在本机 `connection.json`；`automation/overleaf/config.toml` 不需要写 `main/master`。
+
 ## Token 放在哪里
 
 Bridge Kit 不保存 Overleaf token，也不提供 `--token` 或 `--password` 参数。

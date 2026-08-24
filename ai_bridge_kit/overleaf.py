@@ -21,7 +21,6 @@ except ModuleNotFoundError:  # pragma: no cover - exercised only on older runtim
 
 CONFIG_SCHEMA_VERSION = 1
 CONNECTION_SCHEMA = "AI_BRIDGE_OVERLEAF_CONNECTION_V1"
-REMOTE_BRANCH = "master"
 OVERLEAF_BEGIN_MARKER = "<!-- ai-bridge-kit:overleaf:start -->"
 OVERLEAF_END_MARKER = "<!-- ai-bridge-kit:overleaf:end -->"
 SECRET_KEY_RE = re.compile(r"(token|password|secret|credential)", re.IGNORECASE)
@@ -36,7 +35,6 @@ class OverleafConfig:
     target: Path
     paper_root: PurePosixPath
     main_document: PurePosixPath
-    remote_branch: str
     exclude_paths: tuple[PurePosixPath, ...]
 
     @property
@@ -221,11 +219,8 @@ def load_config(target: Path) -> OverleafConfig:
         raise OverleafError(f"unsupported schema_version: {raw.get('schema_version')}")
     paper_root = _safe_posix_path(str(raw.get("paper_root") or ""), label="paper_root")
     main_document = normalize_main_document(str(raw.get("main_document") or ""), paper_root)
-    remote_branch = str(raw.get("remote_branch") or "")
-    if remote_branch != REMOTE_BRANCH:
-        raise OverleafError("remote_branch must be exactly 'master' in Overleaf Bridge v0.6")
     exclude_paths = normalize_exclude_paths(raw.get("exclude_paths", []), paper_root)
-    cfg = OverleafConfig(target, paper_root, main_document, remote_branch, exclude_paths)
+    cfg = OverleafConfig(target, paper_root, main_document, exclude_paths)
     validate_config_paths(cfg)
     return cfg
 
@@ -254,12 +249,29 @@ def write_config(path: Path, *, paper_root: PurePosixPath, main_document: PurePo
             "schema_version = 1",
             f'paper_root = "{paper_root.as_posix()}"',
             f'main_document = "{main_document.as_posix()}"',
-            'remote_branch = "master"',
             "exclude_paths = []",
             "",
         ]
     )
     write_text(path, text)
+
+
+def migrate_legacy_config(path: Path) -> bool:
+    if not path.exists():
+        return False
+    original = read_text(path)
+    lines = []
+    changed = False
+    for line in original.splitlines():
+        stripped = line.split("#", 1)[0].strip()
+        if stripped.startswith("remote_branch") and "=" in stripped:
+            changed = True
+            continue
+        lines.append(line)
+    updated = "\n".join(lines).rstrip() + "\n"
+    if changed and updated != original:
+        write_text(path, updated)
+    return changed
 
 
 def install_agents_block(target: Path, cfg: OverleafConfig) -> str:
@@ -304,7 +316,10 @@ def install_overleaf(target: Path, *, paper_root: str, main_document: str = "mai
         write_config(cfg_path, paper_root=paper, main_document=main)
         actions.append(f"CREATE {cfg_path}")
     else:
-        actions.append(f"SKIP existing {cfg_path}")
+        if migrate_legacy_config(cfg_path):
+            actions.append(f"UPDATE remove legacy remote_branch from {cfg_path}")
+        else:
+            actions.append(f"SKIP existing {cfg_path}")
     cfg = load_config(target)
     source_readme = kit_root() / "templates" / "overleaf" / "README.md"
     readme_path = overleaf_root(target) / "README.md"
@@ -367,9 +382,74 @@ def locator_for_url(remote_url: str) -> str:
     return Path(remote_url).name or remote_url
 
 
+def validate_remote_branch_name(raw: str) -> str:
+    branch = raw.strip()
+    if not branch:
+        raise OverleafError("remote_branch must be a non-empty string")
+    if branch.startswith("-") or branch.endswith(".") or branch.endswith(".lock"):
+        raise OverleafError(f"invalid remote_branch: {branch}")
+    if branch.startswith("/") or branch.endswith("/") or ".." in branch or "@{" in branch:
+        raise OverleafError(f"invalid remote_branch: {branch}")
+    if any(ch in branch for ch in " ~^:?*[\\"):
+        raise OverleafError(f"invalid remote_branch: {branch}")
+    return branch
+
+
+def _branch_from_ref(ref: str) -> str | None:
+    prefix = "refs/heads/"
+    if not ref.startswith(prefix):
+        return None
+    return validate_remote_branch_name(ref[len(prefix) :])
+
+
+def _remote_git(args: list[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", *args],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+
+def resolve_remote_branch(remote_url: str) -> str:
+    safe_url = sanitize_remote_url(remote_url)
+    symref = _remote_git(["ls-remote", "--symref", safe_url, "HEAD"])
+    if symref.returncode == 0:
+        for line in symref.stdout.splitlines():
+            if not line.startswith("ref:"):
+                continue
+            parts = line.split()
+            if len(parts) >= 3 and parts[2] == "HEAD":
+                branch = _branch_from_ref(parts[1])
+                if branch:
+                    return branch
+    heads = _remote_git(["ls-remote", "--heads", safe_url])
+    if heads.returncode != 0:
+        message = (heads.stderr or symref.stderr or heads.stdout or "git ls-remote failed").strip()
+        raise OverleafError(message)
+    branches = []
+    for line in heads.stdout.splitlines():
+        parts = line.split()
+        if len(parts) >= 2:
+            branch = _branch_from_ref(parts[1])
+            if branch:
+                branches.append(branch)
+    unique = sorted(set(branches))
+    if len(unique) == 1:
+        return unique[0]
+    if not unique:
+        raise OverleafError("unable to resolve Overleaf remote branch; remote HEAD and heads are empty")
+    raise OverleafError(
+        "unable to resolve Overleaf remote branch; remote HEAD is not symbolic and multiple branches exist: "
+        + ", ".join(unique)
+    )
+
+
 def connection_payload(
     cfg: OverleafConfig,
     remote_url: str,
+    remote_branch: str,
     *,
     baseline: str | None = None,
     remote_commit: str | None = None,
@@ -380,7 +460,7 @@ def connection_payload(
     return {
         "schema": CONNECTION_SCHEMA,
         "remote_url": remote_url,
-        "remote_branch": cfg.remote_branch,
+        "remote_branch": validate_remote_branch_name(remote_branch),
         "paper_root": cfg.paper_root.as_posix(),
         "last_synced_digest": baseline if baseline is not None else existing.get("last_synced_digest"),
         "last_remote_commit": remote_commit if remote_commit is not None else existing.get("last_remote_commit"),
@@ -400,8 +480,7 @@ def load_connection(cfg: OverleafConfig) -> dict[str, Any]:
     if data.get("schema") != CONNECTION_SCHEMA:
         raise OverleafError("connection.json schema mismatch")
     remote_url = sanitize_remote_url(str(data.get("remote_url") or ""))
-    if data.get("remote_branch") != cfg.remote_branch:
-        raise OverleafError("connection remote_branch does not match config")
+    data["remote_branch"] = validate_remote_branch_name(str(data.get("remote_branch") or ""))
     data["remote_url"] = remote_url
     return data
 
@@ -418,7 +497,8 @@ def remote_branch_exists(mirror: Path, branch: str) -> bool:
     return bool(result.stdout.strip())
 
 
-def ensure_mirror(cfg: OverleafConfig, remote_url: str) -> Path:
+def ensure_mirror(cfg: OverleafConfig, remote_url: str, remote_branch: str) -> Path:
+    remote_branch = validate_remote_branch_name(remote_branch)
     mirror = mirror_path(cfg.target)
     mirror.parent.mkdir(parents=True, exist_ok=True)
     if not (mirror / ".git").exists():
@@ -437,11 +517,11 @@ def ensure_mirror(cfg: OverleafConfig, remote_url: str) -> Path:
         run_git(mirror, ["remote", "set-url", "origin", remote_url])
     run_git(mirror, ["config", "user.email", "ai-bridge-overleaf@example.invalid"])
     run_git(mirror, ["config", "user.name", "AI Bridge Overleaf"])
-    if remote_branch_exists(mirror, cfg.remote_branch):
-        run_git(mirror, ["fetch", "origin", cfg.remote_branch])
-        run_git(mirror, ["checkout", "-B", cfg.remote_branch, f"origin/{cfg.remote_branch}"])
+    if remote_branch_exists(mirror, remote_branch):
+        run_git(mirror, ["fetch", "origin", remote_branch])
+        run_git(mirror, ["checkout", "-B", remote_branch, f"origin/{remote_branch}"])
     else:
-        run_git(mirror, ["checkout", "-B", cfg.remote_branch])
+        run_git(mirror, ["checkout", "-B", remote_branch])
     return mirror
 
 
@@ -541,8 +621,8 @@ def commit_mirror_if_needed(mirror: Path, message: str) -> bool:
     return True
 
 
-def push_mirror(cfg: OverleafConfig, mirror: Path) -> None:
-    run_git(mirror, ["push", "origin", cfg.remote_branch])
+def push_mirror(mirror: Path, remote_branch: str) -> None:
+    run_git(mirror, ["push", "origin", validate_remote_branch_name(remote_branch)])
 
 
 def publication_dirty_paths(cfg: OverleafConfig) -> list[str]:
@@ -632,7 +712,6 @@ def validate_overleaf(target: Path) -> tuple[list[str], int]:
         lines.append(f"OK installed: {config_path(cfg.target)}")
         lines.append(f"OK paper_root: {cfg.paper_root}")
         lines.append(f"OK main_document: {cfg.main_document}")
-        lines.append("OK remote_branch: master")
         errors.extend(validate_target_remotes(cfg))
         errors.extend(validate_symlinks(cfg))
         try:
@@ -643,8 +722,9 @@ def validate_overleaf(target: Path) -> tuple[list[str], int]:
         connection = connection_path(cfg.target)
         if connection.exists():
             try:
-                load_connection(cfg)
+                conn = load_connection(cfg)
                 lines.append("OK connection.json contains no secret-like fields")
+                lines.append(f"OK remote_branch: {conn['remote_branch']}")
             except OverleafError as exc:
                 errors.append(str(exc))
         lines.extend(latex_escape_warnings(cfg))
@@ -662,25 +742,27 @@ def validate_overleaf(target: Path) -> tuple[list[str], int]:
 def connect_overleaf(target: Path, *, remote_url: str, bootstrap: bool = False) -> list[str]:
     cfg = load_config(target)
     safe_url = sanitize_remote_url(remote_url)
+    remote_branch = resolve_remote_branch(safe_url)
     operation = "bootstrap" if bootstrap else "connect"
     require_clean_publication_root(cfg, operation=operation)
-    mirror = ensure_mirror(cfg, safe_url)
+    mirror = ensure_mirror(cfg, safe_url, remote_branch)
     local = local_projection(cfg)
     remote = remote_projection(cfg, mirror)
-    actions = [f"Mirror: {mirror}", f"Remote: {locator_for_url(safe_url)}"]
+    actions = [f"Mirror: {mirror}", f"Remote: {locator_for_url(safe_url)}", f"Remote branch: {remote_branch}"]
     if bootstrap:
         if remote.files:
             raise OverleafError("bootstrap refused: Overleaf remote is not empty")
         materialize_projection(mirror, local)
         committed = commit_mirror_if_needed(mirror, "Initialize Overleaf manuscript projection")
         if committed:
-            push_mirror(cfg, mirror)
+            push_mirror(mirror, remote_branch)
         baseline = local.digest
         save_connection(
             cfg,
             connection_payload(
                 cfg,
                 safe_url,
+                remote_branch,
                 baseline=baseline,
                 remote_commit=current_commit_or_unknown(mirror),
                 local_locator=current_commit_or_unknown(cfg.target),
@@ -696,6 +778,7 @@ def connect_overleaf(target: Path, *, remote_url: str, bootstrap: bool = False) 
         connection_payload(
             cfg,
             safe_url,
+            remote_branch,
             baseline=local.digest,
             remote_commit=current_commit_or_unknown(mirror),
             local_locator=current_commit_or_unknown(cfg.target),
@@ -710,7 +793,7 @@ def push_overleaf(target: Path) -> list[str]:
     cfg = load_config(target)
     conn = load_connection(cfg)
     require_clean_publication_root(cfg, operation="push")
-    mirror = ensure_mirror(cfg, conn["remote_url"])
+    mirror = ensure_mirror(cfg, conn["remote_url"], conn["remote_branch"])
     local = local_projection(cfg)
     remote = remote_projection(cfg, mirror)
     condition = classify_sync(local.digest, remote.digest, conn.get("last_synced_digest"))
@@ -725,6 +808,7 @@ def push_overleaf(target: Path) -> list[str]:
                 connection_payload(
                     cfg,
                     conn["remote_url"],
+                    conn["remote_branch"],
                     baseline=local.digest,
                     remote_commit=current_commit_or_unknown(mirror),
                     local_locator=current_commit_or_unknown(cfg.target),
@@ -738,12 +822,13 @@ def push_overleaf(target: Path) -> list[str]:
     materialize_projection(mirror, local)
     committed = commit_mirror_if_needed(mirror, "Publish manuscript projection from Bridge Kit")
     if committed:
-        push_mirror(cfg, mirror)
+        push_mirror(mirror, conn["remote_branch"])
     save_connection(
         cfg,
         connection_payload(
             cfg,
             conn["remote_url"],
+            conn["remote_branch"],
             baseline=local.digest,
             remote_commit=current_commit_or_unknown(mirror),
             local_locator=current_commit_or_unknown(cfg.target),
@@ -756,7 +841,7 @@ def push_overleaf(target: Path) -> list[str]:
 def pull_overleaf(target: Path) -> list[str]:
     cfg = load_config(target)
     conn = load_connection(cfg)
-    mirror = ensure_mirror(cfg, conn["remote_url"])
+    mirror = ensure_mirror(cfg, conn["remote_url"], conn["remote_branch"])
     require_clean_publication_root(cfg, operation="pull")
     local = local_projection(cfg)
     remote = remote_projection(cfg, mirror)
@@ -772,6 +857,7 @@ def pull_overleaf(target: Path) -> list[str]:
                 connection_payload(
                     cfg,
                     conn["remote_url"],
+                    conn["remote_branch"],
                     baseline=local.digest,
                     remote_commit=current_commit_or_unknown(mirror),
                     local_locator=current_commit_or_unknown(cfg.target),
@@ -800,6 +886,7 @@ def pull_overleaf(target: Path) -> list[str]:
         connection_payload(
             cfg,
             conn["remote_url"],
+            conn["remote_branch"],
             baseline=remote.digest,
             remote_commit=current_commit_or_unknown(mirror),
             local_locator=current_commit_or_unknown(cfg.target),
@@ -826,8 +913,9 @@ def status_overleaf(target: Path) -> list[str]:
         return lines
     lines.append("connected: true")
     lines.append(f"remote: {locator_for_url(conn['remote_url'])}")
+    lines.append(f"remote_branch: {conn['remote_branch']}")
     try:
-        mirror = ensure_mirror(cfg, conn["remote_url"])
+        mirror = ensure_mirror(cfg, conn["remote_url"], conn["remote_branch"])
         local = local_projection(cfg)
         remote = remote_projection(cfg, mirror)
         condition = classify_sync(local.digest, remote.digest, conn.get("last_synced_digest"))

@@ -238,7 +238,6 @@ automation/overleaf/config.toml
 schema_version = 1
 paper_root = "paper/manuscript"
 main_document = "main.tex"
-remote_branch = "master"
 exclude_paths = []
 ```
 
@@ -250,6 +249,10 @@ ai-bridge overleaf connect \
   --remote-url https://git@git.overleaf.com/<PROJECT_ID> \
   --bootstrap
 ```
+
+Overleaf 项目可能使用 `main`、`master` 或其他默认分支。Bridge Kit 会在
+`connect` 时读取该项目实际声明的远端分支，并把结果保存在本机
+`connection.json` 中；科研仓库的 `config.toml` 不需要配置 `main/master`。
 
 Overleaf 的 token 不写入本仓库，也不写入 `connection.json`；认证交给正常的 Git credential helper。
 

@@ -55,32 +55,39 @@ class OverleafBridgeTests(unittest.TestCase):
         git_call(target, "commit", "-m", "initial")
         return target
 
-    def make_empty_remote(self) -> Path:
+    def make_empty_remote(self, branch: str = "master") -> Path:
         remote = self.root / f"overleaf-{len(list(self.root.glob('overleaf-*.git')))}.git"
-        git_call(self.root, "init", "--bare", "--initial-branch", "master", str(remote))
+        git_call(self.root, "init", "--bare", "--initial-branch", branch, str(remote))
+        work = self.root / f"remote-empty-{len(list(self.root.glob('remote-empty-*')))}"
+        git_call(self.root, "clone", str(remote), str(work))
+        git_call(work, "config", "user.email", "remote@example.org")
+        git_call(work, "config", "user.name", "Remote User")
+        git_call(work, "checkout", "-B", branch)
+        git_call(work, "commit", "--allow-empty", "-m", "empty remote")
+        git_call(work, "push", "origin", branch)
         return remote
 
-    def make_seeded_remote(self, files: dict[str, str]) -> Path:
-        remote = self.make_empty_remote()
+    def make_seeded_remote(self, files: dict[str, str], branch: str = "master") -> Path:
+        remote = self.make_empty_remote(branch=branch)
         work = self.root / f"remote-work-{len(list(self.root.glob('remote-work-*')))}"
         git_call(self.root, "clone", str(remote), str(work))
         git_call(work, "config", "user.email", "remote@example.org")
         git_call(work, "config", "user.name", "Remote User")
-        git_call(work, "checkout", "-B", "master")
+        git_call(work, "checkout", "-B", branch)
         for rel, text in files.items():
             path = work / rel
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(text, encoding="utf-8")
         git_call(work, "add", ".")
         git_call(work, "commit", "-m", "seed remote")
-        git_call(work, "push", "origin", "master")
+        git_call(work, "push", "origin", branch)
         return remote
 
-    def remote_files(self, remote: Path) -> list[str]:
-        return git(remote, "ls-tree", "-r", "--name-only", "master").splitlines()
+    def remote_files(self, remote: Path, branch: str = "master") -> list[str]:
+        return git(remote, "ls-tree", "-r", "--name-only", branch).splitlines()
 
-    def remote_text(self, remote: Path, rel: str) -> str:
-        return git(remote, "show", f"master:{rel}")
+    def remote_text(self, remote: Path, rel: str, branch: str = "master") -> str:
+        return git(remote, "show", f"{branch}:{rel}")
 
     def install(self, target: Path) -> None:
         actions = overleaf.install_overleaf(target, paper_root="paper/manuscript")
@@ -185,12 +192,12 @@ class OverleafBridgeTests(unittest.TestCase):
         with self.assertRaisesRegex(overleaf.OverleafError, "remote is ahead"):
             overleaf.push_overleaf(target)
 
-    def make_remote_edit(self, remote: Path, updates: dict[str, str | None]) -> None:
+    def make_remote_edit(self, remote: Path, updates: dict[str, str | None], branch: str = "master") -> None:
         work = self.root / f"collab-{len(list(self.root.glob('collab-*')))}"
         git_call(self.root, "clone", str(remote), str(work))
         git_call(work, "config", "user.email", "remote@example.org")
         git_call(work, "config", "user.name", "Remote User")
-        git_call(work, "checkout", "master")
+        git_call(work, "checkout", branch)
         for rel, text in updates.items():
             path = work / rel
             if text is None:
@@ -200,7 +207,7 @@ class OverleafBridgeTests(unittest.TestCase):
                 path.write_text(text, encoding="utf-8")
         git_call(work, "add", "-A")
         git_call(work, "commit", "-m", "remote edit")
-        git_call(work, "push", "origin", "master")
+        git_call(work, "push", "origin", branch)
 
     def test_pull_imports_remote_edit_add_delete_without_touching_outside_or_excludes(self) -> None:
         target = self.make_project()
@@ -314,15 +321,7 @@ class OverleafBridgeTests(unittest.TestCase):
                     overleaf.connect_overleaf(target, remote_url=str(remote), bootstrap=True)
 
                 self.assertFalse(overleaf.connection_path(target).exists())
-                refs = subprocess.run(
-                    ["git", "show-ref", "--heads"],
-                    cwd=remote,
-                    text=True,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.DEVNULL,
-                    check=False,
-                )
-                self.assertEqual(refs.stdout.strip(), "")
+                self.assertEqual(self.remote_files(remote), [])
 
     def test_connect_without_bootstrap_refuses_dirty_publication_root(self) -> None:
         target = self.make_project()
@@ -427,6 +426,105 @@ class OverleafBridgeTests(unittest.TestCase):
         conn = json.loads(overleaf.connection_path(target).read_text(encoding="utf-8"))
         cfg = overleaf.load_config(target)
         self.assertEqual(conn["last_synced_digest"], overleaf.local_projection(cfg).digest)
+
+    def test_connect_bootstrap_resolves_main_remote_without_creating_master(self) -> None:
+        target = self.make_project()
+        remote = self.make_empty_remote(branch="main")
+        self.install(target)
+
+        self.connect_bootstrap(target, remote)
+
+        conn = json.loads(overleaf.connection_path(target).read_text(encoding="utf-8"))
+        self.assertEqual(conn["remote_branch"], "main")
+        self.assertEqual(self.remote_files(remote, branch="main"), ["AGENTS.md", "main.pdf", "main.tex", "sections/intro.tex"])
+        heads = git(remote, "for-each-ref", "--format=%(refname:short)", "refs/heads").splitlines()
+        self.assertEqual(heads, ["main"])
+
+    def test_connect_bootstrap_resolves_master_remote(self) -> None:
+        target = self.make_project()
+        remote = self.make_empty_remote(branch="master")
+        self.install(target)
+
+        self.connect_bootstrap(target, remote)
+
+        conn = json.loads(overleaf.connection_path(target).read_text(encoding="utf-8"))
+        self.assertEqual(conn["remote_branch"], "master")
+        self.assertEqual(self.remote_files(remote, branch="master"), ["AGENTS.md", "main.pdf", "main.tex", "sections/intro.tex"])
+
+    def test_connect_bootstrap_allows_arbitrary_remote_branch_name(self) -> None:
+        target = self.make_project()
+        remote = self.make_empty_remote(branch="project")
+        self.install(target)
+
+        self.connect_bootstrap(target, remote)
+
+        conn = json.loads(overleaf.connection_path(target).read_text(encoding="utf-8"))
+        self.assertEqual(conn["remote_branch"], "project")
+        self.assertEqual(self.remote_files(remote, branch="project"), ["AGENTS.md", "main.pdf", "main.tex", "sections/intro.tex"])
+        self.assertFalse(git(remote, "for-each-ref", "--format=%(refname:short)", "refs/heads/master"))
+
+    def test_resolve_remote_branch_uses_symbolic_head_when_multiple_heads_exist(self) -> None:
+        remote = self.make_empty_remote(branch="main")
+        work = self.root / "old-branch-work"
+        git_call(self.root, "clone", str(remote), str(work))
+        git_call(work, "config", "user.email", "remote@example.org")
+        git_call(work, "config", "user.name", "Remote User")
+        git_call(work, "checkout", "-B", "old")
+        git_call(work, "commit", "--allow-empty", "-m", "old branch")
+        git_call(work, "push", "origin", "old")
+
+        self.assertEqual(overleaf.resolve_remote_branch(str(remote)), "main")
+
+    def test_resolve_remote_branch_fails_when_multiple_heads_and_head_not_symbolic(self) -> None:
+        remote = self.make_empty_remote(branch="main")
+        work = self.root / "detached-head-work"
+        git_call(self.root, "clone", str(remote), str(work))
+        git_call(work, "config", "user.email", "remote@example.org")
+        git_call(work, "config", "user.name", "Remote User")
+        git_call(work, "checkout", "-B", "old")
+        git_call(work, "commit", "--allow-empty", "-m", "old branch")
+        git_call(work, "push", "origin", "old")
+        main_commit = git(remote, "rev-parse", "main")
+        (remote / "HEAD").write_text(main_commit + "\n", encoding="utf-8")
+
+        with self.assertRaisesRegex(overleaf.OverleafError, "multiple branches"):
+            overleaf.resolve_remote_branch(str(remote))
+
+    def test_push_and_pull_use_resolved_main_branch(self) -> None:
+        target = self.make_project()
+        remote = self.make_empty_remote(branch="main")
+        self.install(target)
+        self.connect_bootstrap(target, remote)
+
+        (target / "paper" / "manuscript" / "main.tex").write_text("Local update\n", encoding="utf-8")
+        git_call(target, "add", "paper/manuscript/main.tex")
+        git_call(target, "commit", "-m", "local update")
+        overleaf.push_overleaf(target)
+        self.assertEqual(self.remote_text(remote, "main.tex", branch="main"), "Local update")
+        heads = git(remote, "for-each-ref", "--format=%(refname:short)", "refs/heads").splitlines()
+        self.assertEqual(heads, ["main"])
+
+        self.make_remote_edit(remote, {"main.tex": "Remote update\n"}, branch="main")
+        overleaf.pull_overleaf(target)
+        self.assertEqual((target / "paper" / "manuscript" / "main.tex").read_text(encoding="utf-8"), "Remote update\n")
+
+    def test_install_migrates_legacy_tracked_remote_branch_config(self) -> None:
+        target = self.make_project()
+        self.install(target)
+        config = target / "automation" / "overleaf" / "config.toml"
+        config.write_text(
+            config.read_text(encoding="utf-8").replace("exclude_paths = []", 'remote_branch = "master"\nexclude_paths = ["AGENTS.md", "main.pdf"]'),
+            encoding="utf-8",
+        )
+
+        actions = overleaf.install_overleaf(target, paper_root="paper/manuscript")
+
+        migrated = config.read_text(encoding="utf-8")
+        self.assertTrue(any("legacy remote_branch" in item for item in actions))
+        self.assertIn('paper_root = "paper/manuscript"', migrated)
+        self.assertIn('main_document = "main.tex"', migrated)
+        self.assertIn('exclude_paths = ["AGENTS.md", "main.pdf"]', migrated)
+        self.assertNotIn("remote_branch", migrated)
 
     def test_token_like_urls_are_rejected_without_leakage(self) -> None:
         target = self.make_project()

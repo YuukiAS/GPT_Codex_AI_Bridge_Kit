@@ -119,6 +119,10 @@ ai-bridge overleaf connect \
   --bootstrap
 ```
 
+新旧 Overleaf 项目可能使用不同默认分支。Bridge Kit 会在 `connect` 时读取
+Overleaf Git remote 实际声明的分支，不需要也不应该在科研仓库配置
+`main/master`。
+
 日常使用：
 
 ```bash

@@ -66,7 +66,8 @@ The implementation must follow current Overleaf Git Integration behavior:
 
 - use Overleaf **Git Integration**, not GitHub Synchronization, because GitHub Synchronization works at repository level and cannot expose only a monorepo subdirectory;
 - Overleaf Git Integration exposes each project as a Git remote and supports push/pull;
-- Overleaf permits one linear Git branch, currently hard-coded as `master`;
+- Overleaf permits one linear Git branch per project; Bridge Kit resolves the
+  actual branch from the remote during `connect`;
 - authentication is token-based; Git username is `git` and the authentication token is used as the password;
 - tokens are secrets and must never be committed, printed, accepted in a command-line flag, or persisted by Bridge Kit;
 - users may rely on their normal Git credential helper for token persistence.
@@ -134,7 +135,6 @@ Suggested `config.toml` schema:
 schema_version = 1
 paper_root = "paper/manuscript"
 main_document = "main.tex"
-remote_branch = "master"
 
 # Repository-relative paths inside paper_root that are intentionally local-only.
 # These files are not published to Overleaf and are preserved during pull.
@@ -147,7 +147,8 @@ Rules:
 - absolute paths and path traversal (`..`) are invalid;
 - resolved paths must remain inside the repository;
 - `main_document` must resolve inside `paper_root`;
-- `remote_branch` is fixed to `master` in v0.6 and validation rejects any other value;
+- the Overleaf remote branch is resolved during `connect` from the actual Git
+  remote and is stored only in machine-local `connection.json`;
 - configuration contains no remote URL and no secret;
 - installation is idempotent and non-destructive;
 - existing unrelated `AGENTS.md` content must be preserved.
@@ -208,7 +209,7 @@ Recommended behavior:
 4. materialize that set into the machine-local Overleaf mirror;
 5. delete previously published files that are no longer in the current publication set;
 6. leave `.git/` untouched;
-7. commit the mirror change and push the mirror's `master` branch to Overleaf.
+7. commit the mirror change and push the mirror's resolved remote branch to Overleaf.
 
 Therefore:
 
@@ -276,7 +277,7 @@ local != baseline and remote != baseline
 5. if remote is ahead, refuse and instruct the user/Codex to pull first;
 6. if diverged, refuse without changing either side;
 7. if already synced/equivalent, perform no unnecessary commit;
-8. if only local is ahead, mirror the local publication set, commit, push to Overleaf `master`, then update the baseline.
+8. if only local is ahead, mirror the local publication set, commit, push to the resolved Overleaf branch, then update the baseline.
 
 No force push in normal operation.
 
@@ -348,7 +349,7 @@ Authentication failures must be reported as authentication failures. Do not retr
 - schema version supported;
 - `paper_root` is safe and exists;
 - `main_document` exists inside `paper_root`;
-- remote branch is exactly `master`;
+- tracked config has no remote branch; when connected, `connection.json` stores a non-empty resolved remote branch;
 - excluded paths are safe descendants of `paper_root`;
 - no configured publication path escapes through symlink/path traversal;
 - target repository `origin` is not modified by the bridge;

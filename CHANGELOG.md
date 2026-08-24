@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Fix Overleaf Bridge branch compatibility by resolving the project remote
+  branch during `connect` instead of storing a fixed `master` branch in tracked
+  repository config. The resolved branch remains machine-local connection
+  metadata and can be `main`, `master`, or another branch declared by Overleaf.
+
 ## 0.6.0
 
 - Add optional project-level Overleaf Bridge with
