@@ -99,3 +99,33 @@ ai-bridge validate --target /path/to/project
 ```
 
 输出 `OK` 表示结构和任务文件基本合规。输出 `ERROR` 或 `WARN` 时，先修正路径、frontmatter 或命名，再交给 Codex 执行。
+
+## 7. 可选：同步论文目录到 Overleaf
+
+如果项目是科研 monorepo，Codex 仍应在整个 repository 根目录工作；Overleaf 只应接收论文 publication root，例如 `paper/manuscript`。Overleaf 本身不能从一个 GitHub monorepo 中只 Pull 某个子目录，Overleaf Bridge 是在本机把该目录投影到 Overleaf Git project。
+
+```bash
+ai-bridge overleaf install \
+  --target /path/to/research-repo \
+  --paper-root paper/manuscript
+```
+
+在 Overleaf 创建 Blank Project、删除默认 `main.tex` 并取得 Git URL 后：
+
+```bash
+ai-bridge overleaf connect \
+  --target /path/to/research-repo \
+  --remote-url https://git@git.overleaf.com/<PROJECT_ID> \
+  --bootstrap
+```
+
+日常使用：
+
+```bash
+ai-bridge overleaf status --target /path/to/research-repo
+ai-bridge overleaf push --target /path/to/research-repo
+ai-bridge overleaf pull --target /path/to/research-repo
+ai-bridge overleaf validate --target /path/to/research-repo
+```
+
+`push` 会拒绝覆盖未拉取的 Overleaf 远端修改；`pull` 会把 Overleaf 改动留在本地 working tree，不会自动 commit 或 `git push origin main`。Overleaf token 由 Git credential helper 处理，不写入 Bridge Kit config。

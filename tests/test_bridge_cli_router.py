@@ -33,6 +33,12 @@ class BridgeCliRouterTests(unittest.TestCase):
                 self.assertEqual(bridge_cli.main(["agent-flow", "install", "--target", str(target)]), 0)
             self.assertTrue((target / "automation" / "agent_flow" / "schema.json").exists())
 
+    def test_overleaf_routes_to_dedicated_cli_without_breaking_legacy(self) -> None:
+        with contextlib.redirect_stdout(io.StringIO()):
+            with self.assertRaises(SystemExit) as caught:
+                bridge_cli.main(["overleaf", "--help"])
+        self.assertEqual(caught.exception.code, 0)
+
 
 if __name__ == "__main__":
     unittest.main()

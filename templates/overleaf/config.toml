@@ -1,0 +1,5 @@
+schema_version = 1
+paper_root = "paper/manuscript"
+main_document = "main.tex"
+remote_branch = "master"
+exclude_paths = []

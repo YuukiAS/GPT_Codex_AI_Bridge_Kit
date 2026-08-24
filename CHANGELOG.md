@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+## 0.6.0
+
+- Add optional project-level Overleaf Bridge with
+  `ai-bridge overleaf install|connect|status|push|pull|validate`.
+- Keep Codex working in the whole research repository while publishing only the
+  configured manuscript `paper_root` into a machine-local Overleaf Git mirror.
+- Add baseline/local/remote content digest checks so push and pull fail closed
+  on remote-ahead or diverged manuscript edits instead of overwriting
+  collaborator changes.
+- Store Overleaf connection metadata under
+  `${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}/overleaf/<repo-id>/` while keeping
+  tokens out of tracked config, `connection.json`, CLI flags, and normal output.
+- Add local Git/bare-remote regression tests for bootstrap, projection
+  flattening, excludes, deletion, pull import, divergence, equivalent content,
+  token leakage, validation, and router compatibility.
+
 ## 0.5.4
 
 - Change the Shared Visual Review production default model from

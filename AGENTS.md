@@ -14,6 +14,7 @@ Bridge Kit 的能力按作用域分成机器层、项目层和任务层。真正
 ├── Lite Handoff                   default per repository
 ├── Reviewed Handoff               optional GPT-planned/reviewed workflow
 ├── Generic Notifier               optional
+├── Overleaf Bridge                optional manuscript publication mirror
 └── Agent-Flow Core                optional for high-risk repositories
 
 任务层
@@ -22,7 +23,7 @@ Bridge Kit 的能力按作用域分成机器层、项目层和任务层。真正
 └── Agent-Flow task                runtime instance, not installation
 ```
 
-配置前必须先确认用户要处理的是“新机器/新 Codex identity”“新 repository”“中档 Reviewed Handoff”“通知能力”还是“某个具体高风险任务”。不要因为用户说“把 Bridge Kit 配上”就静默安装全部可选层。
+配置前必须先确认用户要处理的是“新机器/新 Codex identity”“新 repository”“中档 Reviewed Handoff”“通知能力”“Overleaf 论文镜像能力”还是“某个具体高风险任务”。不要因为用户说“把 Bridge Kit 配上”就静默安装全部可选层。
 
 对既有 repository 做安装、升级或盘点时，必须先做真实 workflow inventory，再决定是否更新 repo 内模板。不要只按猜测目录或截图标签判断。至少检查这些标准位置和关键文件：
 
@@ -122,7 +123,7 @@ docs/
 .agents/skills/agent-task-executor/SKILL.md
 ```
 
-不要让 `ai-bridge init` 静默修改 `$CODEX_HOME`，不要静默安装 Reviewed Handoff、Notifier 或 Agent-Flow。Host Policy 和 repo Handoff 是不同生命周期。
+不要让 `ai-bridge init` 静默修改 `$CODEX_HOME`，不要静默安装 Reviewed Handoff、Notifier、Overleaf Bridge 或 Agent-Flow。Host Policy 和 repo Handoff 是不同生命周期。
 
 Lite task 的默认入口仍是：
 
@@ -164,7 +165,48 @@ ai-bridge notifier send results/<task_key>/notification_brief.json
 
 不要把 tmux、systemd、长期 polling watcher 当作 Notifier 的默认安装要求。`once` / `run` 只是可选兼容方式。
 
-## 5. Reviewed Handoff：中等风险任务的默认独立复核模式
+## 5. Overleaf Bridge：只有需要论文 publication mirror 时配置
+
+Overleaf Bridge 是项目层可选能力，不是 Handoff task、Reviewed Handoff、Agent-Flow、watcher、Scheduled Task 或新的 role。它用于科研 monorepo：Codex 仍在整个 repository 根目录读取代码、分析、结果、docs 和论文；Overleaf 只接收配置的 `paper_root`。
+
+Overleaf 本身不能从一个 GitHub monorepo 中只 Pull 某个子目录。Bridge Kit 的正确语义是：在机器本地维护独立 Overleaf Git mirror，并把 consumer repo 中配置的 manuscript publication root 投影进去。不要把文档写成“Overleaf 从 GitHub 拉取 paper folder”。
+
+consumer repo 只安装：
+
+```text
+automation/overleaf/
+├── README.md
+└── config.toml
+```
+
+并在根 `AGENTS.md` 维护一个 Overleaf managed block。机器本地 state 放在：
+
+```text
+${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}/overleaf/<repo-id>/
+├── connection.json
+└── mirror/
+```
+
+`mirror/` 是 Overleaf Git project 的本地 clone；`connection.json` 可以保存 Overleaf Git URL、baseline digest、remote commit locator、local locator 和 managed paths，但不得保存 authentication token。
+
+常用命令：
+
+```bash
+ai-bridge overleaf install --target /path/to/repo --paper-root paper/manuscript
+ai-bridge overleaf connect --target /path/to/repo --remote-url https://git@git.overleaf.com/<PROJECT_ID> --bootstrap
+ai-bridge overleaf status --target /path/to/repo
+ai-bridge overleaf push --target /path/to/repo
+ai-bridge overleaf pull --target /path/to/repo
+ai-bridge overleaf validate --target /path/to/repo
+```
+
+不得把 Overleaf 当作科研 repo 的第二个 remote。`install/connect/status/push/pull/validate` 不得修改 consumer repo 的 `origin`、branch topology、upstream 或 remote list，不得执行 force push，不得创建 branch/PR/tag/release。正常 operation 所依赖的 Overleaf remote 只存在于机器本地 mirror。
+
+认证边界必须保持：不添加 `--token`、`--password` 参数；不把 token 写进 URL、`connection.json`、tracked config、README 示例、日志或异常；不实现 credential database；不降级到旧账号密码认证。真实访问 Overleaf 时让 Git 正常请求 token，并由用户自己的 Git credential helper 处理后续持久化。
+
+同步安全优先级高于便利性。必须维护 baseline digest，并在每次 push/pull 前比较 `baseline`、`local`、`remote`：remote ahead 拒绝 push；local ahead 拒绝 pull；双边变化且内容不同为 diverged，必须 fail closed；local 与 remote 等价时只刷新 baseline，不制造垃圾 commit。`pull` 只把 Overleaf 内容导入 `paper_root`，只删除 Bridge 曾管理的 publication files，保留 `exclude_paths`，不得修改 `paper_root` 外任何文件，也不得自动 commit 或 `git push origin main`。
+
+## 6. Reviewed Handoff：中等风险任务的默认独立复核模式
 
 当任务需要 GPT 先做产品/语义/架构取舍、Codex 执行后再由独立 GPT 审核，但不需要 Agent-Flow 的独立合同、Verifier 和 Final Critic 时，使用 Reviewed Handoff。
 
@@ -233,7 +275,7 @@ Reviewed Handoff v0.5 的权威规格：
 docs/V0_5_REVIEWED_HANDOFF_IMPLEMENTATION_SPEC.md
 ```
 
-## 6. Agent-Flow Core：仅对高风险 repository 显式安装
+## 7. Agent-Flow Core：仅对高风险 repository 显式安装
 
 只有当任务需要独立合同审计、独立 Verifier、Stable Review Snapshot、Final Critic 和严格 human gate 时，才在 repository 叠加 Agent-Flow。
 
@@ -291,7 +333,7 @@ docs/AGENT_FLOW_V3_POST_CARE_EXTRACTION_DECISIONS.md
 docs/CARE_AGENT_FLOW_V3_POSTMORTEM_20260811.md
 ```
 
-## 7. Agent-Flow task：这是运行实例，不是安装层
+## 8. Agent-Flow task：这是运行实例，不是安装层
 
 在 repository 已安装 Agent-Flow 后，只有出现一项具体高风险任务时才初始化 task：
 
@@ -305,7 +347,7 @@ ai-bridge agent-flow task init \
 
 如果没有一个具体的高风险 objective，不要为了“预先配置好”而创建空 Agent-Flow task。
 
-## 8. 安装决策默认值
+## 9. 安装决策默认值
 
 当用户只说“在新服务器把 Bridge Kit 配好”，默认完成 package + Host Policy，并验证 Host Policy。不要顺便初始化任意 repository。
 
@@ -315,11 +357,13 @@ ai-bridge agent-flow task init \
 
 当用户明确说“这个项目需要终态通知”，在所选 workflow 基础上配置 Notifier。
 
+当用户明确说“把论文同步到 Overleaf”“安装 Overleaf Bridge”或等价表达时，在所选 repository 中配置 Overleaf Bridge。若 `paper_root`、`main_document`、真实 Overleaf project URL 或首次接入方向会实质改变论文协作语义，应先确认；不要自行选择 `prefer-local` / `prefer-remote` 或把整个 GitHub repo 导入 Overleaf。
+
 当用户明确要求 Agent-Flow，或任务明显属于高风险且用户已经选择 Agent-Flow 工作方式时，再安装 Agent-Flow Core。若是否升级到 Agent-Flow 会实质改变工作流，应向用户确认，而不是自行决定。
 
 当用户说“用 Agent-Flow 做这次 XXX”，如果 repository 尚未安装 Agent-Flow，则先安装/验证 Agent-Flow Core，再为 XXX 创建 task；如果已经安装，则只创建或复用对应 task，不要重复安装整个 Core。
 
-## 9. Git 与 branch 规则
+## 10. Git 与 branch 规则
 
 在本仓库及通过本 Kit 管理的 repository 中，默认继续当前 branch。当前已选 `main` 分支上的 `git fetch origin main`、clean worktree 下的 `git pull --ff-only origin main`、task-owned 文件 staging、普通 commit 和 `git push origin main` 是预授权开发动作；其他明确获授权的普通 `origin` push 可按项目规则执行。未经用户明确授权，不得执行任何会创建、切换、checkout、重命名或删除 branch 的命令，包括 `git switch`、`git switch -c`、`git checkout`、`git checkout -b`、`git branch <new>`、`git branch -d/-D/-m`、通过 worktree 创建或选择 branch，或把新 remote branch / upstream 当作“不推当前 branch”的替代方案。
 
@@ -327,7 +371,7 @@ Reviewed Handoff watcher 只能同步和使用用户已经授权且当前 checko
 
 当前已选 `main` 分支上的安全同步、task-owned staging、普通 commit 和 `origin/main` push 可按 Host Policy 执行。不得自动 rebase/autostash pull、force push、`--force-with-lease`、删除远端 branch/tag、设置/改变 upstream、创建新远端分支、reset/clean/restore 用户工作、添加/删除/重定向 remote。
 
-## 10. 修改本仓库时的文档规则
+## 11. 修改本仓库时的文档规则
 
 根 `README.md` 是写给人的。默认必须使用中文自然段落解释整体模型、安装边界和用户路径；不要把 README 写成大量英文协议条款、控制台日志或机器 schema dump。代码、命令、路径、配置键、状态名、API 名称等技术字面量保持英文即可。
 
@@ -335,7 +379,7 @@ Reviewed Handoff watcher 只能同步和使用用户已经授权且当前 checko
 
 如果 README 与实现发生冲突，应修 README；Reviewed Handoff 行为与 `docs/V0_5_REVIEWED_HANDOFF_IMPLEMENTATION_SPEC.md` 冲突时优先修实现；Agent-Flow 行为与 `docs/V0_4_AGENT_FLOW_IMPLEMENTATION_SPEC.md` 冲突时也优先按规格修实现，除非用户明确改变了架构决策。
 
-## 11. 兼容性和发布
+## 12. 兼容性和发布
 
 任何新能力都必须保持以下旧入口可用：
 
@@ -347,6 +391,7 @@ ai-bridge prompt
 ai-bridge where
 ai-bridge host ...
 ai-bridge notifier ...
+ai-bridge overleaf ...
 ai-bridge agent-flow ...
 ```
 
@@ -357,6 +402,6 @@ ai-bridge reviewed-handoff ...
 ai-bridge reviewed-handoff watcher ...
 ```
 
-Lite Handoff 不能因为 Reviewed Handoff 或 Agent-Flow 演进而变复杂。Host Policy、Lite、Reviewed Handoff、Notifier、Agent-Flow 彼此保持清晰边界，新增一层不得静默改变其他层。
+Lite Handoff 不能因为 Reviewed Handoff、Overleaf Bridge 或 Agent-Flow 演进而变复杂。Host Policy、Lite、Reviewed Handoff、Notifier、Overleaf Bridge、Agent-Flow 彼此保持清晰边界，新增一层不得静默改变其他层。
 
 发布前必须运行现有回归测试和对应新功能测试。没有真实 GitHub Actions green evidence 时，不要把“本地测试通过”描述成“远端 CI 已通过”。稳定 tag 不得移动或覆盖；没有用户授权时不要创建新的 release tag。

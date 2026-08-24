@@ -12,6 +12,7 @@
 ├── Lite Handoff                   每个正式项目默认安装
 ├── Reviewed Handoff               需要 GPT 规划 + 独立复核时可选
 ├── Generic Notifier               需要终态邮件时可选安装
+├── Overleaf Bridge                需要把论文子目录同步到 Overleaf 时可选
 └── Agent-Flow Core                高风险项目显式安装
 
 任务层
@@ -57,7 +58,20 @@ ai-bridge agent-flow install --target /path/to/project
 ai-bridge agent-flow validate --target /path/to/project
 ```
 
-换句话说，推荐默认路径是 **Host Policy + Lite Handoff**。Reviewed Handoff、Notifier 和 Agent-Flow 都是按需叠加的能力，不应静默安装。
+如果是科研 monorepo，并且只想把论文目录同步给 Overleaf，可以叠加 Overleaf Bridge。Overleaf 本身不能从一个 GitHub monorepo 中只 Pull 某个子目录；Overleaf Bridge 是在本地把配置的 manuscript publication root 投影到 Overleaf Git project。
+
+```bash
+ai-bridge overleaf install \
+  --target /path/to/research-repo \
+  --paper-root paper/manuscript
+
+ai-bridge overleaf connect \
+  --target /path/to/research-repo \
+  --remote-url https://git@git.overleaf.com/<PROJECT_ID> \
+  --bootstrap
+```
+
+换句话说，推荐默认路径是 **Host Policy + Lite Handoff**。Reviewed Handoff、Notifier、Overleaf Bridge 和 Agent-Flow 都是按需叠加的能力，不应静默安装。
 
 ## Host Policy：一台机器上的 Codex 长期怎么工作
 
@@ -156,7 +170,63 @@ results/<task_key>/result.md
 
 Lite 并不等于“只能做小修改”。它仍然支持 Controller task、审计、自动 commit/push 等现有 Handoff 能力。它与更重模式的主要区别不是代码量，而是证明和独立复核负担。
 
-`ai-bridge init` 只管理 repository 内的 Handoff 文件。它可以显示 Host Policy 状态，但不会静默修改 `$CODEX_HOME`；同样也不会自动安装 Reviewed Handoff、Notifier 或 Agent-Flow。
+`ai-bridge init` 只管理 repository 内的 Handoff 文件。它可以显示 Host Policy 状态，但不会静默修改 `$CODEX_HOME`；同样也不会自动安装 Reviewed Handoff、Notifier、Overleaf Bridge 或 Agent-Flow。
+
+## Overleaf Bridge：只把论文 publication root 投影到 Overleaf
+
+Overleaf Bridge 是 v0.6 新增的可选项目层能力，面向常见科研 monorepo：代码、数据、结果、项目文档和论文在同一个 GitHub repository 中，但 Overleaf 只应该看到 `paper/manuscript` 这样的论文 publication root。
+
+它不把 Overleaf 加成 consumer repository 的第二个 remote，也不修改 `origin`、branch topology 或 GitHub workflow。Bridge Kit 在机器本地维护独立状态：
+
+```text
+${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}/overleaf/<repo-id>/
+├── connection.json
+└── mirror/
+```
+
+consumer repository 中只提交小型项目合同：
+
+```text
+automation/overleaf/
+├── README.md
+└── config.toml
+```
+
+典型配置是：
+
+```toml
+schema_version = 1
+paper_root = "paper/manuscript"
+main_document = "main.tex"
+remote_branch = "master"
+exclude_paths = []
+```
+
+首次使用时，用户先在 Overleaf 创建 Blank Project，删除默认 `main.tex`，取得 Git URL，然后运行：
+
+```bash
+ai-bridge overleaf install \
+  --target /path/to/research-repo \
+  --paper-root paper/manuscript
+
+ai-bridge overleaf connect \
+  --target /path/to/research-repo \
+  --remote-url https://git@git.overleaf.com/<PROJECT_ID> \
+  --bootstrap
+```
+
+之后按需执行：
+
+```bash
+ai-bridge overleaf status --target /path/to/research-repo
+ai-bridge overleaf push --target /path/to/research-repo
+ai-bridge overleaf pull --target /path/to/research-repo
+ai-bridge overleaf validate --target /path/to/research-repo
+```
+
+`push` 会先更新机器本地 Overleaf mirror，再比较 baseline、local publication digest 和 remote digest。只有 local ahead 且 remote 未变时才发布；remote ahead 或 diverged 都会拒绝。`pull` 只有在 remote ahead 且 local 未变时才把 Overleaf 改动导入 `paper_root`，并把改动留在 working tree，等待用户或 Codex review、LaTeX compile、commit，再通过正常 `origin/main` workflow 推送。
+
+Bridge Kit 不接收 `--token` 或 `--password`，不把 token 写入 URL、`connection.json` 或 tracked config，也不实现自己的 credential database。第一次访问真实 Overleaf 时，让 Git 按 Overleaf 当前 token authentication 流程请求 credential；后续可使用用户自己的 Git credential helper。
 
 ## Reviewed Handoff：GPT 规划、Codex 执行、GPT 最多复核两轮
 
@@ -373,7 +443,7 @@ workflow 只允许写回 repository-relative 的 `results/<task_key>/visual_revi
 
 如果任务里真正需要 GPT 先做语义/产品判断，再让 Codex 实现，并希望实现后由独立 GPT 审核一到两轮，优先使用 Reviewed Handoff。**大量文件、复杂实现本身不要求 Agent-Flow；是否需要独立合同/Verifier/Final Critic 才是升级高风险模式的关键。**
 
-如果希望任务完成或真正阻塞时收到邮件，再加 Notifier。不要因为“可能以后会用”就在所有 repository 中预装私有通知配置。
+如果希望任务完成或真正阻塞时收到邮件，再加 Notifier。需要把 monorepo 中的论文 publication root 同步给 Overleaf 时，再加 Overleaf Bridge；不要因为“可能以后会用”就在所有 repository 中预装私有通知配置或 Overleaf 连接。
 
 如果某个项目确实需要高风险、长链路、独立验证的自动闭环，再安装 Agent-Flow。不要为了“更严谨”把 Agent-Flow 的 provenance 机制复制进 Reviewed Handoff。
 
@@ -414,16 +484,24 @@ Notifier 使用：
 ai-bridge notifier status
 ```
 
+Overleaf Bridge 使用：
+
+```bash
+ai-bridge overleaf status --target /path/to/project
+ai-bridge overleaf validate --target /path/to/project
+```
+
 Host Policy 安装是非破坏式的；Lite、Reviewed Handoff 和 Agent-Flow 初始化也应保持幂等。不要通过手工复制 `$CODEX_HOME` 文件到项目目录来“统一配置”，也不要把 repository 的 workflow 模板反向当成服务器全局策略。
 
 ## 仓库内容和进一步文档
 
-`chatgpt/` 保存 GPT 侧可复用提示，`codex/` 保存 Codex 启动提示和 repo-local skill，`templates/` 保存 Lite、Host、Reviewed Handoff 和 Agent-Flow 的 desired-state 模板，`ai_bridge_kit/` 是 CLI 与核心实现，`tests/` 是回归测试。长期协议细节放在 `docs/`，README 只负责告诉人“这套工具是什么、该装什么、什么时候装”。
+`chatgpt/` 保存 GPT 侧可复用提示，`codex/` 保存 Codex 启动提示和 repo-local skill，`templates/` 保存 Lite、Host、Reviewed Handoff、Overleaf Bridge 和 Agent-Flow 的 desired-state 模板，`ai_bridge_kit/` 是 CLI 与核心实现，`tests/` 是回归测试。长期协议细节放在 `docs/`，README 只负责告诉人“这套工具是什么、该装什么、什么时候装”。
 
 当前核心规格包括：
 
 ```text
 docs/V0_5_REVIEWED_HANDOFF_IMPLEMENTATION_SPEC.md
+docs/V0_6_OVERLEAF_BRIDGE_IMPLEMENTATION_SPEC.md
 docs/V0_4_AGENT_FLOW_IMPLEMENTATION_SPEC.md
 docs/AGENT_FLOW_V3_POST_CARE_EXTRACTION_DECISIONS.md
 docs/CARE_AGENT_FLOW_V3_POSTMORTEM_20260811.md
