@@ -1,17 +1,11 @@
 ## Overleaf Bridge
 
-This repository uses the optional AI Bridge Kit Overleaf Bridge.
+本仓库已启用 AI Bridge Kit 的 Overleaf Bridge。
 
-- Codex may read the whole repository for scientific and technical context.
-- Only `__PAPER_ROOT__` is the Overleaf publication root. `__MAIN_DOCUMENT__`
-  must resolve inside that publication root.
-- Overleaf is a manuscript collaboration mirror, not a second source of truth
-  for the full research repository.
-- All manuscript assets required by Overleaf compilation must live inside the
-  publication root and must not be excluded.
-- `exclude_paths` is only for local/GitHub-only files that are not required for
-  Overleaf compilation.
-- Before `ai-bridge overleaf push`, protect unseen Overleaf edits by checking
-  the Bridge baseline against local and remote publication digests.
-- After `ai-bridge overleaf pull`, review and compile the manuscript changes,
-  then commit and push through the normal GitHub `origin` workflow.
+- Codex 可以读取整个科研仓库，用代码、实验结果、研究文档和论文共同判断内容。
+- 只有 `__PAPER_ROOT__` 是 Overleaf 发布根目录，主文件 `__MAIN_DOCUMENT__` 必须位于其中。
+- Overleaf 只是论文协作镜像，不是完整科研仓库的第二个主版本。
+- Overleaf 编译所需的全部论文资源都必须位于发布根目录中，而且不能写进 `exclude_paths`。
+- `exclude_paths` 只用于不参与 Overleaf 编译、但需要保留在 GitHub/Codex 工作区中的本地辅助文件。
+- 执行 `ai-bridge overleaf push` 前，必须通过 Bridge 的同步基准检查，避免覆盖尚未拉取的 Overleaf 修改。
+- 执行 `ai-bridge overleaf pull` 后，先检查差异并编译论文，再按正常 GitHub `origin` 流程提交和推送。
