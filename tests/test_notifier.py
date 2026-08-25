@@ -25,10 +25,32 @@ def valid_brief(status: str = "complete", task_key: str = "001_done") -> dict:
     }
 
 
+def structured_brief(event_type: str = "milestone", authority: str = "Reviewer", task_key: str = "001_stage") -> dict:
+    return {
+        "schema": "ai-bridge.notification_brief.v2",
+        "project": "demo",
+        "task_key": task_key,
+        "event_type": event_type,
+        "status": "Stage 3 已通过" if event_type == "milestone" else "BLOCKED",
+        "decision_authority": authority,
+        "key_conclusion": "CUHK scientific layouts 已通过逐页视觉验收。",
+        "next_step": "无需操作，Stage 4 已继续。",
+        "action_required": False,
+        "evidence_paths": ["results/001_stage/visual_review/VISUAL_REVIEW.json"],
+    }
+
+
 def write_brief(root: Path, brief: dict) -> Path:
     path = root / "results" / str(brief["task_key"]) / "notification_brief.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(brief), encoding="utf-8")
+    return path
+
+
+def write_notification(root: Path, brief: dict, name: str = "stage_3_pass.json") -> Path:
+    path = root / "results" / str(brief["task_key"]) / "notifications" / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(brief, ensure_ascii=False), encoding="utf-8")
     return path
 
 
@@ -179,10 +201,10 @@ class NotifierTests(unittest.TestCase):
 
         self.assertTrue(message.is_multipart())
         self.assertIn("完成：001_done", message["Subject"])
-        self.assertTrue(plain.startswith("结论\n任务已经完成"))
-        self.assertIn("下一步：查看证据后决定下一步。", plain)
-        self.assertIn("状态", plain)
-        self.assertIn("关键证据", plain)
+        self.assertTrue(plain.startswith("状态：完成（complete）"))
+        self.assertIn("结论：任务已经完成", plain)
+        self.assertIn("你现在需要做什么：查看证据后决定下一步。", plain)
+        self.assertIn("可检查", plain)
         self.assertIn("results/001_done/result.md", plain)
         self.assertNotIn("Conclusion:", plain)
         self.assertNotIn("Next step:", plain)
@@ -211,11 +233,74 @@ class NotifierTests(unittest.TestCase):
         plain = notifier.render_plain(brief)
 
         self.assertEqual(subject, "[CARE] 阻塞：care-ase-faithful")
-        self.assertIn("终态：阻塞（blocked）", plain)
+        self.assertIn("状态：阻塞（blocked）", plain)
         self.assertIn("commit：complete_before_notifier", plain)
         self.assertIn("push：complete_before_notifier", plain)
         self.assertIn("branch：develop", plain)
         self.assertIn("packet 未记录 Slurm ledger/finalizer_state", plain)
+
+    def test_planner_reviewer_structured_notifications_send_through_generic_notifier(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            sent = []
+            for authority in ["Planner", "Reviewer"]:
+                path = write_notification(root, structured_brief(authority=authority, task_key=f"001_{authority.lower()}"))
+                result = notifier.send_brief(path, state_path=root / "state.json", env={}, sender=lambda brief, env: sent.append(brief))
+                self.assertEqual(result.status, "sent")
+
+            self.assertEqual([brief["decision_authority"] for brief in sent], ["Planner", "Reviewer"])
+
+    def test_milestone_notification_is_non_blocking_and_deduped(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path = write_notification(root, structured_brief())
+            sent = []
+
+            first = notifier.send_brief(path, state_path=root / "state.json", env={}, sender=lambda brief, env: sent.append(brief))
+            second = notifier.send_brief(path, state_path=root / "state.json", env={}, sender=lambda brief, env: sent.append(brief))
+            plain = notifier.render_plain(structured_brief())
+
+            self.assertEqual(first.status, "sent")
+            self.assertEqual(second.status, "duplicate")
+            self.assertEqual(len(sent), 1)
+            self.assertIn("状态：Stage 3 已通过", plain)
+            self.assertIn("事件：里程碑", plain)
+            self.assertIn("你现在需要做什么：无需操作，Stage 4 已继续。", plain)
+
+    def test_once_scans_milestone_notifications_after_baseline(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            state_path = root / "state.json"
+            write_brief(root, valid_brief(task_key="001_old"))
+            notifier.notifier_once(root=root, state_path=state_path, sender=lambda brief, env: None)
+            sent = []
+            write_notification(root, structured_brief(task_key="002_stage"))
+
+            results = notifier.notifier_once(root=root, state_path=state_path, sender=lambda brief, env: sent.append(brief))
+
+            self.assertEqual([result.status for result in results], ["sent"])
+            self.assertEqual(sent[0]["event_type"], "milestone")
+
+    def test_operational_failure_can_be_sent_by_machine_layer(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            brief = structured_brief(event_type="operational_blocked", authority="Watcher", task_key="001_blocked")
+            brief["key_conclusion"] = "Reviewed Handoff watcher exhausted bounded Executor attempts."
+            brief["next_step"] = "检查 watcher log 后恢复同一 task。"
+            path = write_notification(root, brief, "watcher_blocked.json")
+
+            result = notifier.send_brief(path, state_path=root / "state.json", env={}, sender=lambda brief, env: None)
+
+            self.assertEqual(result.status, "sent")
+            self.assertIn("运行阻塞", notifier.render_plain(brief))
+
+    def test_executor_cannot_forge_semantic_pass_notification(self) -> None:
+        brief = structured_brief(event_type="milestone", authority="Executor")
+        brief["status"] = "Stage PASS"
+
+        errors = notifier.validate_brief(brief)
+
+        self.assertTrue(any("semantic notification decision_authority" in error for error in errors))
 
     def test_cli_send_dry_run(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -240,6 +325,12 @@ class NotifierTests(unittest.TestCase):
         )
 
         self.assertEqual(proc.returncode, 1, proc.stdout)
+
+    def test_structured_milestone_template_validates(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        brief = notifier.load_json(root / "templates" / "notifier" / "notification_milestone.example.json")
+
+        self.assertEqual(notifier.validate_brief(brief), [])
 
 
 if __name__ == "__main__":

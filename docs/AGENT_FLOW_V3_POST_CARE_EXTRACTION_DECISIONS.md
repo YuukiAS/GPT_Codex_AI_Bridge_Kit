@@ -192,6 +192,10 @@ Tracked state may contain portable placeholders and provenance identifiers. Abso
 
 Reuse the v0.3 notifier. Agent-Flow emits a standard `notification_brief.json` only at real terminal/user-decision states.
 
+The later generic notifier structured-brief extension keeps this default:
+milestone briefs are opt-in for workflows that need them, not an Agent-Flow
+intermediate-state notification trigger.
+
 Notifier does not decide task completion.
 
 ### Decision 15 — Host Policy remains separate

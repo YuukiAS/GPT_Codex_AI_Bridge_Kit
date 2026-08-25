@@ -7,6 +7,7 @@ import re
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -64,6 +65,10 @@ def write_local_state(target: Path, payload: dict[str, Any]) -> None:
     path = state_path(target)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def utc_now() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
 def git_output(target: Path, args: list[str]) -> str:
@@ -242,11 +247,17 @@ def recover_unpublished_executor_progress(target: Path, branch: str) -> dict[str
         }
     local = load_local_state(target)
     events = local.setdefault("events", {})
+    prior = events.get(str(event), {}) if isinstance(events.get(str(event)), dict) else {}
     events[str(event)] = {
-        "attempts": int(events.get(str(event), {}).get("attempts", 0)) if isinstance(events.get(str(event)), dict) else 0,
+        **prior,
+        "attempts": int(prior.get("attempts", 0)),
         "completed": True,
+        "completed_at": utc_now(),
+        "running": False,
         "recovered_after_restart": True,
         "last_publication_error": None,
+        "last_publication_status": "published",
+        "last_result": "recovered_unpublished_progress",
     }
     write_local_state(target, local)
     return {
@@ -278,6 +289,66 @@ def log_name(task_key: str, current: dict[str, Any]) -> str:
             f"p{current.get('plan_revision') or 0}",
         ]
     ) + ".log"
+
+
+def executor_phase(current: dict[str, Any]) -> str:
+    if current.get("state") == "REVISE":
+        return "repair"
+    if current.get("state") == "PLAN_FROZEN":
+        return "initial_implementation"
+    return "not_executor_owned"
+
+
+def waiting_owner(target: Path, task_key: str, current: dict[str, Any]) -> str:
+    state = str(current.get("state") or "")
+    if state in ELIGIBLE_EXECUTOR_STATES:
+        return "Codex"
+    try:
+        status = rh.reviewed_external_wait_status(target, task_key)
+    except Exception:
+        status = {}
+    if status.get("operational_status") in {"waiting_external_review", "waiting_visual_review_evidence"}:
+        return str(status.get("wait_owner") or status.get("external_owner") or "External")
+    if state == "WAITING_FOR_CI":
+        return "CI"
+    if state in {"PASS", "AWAIT_HUMAN_DECISION", "BLOCKED"}:
+        return "None"
+    return str(current.get("next_action") or "Unknown")
+
+
+def record_event_start(
+    target: Path,
+    *,
+    branch: str,
+    task_key: str,
+    current: dict[str, Any],
+    event: str,
+    attempts: int,
+) -> str:
+    started_at = utc_now()
+    local = load_local_state(target)
+    events = local.setdefault("events", {})
+    prior = events.get(event, {}) if isinstance(events.get(event), dict) else {}
+    events[event] = {
+        **prior,
+        "task_key": task_key,
+        "state": current.get("state"),
+        "phase": executor_phase(current),
+        "review_round": current.get("review_round"),
+        "plan_revision": current.get("plan_revision"),
+        "branch": branch,
+        "runtime_type": "codex_exec",
+        "thread_id": None,
+        "started_at": started_at,
+        "completed_at": None,
+        "running": True,
+        "completed": False,
+        "attempts": attempts,
+        "last_result": "running",
+        "last_publication_status": "not_started",
+    }
+    write_local_state(target, local)
+    return started_at
 
 
 def eligible_events(target: Path) -> list[tuple[str, dict[str, Any]]]:
@@ -449,6 +520,7 @@ def run_codex_event(
     log_dir.mkdir(parents=True, exist_ok=True)
     log_path = log_dir / log_name(task_key, current)
     started = time.time()
+    started_at = utc_now()
     with log_path.open("a", encoding="utf-8") as handle:
         handle.write(f"\n=== watcher launch: {event} ===\n")
         proc = subprocess.run(
@@ -476,6 +548,10 @@ def run_codex_event(
         "pre_head": pre_head,
         "post_head": post_head,
         "log_path": str(log_path),
+        "runtime_type": "codex_exec",
+        "thread_id": None,
+        "started_at": started_at,
+        "completed_at": utc_now(),
         "elapsed_seconds": round(time.time() - started, 3),
     }
 
@@ -579,6 +655,14 @@ def watcher_once(
             }
 
         pre_current = dict(current)
+        record_event_start(
+            target,
+            branch=selected_branch,
+            task_key=task_key,
+            current=current,
+            event=event,
+            attempts=attempts + 1,
+        )
         result = run_codex_event(target, task_key, current, branch=selected_branch, codex_bin=codex_bin)
         attempts += 1
         post_current_path = rh.task_root(target, task_key) / "CURRENT.json"
@@ -602,16 +686,26 @@ def watcher_once(
         if completed and sync:
             published, publication_error = publish_clean_progress(target, selected_branch)
             completed = published
+        publication_status = "not_requested"
+        if sync:
+            publication_status = "published" if completed else ("publication_failed" if publication_error else "not_published")
 
+        local = load_local_state(target)
+        events = local.setdefault("events", {})
         events[event] = {
+            **(events.get(event, {}) if isinstance(events.get(event), dict) else {}),
             "attempts": attempts,
             "completed": completed,
+            "completed_at": utc_now(),
+            "running": False,
             "last_exit_code": result.get("exit_code"),
             "last_progressed": result.get("progressed"),
+            "last_result": "completed" if completed else "not_completed",
             "last_log_path": result.get("log_path"),
             "last_authority_errors": authority_errors,
             "last_workflow_errors": workflow_errors,
             "last_publication_error": publication_error,
+            "last_publication_status": publication_status,
         }
         write_local_state(target, local)
 
@@ -689,6 +783,50 @@ def watcher_once(
     return {"status": "idle", "branch": selected_branch}
 
 
+def watcher_status(target: Path, *, branch: str | None = None) -> dict[str, Any]:
+    target = target.resolve()
+    selected_branch = resolve_branch(target, branch)
+    local = load_local_state(target)
+    events = local.get("events", {}) if isinstance(local.get("events"), dict) else {}
+    tasks: list[dict[str, Any]] = []
+    tasks_dir = rh.reviewed_root(target) / "tasks"
+    if tasks_dir.exists():
+        for task_dir in sorted(path for path in tasks_dir.iterdir() if path.is_dir()):
+            current_path = task_dir / "CURRENT.json"
+            if not current_path.exists():
+                continue
+            current = rh.load_json(current_path)
+            event = event_identity(task_dir.name, current)
+            runtime = events.get(event, {}) if isinstance(events.get(event), dict) else {}
+            tasks.append(
+                {
+                    "task": task_dir.name,
+                    "state": current.get("state"),
+                    "executor_event": event,
+                    "phase": executor_phase(current),
+                    "thread_id": runtime.get("thread_id"),
+                    "runtime_type": runtime.get("runtime_type") or "codex_exec",
+                    "started_at": runtime.get("started_at"),
+                    "running": bool(runtime.get("running")),
+                    "completed": bool(runtime.get("completed")),
+                    "completed_at": runtime.get("completed_at"),
+                    "last_exit_code": runtime.get("last_exit_code"),
+                    "last_result": runtime.get("last_result"),
+                    "waiting_owner": waiting_owner(target, task_dir.name, current),
+                    "last_publication_status": runtime.get("last_publication_status"),
+                    "last_publication_error": runtime.get("last_publication_error"),
+                    "last_log_path": runtime.get("last_log_path"),
+                }
+            )
+    return {
+        "schema": "AI_BRIDGE_REVIEWED_WATCHER_STATUS_V1",
+        "target": str(target),
+        "branch": selected_branch,
+        "state_path": str(state_path(target)),
+        "tasks": tasks,
+    }
+
+
 def watcher_run(
     target: Path,
     *,
@@ -734,6 +872,9 @@ def build_parser() -> argparse.ArgumentParser:
     once.add_argument("--codex-bin", default="codex")
     once.add_argument("--no-sync", action="store_true")
     once.add_argument("--dry-run", action="store_true")
+    status = sub.add_parser("status")
+    status.add_argument("--target", type=Path, default=Path.cwd())
+    status.add_argument("--branch")
     run = sub.add_parser("run")
     run.add_argument("--target", type=Path, default=Path.cwd())
     run.add_argument("--branch")
@@ -767,6 +908,9 @@ def main(argv: list[str] | None = None) -> int:
             "unpublished_progress_recovery_failed",
         }
         return 0 if result.get("status") not in failure_statuses else 1
+    if args.command == "status":
+        print(json.dumps(watcher_status(args.target, branch=args.branch), ensure_ascii=False, indent=2, sort_keys=True))
+        return 0
     if args.command == "run":
         return watcher_run(
             args.target,

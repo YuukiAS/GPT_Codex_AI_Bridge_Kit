@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- Add a read-only Reviewed Handoff watcher status view that reports task,
+  state, Executor event, runtime type, optional thread id, start/completion
+  timestamps, last exit/result, wait owner, and publication status from
+  machine-local state.
+- Keep Reviewed Handoff production Executor launches on the existing
+  `codex exec` path after real Codex App/App Server probing showed connector
+  task create/list/read/resume works but shell-facing app-server proxy did not
+  provide a stable embeddable watcher lifecycle.
+- Extend Generic Notifier with backwards-compatible structured briefs for
+  semantic terminal/awaiting-human notifications, operational blocked
+  notifications, and opt-in non-blocking milestone notifications under
+  `results/<task_key>/notifications/*.json`.
+- Enforce notifier ownership boundaries so semantic notification briefs must
+  come from Planner/Reviewer/Critic/Final Critic, operational blocked briefs
+  from Controller/watcher, and Executor cannot forge PASS or milestone
+  conclusion emails.
+
 ## 0.6.0
 
 - Add optional project-level Overleaf Bridge with

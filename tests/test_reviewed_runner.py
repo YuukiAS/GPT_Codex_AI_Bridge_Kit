@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import contextlib
+import io
+import json
 import os
 import subprocess
 import tempfile
@@ -140,6 +143,43 @@ class ReviewedRunnerTests(unittest.TestCase):
             self.assertFalse(local["events"][event]["completed"])
             self.assertEqual(local["events"][event]["attempts"], 1)
 
+    def test_watcher_status_reports_executor_runtime_and_wait_owner(self) -> None:
+        tmp, target, state_home = self.make_project()
+        with tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(state_home)}):
+            real_run = subprocess.run
+            with mock.patch("subprocess.run", side_effect=self.codex_only_fake(real_run)):
+                runner.watcher_once(target, branch="main", sync=False)
+
+            status = runner.watcher_status(target, branch="main")
+
+            self.assertEqual(status["schema"], "AI_BRIDGE_REVIEWED_WATCHER_STATUS_V1")
+            self.assertEqual(status["branch"], "main")
+            task = status["tasks"][0]
+            self.assertEqual(task["task"], "001_feature")
+            self.assertEqual(task["state"], "PLAN_FROZEN")
+            self.assertEqual(task["phase"], "initial_implementation")
+            self.assertEqual(task["runtime_type"], "codex_exec")
+            self.assertIsNone(task["thread_id"])
+            self.assertFalse(task["running"])
+            self.assertFalse(task["completed"])
+            self.assertEqual(task["last_exit_code"], 0)
+            self.assertEqual(task["last_result"], "not_completed")
+            self.assertEqual(task["waiting_owner"], "Codex")
+            self.assertEqual(task["last_publication_status"], "not_requested")
+            self.assertTrue(task["started_at"])
+            self.assertTrue(task["completed_at"])
+
+    def test_watcher_status_cli_prints_json(self) -> None:
+        tmp, target, state_home = self.make_project()
+        with tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(state_home)}):
+            with contextlib.redirect_stdout(io.StringIO()) as output:
+                code = runner.main(["status", "--target", str(target), "--branch", "main"])
+
+            payload = json.loads(output.getvalue())
+            self.assertEqual(code, 0)
+            self.assertEqual(payload["schema"], "AI_BRIDGE_REVIEWED_WATCHER_STATUS_V1")
+            self.assertEqual(payload["tasks"][0]["task"], "001_feature")
+
     def test_state_progress_requires_committed_clean_state(self) -> None:
         tmp, target, state_home = self.make_project()
         with tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(state_home)}):
@@ -191,6 +231,9 @@ class ReviewedRunnerTests(unittest.TestCase):
         event = runner.event_identity("001_feature", current)
         self.assertEqual(event, "001_feature|REVISE|1|0|abc123")
         self.assertNotIn("sha256", event.lower())
+        local_runtime = {"thread_id": "01a03788-3c07-7862-b643-88877d5b3088", "runtime_type": "codex_app"}
+        self.assertEqual(runner.event_identity("001_feature", current), event)
+        self.assertNotIn(str(local_runtime["thread_id"]), event)
 
     def test_executor_direct_push_is_blocked_by_process_guard(self) -> None:
         tmp, target, state_home = self.make_project()

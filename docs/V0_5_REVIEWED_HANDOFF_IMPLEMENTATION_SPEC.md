@@ -75,6 +75,8 @@ ${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}/reviewed-handoff/<repo>/logs/
 
 This local state is operational dedup/retry state only. It is not workflow identity and is never part of GPT review semantics.
 
+It may record human-facing observability for the current Executor event: task key, branch, phase, runtime type, App/thread id when a supported runtime can provide one, `started_at`, `completed_at`, `running`, last exit/result, last log path, waiting owner, and last publication status. These fields remain machine-local operational state. They must not be copied into `CURRENT.json`, hashed into semantic identity, or treated as Planner/Reviewer authority.
+
 ## State machine
 
 Normal states:
@@ -160,7 +162,19 @@ The watcher performs only operational orchestration:
 6. launch one fresh `codex exec -C <repo> -` with the task-specific Executor prompt;
 7. confirm the task state actually moved away from the triggering event before marking the event complete locally.
 
-It does not create or switch branches, does not use persistent thread IDs, does not create role worktrees, and does not maintain receipts or cryptographic event identities. The event key is a plain local tuple of task/state/review round/plan revision/implementation locator.
+It does not create or switch branches, does not create role worktrees, and does not maintain receipts or cryptographic event identities. The event key is a plain local tuple of task/state/review round/plan revision/implementation locator.
+
+The watcher also exposes a read-only status view:
+
+```bash
+ai-bridge reviewed-handoff watcher status \
+  --target /path/to/project \
+  --branch <existing-authorized-branch>
+```
+
+The status view reports `task`, `state`, `executor_event`, `phase`, `thread_id`, `runtime_type`, `started_at`, `running`, `completed`, `completed_at`, `last_exit_code`, `last_result`, `waiting_owner`, `last_publication_status`, `last_publication_error`, and `last_log_path`.
+
+Codex App visibility is an optional runtime property, not a Reviewed Handoff authority feature. A real probe on Codex CLI/App Server `0.148.0-alpha.9` showed that the Codex App connector can create, list, read, and continue a durable Codex task with `cwd=/home/yuukias/GPT_Codex_AI_Bridge_Kit`, but the shell-facing `codex app-server proxy` did not return a stable response suitable for embedding in the generic watcher. Until a stable supported shell/API lifecycle exists, the production watcher keeps using `codex exec` and records `runtime_type=codex_exec` with `thread_id=null`. Implementations must not edit `~/.codex/session_index.jsonl`, Codex App databases, or private UI state to fake App visibility.
 
 If the watcher process dies after Codex created valid local Executor commits but before the watcher published them, restart recovery is allowed only when the working tree is clean, the local branch is ahead-only of `origin/<branch>`, the remote `CURRENT.json` at `origin/<branch>` still describes exactly one current Executor event, the local `CURRENT.json` has progressed from that event, Executor authority validation passes, workflow validation passes, and any `implementation_commit` handoff is contained in the unpublished commit range. Dirty, diverged, unauthorized, ambiguous, or event-unbound local commits fail closed and are not auto-published. This recovery does not let Codex push directly and does not bypass Planner or Reviewer authority.
 
@@ -185,6 +199,7 @@ Reviewer must not make a new feature, abstraction, style preference, or theoreti
 Reviewed Handoff deliberately does **not** use:
 
 ```text
+App visibility as workflow identity
 request nonce
 Requirement Ledger
 Stable Review Snapshot

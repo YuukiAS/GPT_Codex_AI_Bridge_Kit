@@ -1,0 +1,14 @@
+{
+  "schema": "ai-bridge.notification_brief.v2",
+  "project": "example-project",
+  "task_key": "001_example",
+  "event_type": "milestone",
+  "status": "Stage 3 已通过",
+  "decision_authority": "Reviewer",
+  "key_conclusion": "关键产物已通过本阶段验收。",
+  "next_step": "无需操作，workflow 已继续进入下一阶段。",
+  "action_required": false,
+  "evidence_paths": [
+    "results/001_example/visual_review/VISUAL_REVIEW.json"
+  ]
+}

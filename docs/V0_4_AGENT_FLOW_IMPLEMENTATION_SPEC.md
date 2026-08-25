@@ -1007,6 +1007,12 @@ Normal states such as CI running, Planner waiting, Critic standby, implementatio
 
 The notifier consumes state; it does not decide state.
 
+The generic notifier's structured milestone path is available for other
+workflows that explicitly opt in, but it does not change Agent-Flow's default
+notification policy. Agent-Flow still emits notifier briefs only for true
+terminal/user-decision states unless a future Project Profile explicitly
+defines a narrower milestone policy.
+
 ---
 
 ## 19. Host Policy integration

@@ -185,7 +185,19 @@ ai-bridge reviewed-handoff watcher run \
   --branch <existing-authorized-branch>
 ```
 
-监视器不会自行创建分支或 PR。外部 GPT 尚未给出新决定时，属于正常等待，而不是 `BLOCKED`。
+监视器不会自行创建分支或 PR。它也不会把 Codex Executor 变成新的决策角色：Executor 只执行冻结方案并提交结果，发布仍由 watcher 在验证后完成。
+
+需要查看后台 Executor 状态时，可以运行：
+
+```bash
+ai-bridge reviewed-handoff watcher status \
+  --target /path/to/project \
+  --branch <existing-authorized-branch>
+```
+
+这个状态入口读取本机 watcher state 和仓库中的 `CURRENT.json`，报告 task、当前 state、Executor event、runtime 类型、可用 thread id、started/completed 时间、上次 exit/result、等待 owner 和上次发布状态。当前稳定生产路径仍是 `codex exec`；如果某个 Codex App/App Server 环境能提供可脚本化、可恢复、项目可见的 thread lifecycle，thread id 只能作为本机 operational state 记录，不能进入 Reviewed Handoff workflow identity。
+
+外部 GPT、CI 或 Visual Review 尚未给出新决定时，属于正常等待，而不是 `BLOCKED`。
 
 详细状态规则和边界见：
 
@@ -372,9 +384,11 @@ Overleaf Bridge **不会自动实时同步**。它就是一个按需、可检查
 
 ---
 
-## 5. Generic Notifier（`0.3.0` 引入）：任务结束后发邮件
+## 5. Generic Notifier（`0.3.0` 引入）：按结构化 brief 发邮件
 
 Notifier 只负责通知，不负责决定任务是不是完成。
+
+权责边界是：语义决定者写结构化 brief，Generic Notifier 只做 deterministic 渲染、去重和 SMTP 发送。Planner/Reviewer/Critic/Final Critic 可以写自己决定对应的终态、人工等待或里程碑 brief；Controller/watcher 只可以写 operational failure/status brief。Executor/Codex 不能决定 PASS，不能写自由文本式用户结论邮件，也不能绕过 notifier 的 send-once/dedupe。
 
 如果项目需要终态邮件，先同步私有配置并发一封真实测试邮件：
 
@@ -397,6 +411,14 @@ ai-bridge notifier send results/<task_key>/notification_brief.json
 ```
 
 推荐这种一次性发送方式，不要求为了通知常驻一个 tmux、systemd 或后台轮询进程。
+
+向后兼容的旧 `notification_brief.json` 仍表示 terminal/user-decision 通知。需要 workflow 继续运行的非阻塞里程碑通知时，可以写入：
+
+```text
+results/<task_key>/notifications/<event>.json
+```
+
+新结构化 brief 使用短字段，例如 `event_type`、`status`、`decision_authority`、`key_conclusion`、`next_step`、`action_required` 和 `evidence_paths`。邮件正文由 notifier 模板渲染成简洁中文，而不是让 Executor 生成整封自由文本邮件。重复 brief 会按内容 digest 去重，不会重复发送。
 
 邮件密码等秘密配置保存在本地私有文件，不应提交到项目仓库。
 

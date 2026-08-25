@@ -15,21 +15,34 @@ from typing import Any, Callable
 
 
 VALID_TERMINAL_STATUSES = {"complete", "blocked", "awaiting_human"}
-REQUIRED_BRIEF_FIELDS = {
+LEGACY_BRIEF_SCHEMA = "ai-bridge.notification_brief.v1"
+STRUCTURED_BRIEF_SCHEMA = "ai-bridge.notification_brief.v2"
+VALID_BRIEF_SCHEMAS = {LEGACY_BRIEF_SCHEMA, STRUCTURED_BRIEF_SCHEMA}
+VALID_EVENT_TYPES = {"terminal", "awaiting_human", "operational_blocked", "milestone"}
+SEMANTIC_DECISION_AUTHORITIES = {"Planner", "Reviewer", "Critic", "Final Critic"}
+OPERATIONAL_DECISION_AUTHORITIES = {"Controller", "Watcher"}
+COMMON_BRIEF_FIELDS = {
     "schema",
     "project",
     "task_key",
-    "terminal_status",
     "key_conclusion",
     "next_step",
     "evidence_paths",
 }
+LEGACY_REQUIRED_BRIEF_FIELDS = COMMON_BRIEF_FIELDS | {"terminal_status"}
+STRUCTURED_REQUIRED_BRIEF_FIELDS = COMMON_BRIEF_FIELDS | {"event_type", "status", "decision_authority"}
 STATE_PATH = Path(".ai-bridge") / "state" / "notifier.json"
 PRIVATE_ENV_PATH = Path(".ai-bridge") / "private" / "notifier.env"
 STATUS_LABELS = {
     "complete": "完成",
     "blocked": "阻塞",
     "awaiting_human": "等待人工确认",
+}
+EVENT_TYPE_LABELS = {
+    "terminal": "终态",
+    "awaiting_human": "等待人工确认",
+    "operational_blocked": "运行阻塞",
+    "milestone": "里程碑",
 }
 OPTIONAL_LABELS = {
     "commit_status": "commit",
@@ -119,12 +132,30 @@ def notifier_env(env: dict[str, str] | None = None, env_file: Path = PRIVATE_ENV
 
 def validate_brief(brief: dict[str, Any]) -> list[str]:
     errors: list[str] = []
-    missing = sorted(REQUIRED_BRIEF_FIELDS - set(brief))
+    schema = str(brief.get("schema", "")).strip()
+    if schema not in VALID_BRIEF_SCHEMAS:
+        errors.append("schema must be one of: " + ", ".join(sorted(VALID_BRIEF_SCHEMAS)))
+    required = LEGACY_REQUIRED_BRIEF_FIELDS if schema != STRUCTURED_BRIEF_SCHEMA else STRUCTURED_REQUIRED_BRIEF_FIELDS
+    missing = sorted(required - set(brief))
     if missing:
         errors.append("missing fields: " + ", ".join(missing))
-    terminal_status = str(brief.get("terminal_status", "")).strip().lower()
-    if terminal_status not in VALID_TERMINAL_STATUSES:
-        errors.append("terminal_status must be one of: " + ", ".join(sorted(VALID_TERMINAL_STATUSES)))
+    if schema == STRUCTURED_BRIEF_SCHEMA:
+        event_type = str(brief.get("event_type", "")).strip()
+        if event_type not in VALID_EVENT_TYPES:
+            errors.append("event_type must be one of: " + ", ".join(sorted(VALID_EVENT_TYPES)))
+        status = str(brief.get("status", "")).strip()
+        if not status:
+            errors.append("status must be a non-empty string")
+        authority = str(brief.get("decision_authority", "")).strip()
+        if event_type == "operational_blocked":
+            if authority not in OPERATIONAL_DECISION_AUTHORITIES:
+                errors.append("operational_blocked decision_authority must be Controller or Watcher")
+        elif event_type in VALID_EVENT_TYPES and authority not in SEMANTIC_DECISION_AUTHORITIES:
+            errors.append("semantic notification decision_authority must be Planner, Reviewer, Critic, or Final Critic")
+    else:
+        terminal_status = str(brief.get("terminal_status", "")).strip().lower()
+        if terminal_status not in VALID_TERMINAL_STATUSES:
+            errors.append("terminal_status must be one of: " + ", ".join(sorted(VALID_TERMINAL_STATUSES)))
     evidence_paths = brief.get("evidence_paths")
     if not isinstance(evidence_paths, list) or not evidence_paths:
         errors.append("evidence_paths must be a non-empty list")
@@ -140,11 +171,25 @@ def brief_digest(brief: dict[str, Any]) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def brief_event_type(brief: dict[str, Any]) -> str:
+    if brief.get("schema") == STRUCTURED_BRIEF_SCHEMA:
+        return str(brief.get("event_type", "")).strip()
+    terminal_status = str(brief.get("terminal_status", "")).strip().lower()
+    return "awaiting_human" if terminal_status == "awaiting_human" else "terminal"
+
+
+def brief_status_value(brief: dict[str, Any]) -> str:
+    if brief.get("schema") == STRUCTURED_BRIEF_SCHEMA:
+        return str(brief.get("status", "")).strip()
+    return str(brief.get("terminal_status", "")).strip().lower()
+
+
 def event_key(brief: dict[str, Any]) -> str:
     parts = [
         str(brief.get("project", "")),
         str(brief.get("task_key", "")),
-        str(brief.get("terminal_status", "")).lower(),
+        brief_event_type(brief),
+        brief_status_value(brief).lower(),
         brief_digest(brief),
     ]
     return "|".join(parts)
@@ -169,34 +214,41 @@ def require_email_config(env: dict[str, str]) -> list[str]:
 
 def subject_for_brief(brief: dict[str, Any], env: dict[str, str], *, test: bool = False) -> str:
     prefix = env.get("AI_BRIDGE_NOTIFY_SUBJECT_PREFIX", "[AI Bridge]")
-    status = str(brief.get("terminal_status", "")).strip().lower()
-    status_label = STATUS_LABELS.get(status, status or "未知状态")
+    if brief.get("schema") == STRUCTURED_BRIEF_SCHEMA:
+        status_label_text = status_label(brief)
+    else:
+        status = str(brief.get("terminal_status", "")).strip().lower()
+        status_label_text = STATUS_LABELS.get(status, status or "未知状态")
     task = str(brief.get("task_key", "unknown"))
     if test:
         return f"{prefix} 测试邮件：{task}"
-    return f"{prefix} {status_label}：{task}"
+    return f"{prefix} {status_label_text}：{task}"
 
 
 def status_label(brief: dict[str, Any]) -> str:
-    status = str(brief.get("terminal_status", "")).strip().lower()
-    label = STATUS_LABELS.get(status, status or "未知状态")
-    raw = str(brief.get("terminal_status", "unknown"))
+    status = brief_status_value(brief)
+    label = STATUS_LABELS.get(status.lower(), status or "未知状态")
+    raw = status or "unknown"
+    if brief.get("schema") == STRUCTURED_BRIEF_SCHEMA and label == raw:
+        return label
     return f"{label}（{raw}）"
 
 
 def render_plain(brief: dict[str, Any]) -> str:
     evidence = brief.get("evidence_paths") if isinstance(brief.get("evidence_paths"), list) else []
+    event_type = brief_event_type(brief)
+    event_label = EVENT_TYPE_LABELS.get(event_type, event_type or "通知")
     lines = [
-        "结论",
-        str(brief.get("key_conclusion", "")).strip(),
+        f"状态：{status_label(brief)}",
+        f"结论：{str(brief.get('key_conclusion', '')).strip()}",
+        f"你现在需要做什么：{brief.get('next_step', '')}",
         "",
-        f"下一步：{brief.get('next_step', '')}",
-        "",
-        "状态",
         f"项目：{brief.get('project', 'unknown')}",
         f"任务：{brief.get('task_key', 'unknown')}",
-        f"终态：{status_label(brief)}",
+        f"事件：{event_label}",
     ]
+    if brief.get("decision_authority"):
+        lines.append(f"语义/状态来源：{brief['decision_authority']}")
     for key, label in OPTIONAL_LABELS.items():
         if brief.get(key):
             lines.append(f"{label}：{brief[key]}")
@@ -209,7 +261,7 @@ def render_plain(brief: dict[str, Any]) -> str:
                 lines.append(f"- {summary}")
             else:
                 lines.append(f"- {item}")
-    lines.extend(["", "关键证据"])
+    lines.extend(["", "可检查"])
     lines.extend(str(item) for item in evidence[:8])
     details = brief.get("details")
     if isinstance(details, str) and details.strip():
@@ -220,7 +272,11 @@ def render_plain(brief: dict[str, Any]) -> str:
 def render_html(brief: dict[str, Any]) -> str:
     evidence = brief.get("evidence_paths") if isinstance(brief.get("evidence_paths"), list) else []
     evidence_items = "\n".join(f"<li>{html.escape(str(item))}</li>" for item in evidence[:8])
+    event_type = brief_event_type(brief)
+    event_label = EVENT_TYPE_LABELS.get(event_type, event_type or "通知")
     rows = []
+    if brief.get("decision_authority"):
+        rows.append(f"<p><strong>语义/状态来源：</strong>{html.escape(str(brief['decision_authority']))}</p>")
     for key, label in OPTIONAL_LABELS.items():
         if brief.get(key):
             rows.append(f"<p><strong>{html.escape(label)}：</strong>{html.escape(str(brief[key]))}</p>")
@@ -241,16 +297,15 @@ def render_html(brief: dict[str, Any]) -> str:
         detail_html = f"<h2>备注</h2><p>{html.escape(details.strip()[:1000])}</p>"
     return (
         "<html><body>"
-        "<h1>结论</h1>"
-        f"<p>{html.escape(str(brief.get('key_conclusion', '')))}</p>"
-        f"<p><strong>下一步：</strong>{html.escape(str(brief.get('next_step', '')))}</p>"
-        "<h2>状态</h2>"
+        f"<p><strong>状态：</strong>{html.escape(status_label(brief))}</p>"
+        f"<p><strong>结论：</strong>{html.escape(str(brief.get('key_conclusion', '')))}</p>"
+        f"<p><strong>你现在需要做什么：</strong>{html.escape(str(brief.get('next_step', '')))}</p>"
         f"<p><strong>项目：</strong>{html.escape(str(brief.get('project', 'unknown')))}</p>"
         f"<p><strong>任务：</strong>{html.escape(str(brief.get('task_key', 'unknown')))}</p>"
-        f"<p><strong>终态：</strong>{html.escape(status_label(brief))}</p>"
+        f"<p><strong>事件：</strong>{html.escape(event_label)}</p>"
         + "".join(rows)
         + jobs_html
-        + f"<h2>关键证据</h2><ul>{evidence_items}</ul>"
+        + f"<h2>可检查</h2><ul>{evidence_items}</ul>"
         + detail_html
         + "</body></html>"
     )
@@ -325,6 +380,11 @@ def terminal_briefs(root: Path = Path.cwd()) -> list[Path]:
     return sorted(root.glob("results/*/notification_brief.json"))
 
 
+def notification_briefs(root: Path = Path.cwd()) -> list[Path]:
+    paths = [*root.glob("results/*/notification_brief.json"), *root.glob("results/*/notifications/*.json")]
+    return sorted(dict.fromkeys(paths))
+
+
 def notifier_once(
     *,
     root: Path = Path.cwd(),
@@ -334,7 +394,7 @@ def notifier_once(
     sender: Callable[[dict[str, Any], dict[str, str]], None] | None = None,
 ) -> list[NotifierResult]:
     state = load_state(state_path)
-    briefs = terminal_briefs(root)
+    briefs = notification_briefs(root)
     if not state.get("baseline_initialized"):
         for path in briefs:
             try:
