@@ -335,15 +335,51 @@ def visual_review_evidence_path(target: Path, task_key: str, current: dict[str, 
     return target.resolve() / rel
 
 
+def visual_review_manifest_path(target: Path, task_key: str, current: dict[str, Any]) -> Path:
+    rel = str(current.get("visual_review_manifest_path") or f"results/{task_key}/visual_review/visual_inputs.json")
+    if Path(rel).is_absolute() or ".." in Path(rel).parts:
+        raise ValueError("visual_review_manifest_path must be repository-relative")
+    return target.resolve() / rel
+
+
+def validate_visual_review_manifest(target: Path, task_key: str, current: dict[str, Any]) -> list[str]:
+    path = visual_review_manifest_path(target, task_key, current)
+    if not path.exists():
+        return [f"visual review input manifest missing: {path.relative_to(target.resolve())}"]
+    try:
+        manifest = visual_review.normalize_manifest(target.resolve(), load_json(path))
+    except Exception as exc:
+        return [f"visual review input manifest invalid: {exc}"]
+    errors: list[str] = []
+    if manifest.get("task_key") != task_key:
+        errors.append("visual review input manifest task_key mismatch")
+    if manifest.get("workflow_type") != "reviewed_handoff":
+        errors.append("visual review input manifest workflow_type must be reviewed_handoff")
+    bindings = manifest.get("identity_bindings") if isinstance(manifest.get("identity_bindings"), dict) else {}
+    if bindings.get("implementation_commit") != str(current.get("implementation_commit") or ""):
+        errors.append("visual review input manifest implementation_commit must match CURRENT")
+    return errors
+
+
 def reviewed_visual_review_status(target: Path, task_key: str, current: dict[str, Any]) -> dict[str, Any]:
     if not current.get("visual_review_required"):
         return {"required": False, "status": "NOT_REQUIRED", "errors": []}
     path = visual_review_evidence_path(target, task_key, current)
     if not path.exists():
+        manifest_errors = validate_visual_review_manifest(target, task_key, current)
+        if manifest_errors:
+            return {
+                "required": True,
+                "status": "INVALID",
+                "path": str(path.relative_to(target.resolve())),
+                "manifest_path": str(visual_review_manifest_path(target, task_key, current).relative_to(target.resolve())),
+                "errors": manifest_errors,
+            }
         return {
             "required": True,
             "status": "PENDING",
             "path": str(path.relative_to(target.resolve())),
+            "manifest_path": str(visual_review_manifest_path(target, task_key, current).relative_to(target.resolve())),
             "errors": ["visual review evidence pending"],
         }
     try:
@@ -418,6 +454,23 @@ def latest_review_metadata(target: Path, task_key: str) -> tuple[dict[str, str] 
 def reviewed_external_wait_status(target: Path, task_key: str, *, now: Any = None) -> dict[str, Any]:
     current = load_json(task_root(target, task_key) / "CURRENT.json")
     state = str(current.get("state") or "")
+    visual_status = reviewed_visual_review_status(target, task_key, current)
+    if state == "READY_FOR_GPT_REVIEW" and visual_status.get("required") and visual_status.get("status") == "PENDING":
+        return {
+            "operational_status": "waiting_visual_review_evidence",
+            "external_owner": "GitHub Actions",
+            "wait_owner": "Visual Review",
+            "current_identity": str(current.get("implementation_commit") or "").strip() or None,
+            "fresh_decision": False,
+            "stale_decision": False,
+            "may_block": False,
+            "visual_review": visual_status,
+            "blocker_required_evidence": [
+                "GitHub Actions visual-review workflow is disabled, expired, unauthenticated, or lacks required secret access",
+                "visual input manifest or image artifact is inaccessible from the published branch",
+                "VISUAL_REVIEW.json cannot be produced because of a concrete service failure",
+            ],
+        }
     owner_map = dict(EXTERNAL_WAIT_STATE_OWNERS)
     if state == "WAITING_FOR_CI" and current.get("ci_status") in {"PASS", "FAIL"}:
         owner_map["WAITING_FOR_CI"] = "Reviewer"

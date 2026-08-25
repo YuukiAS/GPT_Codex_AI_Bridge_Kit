@@ -117,10 +117,11 @@ class ReviewedHandoffTests(unittest.TestCase):
         current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
         current = rh.load_json(current_path)
         current["visual_review_required"] = True
+        current["visual_review_manifest_path"] = "results/001_feature/visual_review/visual_inputs.json"
         current["visual_review_evidence_path"] = "results/001_feature/visual_review/VISUAL_REVIEW.json"
         rh.write_json(current_path, current)
 
-    def write_visual_review(self, target: Path, implementation_commit: str, decision: str = "PASS") -> None:
+    def write_visual_input_manifest(self, target: Path, implementation_commit: str) -> None:
         visual_dir = rh.result_root(target, "001_feature") / "visual_review"
         image = visual_dir / "primary.png"
         image.parent.mkdir(parents=True, exist_ok=True)
@@ -139,6 +140,12 @@ class ReviewedHandoffTests(unittest.TestCase):
             "identity_bindings": {"implementation_commit": implementation_commit},
             "inputs": [{"logical_id": "primary", "path": "results/001_feature/visual_review/primary.png"}],
         }
+        visual_review.write_json(visual_dir / "visual_inputs.json", manifest)
+
+    def write_visual_review(self, target: Path, implementation_commit: str, decision: str = "PASS") -> None:
+        self.write_visual_input_manifest(target, implementation_commit)
+        visual_dir = rh.result_root(target, "001_feature") / "visual_review"
+        manifest = rh.load_json(visual_dir / "visual_inputs.json")
         normalized = visual_review.normalize_manifest(target, manifest)
         artifact = visual_review.assemble_visual_review(
             manifest=normalized,
@@ -231,14 +238,49 @@ class ReviewedHandoffTests(unittest.TestCase):
             self.require_visual_review(target)
             self.freeze_and_start(target)
             self.write_result(target, commit="impl-visual")
+            self.write_visual_input_manifest(target, implementation_commit="impl-visual")
             ready = rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
             self.assertEqual(ready["state"], "READY_FOR_GPT_REVIEW")
             plan = rh.plan_transition(target, "001_feature")
             self.assertEqual(plan["next_action"], "WAIT_FOR_VISUAL_REVIEW_EVIDENCE")
+            wait = rh.reviewed_external_wait_status(target, "001_feature")
+            self.assertEqual(wait["operational_status"], "waiting_visual_review_evidence")
+            self.assertEqual(wait["wait_owner"], "Visual Review")
             with self.assertRaisesRegex(ValueError, "visual review evidence pending"):
                 rh.record_review(target, "001_feature", decision="PASS", body="Looks good.")
             current = rh.load_json(rh.task_root(target, "001_feature") / "CURRENT.json")
             self.assertEqual(current["review_round"], 0)
+
+    def test_visual_input_manifest_can_be_published_before_github_visual_review(self) -> None:
+        tmp, target = self.make_project(git=True)
+        with tmp:
+            self.require_visual_review(target)
+            self.freeze_and_start(target)
+            (target / "src" / "app.py").write_text("VALUE = 2\n", encoding="utf-8")
+            subprocess.check_call(["git", "add", "src/app.py"], cwd=target)
+            subprocess.check_call(["git", "commit", "-m", "implementation"], cwd=target, stdout=subprocess.DEVNULL)
+            implementation_commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=target, text=True).strip()
+            self.write_result(target, commit=implementation_commit)
+            self.write_visual_input_manifest(target, implementation_commit=implementation_commit)
+
+            current = rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+
+            self.assertEqual(current["state"], "READY_FOR_GPT_REVIEW")
+            self.assertEqual(rh.validate_task(target, "001_feature"), [])
+            self.assertFalse((rh.result_root(target, "001_feature") / "visual_review" / "VISUAL_REVIEW.json").exists())
+            wait = rh.reviewed_external_wait_status(target, "001_feature")
+            self.assertEqual(wait["operational_status"], "waiting_visual_review_evidence")
+            self.assertFalse(wait["may_block"])
+            self.assertEqual(rh.load_json(rh.task_root(target, "001_feature") / "CURRENT.json")["review_round"], 0)
+
+    def test_visual_review_pending_requires_published_input_manifest(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            self.require_visual_review(target)
+            self.freeze_and_start(target)
+            self.write_result(target, commit="impl-visual")
+            with self.assertRaisesRegex(ValueError, "visual review input manifest missing"):
+                rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
 
     def test_current_visual_review_can_be_consumed_by_reviewer(self) -> None:
         tmp, target = self.make_project()
@@ -246,6 +288,7 @@ class ReviewedHandoffTests(unittest.TestCase):
             self.require_visual_review(target)
             self.freeze_and_start(target)
             self.write_result(target, commit="impl-visual")
+            self.write_visual_input_manifest(target, implementation_commit="impl-visual")
             rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
             self.write_visual_review(target, implementation_commit="impl-visual")
             current = rh.record_review(target, "001_feature", decision="PASS", body="Plan and visual evidence satisfied.")
@@ -258,6 +301,7 @@ class ReviewedHandoffTests(unittest.TestCase):
             self.require_visual_review(target)
             self.freeze_and_start(target)
             self.write_result(target, commit="impl-current")
+            self.write_visual_input_manifest(target, implementation_commit="impl-current")
             rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
             self.write_visual_review(target, implementation_commit="impl-old")
             with self.assertRaisesRegex(ValueError, "identity binding mismatch"):

@@ -154,13 +154,15 @@ The watcher performs only operational orchestration:
 
 1. require a Git repository on an existing checked-out branch;
 2. refuse dirty working trees before sync/launch;
-3. fetch `origin/<branch>` and update only by `merge --ff-only`;
+3. fetch `origin/<branch>` and update only by `merge --ff-only`, except for the narrow unpublished Executor recovery below;
 4. validate Reviewed Handoff tracked state;
 5. react only to `PLAN_FROZEN` and `REVISE`;
 6. launch one fresh `codex exec -C <repo> -` with the task-specific Executor prompt;
 7. confirm the task state actually moved away from the triggering event before marking the event complete locally.
 
 It does not create or switch branches, does not use persistent thread IDs, does not create role worktrees, and does not maintain receipts or cryptographic event identities. The event key is a plain local tuple of task/state/review round/plan revision/implementation locator.
+
+If the watcher process dies after Codex created valid local Executor commits but before the watcher published them, restart recovery is allowed only when the working tree is clean, the local branch is ahead-only of `origin/<branch>`, the remote `CURRENT.json` at `origin/<branch>` still describes exactly one current Executor event, the local `CURRENT.json` has progressed from that event, Executor authority validation passes, workflow validation passes, and any `implementation_commit` handoff is contained in the unpublished commit range. Dirty, diverged, unauthorized, ambiguous, or event-unbound local commits fail closed and are not auto-published. This recovery does not let Codex push directly and does not bypass Planner or Reviewer authority.
 
 Codex exit code 0 alone is not progress. An event that does not move task state is retried only a bounded number of times. Exhausted attempts publish an operational `BLOCKED` plus `FINAL_REPORT.md` rather than retrying forever or discarding local work.
 
@@ -243,6 +245,8 @@ Opt-in is task-local via `CURRENT.visual_review_required=true`. The default evid
 ```text
 results/<task_key>/visual_review/VISUAL_REVIEW.json
 ```
+
+The Executor must publish the rendered visual inputs and `results/<task_key>/visual_review/visual_inputs.json` before entering `READY_FOR_GPT_REVIEW`. The GitHub Actions Visual Review job can then read the already-published inputs and write `VISUAL_REVIEW.json`. Missing `VISUAL_REVIEW.json` with a valid input manifest is normal `waiting_visual_review_evidence`; missing or invalid input manifest is not a valid handoff.
 
 For Reviewed Handoff, valid visual evidence is bound to:
 

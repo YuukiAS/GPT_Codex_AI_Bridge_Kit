@@ -33,9 +33,13 @@ ai-bridge reviewed-handoff watcher once --target /path/to/project --branch <bran
 
 Watcher 不创建 branch/PR，不使用 persistent Codex thread receipt，也不建立 SHA event graph。机器本地的 event 去重和日志位于 `${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}/reviewed-handoff/<repo>/`，不会写进目标 repository。Codex exit code 为 0 也不自动视为成功：只有 task state 真正离开原 executor event 才算有进展；同一 executor event 的执行尝试有界，耗尽后进入可见的 `BLOCKED`，而不是无限重试。
 
+如果 watcher 在 Codex 已提交合法 Executor 结果但发布前退出，重启后只会在 clean、ahead-only、能绑定到当前单一 Executor event、authority validation 和 workflow validation 均通过时恢复发布。dirty、diverged、来源不明或越权 commit 仍 fail closed；Codex 自身仍不得 push。
+
 ## External GPT wait contract
 
 Executor 成功发布实现并把 `CURRENT` 推进到 GPT-owned state 后，外部 GPT 尚未产出新 decision 属于正常等待，不属于 watcher retry，也不属于 `BLOCKED`。常见等待态包括 `NEEDS_GPT_PLANNER`、`READY_FOR_GPT_REVIEW`，以及 `WAITING_FOR_CI` 在 CI 已经 PASS/FAIL 后需要 Scheduled GPT 继续写 review/transition 的阶段。
+
+如果 `CURRENT.visual_review_required=true`，Executor 必须先发布渲染图片和 `results/<task_key>/visual_review/visual_inputs.json`，再进入 `READY_FOR_GPT_REVIEW`。`VISUAL_REVIEW.json` 缺失但 input manifest 有效时是 `waiting_visual_review_evidence`，等待 GitHub Actions 写回 evidence；这不消耗 `review_round`，也不是 `BLOCKED`。
 
 等待从本轮实现首次正式发布并交棒给外部 GPT 起算，正常 minimum grace 是 `MIN_EXTERNAL_GPT_WAIT = 2 hours`。2 小时不是自动 deadline；超过 2 小时后，只要 repository state 合法、`RESULT.md` 和 `implementation_commit` 仍完整、Scheduled GPT/GitHub connector 没有明确失败，就继续报告 `waiting_external_review`，而不是写 terminal `FINAL_REPORT.md` 或把 `CURRENT.state` 改成 `BLOCKED`。
 

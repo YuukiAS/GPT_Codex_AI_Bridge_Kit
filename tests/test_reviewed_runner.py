@@ -39,6 +39,28 @@ class ReviewedRunnerTests(unittest.TestCase):
         subprocess.check_call(["git", "symbolic-ref", "HEAD", "refs/heads/main"], cwd=remote)
         return remote
 
+    def commit_valid_executor_handoff(self, target: Path) -> str:
+        (target / "src.py").write_text("VALUE = 2\n", encoding="utf-8")
+        subprocess.check_call(["git", "add", "src.py"], cwd=target)
+        subprocess.check_call(["git", "commit", "-m", "executor implementation"], cwd=target, stdout=subprocess.DEVNULL)
+        implementation_commit = runner.git_output(target, ["rev-parse", "HEAD"])
+        result_path = rh.result_root(target, "001_feature") / "RESULT.md"
+        result_template = rh.read_text(rh.reviewed_root(target) / "templates" / "RESULT.md")
+        rh.write_text(
+            result_path,
+            result_template.replace("<TASK_KEY>", "001_feature").replace("<COMMIT>", implementation_commit),
+        )
+        current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+        current = rh.load_json(current_path)
+        current["state"] = "READY_FOR_GPT_REVIEW"
+        current["implementation_commit"] = implementation_commit
+        current["ci_status"] = "NOT_REQUIRED"
+        current["next_action"] = "WAIT_SCHEDULED_GPT_REVIEW"
+        rh.write_json(current_path, current)
+        subprocess.check_call(["git", "add", str(result_path.relative_to(target)), str(current_path.relative_to(target))], cwd=target)
+        subprocess.check_call(["git", "commit", "-m", "handoff to reviewer"], cwd=target, stdout=subprocess.DEVNULL)
+        return implementation_commit
+
     @staticmethod
     def codex_only_fake(real_run, callback=None):
         def fake_run(*args, **kwargs):
@@ -243,6 +265,82 @@ class ReviewedRunnerTests(unittest.TestCase):
             published, error = runner.publish_clean_progress(target, "main")
             self.assertFalse(published)
             self.assertIn("diverged", str(error))
+
+    def test_watcher_restart_recovers_crash_after_executor_commit_before_push(self) -> None:
+        tmp, target, state_home = self.make_project()
+        with tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(state_home)}):
+            self.attach_origin(target, Path(tmp.name))
+            implementation_commit = self.commit_valid_executor_handoff(target)
+
+            with mock.patch("ai_bridge_kit.reviewed_runner.run_codex_event") as launched:
+                result = runner.watcher_once(target, branch="main", sync=True)
+
+            launched.assert_not_called()
+            self.assertEqual(result["status"], "recovered_unpublished_progress")
+            self.assertEqual(result["task_key"], "001_feature")
+            self.assertEqual(result["post_state"], "READY_FOR_GPT_REVIEW")
+            self.assertEqual(runner.branch_heads(target, "main")[0], runner.branch_heads(target, "main")[1])
+            remote_current = runner.current_at_ref(target, "origin/main", "001_feature")
+            self.assertIsNotNone(remote_current)
+            self.assertEqual(remote_current["implementation_commit"], implementation_commit)
+            local = runner.load_local_state(target)
+            self.assertTrue(local["events"][result["event"]]["completed"])
+            self.assertTrue(local["events"][result["event"]]["recovered_after_restart"])
+
+    def test_unpublished_recovery_rejects_dirty_tree(self) -> None:
+        tmp, target, state_home = self.make_project()
+        with tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(state_home)}):
+            self.attach_origin(target, Path(tmp.name))
+            self.commit_valid_executor_handoff(target)
+            (target / "dirty.txt").write_text("uncommitted\n", encoding="utf-8")
+
+            result = runner.watcher_once(target, branch="main", sync=True)
+
+            self.assertEqual(result["status"], "unpublished_progress_recovery_failed")
+            self.assertIn("dirty", result["reason"])
+            local_head, remote_head = runner.branch_heads(target, "main")
+            self.assertNotEqual(local_head, remote_head)
+
+    def test_unpublished_recovery_rejects_diverged_branch(self) -> None:
+        tmp, target, state_home = self.make_project()
+        with tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(state_home)}):
+            remote = self.attach_origin(target, Path(tmp.name))
+            clone = Path(tmp.name) / "other"
+            subprocess.check_call(["git", "clone", str(remote), str(clone)], stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "config", "user.email", "other@example.org"], cwd=clone)
+            subprocess.check_call(["git", "config", "user.name", "Other User"], cwd=clone)
+            (clone / "remote.txt").write_text("remote\n", encoding="utf-8")
+            subprocess.check_call(["git", "add", "remote.txt"], cwd=clone)
+            subprocess.check_call(["git", "commit", "-m", "remote advance"], cwd=clone, stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "push", "origin", "main"], cwd=clone, stdout=subprocess.DEVNULL)
+            self.commit_valid_executor_handoff(target)
+
+            result = runner.watcher_once(target, branch="main", sync=True)
+
+            self.assertEqual(result["status"], "unpublished_progress_recovery_failed")
+            self.assertIn("diverged", result["reason"])
+
+    def test_unpublished_recovery_rejects_executor_authority_violation(self) -> None:
+        tmp, target, state_home = self.make_project()
+        with tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(state_home)}):
+            self.attach_origin(target, Path(tmp.name))
+            current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+            current = rh.load_json(current_path)
+            current["review_round"] = 1
+            current["state"] = "READY_FOR_GPT_REVIEW"
+            current["implementation_commit"] = runner.git_output(target, ["rev-parse", "HEAD"])
+            current["ci_status"] = "NOT_REQUIRED"
+            rh.write_json(current_path, current)
+            rh.write_text(rh.result_root(target, "001_feature") / "REVIEW_1.md", "# unauthorized\n")
+            subprocess.check_call(["git", "add", "."], cwd=target)
+            subprocess.check_call(["git", "commit", "-m", "unauthorized executor handoff"], cwd=target, stdout=subprocess.DEVNULL)
+
+            result = runner.watcher_once(target, branch="main", sync=True)
+
+            self.assertEqual(result["status"], "unpublished_progress_recovery_failed")
+            text = "\n".join("\n".join(item.get("errors", [])) for item in result["task_failures"])
+            self.assertIn("review_round", text)
+            self.assertIn("REVIEW_1.md", text)
 
 
 if __name__ == "__main__":

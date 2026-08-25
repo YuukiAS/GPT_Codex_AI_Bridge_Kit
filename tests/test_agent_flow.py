@@ -1323,6 +1323,49 @@ class AgentFlowTests(unittest.TestCase):
             plan = agent_flow.integration_plan(target, "001_toy", "Executor", good)
             self.assertEqual(plan["role_commit"], commit)
 
+    def test_controller_restart_recovers_executor_commit_before_integration_publication(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            subprocess.check_call(["git", "init", "--initial-branch", "main"], cwd=target, stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "config", "user.email", "test@example.org"], cwd=target)
+            subprocess.check_call(["git", "config", "user.name", "Test User"], cwd=target)
+            subprocess.check_call(["git", "add", "."], cwd=target, stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "commit", "-m", "initial"], cwd=target, stdout=subprocess.DEVNULL)
+            snapshot = self.snapshot_and_bundle(target)
+            current_path = agent_flow.task_root(target, "001_toy") / "CURRENT.json"
+            current = agent_flow.load_json(current_path)
+            current["integration_branch"] = "main"
+            agent_flow.write_json(current_path, current)
+            write(target / "src" / "calc.py", "def add(a, b):\n    return a + b + 0\n")
+            subprocess.check_call(["git", "add", "src/calc.py"], cwd=target, stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "commit", "-m", "executor change"], cwd=target, stdout=subprocess.DEVNULL)
+            commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=target, text=True).strip()
+            request = agent_flow.load_json(agent_flow.task_root(target, "001_toy") / "REQUEST.json")
+            receipt = {
+                "role": "Executor",
+                "session_id": "exec-session",
+                "runtime_adapter": "codex",
+                "worktree_id": "exec-wt",
+                "base_task_nonce": request["request_nonce"],
+                "base_review_target_id": snapshot["review_target_id"],
+                "allowed_write_scope": agent_flow.load_project_profile(target)["role_write_scopes"]["Executor"],
+                "start_or_resume_status": "started",
+                "produced_commit": commit,
+                "produced_evidence_id": "executor-evidence",
+                "commit_kind": "git",
+                "touched_paths": ["src/calc.py"],
+            }
+            receipt_path = agent_flow.role_receipt_path(target, "001_toy", "Executor")
+            agent_flow.write_json(receipt_path, receipt)
+
+            recovered_receipt = agent_flow.load_json(receipt_path)
+            first = agent_flow.integration_plan(target, "001_toy", "Executor", recovered_receipt)
+            second = agent_flow.integration_plan(target, "001_toy", "Executor", agent_flow.load_json(receipt_path))
+
+            self.assertEqual(first["role_commit"], commit)
+            self.assertEqual(second, first)
+            self.assertFalse(first["branch_created"])
+
     def test_missing_executor_receipt_and_stale_verifier_freeze_nonce_rejected(self) -> None:
         tmp, target = self.make_project()
         with tmp:

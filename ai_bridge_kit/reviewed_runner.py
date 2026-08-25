@@ -102,6 +102,13 @@ def branch_heads(target: Path, branch: str) -> tuple[str, str]:
     return git_output(target, ["rev-parse", "HEAD"]), git_output(target, ["rev-parse", f"origin/{branch}"])
 
 
+def branch_relation(target: Path, branch: str) -> tuple[int, int]:
+    counts = git_output(target, ["rev-list", "--left-right", "--count", f"origin/{branch}...HEAD"]).split()
+    if len(counts) != 2:
+        raise ValueError("unable to determine local/remote branch relation")
+    return int(counts[0]), int(counts[1])
+
+
 def sync_origin_ff_only(target: Path, branch: str) -> None:
     ensure_clean_repo(target)
     git_output(target, ["fetch", "origin", branch])
@@ -122,10 +129,7 @@ def publish_clean_progress(target: Path, branch: str) -> tuple[bool, str | None]
     local_head, remote_head = branch_heads(target, branch)
     if local_head == remote_head:
         return True, None
-    counts = git_output(target, ["rev-list", "--left-right", "--count", f"origin/{branch}...HEAD"]).split()
-    if len(counts) != 2:
-        return False, "unable to determine local/remote branch relation"
-    behind, ahead = (int(counts[0]), int(counts[1]))
+    behind, ahead = branch_relation(target, branch)
     if behind == 0 and ahead > 0:
         git_output(target, ["push", "origin", branch])
         git_output(target, ["fetch", "origin", branch])
@@ -134,6 +138,122 @@ def publish_clean_progress(target: Path, branch: str) -> tuple[bool, str | None]
             return True, None
         return False, "origin did not reach the local Codex commit after push"
     return False, f"local/remote branch diverged during Codex execution (behind={behind}, ahead={ahead})"
+
+
+def current_at_ref(target: Path, ref: str, task_key: str) -> dict[str, Any] | None:
+    rel = f"automation/reviewed_handoff/tasks/{task_key}/CURRENT.json"
+    try:
+        return json.loads(git_output(target, ["show", f"{ref}:{rel}"]))
+    except Exception:
+        return None
+
+
+def validate_unpublished_executor_progress(target: Path, branch: str) -> tuple[str | None, dict[str, Any]]:
+    local_head, remote_head = branch_heads(target, branch)
+    if local_head == remote_head:
+        return None, {"status": "up_to_date"}
+    try:
+        behind, ahead = branch_relation(target, branch)
+    except Exception as exc:
+        return None, {"status": "unpublished_progress_recovery_failed", "reason": str(exc)}
+    if ahead == 0:
+        return None, {"status": "no_unpublished_executor_progress", "behind": behind, "ahead": ahead}
+    if behind != 0:
+        return None, {
+            "status": "unpublished_progress_recovery_failed",
+            "reason": f"local/remote branch diverged before recovery (behind={behind}, ahead={ahead})",
+            "behind": behind,
+            "ahead": ahead,
+        }
+
+    task_failures: list[dict[str, Any]] = []
+    candidates: list[dict[str, Any]] = []
+    tasks_dir = rh.reviewed_root(target) / "tasks"
+    if tasks_dir.exists():
+        for task_dir in sorted(path for path in tasks_dir.iterdir() if path.is_dir()):
+            task_key = task_dir.name
+            post_current_path = task_dir / "CURRENT.json"
+            if not post_current_path.exists():
+                continue
+            pre_current = current_at_ref(target, f"origin/{branch}", task_key)
+            if not pre_current or pre_current.get("state") not in ELIGIBLE_EXECUTOR_STATES:
+                continue
+            post_current = rh.load_json(post_current_path)
+            pre_event = event_identity(task_key, pre_current)
+            post_event = event_identity(task_key, post_current)
+            progressed = post_event != pre_event or post_current.get("state") not in ELIGIBLE_EXECUTOR_STATES
+            if not progressed:
+                task_failures.append({"task_key": task_key, "errors": ["local commits did not advance the Executor event"]})
+                continue
+            authority_errors = executor_authority_errors(target, task_key, pre_current, post_current, remote_head, local_head)
+            workflow_errors = []
+            if not authority_errors:
+                validation_lines, validation_code = rh.validate_reviewed_handoff(target)
+                workflow_errors = validation_lines if validation_code else []
+            lineage_errors: list[str] = []
+            if post_current.get("state") in {"WAITING_FOR_CI", "READY_FOR_GPT_REVIEW"}:
+                implementation_commit = str(post_current.get("implementation_commit") or "")
+                if not implementation_commit:
+                    lineage_errors.append("Executor handoff requires implementation_commit")
+                elif not rh.git_is_ancestor(target, remote_head, implementation_commit) or not rh.git_is_ancestor(target, implementation_commit, local_head):
+                    lineage_errors.append("implementation_commit is not contained in the unpublished Executor commit range")
+            errors = authority_errors + workflow_errors + lineage_errors
+            if errors:
+                task_failures.append({"task_key": task_key, "event": pre_event, "errors": errors})
+                continue
+            candidates.append({"task_key": task_key, "event": pre_event, "post_state": post_current.get("state")})
+
+    if len(candidates) != 1:
+        reason = "unpublished commits are not bound to exactly one valid current Executor event"
+        return None, {
+            "status": "unpublished_progress_recovery_failed",
+            "reason": reason,
+            "candidate_count": len(candidates),
+            "task_failures": task_failures,
+            "behind": behind,
+            "ahead": ahead,
+        }
+    return str(candidates[0]["event"]), {
+        "status": "validated_unpublished_executor_progress",
+        "task_key": candidates[0]["task_key"],
+        "event": candidates[0]["event"],
+        "post_state": candidates[0]["post_state"],
+        "behind": behind,
+        "ahead": ahead,
+    }
+
+
+def recover_unpublished_executor_progress(target: Path, branch: str) -> dict[str, Any]:
+    if working_tree_dirty(target):
+        return {
+            "status": "unpublished_progress_recovery_failed",
+            "reason": "working tree is dirty",
+        }
+    git_output(target, ["fetch", "origin", branch])
+    event, validation = validate_unpublished_executor_progress(target, branch)
+    if validation.get("status") != "validated_unpublished_executor_progress":
+        return validation
+    published, publication_error = publish_clean_progress(target, branch)
+    if not published:
+        return {
+            **validation,
+            "status": "unpublished_progress_recovery_failed",
+            "reason": publication_error,
+        }
+    local = load_local_state(target)
+    events = local.setdefault("events", {})
+    events[str(event)] = {
+        "attempts": int(events.get(str(event), {}).get("attempts", 0)) if isinstance(events.get(str(event)), dict) else 0,
+        "completed": True,
+        "recovered_after_restart": True,
+        "last_publication_error": None,
+    }
+    write_local_state(target, local)
+    return {
+        "branch": branch,
+        **validation,
+        "status": "recovered_unpublished_progress",
+    }
 
 
 def event_identity(task_key: str, current: dict[str, Any]) -> str:
@@ -185,7 +305,7 @@ def external_wait_events(target: Path) -> list[tuple[str, dict[str, Any]]]:
         if not current_path.exists():
             continue
         status = rh.reviewed_external_wait_status(target, task_dir.name)
-        if status.get("operational_status") == "waiting_external_review":
+        if status.get("operational_status") in {"waiting_external_review", "waiting_visual_review_evidence"}:
             waiting.append((task_dir.name, status))
     return waiting
 
@@ -421,6 +541,11 @@ def watcher_once(
     target = target.resolve()
     selected_branch = resolve_branch(target, branch)
     if sync:
+        recovery = recover_unpublished_executor_progress(target, selected_branch)
+        if recovery.get("status") == "recovered_unpublished_progress":
+            return recovery
+        if recovery.get("status") == "unpublished_progress_recovery_failed":
+            return {"branch": selected_branch, **recovery}
         sync_origin_ff_only(target, selected_branch)
     else:
         ensure_clean_repo(target)
@@ -560,7 +685,7 @@ def watcher_once(
     waiting = external_wait_events(target)
     if waiting:
         task_key, status = waiting[0]
-        return {"status": "waiting_external_review", "branch": selected_branch, "task_key": task_key, **status}
+        return {"status": status.get("operational_status"), "branch": selected_branch, "task_key": task_key, **status}
     return {"status": "idle", "branch": selected_branch}
 
 
@@ -580,6 +705,7 @@ def watcher_run(
         "codex_authority_violation",
         "codex_invalid_progress",
         "codex_unpublished_progress",
+        "unpublished_progress_recovery_failed",
     }
     while True:
         result: dict[str, Any] = {}
@@ -595,7 +721,7 @@ def watcher_run(
         cycles += 1
         if max_cycles is not None and cycles >= max_cycles:
             return 0
-        sleep_seconds = max(600, interval_seconds) if result.get("status") == "waiting_external_review" else max(5, interval_seconds)
+        sleep_seconds = max(600, interval_seconds) if result.get("status") in {"waiting_external_review", "waiting_visual_review_evidence"} else max(5, interval_seconds)
         time.sleep(sleep_seconds)
 
 
@@ -638,6 +764,7 @@ def main(argv: list[str] | None = None) -> int:
             "codex_dirty_blocked",
             "codex_authority_violation",
             "local_manual_recovery_required",
+            "unpublished_progress_recovery_failed",
         }
         return 0 if result.get("status") not in failure_statuses else 1
     if args.command == "run":

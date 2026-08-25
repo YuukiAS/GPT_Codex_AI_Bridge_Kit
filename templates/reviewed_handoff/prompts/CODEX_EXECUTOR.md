@@ -23,6 +23,8 @@ Executor 没有 Planner/Reviewer authority。不得修改：
 4. 更新 `CURRENT.implementation_commit` 与 control-plane 状态，并把这些修改单独 commit；
 5. leave working tree clean。
 
+如果 `CURRENT.visual_review_required=true`，进入 `READY_FOR_GPT_REVIEW` 前必须把实际渲染图片和 `results/<task_key>/visual_review/visual_inputs.json` 一起提交；不要在本地调用 Terra 或等待 `VISUAL_REVIEW.json`。GitHub Actions 会在 watcher 发布后读取这些已发布输入并生成 visual evidence。
+
 如果 `CURRENT.ci_required=true`，Executor **不能伪造或等待尚未发布 commit 的 GitHub CI**。此时把 `ci_status` 保持为 `PENDING`，最终状态写成 `WAITING_FOR_CI`。Watcher 验证并发布 clean commits 后，Scheduled GPT 会读取当前 implementation commit 的真实 GitHub checks：PASS 才进入 `READY_FOR_GPT_REVIEW`；FAIL 会作为一条真实 GPT `REVISE` finding 进入返修流程。
 
 如果 `ci_required=false`，本地 acceptance/regression gates 满足后直接进入 `READY_FOR_GPT_REVIEW`，`ci_status` 保持 `NOT_REQUIRED`（或已有合法 PASS）。
