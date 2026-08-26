@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Require `PLAN_FROZEN` to correspond to a structurally valid Reviewed
+  Handoff `PLAN.md`, including the required `## Out of scope` section, and
+  update Planner/Scheduled Planner prompts to self-check the current PLAN
+  template before publishing `CURRENT.state=PLAN_FROZEN`.
+- Keep the Reviewed Handoff persistent watcher alive on `invalid_workflow`
+  validation failures: it now records the local status/error, refuses to launch
+  Executor, sleeps with low-frequency bounded backoff, and resumes routing
+  automatically after the remote workflow is repaired.
 - Add a read-only Reviewed Handoff watcher status view that reports task,
   state, Executor event, runtime type, optional thread id, start/completion
   timestamps, last exit/result, wait owner, and publication status from

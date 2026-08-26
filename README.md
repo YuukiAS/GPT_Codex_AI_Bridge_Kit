@@ -187,6 +187,8 @@ ai-bridge reviewed-handoff watcher run \
 
 监视器不会自行创建分支或 PR。它也不会把 Codex Executor 变成新的决策角色：Executor 只执行冻结方案并提交结果，发布仍由 watcher 在验证后完成。
 
+`PLAN_FROZEN` 只有在当前 `PLAN.md` 结构合法时才会被 watcher 视为可执行；如果 GitHub 上出现临时不合法的 workflow 状态，watcher 会拒绝启动 Executor、记录本机状态并低频重试。Planner 后续修好同一分支后，不需要用户重新启动 watcher。
+
 需要查看后台 Executor 状态时，可以运行：
 
 ```bash

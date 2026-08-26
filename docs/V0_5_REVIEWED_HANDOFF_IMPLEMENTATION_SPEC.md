@@ -101,6 +101,16 @@ BLOCKED
 
 The canonical transition graph lives in `schema.json` and the Python core. Illegal transitions fail closed.
 
+`PLAN_FROZEN` is executable only when the current `PLAN.md` is structurally
+valid against the installed Reviewed Handoff PLAN template: required
+frontmatter must exist and all required sections must be present, including
+`## Out of scope`. A Planner or Scheduled Planner transaction must write
+`PLAN.md` first, re-read it, self-check it against the current
+`automation/reviewed_handoff/templates/PLAN.md`, and only then write
+`CURRENT.json` with `CURRENT.state=PLAN_FROZEN`. If this self-check fails,
+`CURRENT` must remain in a GPT-owned repair/planning state rather than entering
+an Executor-owned state.
+
 `READY_FOR_GPT_REVIEW` is not equivalent to completion. It requires a current `RESULT.md`, an `implementation_commit` locator, and `ci_status=PASS` when CI is required.
 
 For CI-required tasks, Codex Executor must stop at `WAITING_FOR_CI` with `CURRENT.ci_status=PENDING`. `CURRENT.ci_status` is the only machine truth for CI. `RESULT.md` is execution narrative and must not be treated as a second CI authority. The Scheduled GPT reviewer reads the real GitHub checks for the current authorized branch tip that contains `CURRENT.state=WAITING_FOR_CI`; that branch tip is the CI locator. It is a normal Git locator, not semantic identity, and it is not written into a hash chain or receipt graph. Do not assume `implementation_commit` equals the GitHub workflow head SHA, because the watcher may publish both implementation and control-plane commits.
@@ -175,6 +185,16 @@ ai-bridge reviewed-handoff watcher status \
 The status view reports `task`, `state`, `executor_event`, `phase`, `thread_id`, `runtime_type`, `started_at`, `running`, `completed`, `completed_at`, `last_exit_code`, `last_result`, `waiting_owner`, `last_publication_status`, `last_publication_error`, and `last_log_path`.
 
 Codex App visibility is an optional runtime property, not a Reviewed Handoff authority feature. A real probe on Codex CLI/App Server `0.148.0-alpha.9` showed that the Codex App connector can create, list, read, and continue a durable Codex task with `cwd=/home/yuukias/GPT_Codex_AI_Bridge_Kit`, but the shell-facing `codex app-server proxy` did not return a stable response suitable for embedding in the generic watcher. Until a stable supported shell/API lifecycle exists, the production watcher keeps using `codex exec` and records `runtime_type=codex_exec` with `thread_id=null`. Implementations must not edit `~/.codex/session_index.jsonl`, Codex App databases, or private UI state to fake App visibility.
+
+If fetched repository state is `invalid_workflow`, the persistent watcher must
+fail closed for that cycle: record a clear machine-local status/error, launch
+no Executor, write no tracked workflow files, and sleep with low-frequency
+bounded backoff before fetching and validating again. This is not an Executor
+attempt, not a review round, and not a repair budget event. If Planner later
+publishes a valid workflow repair on the authorized branch, the same watcher
+process must resume normal routing without requiring a user restart. Only true
+process-level errors, dirty/diverged Git states, authority violations, or
+unrecoverable publication failures may stop the watcher.
 
 If the watcher process dies after Codex created valid local Executor commits but before the watcher published them, restart recovery is allowed only when the working tree is clean, the local branch is ahead-only of `origin/<branch>`, the remote `CURRENT.json` at `origin/<branch>` still describes exactly one current Executor event, the local `CURRENT.json` has progressed from that event, Executor authority validation passes, workflow validation passes, and any `implementation_commit` handoff is contained in the unpublished commit range. Dirty, diverged, unauthorized, ambiguous, or event-unbound local commits fail closed and are not auto-published. This recovery does not let Codex push directly and does not bypass Planner or Reviewer authority.
 

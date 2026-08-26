@@ -200,6 +200,17 @@ class ReviewedHandoffTests(unittest.TestCase):
             current = rh.apply_transition(target, "001_feature", expected_state="PLAN_REQUESTED", next_state="PLAN_FROZEN")
             self.assertEqual(current["state"], "PLAN_FROZEN")
 
+    def test_plan_freeze_rejects_missing_out_of_scope_section(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            self.write_plan(target)
+            plan_path = rh.task_root(target, "001_feature") / "PLAN.md"
+            plan_text = plan_path.read_text(encoding="utf-8")
+            plan_path.write_text(plan_text.replace("\n## Out of scope\n\nList tempting adjacent improvements that Reviewer must not turn into blocking scope.\n", "\n"), encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "PLAN.md missing required section: ## Out of scope"):
+                rh.apply_transition(target, "001_feature", expected_state="PLAN_REQUESTED", next_state="PLAN_FROZEN")
+
     def test_illegal_state_jump_rejected(self) -> None:
         tmp, target = self.make_project()
         with tmp:
@@ -357,10 +368,21 @@ class ReviewedHandoffTests(unittest.TestCase):
         self.assertIn("GitHub connector", prompt)
         self.assertIn("先写 GPT 拥有的 artifact", prompt)
         self.assertIn("最后写 `automation/reviewed_handoff/tasks/<task_key>/CURRENT.json`", prompt)
+        self.assertIn("按当前 `automation/reviewed_handoff/templates/PLAN.md` 自检", prompt)
+        self.assertIn("`## Out of scope`", prompt)
+        self.assertIn("不得写 `CURRENT=PLAN_FROZEN`", prompt)
         self.assertIn("artifact-only commit 不代表新 workflow state", prompt)
         self.assertIn("本地 watcher 只以 `CURRENT.json` 作为 routing source of truth", prompt)
         self.assertNotIn("reviewed-handoff transition apply", prompt)
         self.assertNotIn("reviewed-handoff review record", prompt)
+
+    def test_planner_prompt_requires_plan_template_self_check_before_freeze(self) -> None:
+        prompt = rh.read_text(Path("templates/reviewed_handoff/prompts/PLANNER.md"))
+
+        self.assertIn("写 `CURRENT.state=PLAN_FROZEN` 前", prompt)
+        self.assertIn("按当前 `automation/reviewed_handoff/templates/PLAN.md` 自检", prompt)
+        self.assertIn("`## Out of scope`", prompt)
+        self.assertIn("若 PLAN 不合法，保持 `CURRENT` 不进入 `PLAN_FROZEN`", prompt)
 
     def test_remote_ci_pass_transaction_matches_valid_ready_state(self) -> None:
         tmp, target = self.make_project()

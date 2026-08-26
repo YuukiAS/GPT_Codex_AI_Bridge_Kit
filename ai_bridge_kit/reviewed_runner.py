@@ -71,6 +71,20 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
+def record_watcher_status(target: Path, status: str, *, branch: str, errors: list[str] | None = None) -> None:
+    local = load_local_state(target)
+    entry = {
+        "status": status,
+        "branch": branch,
+        "errors": errors or [],
+        "recorded_at": utc_now(),
+    }
+    local["last_status"] = entry
+    if status == "invalid_workflow":
+        local["last_invalid_workflow"] = entry
+    write_local_state(target, local)
+
+
 def git_output(target: Path, args: list[str]) -> str:
     return subprocess.check_output(["git", *args], cwd=target, text=True, stderr=subprocess.STDOUT).strip()
 
@@ -259,6 +273,7 @@ def recover_unpublished_executor_progress(target: Path, branch: str) -> dict[str
         "last_publication_status": "published",
         "last_result": "recovered_unpublished_progress",
     }
+    local["last_status"] = {"status": "recovered_unpublished_progress", "branch": branch, "errors": [], "recorded_at": utc_now()}
     write_local_state(target, local)
     return {
         "branch": branch,
@@ -329,6 +344,7 @@ def record_event_start(
     local = load_local_state(target)
     events = local.setdefault("events", {})
     prior = events.get(event, {}) if isinstance(events.get(event), dict) else {}
+    local["last_status"] = {"status": "executor_running", "branch": branch, "errors": [], "recorded_at": started_at}
     events[event] = {
         **prior,
         "task_key": task_key,
@@ -628,6 +644,7 @@ def watcher_once(
 
     validation_lines, validation_code = rh.validate_reviewed_handoff(target)
     if validation_code:
+        record_watcher_status(target, "invalid_workflow", branch=selected_branch, errors=validation_lines)
         return {"status": "invalid_workflow", "branch": selected_branch, "errors": validation_lines}
 
     local = load_local_state(target)
@@ -692,6 +709,12 @@ def watcher_once(
 
         local = load_local_state(target)
         events = local.setdefault("events", {})
+        local["last_status"] = {
+            "status": "codex_progressed" if completed else "executor_not_completed",
+            "branch": selected_branch,
+            "errors": authority_errors + workflow_errors + ([publication_error] if publication_error else []),
+            "recorded_at": utc_now(),
+        }
         events[event] = {
             **(events.get(event, {}) if isinstance(events.get(event), dict) else {}),
             "attempts": attempts,
@@ -823,8 +846,19 @@ def watcher_status(target: Path, *, branch: str | None = None) -> dict[str, Any]
         "target": str(target),
         "branch": selected_branch,
         "state_path": str(state_path(target)),
+        "last_status": local.get("last_status"),
+        "last_invalid_workflow": local.get("last_invalid_workflow"),
         "tasks": tasks,
     }
+
+
+def watcher_sleep_seconds(status: str | None, interval_seconds: int, *, invalid_workflow_streak: int = 0) -> int:
+    if status == "invalid_workflow":
+        multiplier = 2 ** min(max(invalid_workflow_streak - 1, 0), 3)
+        return min(3600, max(600, interval_seconds * multiplier))
+    if status in {"waiting_external_review", "waiting_visual_review_evidence"}:
+        return max(600, interval_seconds)
+    return max(5, interval_seconds)
 
 
 def watcher_run(
@@ -836,6 +870,7 @@ def watcher_run(
     max_cycles: int | None = None,
 ) -> int:
     cycles = 0
+    invalid_workflow_streak = 0
     stop_statuses = {
         "local_manual_recovery_required",
         "event_exhausted",
@@ -850,16 +885,25 @@ def watcher_run(
         try:
             result = watcher_once(target, branch=branch, codex_bin=codex_bin, sync=True, dry_run=False)
             print(json.dumps(result, ensure_ascii=False, sort_keys=True), flush=True)
+            if result.get("status") == "invalid_workflow":
+                invalid_workflow_streak += 1
+            else:
+                invalid_workflow_streak = 0
             if result.get("status") in stop_statuses:
                 return 1
         except KeyboardInterrupt:
             return 0
         except Exception as exc:
             print(json.dumps({"status": "watcher_error", "error": str(exc)}, ensure_ascii=False), flush=True)
+            return 1
         cycles += 1
         if max_cycles is not None and cycles >= max_cycles:
             return 0
-        sleep_seconds = max(600, interval_seconds) if result.get("status") in {"waiting_external_review", "waiting_visual_review_evidence"} else max(5, interval_seconds)
+        sleep_seconds = watcher_sleep_seconds(
+            str(result.get("status") or ""),
+            interval_seconds,
+            invalid_workflow_streak=invalid_workflow_streak,
+        )
         time.sleep(sleep_seconds)
 
 

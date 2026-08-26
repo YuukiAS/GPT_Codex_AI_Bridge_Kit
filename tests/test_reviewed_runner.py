@@ -64,6 +64,14 @@ class ReviewedRunnerTests(unittest.TestCase):
         subprocess.check_call(["git", "commit", "-m", "handoff to reviewer"], cwd=target, stdout=subprocess.DEVNULL)
         return implementation_commit
 
+    def remove_out_of_scope_from_plan(self, target: Path) -> None:
+        plan_path = rh.task_root(target, "001_feature") / "PLAN.md"
+        text = plan_path.read_text(encoding="utf-8")
+        plan_path.write_text(
+            text.replace("\n## Out of scope\n\nList tempting adjacent improvements that Reviewer must not turn into blocking scope.\n", "\n"),
+            encoding="utf-8",
+        )
+
     @staticmethod
     def codex_only_fake(real_run, callback=None):
         def fake_run(*args, **kwargs):
@@ -225,6 +233,93 @@ class ReviewedRunnerTests(unittest.TestCase):
             (target / "dirty.txt").write_text("do not overwrite\n", encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "dirty working tree"):
                 runner.watcher_once(target, branch="main", sync=False, dry_run=True)
+
+    def test_watcher_run_survives_invalid_workflow_until_remote_plan_fix(self) -> None:
+        tmp, target, state_home = self.make_project()
+        with tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(state_home)}):
+            remote = self.attach_origin(target, Path(tmp.name))
+            self.remove_out_of_scope_from_plan(target)
+            subprocess.check_call(["git", "add", str((rh.task_root(target, "001_feature") / "PLAN.md").relative_to(target))], cwd=target)
+            subprocess.check_call(["git", "commit", "-m", "invalid planner freeze"], cwd=target, stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "push", "origin", "main"], cwd=target, stdout=subprocess.DEVNULL)
+            planner = Path(tmp.name) / "planner"
+            subprocess.check_call(["git", "clone", str(remote), str(planner)], stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "config", "user.email", "planner@example.org"], cwd=planner)
+            subprocess.check_call(["git", "config", "user.name", "Planner"], cwd=planner)
+
+            def remote_fix_after_invalid_sleep(seconds: int) -> None:
+                self.assertGreaterEqual(seconds, 600)
+                plan_template = rh.read_text(rh.reviewed_root(planner) / "templates" / "PLAN.md")
+                rh.write_text(rh.task_root(planner, "001_feature") / "PLAN.md", plan_template.replace("<TASK_KEY>", "001_feature"))
+                subprocess.check_call(["git", "add", str((rh.task_root(planner, "001_feature") / "PLAN.md").relative_to(planner))], cwd=planner)
+                subprocess.check_call(["git", "commit", "-m", "repair frozen plan"], cwd=planner, stdout=subprocess.DEVNULL)
+                subprocess.check_call(["git", "push", "origin", "main"], cwd=planner, stdout=subprocess.DEVNULL)
+
+            launches = []
+            current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+
+            def executor_progress(*args, **kwargs):
+                launches.append(args)
+                pre_head = runner.git_output(target, ["rev-parse", "HEAD"])
+                current = rh.load_json(current_path)
+                current["state"] = "NEEDS_GPT_PLANNER"
+                current["next_action"] = "RUN_GPT_PLANNER"
+                rh.write_json(current_path, current)
+                subprocess.check_call(["git", "add", str(current_path.relative_to(target))], cwd=target)
+                subprocess.check_call(["git", "commit", "-m", "executor requests planner"], cwd=target, stdout=subprocess.DEVNULL)
+                post_head = runner.git_output(target, ["rev-parse", "HEAD"])
+                return {
+                    "task_key": "001_feature",
+                    "event": runner.event_identity("001_feature", {"state": "PLAN_FROZEN", "review_round": 0, "plan_revision": 0, "implementation_commit": None}),
+                    "launched": True,
+                    "exit_code": 0,
+                    "progressed": True,
+                    "post_state": "NEEDS_GPT_PLANNER",
+                    "pre_head": pre_head,
+                    "post_head": post_head,
+                    "log_path": str(Path(tmp.name) / "executor.log"),
+                }
+
+            sleep_calls = []
+
+            def sleep_side_effect(seconds: int) -> None:
+                sleep_calls.append(seconds)
+                if len(sleep_calls) == 1:
+                    remote_fix_after_invalid_sleep(seconds)
+
+            with contextlib.redirect_stdout(io.StringIO()) as output, mock.patch(
+                "time.sleep",
+                side_effect=sleep_side_effect,
+            ), mock.patch("ai_bridge_kit.reviewed_runner.run_codex_event", side_effect=executor_progress):
+                code = runner.watcher_run(target, branch="main", interval_seconds=1, max_cycles=3)
+
+            lines = [json.loads(line) for line in output.getvalue().splitlines() if line.strip()]
+            self.assertEqual(code, 0)
+            self.assertEqual(lines[0]["status"], "invalid_workflow")
+            self.assertIn("## Out of scope", "\n".join(lines[0]["errors"]))
+            self.assertEqual(lines[1]["status"], "codex_progressed")
+            self.assertEqual(lines[2]["status"], "waiting_external_review")
+            self.assertEqual(len(launches), 1)
+            self.assertEqual(sleep_calls[0], 600)
+            local = runner.load_local_state(target)
+            self.assertEqual(local["last_status"]["status"], "codex_progressed")
+            self.assertEqual(local["last_invalid_workflow"]["status"], "invalid_workflow")
+            self.assertFalse(any(record.get("attempts", 0) > 1 for record in local["events"].values()))
+            self.assertEqual(runner.branch_heads(target, "main")[0], runner.branch_heads(target, "main")[1])
+
+    def test_watcher_run_returns_failure_for_process_level_error(self) -> None:
+        tmp, target, state_home = self.make_project()
+        with tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(state_home)}):
+            with contextlib.redirect_stdout(io.StringIO()) as output, mock.patch(
+                "ai_bridge_kit.reviewed_runner.watcher_once",
+                side_effect=RuntimeError("unexpected process failure"),
+            ):
+                code = runner.watcher_run(target, branch="main", interval_seconds=1, max_cycles=3)
+
+            line = json.loads(output.getvalue().strip())
+            self.assertEqual(code, 1)
+            self.assertEqual(line["status"], "watcher_error")
+            self.assertIn("unexpected process failure", line["error"])
 
     def test_watcher_event_identity_is_plain_operational_locator(self) -> None:
         current = {"state": "REVISE", "review_round": 1, "plan_revision": 0, "implementation_commit": "abc123"}

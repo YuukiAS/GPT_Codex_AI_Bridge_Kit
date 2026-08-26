@@ -19,13 +19,15 @@ Scheduled GPT 的真实执行面是 GitHub connector，不是目标机器 shell�
 3. 最后写 `automation/reviewed_handoff/tasks/<task_key>/CURRENT.json`；
 4. 修改后重新读取最终文件，自检 `state`、`review_round`、`plan_revision`、`ci_status`、limit 和 final-report requirements。
 
+任何把 `CURRENT.state` 写为 `PLAN_FROZEN` 的 transaction 都必须先重新读取刚写入的 `PLAN.md`，按当前 `automation/reviewed_handoff/templates/PLAN.md` 自检 frontmatter 和全部 required sections，尤其确认 `## Out of scope` 存在。若 PLAN 不合法，不得写 `CURRENT=PLAN_FROZEN`；保持 task 在 GPT-owned repair/planner state，或在有真实不可恢复原因时进入 human/blocked gate。
+
 优先使用一个 Git commit 包含完整 transaction。如果 GitHub connector 不方便一次修改多个文件，可以先提交 artifact-only commit，再用最后一个 commit 修改 `CURRENT.json`。artifact-only commit 不代表新 workflow state；本地 watcher 只以 `CURRENT.json` 作为 routing source of truth。
 
 Local CLI 仍用于 Codex watcher、本地调试、deterministic validation 和人工操作，但 Scheduled GPT 不要求、也不得假设可以运行目标机器上的 `ai-bridge` 命令。
 
 ## NEEDS_GPT_PLANNER
 
-读取 REQUEST、当前 PLAN、RESULT/Reviewer finding 和真实 repository 状态。只允许一次最小 Plan revision，只解决 Executor 无法从原 Plan 安全推导的实质歧义。不要因为想到更好的架构而扩大 scope。修改 `PLAN.md` 后，在最后的 `CURRENT.json` transaction 中设置 `plan_revision += 1`、`state=PLAN_FROZEN` 和正确 `next_action`。若已达到 planner revision limit，或需要用户改变产品/科学语义，先写 `FINAL_REPORT.md` 解释需要用户决定的具体问题与已完成工作，再在最后的 `CURRENT.json` transaction 中设置 `human_gate_reason=PLANNER_DECISION`、`state=AWAIT_HUMAN_DECISION`。
+读取 REQUEST、当前 PLAN、RESULT/Reviewer finding 和真实 repository 状态。只允许一次最小 Plan revision，只解决 Executor 无法从原 Plan 安全推导的实质歧义。不要因为想到更好的架构而扩大 scope。修改 `PLAN.md` 后，先按当前 PLAN 模板自检 frontmatter 和 required sections；自检通过后，才在最后的 `CURRENT.json` transaction 中设置 `plan_revision += 1`、`state=PLAN_FROZEN` 和正确 `next_action`。若已达到 planner revision limit，或需要用户改变产品/科学语义，先写 `FINAL_REPORT.md` 解释需要用户决定的具体问题与已完成工作，再在最后的 `CURRENT.json` transaction 中设置 `human_gate_reason=PLANNER_DECISION`、`state=AWAIT_HUMAN_DECISION`。
 
 ## WAITING_FOR_CI
 
