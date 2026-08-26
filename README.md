@@ -197,7 +197,7 @@ ai-bridge reviewed-handoff watcher status \
   --branch <existing-authorized-branch>
 ```
 
-这个状态入口读取本机 watcher state 和仓库中的 `CURRENT.json`，报告 task、当前 state、Executor event、runtime 类型、可用 thread id、started/completed 时间、上次 exit/result、等待 owner 和上次发布状态。当前稳定生产路径仍是 `codex exec`；如果某个 Codex App/App Server 环境能提供可脚本化、可恢复、项目可见的 thread lifecycle，thread id 只能作为本机 operational state 记录，不能进入 Reviewed Handoff workflow identity。
+这个状态入口读取本机 watcher state 和仓库中的 `CURRENT.json`，报告 task、当前 state、Executor event、runtime 类型、可用 thread id、started/completed 时间、上次 exit/result、等待 owner 和上次发布状态。当前稳定生产路径仍是 `codex exec`。2026-08-26 的 Codex App/App Server 实验表明，外部 `codex app-server --stdio` 可以创建 durable、cwd 绑定且最终会出现在 App project 中的 thread，但没有验证到运行中 thread 的稳定实时发现，因此它不作为 Reviewed Handoff production launcher。完整记录见 `docs/REVIEWED_HANDOFF_CODEX_APP_VISIBILITY_DECISION_2026-08-26.md`。
 
 外部 GPT、CI 或 Visual Review 尚未给出新决定时，属于正常等待，而不是 `BLOCKED`。
 

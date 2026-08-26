@@ -14,10 +14,10 @@
   state, Executor event, runtime type, optional thread id, start/completion
   timestamps, last exit/result, wait owner, and publication status from
   machine-local state.
-- Keep Reviewed Handoff production Executor launches on the existing
-  `codex exec` path after real Codex App/App Server probing showed connector
-  task create/list/read/resume works but shell-facing app-server proxy did not
-  provide a stable embeddable watcher lifecycle.
+- Record the 2026-08-26 Reviewed Handoff Codex App/App Server visibility
+  decision: official `codex app-server --stdio` can create durable cwd-bound
+  threads that eventually appear in Codex App, but bounded live discovery was
+  not verified, so production Executor launches remain on `codex exec`.
 - Extend Generic Notifier with backwards-compatible structured briefs for
   semantic terminal/awaiting-human notifications, operational blocked
   notifications, and opt-in non-blocking milestone notifications under
