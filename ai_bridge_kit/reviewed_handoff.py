@@ -58,6 +58,14 @@ FINAL_REPORT_HEADINGS = [
     "## Regression and remaining limitations",
     "## Technical appendix",
 ]
+LEGACY_FINAL_REPORT_SCHEMA = "AI_BRIDGE_REVIEWED_FINAL_REPORT_V1"
+LEGACY_FINAL_REPORT_DECISIONS = {
+    "PASS",
+    "BLOCKED",
+    "AWAIT_HUMAN_DECISION",
+    "REVIEW_LIMIT",
+    "PLANNER_DECISION",
+}
 
 REQUIRED_CORE_FILES = [
     "README.md",
@@ -402,15 +410,71 @@ def reviewed_visual_review_status(target: Path, task_key: str, current: dict[str
     return {"required": True, "status": "PASS", "path": str(path.relative_to(target.resolve())), "errors": []}
 
 
-def validate_final_report(path: Path) -> list[str]:
+def validate_final_report_strict(path: Path) -> list[str]:
     if not path.exists():
         return ["terminal state requires FINAL_REPORT.md"]
     text = read_text(path)
     errors: list[str] = []
+    if text.startswith("---\n"):
+        _, parse_error = parse_frontmatter(path)
+        if parse_error:
+            errors.append(f"FINAL_REPORT.md: {parse_error}")
     for heading in FINAL_REPORT_HEADINGS:
         if heading not in text:
             errors.append(f"FINAL_REPORT.md missing required section: {heading}")
     return errors
+
+
+def _legacy_final_report_errors(path: Path, task_key: str) -> list[str]:
+    data, parse_error = parse_frontmatter(path)
+    if parse_error:
+        return [f"FINAL_REPORT.md: {parse_error}"]
+    errors: list[str] = []
+    if data.get("schema") != LEGACY_FINAL_REPORT_SCHEMA:
+        errors.append("FINAL_REPORT.md legacy schema mismatch")
+    if data.get("task_key") != task_key:
+        errors.append("FINAL_REPORT.md legacy task_key mismatch")
+    if data.get("final_decision") not in LEGACY_FINAL_REPORT_DECISIONS:
+        errors.append("FINAL_REPORT.md legacy final_decision invalid")
+    text = read_text(path)
+    headings = re.findall(r"^##\s+\S.*$", text, flags=re.MULTILINE)
+    if len(headings) < 3:
+        errors.append("FINAL_REPORT.md legacy report requires substantive sections")
+    body = re.sub(r"---.*?---", "", text, count=1, flags=re.DOTALL)
+    body = re.sub(r"^#+\s+.*$", "", body, flags=re.MULTILINE).strip()
+    if len(body) < 120:
+        errors.append("FINAL_REPORT.md legacy report is too short or empty")
+    return errors
+
+
+def validate_final_report_for_repository(path: Path, task_key: str) -> list[str]:
+    strict_errors = validate_final_report_strict(path)
+    if not strict_errors:
+        return []
+    if not path.exists():
+        return strict_errors
+    text = read_text(path)
+    if not text.startswith("---\n"):
+        return strict_errors
+    legacy_errors = _legacy_final_report_errors(path, task_key)
+    if not legacy_errors:
+        return []
+    return strict_errors + legacy_errors
+
+
+def final_report_compatibility_warning(path: Path, task_key: str) -> str | None:
+    if not path.exists():
+        return None
+    strict_errors = validate_final_report_strict(path)
+    if not strict_errors:
+        return None
+    if not _legacy_final_report_errors(path, task_key):
+        return "FINAL_REPORT.md uses legacy V1 section shape; accepted for historical terminal repository validation only"
+    return None
+
+
+def validate_final_report(path: Path) -> list[str]:
+    return validate_final_report_strict(path)
 
 
 def review_files(target: Path, task_key: str) -> list[Path]:
@@ -617,7 +681,7 @@ def validate_task(target: Path, task_key: str) -> list[str]:
     if state == "BLOCKED" and current.get("implementation_commit") and not latest_data and not current.get("runner_failure"):
         errors.append("implementation-backed BLOCKED state requires a GPT review artifact or runner_failure evidence")
     if state in TERMINAL_STATES:
-        errors.extend(validate_final_report(result_root(target, task_key) / "FINAL_REPORT.md"))
+        errors.extend(validate_final_report_for_repository(result_root(target, task_key) / "FINAL_REPORT.md", task_key))
     return errors
 
 
@@ -645,9 +709,16 @@ def validate_reviewed_handoff(target: Path) -> tuple[list[str], int]:
     if tasks_dir.exists():
         for path in sorted(p for p in tasks_dir.iterdir() if p.is_dir()):
             errors.extend(f"{path.name}: {item}" for item in validate_task(target, path.name))
+    warnings: list[str] = []
+    if tasks_dir.exists():
+        for path in sorted(p for p in tasks_dir.iterdir() if p.is_dir()):
+            warning = final_report_compatibility_warning(result_root(target, path.name) / "FINAL_REPORT.md", path.name)
+            if warning:
+                warnings.append(f"{path.name}: {warning}")
     if errors:
         lines.extend(f"ERROR {item}" for item in errors)
         return lines, 1
+    lines.extend(f"WARNING {item}" for item in warnings)
     lines.append("Reviewed Handoff validation passed.")
     return lines, 0
 
@@ -789,7 +860,7 @@ def apply_transition(
         elif next_state != "READY_FOR_GPT_REVIEW":
             raise ValueError("CI-not-required Executor work should enter READY_FOR_GPT_REVIEW directly")
     if next_state in TERMINAL_STATES:
-        report_errors = validate_final_report(result_root(target, task_key) / "FINAL_REPORT.md")
+        report_errors = validate_final_report_strict(result_root(target, task_key) / "FINAL_REPORT.md")
         if report_errors:
             raise ValueError("; ".join(report_errors))
     if next_state == "AWAIT_HUMAN_DECISION" and expected_state == "NEEDS_GPT_PLANNER":
@@ -852,7 +923,7 @@ def record_review(
         raise ValueError("review round limit reached")
     terminal_after_review = decision == "BLOCKED" or (decision == "REVISE" and next_round >= max_rounds)
     if terminal_after_review:
-        report_errors = validate_final_report(result_root(target, task_key) / "FINAL_REPORT.md")
+        report_errors = validate_final_report_strict(result_root(target, task_key) / "FINAL_REPORT.md")
         if report_errors:
             raise ValueError("terminal review decision requires FINAL_REPORT.md before closing the automatic loop: " + "; ".join(report_errors))
     current_commit_locator = str(current.get("implementation_commit") or "")

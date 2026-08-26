@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 import time
 from datetime import datetime, timezone
+from importlib import metadata as importlib_metadata
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +18,8 @@ from . import reviewed_handoff as rh
 
 
 ELIGIBLE_EXECUTOR_STATES = {"PLAN_FROZEN", "REVISE"}
+WATCHER_STATE_SCHEMA = "AI_BRIDGE_REVIEWED_WATCHER_STATE_V1"
+WATCHER_STATUS_SCHEMA = "AI_BRIDGE_REVIEWED_WATCHER_STATUS_V1"
 PROTECTED_CURRENT_FIELDS = {
     "schema",
     "task_key",
@@ -30,6 +35,7 @@ PROTECTED_CURRENT_FIELDS = {
     "human_gate_reason",
     "runner_failure",
 }
+_STARTED_WATCHER_PROCS: dict[int, subprocess.Popen[Any]] = {}
 
 
 def machine_state_home() -> Path:
@@ -57,7 +63,7 @@ def log_root(target: Path) -> Path:
 def load_local_state(target: Path) -> dict[str, Any]:
     path = state_path(target)
     if not path.exists():
-        return {"schema": "AI_BRIDGE_REVIEWED_WATCHER_STATE_V1", "events": {}}
+        return {"schema": WATCHER_STATE_SCHEMA, "events": {}}
     return json.loads(path.read_text(encoding="utf-8"))
 
 
@@ -71,7 +77,222 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
-def record_watcher_status(target: Path, status: str, *, branch: str, errors: list[str] | None = None) -> None:
+def branch_slug(branch: str) -> str:
+    return re.sub(r"[^A-Za-z0-9._-]+", "_", branch) or "branch"
+
+
+def watcher_marker_path(target: Path, branch: str) -> Path:
+    return machine_task_root(target) / f"watcher-{branch_slug(branch)}.pid"
+
+
+def watcher_log_path(target: Path, branch: str) -> Path:
+    return log_root(target) / f"watcher-{branch_slug(branch)}.log"
+
+
+def bridge_package_version() -> str:
+    try:
+        return importlib_metadata.version("gpt-codex-ai-bridge-kit")
+    except Exception:
+        return "UNKNOWN"
+
+
+def bridge_source_commit() -> str:
+    root = rh.kit_root()
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "HEAD"],
+            cwd=root,
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+    except Exception:
+        return "UNKNOWN"
+
+
+def dirty_paths(target: Path) -> list[str]:
+    output = git_output(target, ["status", "--porcelain"])
+    paths: list[str] = []
+    for line in output.splitlines():
+        if not line.strip():
+            continue
+        path = line[3:].strip() if len(line) > 3 else line.strip()
+        if " -> " in path:
+            path = path.split(" -> ", 1)[1]
+        paths.append(path)
+    return sorted(paths)
+
+
+def _process_alive(pid: int | None) -> bool:
+    if not pid or pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    stat_path = Path("/proc") / str(pid) / "stat"
+    try:
+        stat = stat_path.read_text(encoding="utf-8", errors="replace")
+        fields = stat.split()
+        if len(fields) > 2 and fields[2] == "Z":
+            return False
+    except OSError:
+        pass
+    return True
+
+
+def _process_cmdline(pid: int) -> list[str]:
+    proc_path = Path("/proc") / str(pid) / "cmdline"
+    try:
+        raw = proc_path.read_bytes()
+    except OSError:
+        return []
+    return [part.decode("utf-8", errors="replace") for part in raw.split(b"\0") if part]
+
+
+def _cmdline_matches_watcher(cmdline: list[str], target: Path, branch: str) -> bool:
+    if not cmdline:
+        return False
+    joined = "\0".join(cmdline)
+    if "reviewed-handoff" not in joined or "watcher" not in joined or "run" not in joined:
+        return False
+    if str(target.resolve()) not in cmdline and str(target.resolve()) not in joined:
+        return False
+    if branch not in cmdline and branch not in joined:
+        return False
+    return True
+
+
+def process_matches_watcher(pid: int | None, target: Path, branch: str) -> bool:
+    if not _process_alive(pid):
+        return False
+    return _cmdline_matches_watcher(_process_cmdline(int(pid)), target, branch)
+
+
+def _watcher_processes(local: dict[str, Any]) -> dict[str, Any]:
+    processes = local.setdefault("watcher_processes", {})
+    if not isinstance(processes, dict):
+        processes = {}
+        local["watcher_processes"] = processes
+    return processes
+
+
+def current_watcher_process(target: Path, branch: str) -> dict[str, Any]:
+    local = load_local_state(target)
+    raw = _watcher_processes(local).get(branch)
+    record = raw if isinstance(raw, dict) else {}
+    pid = record.get("pid")
+    pid_alive = _process_alive(int(pid)) if isinstance(pid, int) else False
+    alive = process_matches_watcher(int(pid), target, branch) if pid_alive and isinstance(pid, int) else False
+    current_commit = bridge_source_commit()
+    loaded_commit = str(record.get("loaded_bridge_commit") or "")
+    restart_required = bool(alive and loaded_commit and loaded_commit != "UNKNOWN" and current_commit != "UNKNOWN" and loaded_commit != current_commit)
+    return {
+        "alive": alive,
+        "pid_alive": pid_alive,
+        "pid": pid,
+        "started_at": record.get("started_at"),
+        "last_heartbeat": record.get("last_heartbeat"),
+        "loaded_bridge_version": record.get("loaded_bridge_version"),
+        "loaded_bridge_commit": record.get("loaded_bridge_commit"),
+        "current_bridge_commit": current_commit,
+        "restart_required": restart_required,
+        "status_alert": "RESTART_REQUIRED" if restart_required else None,
+        "active_executor_event": record.get("active_executor_event"),
+        "last_status": record.get("last_status"),
+        "log_path": record.get("log_path"),
+    }
+
+
+def _clear_watcher_marker(target: Path, branch: str) -> None:
+    with contextlib.suppress(FileNotFoundError):
+        watcher_marker_path(target, branch).unlink()
+
+
+def register_watcher_process(target: Path, branch: str) -> tuple[bool, dict[str, Any]]:
+    target = target.resolve()
+    marker = watcher_marker_path(target, branch)
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    existing = current_watcher_process(target, branch)
+    if existing.get("alive"):
+        return False, {"status": "ALREADY_RUNNING", "pid": existing.get("pid"), "target": str(target), "branch": branch}
+    marker_pid: int | None = None
+    if marker.exists():
+        try:
+            marker_pid = int(marker.read_text(encoding="utf-8").strip())
+        except Exception:
+            marker_pid = None
+        if marker_pid and _process_alive(marker_pid):
+            if process_matches_watcher(marker_pid, target, branch):
+                return False, {"status": "ALREADY_RUNNING", "pid": marker_pid, "target": str(target), "branch": branch}
+            return False, {
+                "status": "WATCHER_MARKER_CONFLICT",
+                "pid": marker_pid,
+                "target": str(target),
+                "branch": branch,
+                "reason": "recorded PID is alive but is not a verified Reviewed Handoff watcher for this target/branch",
+            }
+        _clear_watcher_marker(target, branch)
+    pid = os.getpid()
+    try:
+        fd = os.open(str(marker), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(f"{pid}\n")
+    except FileExistsError:
+        return register_watcher_process(target, branch)
+    now = utc_now()
+    local = load_local_state(target)
+    record = {
+        "target": str(target),
+        "branch": branch,
+        "pid": pid,
+        "started_at": now,
+        "last_heartbeat": now,
+        "loaded_bridge_version": bridge_package_version(),
+        "loaded_bridge_commit": bridge_source_commit(),
+        "active_executor_event": None,
+        "last_status": "starting",
+        "log_path": str(watcher_log_path(target, branch)),
+    }
+    _watcher_processes(local)[branch] = record
+    write_local_state(target, local)
+    return True, {"status": "STARTED", **record}
+
+
+def update_watcher_process(
+    target: Path,
+    branch: str,
+    *,
+    last_status: str | None = None,
+    active_executor_event: str | None = None,
+    clear_active: bool = False,
+    stopped: bool = False,
+) -> None:
+    local = load_local_state(target)
+    processes = _watcher_processes(local)
+    record = processes.get(branch)
+    if not isinstance(record, dict) or record.get("pid") != os.getpid():
+        return
+    now = utc_now()
+    record["last_heartbeat"] = now
+    if last_status is not None:
+        record["last_status"] = last_status
+    if active_executor_event is not None:
+        record["active_executor_event"] = active_executor_event
+    if clear_active:
+        record["active_executor_event"] = None
+    if stopped:
+        record["stopped_at"] = now
+    write_local_state(target, local)
+
+
+def record_watcher_status(
+    target: Path,
+    status: str,
+    *,
+    branch: str,
+    errors: list[str] | None = None,
+    details: dict[str, Any] | None = None,
+) -> None:
     local = load_local_state(target)
     entry = {
         "status": status,
@@ -79,9 +300,15 @@ def record_watcher_status(target: Path, status: str, *, branch: str, errors: lis
         "errors": errors or [],
         "recorded_at": utc_now(),
     }
+    if details:
+        entry.update(details)
     local["last_status"] = entry
     if status == "invalid_workflow":
         local["last_invalid_workflow"] = entry
+    process = _watcher_processes(local).get(branch)
+    if isinstance(process, dict) and process.get("pid") == os.getpid():
+        process["last_status"] = status
+        process["last_heartbeat"] = entry["recorded_at"]
     write_local_state(target, local)
 
 
@@ -244,9 +471,18 @@ def validate_unpublished_executor_progress(target: Path, branch: str) -> tuple[s
 
 def recover_unpublished_executor_progress(target: Path, branch: str) -> dict[str, Any]:
     if working_tree_dirty(target):
+        paths = dirty_paths(target)
+        record_watcher_status(
+            target,
+            "dirty_worktree_wait",
+            branch=branch,
+            errors=["working tree is dirty"],
+            details={"dirty_paths": paths},
+        )
         return {
-            "status": "unpublished_progress_recovery_failed",
+            "status": "dirty_worktree_wait",
             "reason": "working tree is dirty",
+            "dirty_paths": paths,
         }
     git_output(target, ["fetch", "origin", branch])
     event, validation = validate_unpublished_executor_progress(target, branch)
@@ -345,6 +581,11 @@ def record_event_start(
     events = local.setdefault("events", {})
     prior = events.get(event, {}) if isinstance(events.get(event), dict) else {}
     local["last_status"] = {"status": "executor_running", "branch": branch, "errors": [], "recorded_at": started_at}
+    process = _watcher_processes(local).get(branch)
+    if isinstance(process, dict) and process.get("pid") == os.getpid():
+        process["last_status"] = "executor_running"
+        process["last_heartbeat"] = started_at
+        process["active_executor_event"] = event
     events[event] = {
         **prior,
         "task_key": task_key,
@@ -636,7 +877,7 @@ def watcher_once(
         recovery = recover_unpublished_executor_progress(target, selected_branch)
         if recovery.get("status") == "recovered_unpublished_progress":
             return recovery
-        if recovery.get("status") == "unpublished_progress_recovery_failed":
+        if recovery.get("status") in {"unpublished_progress_recovery_failed", "dirty_worktree_wait"}:
             return {"branch": selected_branch, **recovery}
         sync_origin_ff_only(target, selected_branch)
     else:
@@ -842,12 +1083,13 @@ def watcher_status(target: Path, *, branch: str | None = None) -> dict[str, Any]
                 }
             )
     return {
-        "schema": "AI_BRIDGE_REVIEWED_WATCHER_STATUS_V1",
+        "schema": WATCHER_STATUS_SCHEMA,
         "target": str(target),
         "branch": selected_branch,
         "state_path": str(state_path(target)),
         "last_status": local.get("last_status"),
         "last_invalid_workflow": local.get("last_invalid_workflow"),
+        "watcher_process": current_watcher_process(target, selected_branch),
         "tasks": tasks,
     }
 
@@ -856,6 +1098,8 @@ def watcher_sleep_seconds(status: str | None, interval_seconds: int, *, invalid_
     if status == "invalid_workflow":
         multiplier = 2 ** min(max(invalid_workflow_streak - 1, 0), 3)
         return min(3600, max(600, interval_seconds * multiplier))
+    if status == "dirty_worktree_wait":
+        return max(600, interval_seconds)
     if status in {"waiting_external_review", "waiting_visual_review_evidence"}:
         return max(600, interval_seconds)
     return max(5, interval_seconds)
@@ -869,6 +1113,12 @@ def watcher_run(
     interval_seconds: int = 60,
     max_cycles: int | None = None,
 ) -> int:
+    target = target.resolve()
+    selected_branch = resolve_branch(target, branch)
+    registered, registration = register_watcher_process(target, selected_branch)
+    if not registered:
+        print(json.dumps(registration, ensure_ascii=False, sort_keys=True), flush=True)
+        return 1
     cycles = 0
     invalid_workflow_streak = 0
     stop_statuses = {
@@ -880,31 +1130,188 @@ def watcher_run(
         "codex_unpublished_progress",
         "unpublished_progress_recovery_failed",
     }
-    while True:
-        result: dict[str, Any] = {}
-        try:
-            result = watcher_once(target, branch=branch, codex_bin=codex_bin, sync=True, dry_run=False)
-            print(json.dumps(result, ensure_ascii=False, sort_keys=True), flush=True)
-            if result.get("status") == "invalid_workflow":
-                invalid_workflow_streak += 1
-            else:
-                invalid_workflow_streak = 0
-            if result.get("status") in stop_statuses:
+    try:
+        while True:
+            result: dict[str, Any] = {}
+            try:
+                update_watcher_process(target, selected_branch, last_status="checking")
+                result = watcher_once(target, branch=selected_branch, codex_bin=codex_bin, sync=True, dry_run=False)
+                update_watcher_process(
+                    target,
+                    selected_branch,
+                    last_status=str(result.get("status") or "unknown"),
+                    clear_active=True,
+                )
+                print(json.dumps(result, ensure_ascii=False, sort_keys=True), flush=True)
+                if result.get("status") == "invalid_workflow":
+                    invalid_workflow_streak += 1
+                else:
+                    invalid_workflow_streak = 0
+                if result.get("status") in stop_statuses:
+                    return 1
+            except KeyboardInterrupt:
+                return 0
+            except Exception as exc:
+                record_watcher_status(target, "watcher_error", branch=selected_branch, errors=[str(exc)])
+                print(json.dumps({"status": "watcher_error", "error": str(exc)}, ensure_ascii=False), flush=True)
                 return 1
-        except KeyboardInterrupt:
-            return 0
-        except Exception as exc:
-            print(json.dumps({"status": "watcher_error", "error": str(exc)}, ensure_ascii=False), flush=True)
-            return 1
-        cycles += 1
-        if max_cycles is not None and cycles >= max_cycles:
-            return 0
-        sleep_seconds = watcher_sleep_seconds(
-            str(result.get("status") or ""),
-            interval_seconds,
-            invalid_workflow_streak=invalid_workflow_streak,
+            cycles += 1
+            if max_cycles is not None and cycles >= max_cycles:
+                return 0
+            sleep_seconds = watcher_sleep_seconds(
+                str(result.get("status") or ""),
+                interval_seconds,
+                invalid_workflow_streak=invalid_workflow_streak,
+            )
+            time.sleep(sleep_seconds)
+    finally:
+        update_watcher_process(target, selected_branch, stopped=True, clear_active=True)
+        _clear_watcher_marker(target, selected_branch)
+
+
+def watcher_start(
+    target: Path,
+    *,
+    branch: str | None = None,
+    codex_bin: str = "codex",
+    interval_seconds: int = 60,
+) -> dict[str, Any]:
+    target = target.resolve()
+    selected_branch = resolve_branch(target, branch)
+    existing = current_watcher_process(target, selected_branch)
+    if existing.get("alive"):
+        return {"status": "ALREADY_RUNNING", "pid": existing.get("pid"), "target": str(target), "branch": selected_branch}
+    marker = watcher_marker_path(target, selected_branch)
+    if marker.exists():
+        try:
+            marker_pid = int(marker.read_text(encoding="utf-8").strip())
+        except Exception:
+            marker_pid = None
+        if marker_pid and _process_alive(marker_pid):
+            if process_matches_watcher(marker_pid, target, selected_branch):
+                return {"status": "ALREADY_RUNNING", "pid": marker_pid, "target": str(target), "branch": selected_branch}
+            return {
+                "status": "WATCHER_MARKER_CONFLICT",
+                "pid": marker_pid,
+                "target": str(target),
+                "branch": selected_branch,
+                "reason": "recorded PID is alive but is not a verified Reviewed Handoff watcher for this target/branch",
+            }
+        _clear_watcher_marker(target, selected_branch)
+    log_path = watcher_log_path(target, selected_branch)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    command = [
+        sys.executable,
+        "-m",
+        "ai_bridge_kit.bridge_cli",
+        "reviewed-handoff",
+        "watcher",
+        "run",
+        "--target",
+        str(target),
+        "--branch",
+        selected_branch,
+        "--codex-bin",
+        codex_bin,
+        "--interval-seconds",
+        str(interval_seconds),
+    ]
+    env = os.environ.copy()
+    existing_pythonpath = env.get("PYTHONPATH")
+    env["PYTHONPATH"] = str(rh.kit_root()) if not existing_pythonpath else f"{rh.kit_root()}{os.pathsep}{existing_pythonpath}"
+    with log_path.open("a", encoding="utf-8") as handle:
+        proc = subprocess.Popen(
+            command,
+            cwd=target,
+            stdout=handle,
+            stderr=subprocess.STDOUT,
+            env=env,
+            start_new_session=True,
         )
-        time.sleep(sleep_seconds)
+    _STARTED_WATCHER_PROCS[proc.pid] = proc
+    deadline = time.time() + 2.0
+    while time.time() < deadline:
+        if proc.poll() is not None:
+            return {
+                "status": "START_FAILED",
+                "pid": proc.pid,
+                "target": str(target),
+                "branch": selected_branch,
+                "log_path": str(log_path),
+                "exit_code": proc.returncode,
+            }
+        process = current_watcher_process(target, selected_branch)
+        if process.get("alive") and process.get("pid") == proc.pid:
+            return {"status": "STARTED", "pid": proc.pid, "target": str(target), "branch": selected_branch, "log_path": str(log_path)}
+        time.sleep(0.1)
+    return {"status": "STARTED", "pid": proc.pid, "target": str(target), "branch": selected_branch, "log_path": str(log_path)}
+
+
+def watcher_stop(target: Path, *, branch: str | None = None, timeout_seconds: float = 5.0) -> dict[str, Any]:
+    target = target.resolve()
+    selected_branch = resolve_branch(target, branch)
+    process = current_watcher_process(target, selected_branch)
+    pid = process.get("pid")
+    if process.get("pid_alive") and not process.get("alive") and isinstance(pid, int):
+        return {
+            "status": "STOP_REFUSED",
+            "target": str(target),
+            "branch": selected_branch,
+            "pid": pid,
+            "reason": "recorded PID is alive but cannot be verified as this target/branch watcher",
+        }
+    if not process.get("alive") or not isinstance(pid, int):
+        _clear_watcher_marker(target, selected_branch)
+        record_watcher_status(target, "watcher_not_running", branch=selected_branch)
+        return {"status": "NOT_RUNNING", "target": str(target), "branch": selected_branch, "pid": pid}
+    if not process_matches_watcher(pid, target, selected_branch):
+        return {
+            "status": "STOP_REFUSED",
+            "target": str(target),
+            "branch": selected_branch,
+            "pid": pid,
+            "reason": "PID is alive but cannot be verified as this target/branch watcher",
+        }
+    os.kill(pid, signal.SIGTERM)
+    proc = _STARTED_WATCHER_PROCS.get(pid)
+    deadline = time.time() + timeout_seconds
+    while time.time() < deadline:
+        if proc is not None and proc.poll() is not None:
+            proc.wait(timeout=0)
+            _STARTED_WATCHER_PROCS.pop(pid, None)
+            _clear_watcher_marker(target, selected_branch)
+            record_watcher_status(target, "watcher_stopped", branch=selected_branch)
+            return {"status": "STOPPED", "target": str(target), "branch": selected_branch, "pid": pid}
+        if not _process_alive(pid):
+            if proc is not None:
+                with contextlib.suppress(Exception):
+                    proc.wait(timeout=0)
+                _STARTED_WATCHER_PROCS.pop(pid, None)
+            _clear_watcher_marker(target, selected_branch)
+            record_watcher_status(target, "watcher_stopped", branch=selected_branch)
+            return {"status": "STOPPED", "target": str(target), "branch": selected_branch, "pid": pid}
+        time.sleep(0.1)
+    return {
+        "status": "STOP_TIMEOUT",
+        "target": str(target),
+        "branch": selected_branch,
+        "pid": pid,
+        "reason": "verified watcher did not exit after SIGTERM",
+    }
+
+
+def watcher_restart(
+    target: Path,
+    *,
+    branch: str | None = None,
+    codex_bin: str = "codex",
+    interval_seconds: int = 60,
+) -> dict[str, Any]:
+    stop = watcher_stop(target, branch=branch)
+    if stop.get("status") not in {"STOPPED", "NOT_RUNNING"}:
+        return {"status": "RESTART_REFUSED", "stop": stop}
+    start = watcher_start(target, branch=branch, codex_bin=codex_bin, interval_seconds=interval_seconds)
+    return {"status": "RESTARTED" if start.get("status") == "STARTED" else "RESTART_FAILED", "stop": stop, "start": start}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -919,6 +1326,19 @@ def build_parser() -> argparse.ArgumentParser:
     status = sub.add_parser("status")
     status.add_argument("--target", type=Path, default=Path.cwd())
     status.add_argument("--branch")
+    start = sub.add_parser("start")
+    start.add_argument("--target", type=Path, default=Path.cwd())
+    start.add_argument("--branch")
+    start.add_argument("--codex-bin", default="codex")
+    start.add_argument("--interval-seconds", type=int, default=60)
+    stop = sub.add_parser("stop")
+    stop.add_argument("--target", type=Path, default=Path.cwd())
+    stop.add_argument("--branch")
+    restart = sub.add_parser("restart")
+    restart.add_argument("--target", type=Path, default=Path.cwd())
+    restart.add_argument("--branch")
+    restart.add_argument("--codex-bin", default="codex")
+    restart.add_argument("--interval-seconds", type=int, default=60)
     run = sub.add_parser("run")
     run.add_argument("--target", type=Path, default=Path.cwd())
     run.add_argument("--branch")
@@ -950,11 +1370,34 @@ def main(argv: list[str] | None = None) -> int:
             "codex_authority_violation",
             "local_manual_recovery_required",
             "unpublished_progress_recovery_failed",
+            "dirty_worktree_wait",
         }
         return 0 if result.get("status") not in failure_statuses else 1
     if args.command == "status":
         print(json.dumps(watcher_status(args.target, branch=args.branch), ensure_ascii=False, indent=2, sort_keys=True))
         return 0
+    if args.command == "start":
+        result = watcher_start(
+            args.target,
+            branch=args.branch,
+            codex_bin=args.codex_bin,
+            interval_seconds=args.interval_seconds,
+        )
+        print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
+        return 0 if result.get("status") == "STARTED" else 1
+    if args.command == "stop":
+        result = watcher_stop(args.target, branch=args.branch)
+        print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
+        return 0 if result.get("status") in {"STOPPED", "NOT_RUNNING"} else 1
+    if args.command == "restart":
+        result = watcher_restart(
+            args.target,
+            branch=args.branch,
+            codex_bin=args.codex_bin,
+            interval_seconds=args.interval_seconds,
+        )
+        print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
+        return 0 if result.get("status") == "RESTARTED" else 1
     if args.command == "run":
         return watcher_run(
             args.target,

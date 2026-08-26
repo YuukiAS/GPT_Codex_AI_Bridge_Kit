@@ -37,6 +37,25 @@ class ReviewedHandoffTests(unittest.TestCase):
         template = rh.read_text(rh.reviewed_root(target) / "templates" / "FINAL_REPORT.md")
         rh.write_text(rh.result_root(target, "001_feature") / "FINAL_REPORT.md", template)
 
+    def write_legacy_final_report(self, target: Path, *, body: str | None = None) -> None:
+        text = body or (
+            "---\n"
+            "schema: AI_BRIDGE_REVIEWED_FINAL_REPORT_V1\n"
+            "task_key: 001_feature\n"
+            "final_decision: AWAIT_HUMAN_DECISION\n"
+            "---\n\n"
+            "# Final Report\n\n"
+            "## What 027 achieved\n\n"
+            "The historical terminal task completed its frozen implementation work and left a user-readable outcome summary with concrete repository artifacts.\n\n"
+            "## What improved after Review 1\n\n"
+            "The report explains the repair work, the reviewer-facing evidence, and the preserved behavior that mattered for the completed task.\n\n"
+            "## Review-limit handling\n\n"
+            "The automatic loop ended under the older V1 section shape, but the frontmatter and substantive content still make the terminal decision auditable.\n\n"
+            "## User-checkable artifacts\n\n"
+            "The user can inspect the result directory, review artifacts, and implementation notes without reconstructing the task from logs.\n"
+        )
+        rh.write_text(rh.result_root(target, "001_feature") / "FINAL_REPORT.md", text)
+
     def remote_write_review_transaction(self, target: Path, *, decision: str, body: str = "Remote GPT review.") -> dict:
         root = rh.task_root(target, "001_feature")
         result_dir = rh.result_root(target, "001_feature")
@@ -210,6 +229,70 @@ class ReviewedHandoffTests(unittest.TestCase):
 
             with self.assertRaisesRegex(ValueError, "PLAN.md missing required section: ## Out of scope"):
                 rh.apply_transition(target, "001_feature", expected_state="PLAN_REQUESTED", next_state="PLAN_FROZEN")
+
+    def test_legacy_terminal_final_report_does_not_block_repository_validation(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            self.write_plan(target)
+            current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+            current = rh.load_json(current_path)
+            current["state"] = "AWAIT_HUMAN_DECISION"
+            current["human_gate_reason"] = "PLANNER_DECISION"
+            current["next_action"] = "PRESENT_FINAL_REPORT"
+            rh.write_json(current_path, current)
+            self.write_legacy_final_report(target)
+
+            lines, code = rh.validate_reviewed_handoff(target)
+
+            self.assertEqual(code, 0, "\n".join(lines))
+            self.assertTrue(any("legacy V1 section shape" in line for line in lines))
+
+    def test_malformed_or_empty_legacy_final_report_still_fails(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            self.write_plan(target)
+            current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+            current = rh.load_json(current_path)
+            current["state"] = "AWAIT_HUMAN_DECISION"
+            current["human_gate_reason"] = "PLANNER_DECISION"
+            current["next_action"] = "PRESENT_FINAL_REPORT"
+            rh.write_json(current_path, current)
+            self.write_legacy_final_report(
+                target,
+                body=(
+                    "---\n"
+                    "schema: AI_BRIDGE_REVIEWED_FINAL_REPORT_V1\n"
+                    "task_key: 001_feature\n"
+                    "final_decision: AWAIT_HUMAN_DECISION\n"
+                    "---\n\n"
+                    "# Final Report\n\n"
+                    "## What 027 achieved\n\n"
+                ),
+            )
+
+            lines, code = rh.validate_reviewed_handoff(target)
+
+            self.assertEqual(code, 1)
+            self.assertIn("legacy report", "\n".join(lines))
+
+    def test_new_terminal_transition_still_requires_current_final_report_template(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            self.write_plan(target)
+            current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+            current = rh.load_json(current_path)
+            current["state"] = "NEEDS_GPT_PLANNER"
+            current["next_action"] = "RUN_GPT_PLANNER"
+            rh.write_json(current_path, current)
+            self.write_legacy_final_report(target)
+
+            with self.assertRaisesRegex(ValueError, "What this task solved"):
+                rh.apply_transition(
+                    target,
+                    "001_feature",
+                    expected_state="NEEDS_GPT_PLANNER",
+                    next_state="AWAIT_HUMAN_DECISION",
+                )
 
     def test_illegal_state_jump_rejected(self) -> None:
         tmp, target = self.make_project()

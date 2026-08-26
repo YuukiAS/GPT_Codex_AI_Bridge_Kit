@@ -185,9 +185,21 @@ ai-bridge reviewed-handoff watcher run \
   --branch <existing-authorized-branch>
 ```
 
+生产环境可以用 machine-local lifecycle 命令管理唯一后台 watcher：
+
+```bash
+ai-bridge reviewed-handoff watcher start --target /path/to/project --branch <existing-authorized-branch>
+ai-bridge reviewed-handoff watcher stop --target /path/to/project --branch <existing-authorized-branch>
+ai-bridge reviewed-handoff watcher restart --target /path/to/project --branch <existing-authorized-branch>
+```
+
+同一个 `target + branch` 只允许一个正式 watcher。第二个实例会返回 `ALREADY_RUNNING` 和真实 PID；如果 Bridge Kit 源码已经更新，`watcher status` 会显示 `RESTART_REQUIRED`，但不会自动打断正在工作的 watcher。
+
 监视器不会自行创建分支或 PR。它也不会把 Codex Executor 变成新的决策角色：Executor 只执行冻结方案并提交结果，发布仍由 watcher 在验证后完成。
 
 `PLAN_FROZEN` 只有在当前 `PLAN.md` 结构合法时才会被 watcher 视为可执行；如果 GitHub 上出现临时不合法的 workflow 状态，watcher 会拒绝启动 Executor、记录本机状态并低频重试。Planner 后续修好同一分支后，不需要用户重新启动 watcher。
+
+如果目标仓库已有未知 dirty working tree，watcher 仍会 fail closed：不启动 Executor、不 stash/reset/commit/push、不猜测这些文件属于哪个 task。不同的是 persistent watcher 会记录 `dirty_worktree_wait`、dirty paths，并低频等待；外部合法动作把工作树恢复 clean 后，同一个 watcher 会继续正常路由。
 
 需要查看后台 Executor 状态时，可以运行：
 

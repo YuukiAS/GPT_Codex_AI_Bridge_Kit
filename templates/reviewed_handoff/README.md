@@ -25,6 +25,17 @@ ai-bridge reviewed-handoff watcher run \
   --branch <existing-authorized-branch>
 ```
 
+生产环境也可以使用本机 lifecycle 包装命令，避免同一个仓库/分支误启多个正式 watcher：
+
+```bash
+ai-bridge reviewed-handoff watcher start --target /path/to/project --branch <existing-authorized-branch>
+ai-bridge reviewed-handoff watcher stop --target /path/to/project --branch <existing-authorized-branch>
+ai-bridge reviewed-handoff watcher restart --target /path/to/project --branch <existing-authorized-branch>
+ai-bridge reviewed-handoff watcher status --target /path/to/project --branch <existing-authorized-branch>
+```
+
+`status` 会报告 watcher PID、启动时间、heartbeat、加载的 Bridge Kit 版本/源码 commit、当前 checkout commit、是否需要 restart，以及 active Executor event。
+
 单次检查或部署前 dry run：
 
 ```bash
@@ -34,6 +45,8 @@ ai-bridge reviewed-handoff watcher once --target /path/to/project --branch <bran
 Watcher 不创建 branch/PR，不使用 persistent Codex thread receipt，也不建立 SHA event graph。机器本地的 event 去重和日志位于 `${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}/reviewed-handoff/<repo>/`，不会写进目标 repository。Codex exit code 为 0 也不自动视为成功：只有 task state 真正离开原 executor event 才算有进展；同一 executor event 的执行尝试有界，耗尽后进入可见的 `BLOCKED`，而不是无限重试。
 
 如果 watcher 在 Codex 已提交合法 Executor 结果但发布前退出，重启后只会在 clean、ahead-only、能绑定到当前单一 Executor event、authority validation 和 workflow validation 均通过时恢复发布。dirty、diverged、来源不明或越权 commit 仍 fail closed；Codex 自身仍不得 push。
+
+如果本地 working tree dirty，persistent watcher 不会死亡，也不会尝试接管、stash、reset、commit 或 push 未提交内容；它记录 `dirty_worktree_wait` 和 dirty paths 后低频等待。外部合法动作恢复 clean 后，同一个 watcher 会继续 fetch、validate 并路由当前 `PLAN_FROZEN` / `REVISE` event。
 
 ## External GPT wait contract
 

@@ -77,6 +77,8 @@ This local state is operational dedup/retry state only. It is not workflow ident
 
 It may record human-facing observability for the current Executor event: task key, branch, phase, runtime type, App/thread id when a supported runtime can provide one, `started_at`, `completed_at`, `running`, last exit/result, last log path, waiting owner, and last publication status. These fields remain machine-local operational state. They must not be copied into `CURRENT.json`, hashed into semantic identity, or treated as Planner/Reviewer authority.
 
+It also records the local watcher process lifecycle for each `target + branch`: PID, `started_at`, last heartbeat, loaded Bridge Kit package version, loaded Bridge Kit source commit when available, active Executor event, and last status. This process metadata is operational only. It does not create a workflow identity and does not change Planner/Executor/Reviewer authority.
+
 ## State machine
 
 Normal states:
@@ -174,6 +176,29 @@ The watcher performs only operational orchestration:
 
 It does not create or switch branches, does not create role worktrees, and does not maintain receipts or cryptographic event identities. The event key is a plain local tuple of task/state/review round/plan revision/implementation locator.
 
+The foreground command remains:
+
+```bash
+ai-bridge reviewed-handoff watcher run \
+  --target /path/to/project \
+  --branch <existing-authorized-branch>
+```
+
+Production deployments may also use the built-in local lifecycle wrapper:
+
+```bash
+ai-bridge reviewed-handoff watcher start --target /path/to/project --branch <branch>
+ai-bridge reviewed-handoff watcher stop --target /path/to/project --branch <branch>
+ai-bridge reviewed-handoff watcher restart --target /path/to/project --branch <branch>
+```
+
+`run` and `start` must both enforce one official watcher per `target + branch`.
+If another verified watcher is already alive, the second launch returns
+`ALREADY_RUNNING` with the existing PID and does not touch workflow state. A
+stale marker whose PID no longer exists may be reclaimed. `stop` must verify
+the PID command line, target, and branch before sending a signal; an
+unverifiable PID fails closed and is not killed.
+
 The watcher also exposes a read-only status view:
 
 ```bash
@@ -182,7 +207,7 @@ ai-bridge reviewed-handoff watcher status \
   --branch <existing-authorized-branch>
 ```
 
-The status view reports `task`, `state`, `executor_event`, `phase`, `thread_id`, `runtime_type`, `started_at`, `running`, `completed`, `completed_at`, `last_exit_code`, `last_result`, `waiting_owner`, `last_publication_status`, `last_publication_error`, and `last_log_path`.
+The status view reports `task`, `state`, `executor_event`, `phase`, `thread_id`, `runtime_type`, `started_at`, `running`, `completed`, `completed_at`, `last_exit_code`, `last_result`, `waiting_owner`, `last_publication_status`, `last_publication_error`, and `last_log_path`. It also reports `watcher_process.alive`, `pid`, `started_at`, `last_heartbeat`, `loaded_bridge_version`, `loaded_bridge_commit`, `current_bridge_commit`, `restart_required`, `active_executor_event`, and last process status. If the running watcher loaded an older Bridge Kit source commit than the current checkout, status must clearly show `restart_required=true`; it must not auto-restart a working watcher.
 
 Codex App visibility is an optional runtime property, not a Reviewed Handoff authority feature. The 2026-08-26 capability record in `docs/REVIEWED_HANDOFF_CODEX_APP_VISIBILITY_DECISION_2026-08-26.md` found that Codex CLI/App Server `0.148.0-alpha.9` with official `codex app-server --stdio` can create durable Codex threads with correct cwd/project binding and eventual Codex App project visibility, but the experiments only produced reliable post-completion UI visibility evidence. They did not verify bounded live discovery of an externally created running thread or safe multi-client writer takeover. Production therefore keeps using `codex exec` and records `runtime_type=codex_exec` with `thread_id=null`.
 
@@ -194,9 +219,18 @@ no Executor, write no tracked workflow files, and sleep with low-frequency
 bounded backoff before fetching and validating again. This is not an Executor
 attempt, not a review round, and not a repair budget event. If Planner later
 publishes a valid workflow repair on the authorized branch, the same watcher
-process must resume normal routing without requiring a user restart. Only true
-process-level errors, dirty/diverged Git states, authority violations, or
-unrecoverable publication failures may stop the watcher.
+process must resume normal routing without requiring a user restart.
+
+If the local working tree is dirty before sync, recovery, or launch, the watcher
+must also fail closed for that cycle. It must not launch Codex, reset, checkout,
+stash, commit, push, salvage, or guess ownership of uncommitted paths. A
+persistent `watcher run` records `dirty_worktree_wait` and the dirty paths in
+machine-local state, sleeps with low-frequency bounded backoff, and retries
+after the tree is made clean by an external legitimate action. This condition
+does not consume an Executor attempt, review round, plan revision, or repair
+budget. `watcher once` may return non-zero for the current inability to
+progress. True process-level errors, diverged Git states, authority violations,
+or unrecoverable publication failures may still stop the persistent watcher.
 
 If the watcher process dies after Codex created valid local Executor commits but before the watcher published them, restart recovery is allowed only when the working tree is clean, the local branch is ahead-only of `origin/<branch>`, the remote `CURRENT.json` at `origin/<branch>` still describes exactly one current Executor event, the local `CURRENT.json` has progressed from that event, Executor authority validation passes, workflow validation passes, and any `implementation_commit` handoff is contained in the unpublished commit range. Dirty, diverged, unauthorized, ambiguous, or event-unbound local commits fail closed and are not auto-published. This recovery does not let Codex push directly and does not bypass Planner or Reviewer authority.
 
@@ -312,6 +346,15 @@ The final report is user-facing and required for all terminal states. Its first 
 If the automatic loop stops because of review-limit, planner ambiguity or operational blockage, the same report must instead explain what completed successfully, what remains unresolved, why automation stopped and what human decision/recovery is required.
 
 Commit IDs, tests, CI and artifact paths belong in the technical appendix rather than dominating the report.
+
+New terminal transitions must validate against the current `FINAL_REPORT.md`
+template and its required headings. Repository-wide validation may accept a
+historical terminal `AI_BRIDGE_REVIEWED_FINAL_REPORT_V1` report with valid
+frontmatter, matching `task_key`, legal `final_decision`, and substantive
+legacy sections even if its headings predate the current template. This
+compatibility path is only for already-terminal historical tasks and may emit a
+non-blocking warning; it must not allow empty reports, malformed frontmatter,
+or new terminal transitions to bypass the current template.
 
 ## Release requirements
 

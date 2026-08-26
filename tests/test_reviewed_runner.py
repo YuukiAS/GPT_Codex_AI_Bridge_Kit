@@ -42,6 +42,16 @@ class ReviewedRunnerTests(unittest.TestCase):
         subprocess.check_call(["git", "symbolic-ref", "HEAD", "refs/heads/main"], cwd=remote)
         return remote
 
+    def set_waiting_for_planner(self, target: Path) -> None:
+        current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+        current = rh.load_json(current_path)
+        current["state"] = "NEEDS_GPT_PLANNER"
+        current["next_action"] = "RUN_GPT_PLANNER"
+        rh.write_json(current_path, current)
+        subprocess.check_call(["git", "add", str(current_path.relative_to(target))], cwd=target)
+        subprocess.check_call(["git", "commit", "-m", "wait for planner"], cwd=target, stdout=subprocess.DEVNULL)
+        subprocess.check_call(["git", "push", "origin", "main"], cwd=target, stdout=subprocess.DEVNULL)
+
     def commit_valid_executor_handoff(self, target: Path) -> str:
         (target / "src.py").write_text("VALUE = 2\n", encoding="utf-8")
         subprocess.check_call(["git", "add", "src.py"], cwd=target)
@@ -176,6 +186,8 @@ class ReviewedRunnerTests(unittest.TestCase):
             self.assertEqual(task["last_publication_status"], "not_requested")
             self.assertTrue(task["started_at"])
             self.assertTrue(task["completed_at"])
+            self.assertIn("watcher_process", status)
+            self.assertFalse(status["watcher_process"]["alive"])
 
     def test_watcher_status_cli_prints_json(self) -> None:
         tmp, target, state_home = self.make_project()
@@ -233,6 +245,62 @@ class ReviewedRunnerTests(unittest.TestCase):
             (target / "dirty.txt").write_text("do not overwrite\n", encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "dirty working tree"):
                 runner.watcher_once(target, branch="main", sync=False, dry_run=True)
+
+    def test_watcher_run_waits_on_preexisting_dirty_tree_then_resumes_same_event(self) -> None:
+        tmp, target, state_home = self.make_project()
+        with tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(state_home)}):
+            self.attach_origin(target, Path(tmp.name))
+            dirty = target / "dirty.txt"
+            dirty.write_text("external in-progress edit\n", encoding="utf-8")
+            current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+            launches = []
+
+            def executor_progress(*args, **kwargs):
+                launches.append(args)
+                pre_head = runner.git_output(target, ["rev-parse", "HEAD"])
+                current = rh.load_json(current_path)
+                current["state"] = "NEEDS_GPT_PLANNER"
+                current["next_action"] = "RUN_GPT_PLANNER"
+                rh.write_json(current_path, current)
+                subprocess.check_call(["git", "add", str(current_path.relative_to(target))], cwd=target)
+                subprocess.check_call(["git", "commit", "-m", "executor asks planner"], cwd=target, stdout=subprocess.DEVNULL)
+                post_head = runner.git_output(target, ["rev-parse", "HEAD"])
+                return {
+                    "task_key": "001_feature",
+                    "event": "001_feature|PLAN_FROZEN|0|0|",
+                    "launched": True,
+                    "exit_code": 0,
+                    "progressed": True,
+                    "post_state": "NEEDS_GPT_PLANNER",
+                    "pre_head": pre_head,
+                    "post_head": post_head,
+                    "log_path": str(Path(tmp.name) / "executor.log"),
+                }
+
+            sleep_calls = []
+
+            def sleep_side_effect(seconds: int) -> None:
+                sleep_calls.append(seconds)
+                if dirty.exists():
+                    dirty.unlink()
+
+            with contextlib.redirect_stdout(io.StringIO()) as output, mock.patch(
+                "time.sleep",
+                side_effect=sleep_side_effect,
+            ), mock.patch("ai_bridge_kit.reviewed_runner.run_codex_event", side_effect=executor_progress):
+                code = runner.watcher_run(target, branch="main", interval_seconds=1, max_cycles=3)
+
+            lines = [json.loads(line) for line in output.getvalue().splitlines() if line.strip()]
+            self.assertEqual(code, 0)
+            self.assertEqual(lines[0]["status"], "dirty_worktree_wait")
+            self.assertEqual(lines[0]["dirty_paths"], ["dirty.txt"])
+            self.assertEqual(lines[1]["status"], "codex_progressed")
+            self.assertEqual(lines[2]["status"], "waiting_external_review")
+            self.assertEqual(sleep_calls[0], 600)
+            self.assertEqual(len(launches), 1)
+            local = runner.load_local_state(target)
+            self.assertEqual(local["last_status"]["status"], "codex_progressed")
+            self.assertFalse(any(record.get("attempts", 0) > 1 for record in local["events"].values()))
 
     def test_watcher_run_survives_invalid_workflow_until_remote_plan_fix(self) -> None:
         tmp, target, state_home = self.make_project()
@@ -320,6 +388,111 @@ class ReviewedRunnerTests(unittest.TestCase):
             self.assertEqual(code, 1)
             self.assertEqual(line["status"], "watcher_error")
             self.assertIn("unexpected process failure", line["error"])
+
+    def test_watcher_run_refuses_second_instance_for_same_repo_branch(self) -> None:
+        tmp, target, state_home = self.make_project()
+        with tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(state_home)}):
+            self.attach_origin(target, Path(tmp.name))
+            self.set_waiting_for_planner(target)
+            first = runner.watcher_start(target, branch="main", interval_seconds=600)
+            try:
+                self.assertEqual(first["status"], "STARTED", first)
+                second = runner.watcher_start(target, branch="main", interval_seconds=600)
+                self.assertEqual(second["status"], "ALREADY_RUNNING")
+                self.assertEqual(second["pid"], first["pid"])
+                status = runner.watcher_status(target, branch="main")
+                self.assertTrue(status["watcher_process"]["alive"])
+            finally:
+                runner.watcher_stop(target, branch="main")
+
+    def test_different_repositories_can_have_independent_watchers(self) -> None:
+        tmp1, target1, state_home = self.make_project()
+        tmp2, target2, _ = self.make_project()
+        with tmp1, tmp2, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(state_home)}):
+            self.attach_origin(target1, Path(tmp1.name))
+            self.attach_origin(target2, Path(tmp2.name))
+            self.set_waiting_for_planner(target1)
+            self.set_waiting_for_planner(target2)
+            first = runner.watcher_start(target1, branch="main", interval_seconds=600)
+            second = runner.watcher_start(target2, branch="main", interval_seconds=600)
+            try:
+                self.assertEqual(first["status"], "STARTED", first)
+                self.assertEqual(second["status"], "STARTED", second)
+                self.assertNotEqual(first["pid"], second["pid"])
+            finally:
+                runner.watcher_stop(target1, branch="main")
+                runner.watcher_stop(target2, branch="main")
+
+    def test_stale_watcher_pid_marker_is_recovered(self) -> None:
+        tmp, target, state_home = self.make_project()
+        with tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(state_home)}):
+            marker = runner.watcher_marker_path(target, "main")
+            marker.parent.mkdir(parents=True, exist_ok=True)
+            marker.write_text("999999\n", encoding="utf-8")
+
+            registered, record = runner.register_watcher_process(target, "main")
+
+            try:
+                self.assertTrue(registered, record)
+                self.assertEqual(record["pid"], os.getpid())
+                self.assertEqual(marker.read_text(encoding="utf-8").strip(), str(os.getpid()))
+            finally:
+                runner._clear_watcher_marker(target, "main")
+
+    def test_stop_refuses_unverified_pid_and_does_not_kill_process(self) -> None:
+        tmp, target, state_home = self.make_project()
+        with tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(state_home)}):
+            local = runner.load_local_state(target)
+            local["watcher_processes"] = {
+                "main": {
+                    "pid": os.getpid(),
+                    "target": str(target),
+                    "branch": "main",
+                    "started_at": runner.utc_now(),
+                    "last_heartbeat": runner.utc_now(),
+                    "loaded_bridge_version": "test",
+                    "loaded_bridge_commit": "test",
+                }
+            }
+            runner.write_local_state(target, local)
+
+            result = runner.watcher_stop(target, branch="main")
+
+            self.assertEqual(result["status"], "STOP_REFUSED")
+            self.assertTrue(runner._process_alive(os.getpid()))
+
+    def test_watcher_status_marks_restart_required_after_bridge_commit_change(self) -> None:
+        tmp, target, state_home = self.make_project()
+        with tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(state_home)}), mock.patch(
+            "ai_bridge_kit.reviewed_runner.process_matches_watcher",
+            return_value=True,
+        ), mock.patch("ai_bridge_kit.reviewed_runner._process_alive", return_value=True), mock.patch(
+            "ai_bridge_kit.reviewed_runner.bridge_source_commit",
+            return_value="new-commit",
+        ):
+            local = runner.load_local_state(target)
+            local["watcher_processes"] = {
+                "main": {
+                    "pid": 12345,
+                    "target": str(target),
+                    "branch": "main",
+                    "started_at": "2026-08-26T00:00:00+00:00",
+                    "last_heartbeat": "2026-08-26T00:01:00+00:00",
+                    "loaded_bridge_version": "0.6.0",
+                    "loaded_bridge_commit": "old-commit",
+                    "active_executor_event": None,
+                    "last_status": "idle",
+                }
+            }
+            runner.write_local_state(target, local)
+
+            status = runner.watcher_status(target, branch="main")
+
+            self.assertTrue(status["watcher_process"]["alive"])
+            self.assertTrue(status["watcher_process"]["restart_required"])
+            self.assertEqual(status["watcher_process"]["status_alert"], "RESTART_REQUIRED")
+            self.assertEqual(status["watcher_process"]["loaded_bridge_commit"], "old-commit")
+            self.assertEqual(status["watcher_process"]["current_bridge_commit"], "new-commit")
 
     def test_watcher_event_identity_is_plain_operational_locator(self) -> None:
         current = {"state": "REVISE", "review_round": 1, "plan_revision": 0, "implementation_commit": "abc123"}
@@ -434,8 +607,9 @@ class ReviewedRunnerTests(unittest.TestCase):
 
             result = runner.watcher_once(target, branch="main", sync=True)
 
-            self.assertEqual(result["status"], "unpublished_progress_recovery_failed")
+            self.assertEqual(result["status"], "dirty_worktree_wait")
             self.assertIn("dirty", result["reason"])
+            self.assertEqual(result["dirty_paths"], ["dirty.txt"])
             local_head, remote_head = runner.branch_heads(target, "main")
             self.assertNotEqual(local_head, remote_head)
 

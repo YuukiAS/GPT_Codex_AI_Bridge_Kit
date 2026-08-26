@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- Keep repository-wide Reviewed Handoff validation backward compatible with
+  historical terminal `AI_BRIDGE_REVIEWED_FINAL_REPORT_V1` reports that have
+  valid frontmatter and substantive legacy sections, while keeping new terminal
+  transitions strict against the current `FINAL_REPORT.md` template.
+- Add a machine-local Reviewed Handoff watcher lifecycle: `watcher start`,
+  `watcher stop`, and `watcher restart` enforce one official watcher per
+  `target + branch`, record PID/heartbeat/loaded Bridge Kit version and source
+  commit, recover dead PID markers, and make `watcher status` report
+  `restart_required` when the running watcher loaded older Bridge Kit code.
+- Change preexisting dirty working trees from a persistent watcher fatal error
+  into `dirty_worktree_wait`: the watcher still launches no Executor and does
+  not stash/reset/commit/push, but it records dirty paths, sleeps with bounded
+  low-frequency backoff, and resumes routing after the tree is externally
+  restored to clean.
 - Require `PLAN_FROZEN` to correspond to a structurally valid Reviewed
   Handoff `PLAN.md`, including the required `## Out of scope` section, and
   update Planner/Scheduled Planner prompts to self-check the current PLAN
