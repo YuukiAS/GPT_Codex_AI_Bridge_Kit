@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Harden Scheduled GPT terminal transactions for Reviewed Handoff by requiring
+  a runtime `FINAL_REPORT.md` template preflight before PASS, BLOCKED, or
+  human-gate `CURRENT.json` writes.
 - Correct the Reviewed Handoff visual-review lifecycle for CI-required visual
   tasks: `WAITING_FOR_CI` may carry a valid visual input manifest with pending
   evidence while CI owns the wait, `READY_FOR_GPT_REVIEW` then waits for visual

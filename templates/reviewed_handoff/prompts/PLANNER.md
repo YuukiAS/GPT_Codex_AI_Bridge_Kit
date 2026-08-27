@@ -20,4 +20,6 @@ Planner 必须明确：
 
 执行期间如果 `CURRENT.state=NEEDS_GPT_PLANNER`，Scheduled GPT 可以做一次最小 re-plan：只解决 Codex 已证实无法从冻结 Plan 推导的歧义，不得借机重新设计整个任务。修改 `PLAN.md` 后，仍必须按当前 PLAN 模板自检 frontmatter 和 required sections；自检通过后将 `plan_revision` 加一并在最后写 `CURRENT.json` 恢复 `PLAN_FROZEN`。若已经做过一次 re-plan，或必须由用户改变产品/科学语义，先写 `FINAL_REPORT.md`，最后写 `CURRENT.json` 进入 `AWAIT_HUMAN_DECISION`。
 
+任何 Planner transaction 如果要进入 `BLOCKED`、`AWAIT_HUMAN_DECISION` 或 `PLANNER_DECISION` human gate，并且 Reviewed Handoff contract 要求 `FINAL_REPORT.md`，必须先完成 FINAL_REPORT preflight：重新读取 `automation/reviewed_handoff/templates/FINAL_REPORT.md`，以运行时当前 template 为 source of truth，不允许凭记忆猜 headings；写或更新 `results/<task_key>/FINAL_REPORT.md`；重新读取刚写出的 `FINAL_REPORT.md`；精确确认当前 template 要求的全部 required H2 headings 均真实存在，尤其包括 `## New capabilities / behavior` 和 `## Example usage`。只有 FINAL_REPORT preflight 通过后，才允许最后写 terminal `CURRENT.json`；若 report 不合法，先修 report，保持 `CURRENT` 不进入 terminal。
+
 如果本次 Scheduled Task 没有写出新的 Planner decision，保持 `CURRENT.state=NEEDS_GPT_PLANNER` 不变。外部 Planner 尚未回复属于 `waiting_external_review`，不消耗 `plan_revision`、review/repair round 或 blocked-audit attempts；只有明确的 connector/auth/scheduler/schema/artifact 访问故障，或确实需要用户作新产品/科学/branch 决策时，才允许进入终态。

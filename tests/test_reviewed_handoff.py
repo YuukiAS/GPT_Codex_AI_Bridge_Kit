@@ -648,6 +648,37 @@ class ReviewedHandoffTests(unittest.TestCase):
         self.assertNotIn("reviewed-handoff transition apply", prompt)
         self.assertNotIn("reviewed-handoff review record", prompt)
 
+    def test_scheduled_prompt_requires_final_report_preflight_before_terminal_current(self) -> None:
+        prompt = rh.read_text(Path("templates/reviewed_handoff/prompts/REVIEWER_SCHEDULED_TASK.md"))
+
+        self.assertIn("automation/reviewed_handoff/templates/FINAL_REPORT.md", prompt)
+        self.assertIn("以运行时当前 template 为 source of truth", prompt)
+        self.assertIn("不允许凭记忆猜 headings", prompt)
+        self.assertIn("重新读取刚写出的 `FINAL_REPORT.md`", prompt)
+        self.assertIn("全部 required H2 headings", prompt)
+        self.assertIn("只有 FINAL_REPORT preflight 通过后，才允许最后写 `CURRENT.json`", prompt)
+        self.assertIn("`PASS`", prompt)
+        self.assertIn("`BLOCKED`", prompt)
+        self.assertIn("`AWAIT_HUMAN_DECISION`", prompt)
+        self.assertIn("`REVIEW_LIMIT` human gate", prompt)
+        self.assertIn("`PLANNER_DECISION` human gate", prompt)
+        self.assertIn("`PASS -> AWAIT_HUMAN_DECISION`", prompt)
+        self.assertIn("`## New capabilities / behavior`", prompt)
+        self.assertIn("`## Example usage`", prompt)
+
+    def test_planner_prompt_requires_final_report_preflight_for_terminal_human_gate(self) -> None:
+        prompt = rh.read_text(Path("templates/reviewed_handoff/prompts/PLANNER.md"))
+
+        self.assertIn("automation/reviewed_handoff/templates/FINAL_REPORT.md", prompt)
+        self.assertIn("以运行时当前 template 为 source of truth", prompt)
+        self.assertIn("不允许凭记忆猜 headings", prompt)
+        self.assertIn("重新读取刚写出的 `FINAL_REPORT.md`", prompt)
+        self.assertIn("全部 required H2 headings", prompt)
+        self.assertIn("只有 FINAL_REPORT preflight 通过后，才允许最后写 terminal `CURRENT.json`", prompt)
+        self.assertIn("`PLANNER_DECISION` human gate", prompt)
+        self.assertIn("`## New capabilities / behavior`", prompt)
+        self.assertIn("`## Example usage`", prompt)
+
     def test_planner_prompt_requires_plan_template_self_check_before_freeze(self) -> None:
         prompt = rh.read_text(Path("templates/reviewed_handoff/prompts/PLANNER.md"))
 
@@ -655,6 +686,24 @@ class ReviewedHandoffTests(unittest.TestCase):
         self.assertIn("按当前 `automation/reviewed_handoff/templates/PLAN.md` 自检", prompt)
         self.assertIn("`## Out of scope`", prompt)
         self.assertIn("若 PLAN 不合法，保持 `CURRENT` 不进入 `PLAN_FROZEN`", prompt)
+
+    def test_reviewed_handoff_state_graph_stays_unchanged(self) -> None:
+        expected = {
+            "PLAN_REQUESTED": {"PLAN_FROZEN", "BLOCKED"},
+            "PLAN_FROZEN": {"EXECUTING", "BLOCKED"},
+            "EXECUTING": {"WAITING_FOR_CI", "READY_FOR_GPT_REVIEW", "NEEDS_GPT_PLANNER", "BLOCKED"},
+            "WAITING_FOR_CI": {"READY_FOR_GPT_REVIEW", "REVISE", "BLOCKED"},
+            "NEEDS_GPT_PLANNER": {"PLAN_FROZEN", "AWAIT_HUMAN_DECISION", "BLOCKED"},
+            "READY_FOR_GPT_REVIEW": {"REVISE", "PASS", "BLOCKED"},
+            "REVISE": {"EXECUTING", "NEEDS_GPT_PLANNER", "AWAIT_HUMAN_DECISION", "BLOCKED"},
+            "PASS": {"AWAIT_HUMAN_DECISION"},
+            "AWAIT_HUMAN_DECISION": set(),
+            "BLOCKED": set(),
+        }
+        schema = rh.load_json(Path("templates/reviewed_handoff/schema.json"))
+
+        self.assertEqual(rh.ALLOWED_TRANSITIONS, expected)
+        self.assertEqual({key: set(value) for key, value in schema["allowed_transitions"].items()}, expected)
 
     def test_remote_ci_pass_transaction_matches_valid_ready_state(self) -> None:
         tmp, target = self.make_project()

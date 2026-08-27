@@ -371,6 +371,17 @@ compatibility path is only for already-terminal historical tasks and may emit a
 non-blocking warning; it must not allow empty reports, malformed frontmatter,
 or new terminal transitions to bypass the current template.
 
+A Scheduled GPT Planner/Reviewer transaction that will write `PASS`, `BLOCKED`,
+`AWAIT_HUMAN_DECISION`, a review-limit human gate, a planner-decision human
+gate, or `PASS -> AWAIT_HUMAN_DECISION` must preflight the final report before
+the final `CURRENT.json` write. It must re-read
+`automation/reviewed_handoff/templates/FINAL_REPORT.md`, treat the runtime
+template as the source of truth, write or update
+`results/<task_key>/FINAL_REPORT.md`, re-read the written report, and confirm
+that all required H2 headings from the current template are present. If the
+report does not satisfy the current template, the transaction must fix the
+report first and must not publish terminal `CURRENT` state.
+
 ## Release requirements
 
 Before tagging `v0.5.0`:
