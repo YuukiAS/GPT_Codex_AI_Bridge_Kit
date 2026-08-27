@@ -35,6 +35,7 @@ Local CLI 仍用于 Codex watcher、本地调试、deterministic validation 和�
 
 - CI locator 是 GitHub 上当前授权 branch 的 tip，也就是包含 `CURRENT.state=WAITING_FOR_CI` 的已发布 control commit。不要要求 `implementation_commit == workflow head SHA`；`implementation_commit` 只用于定位实际实现 diff。不要把 CI locator 写入 `review_target_id`、hash graph 或 receipt。
 - CI 仍 pending/running：严格 `NO WRITE`。不改 `CURRENT.json`，不写 review，不制造空 commit。
+- 如果这是 `visual_review_required=true` 的视觉任务，`WAITING_FOR_CI` 阶段只要求已发布的 `visual_inputs.json` 合法绑定当前 implementation；此时缺少 `VISUAL_REVIEW.json` 是正常的 CI-first handoff，不得提前触发 Reviewer、不得消耗 `review_round`、不得把 waiting owner 写成 Visual Review。
 - 必需 CI 全部 PASS：通过 GitHub transaction 直接把 `CURRENT.ci_status` 设为 `PASS`、`CURRENT.state` 设为 `READY_FOR_GPT_REVIEW`，并设置正确 `next_action`。然后可以在同一次 Scheduled Task run 中继续执行下面的独立 GPT review。
 - 必需 CI 明确 FAIL：先写当前 `REVIEW_<next_round>.md`，decision 为 `REVISE`，把 CI 失败作为真实 blocking finding。最后写 `CURRENT.json`。第一轮语义为 `ci_status=FAIL`、`review_round += 1`、`last_review_decision=REVISE`、`state=REVISE`，让本地 watcher 自动返修。第二轮必须先写 `FINAL_REPORT.md` 和 `REVIEW_2.md`，最后写 `CURRENT.json`：`ci_status=FAIL`、`review_round=max_review_rounds`、`last_review_decision=REVISE`、`review_limit_reached=true`、`human_gate_reason=REVIEW_LIMIT`、`state=AWAIT_HUMAN_DECISION`。不得第三轮。
 - CI 状态无法可靠确认、workflow 被取消且无法判断是否应重跑、权限/服务不可用等真正外部问题：不要伪造 PASS。先写 `FINAL_REPORT.md`，必要时写 review artifact，最后写 `CURRENT.json` 进入 `BLOCKED`。
@@ -56,7 +57,7 @@ Reviewer 必须独立读取：
 
 先确认现有 `REVIEW_<n>.md` 是否真的是当前 implementation 的 fresh review。只有 `implementation_commit` 等于当前 `CURRENT.implementation_commit` 的 review 才能驱动 `PASS`、`REVISE` 或 `BLOCKED`；旧 commit 上的 review 是 stale context，不得重复执行旧 `REVISE`，也不得消耗新的 review/repair budget。
 
-如果 task 要求 Visual Review，先机械确认 `VISUAL_REVIEW.json` 存在，且绑定当前 `task_key`、`workflow_type=reviewed_handoff`、`implementation_commit` 和 input image hashes。证据缺失时保持等待，不写 `REVIEW_<round>.md`，不消耗 `review_round`。证据 stale 或 malformed 时不得 PASS。Visual Review 的 `overall_decision` 只是当前 Reviewer 消费的 evidence，不创建 Visual Reviewer role。
+如果 task 要求 Visual Review，先机械确认 `VISUAL_REVIEW.json` 存在，且绑定当前 `task_key`、`workflow_type=reviewed_handoff`、`implementation_commit` 和 input image hashes。证据缺失时保持等待，不写 `REVIEW_<round>.md`，不消耗 `review_round`。证据 stale 或 malformed 时不得 PASS。Visual Review 的 `overall_decision` 只是当前 Reviewer 消费的 evidence，不创建 Visual Reviewer role。CI-required visual task 的顺序必须保持为：`WAITING_FOR_CI` -> CI PASS -> `READY_FOR_GPT_REVIEW` -> `waiting_visual_review_evidence` -> fresh visual evidence -> GPT Reviewer。
 
 `base_commit..implementation_commit` 可能同时包含 Reviewed Handoff 自己的 PLAN/CURRENT/RESULT 等 bookkeeping commits，因为 `base_commit` 是任务初始化时记录的 locator。不要因为这些合法 workflow 文件本身存在于 diff 就把它们当作产品实现或 regression。实现审核应聚焦冻结 Plan 定义的项目代码、配置、文档和 user-facing artifacts。相反，如果真实 diff 显示 Executor 修改了 `REQUEST.md`、`PLAN.md`、既有 `REVIEW_<n>.md`、`FINAL_REPORT.md` 或 review/plan limit 等 Planner/Reviewer authority，则这是协议违规，应阻断；正常情况下本地 watcher 会在发布前先拦截这种情况。
 

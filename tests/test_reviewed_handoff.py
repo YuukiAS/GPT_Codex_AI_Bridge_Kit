@@ -140,6 +140,13 @@ class ReviewedHandoffTests(unittest.TestCase):
         current["visual_review_evidence_path"] = "results/001_feature/visual_review/VISUAL_REVIEW.json"
         rh.write_json(current_path, current)
 
+    def require_ci(self, target: Path) -> None:
+        current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+        current = rh.load_json(current_path)
+        current["ci_required"] = True
+        current["ci_status"] = "PENDING"
+        rh.write_json(current_path, current)
+
     def write_visual_input_manifest(self, target: Path, implementation_commit: str) -> None:
         visual_dir = rh.result_root(target, "001_feature") / "visual_review"
         image = visual_dir / "primary.png"
@@ -367,6 +374,47 @@ class ReviewedHandoffTests(unittest.TestCase):
             self.assertFalse(wait["may_block"])
             self.assertEqual(rh.load_json(rh.task_root(target, "001_feature") / "CURRENT.json")["review_round"], 0)
 
+    def test_ci_required_visual_task_waits_for_ci_before_visual_review(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            self.require_ci(target)
+            self.require_visual_review(target)
+            self.freeze_and_start(target)
+            self.write_result(target, commit="impl-ci-visual", ci_status="PENDING")
+            self.write_visual_input_manifest(target, implementation_commit="impl-ci-visual")
+
+            current = rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="WAITING_FOR_CI")
+
+            self.assertEqual(current["state"], "WAITING_FOR_CI")
+            self.assertEqual(current["ci_status"], "PENDING")
+            self.assertEqual(rh.validate_task(target, "001_feature"), [])
+            wait = rh.reviewed_external_wait_status(target, "001_feature")
+            self.assertEqual(wait["operational_status"], "waiting_for_ci")
+            self.assertEqual(wait["wait_owner"], "CI")
+            self.assertEqual(rh.load_json(rh.task_root(target, "001_feature") / "CURRENT.json")["review_round"], 0)
+
+    def test_ci_pass_then_visual_task_waits_for_visual_evidence(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            self.require_ci(target)
+            self.require_visual_review(target)
+            self.freeze_and_start(target)
+            self.write_result(target, commit="impl-ci-visual", ci_status="PENDING")
+            self.write_visual_input_manifest(target, implementation_commit="impl-ci-visual")
+            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="WAITING_FOR_CI")
+
+            current = rh.apply_transition(target, "001_feature", expected_state="WAITING_FOR_CI", next_state="READY_FOR_GPT_REVIEW")
+
+            self.assertEqual(current["state"], "READY_FOR_GPT_REVIEW")
+            self.assertEqual(current["ci_status"], "PASS")
+            self.assertEqual(rh.validate_task(target, "001_feature"), [])
+            wait = rh.reviewed_external_wait_status(target, "001_feature")
+            self.assertEqual(wait["operational_status"], "waiting_visual_review_evidence")
+            self.assertEqual(wait["wait_owner"], "Visual Review")
+            with self.assertRaisesRegex(ValueError, "visual review evidence pending"):
+                rh.record_review(target, "001_feature", decision="PASS", body="Must wait for visual evidence.")
+            self.assertEqual(rh.load_json(rh.task_root(target, "001_feature") / "CURRENT.json")["review_round"], 0)
+
     def test_visual_review_pending_requires_published_input_manifest(self) -> None:
         tmp, target = self.make_project()
         with tmp:
@@ -400,6 +448,147 @@ class ReviewedHandoffTests(unittest.TestCase):
             self.write_visual_review(target, implementation_commit="impl-old")
             with self.assertRaisesRegex(ValueError, "identity binding mismatch"):
                 rh.record_review(target, "001_feature", decision="PASS", body="Cannot use stale visual evidence.")
+
+    def test_visual_pass_states_require_current_pass_evidence(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            self.require_visual_review(target)
+            self.freeze_and_start(target)
+            self.write_result(target, commit="impl-visual")
+            self.write_visual_input_manifest(target, implementation_commit="impl-visual")
+            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            self.remote_write_review_transaction(target, decision="PASS", body="Claimed pass without visual evidence.")
+            current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+            current = rh.load_json(current_path)
+            current["state"] = "PASS"
+            current["next_action"] = "PRESENT_FINAL_REPORT"
+            rh.write_json(current_path, current)
+
+            errors = rh.validate_task(target, "001_feature")
+            self.assertTrue(any("PASS requires visual review PASS evidence" in error for error in errors), errors)
+
+        tmp, target = self.make_project()
+        with tmp:
+            self.require_visual_review(target)
+            self.freeze_and_start(target)
+            self.write_result(target, commit="impl-current")
+            self.write_visual_input_manifest(target, implementation_commit="impl-current")
+            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            self.write_visual_review(target, implementation_commit="impl-old")
+            self.remote_write_review_transaction(target, decision="PASS", body="Claimed pass with stale visual evidence.")
+            current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+            current = rh.load_json(current_path)
+            current["state"] = "PASS"
+            current["next_action"] = "PRESENT_FINAL_REPORT"
+            rh.write_json(current_path, current)
+
+            errors = rh.validate_task(target, "001_feature")
+            self.assertTrue(any("identity binding mismatch" in error for error in errors), errors)
+
+        tmp, target = self.make_project()
+        with tmp:
+            self.require_visual_review(target)
+            self.freeze_and_start(target)
+            self.write_result(target, commit="impl-current")
+            self.write_visual_review(target, implementation_commit="impl-current")
+            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            current = rh.record_review(target, "001_feature", decision="PASS", body="Fresh visual evidence satisfied.")
+            self.assertEqual(current["state"], "PASS")
+            self.assertEqual(rh.validate_task(target, "001_feature"), [])
+
+    def test_pass_human_gate_requires_current_visual_pass_evidence(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            self.require_visual_review(target)
+            self.freeze_and_start(target)
+            self.write_result(target, commit="impl-visual")
+            self.write_visual_input_manifest(target, implementation_commit="impl-visual")
+            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            current = self.remote_write_review_transaction(target, decision="PASS", body="Claimed pass without visual evidence.")
+            self.assertEqual(current["state"], "AWAIT_HUMAN_DECISION")
+
+            errors = rh.validate_task(target, "001_feature")
+            self.assertTrue(any("PASS human gate requires visual review PASS evidence" in error for error in errors), errors)
+
+    def test_visual_pending_is_allowed_for_ci_failures_and_non_pass_terminal_states(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            self.require_ci(target)
+            self.require_visual_review(target)
+            self.freeze_and_start(target)
+            self.write_result(target, commit="impl-ci-visual-1", ci_status="PENDING")
+            self.write_visual_input_manifest(target, implementation_commit="impl-ci-visual-1")
+            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="WAITING_FOR_CI")
+
+            current = rh.record_review(target, "001_feature", decision="REVISE", body="CI failed before Terra evidence existed.")
+            self.assertEqual(current["state"], "REVISE")
+            self.assertEqual(current["review_round"], 1)
+            self.assertEqual(rh.validate_task(target, "001_feature"), [])
+
+            rh.apply_transition(target, "001_feature", expected_state="REVISE", next_state="EXECUTING")
+            self.write_result(target, commit="impl-ci-visual-2", ci_status="PENDING")
+            self.write_visual_input_manifest(target, implementation_commit="impl-ci-visual-2")
+            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="WAITING_FOR_CI")
+            self.write_final_report(target)
+            current = rh.record_review(target, "001_feature", decision="REVISE", body="CI failed again before Terra evidence existed.")
+            self.assertEqual(current["state"], "AWAIT_HUMAN_DECISION")
+            self.assertEqual(current["human_gate_reason"], "REVIEW_LIMIT")
+            self.assertEqual(current["review_round"], 2)
+            self.assertEqual(rh.validate_task(target, "001_feature"), [])
+
+        tmp, target = self.make_project()
+        with tmp:
+            self.require_visual_review(target)
+            self.freeze_and_start(target)
+            self.write_result(target, commit="impl-blocked")
+            self.write_visual_input_manifest(target, implementation_commit="impl-blocked")
+            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            self.write_final_report(target)
+            current = rh.record_review(target, "001_feature", decision="BLOCKED", body="External service failed.")
+            self.assertEqual(current["state"], "BLOCKED")
+            self.assertEqual(rh.validate_task(target, "001_feature"), [])
+
+    def test_invalid_visual_manifest_and_evidence_still_fail_closed(self) -> None:
+        for state in ["WAITING_FOR_CI", "READY_FOR_GPT_REVIEW", "REVISE", "BLOCKED", "AWAIT_HUMAN_DECISION"]:
+            tmp, target = self.make_project()
+            with tmp, self.subTest(state=state):
+                self.require_ci(target)
+                self.require_visual_review(target)
+                self.freeze_and_start(target)
+                self.write_result(target, commit="impl-bad-visual", ci_status="PENDING")
+                self.write_visual_input_manifest(target, implementation_commit="wrong-impl")
+                current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+                current = rh.load_json(current_path)
+                current["state"] = state
+                current["implementation_commit"] = "impl-bad-visual"
+                current["ci_status"] = "PASS" if state == "READY_FOR_GPT_REVIEW" else "PENDING"
+                current["next_action"] = {
+                    "WAITING_FOR_CI": "WAIT_FOR_GITHUB_CI",
+                    "READY_FOR_GPT_REVIEW": "WAIT_FOR_VISUAL_REVIEW_EVIDENCE",
+                    "REVISE": "RUN_CODEX_REPAIR",
+                    "BLOCKED": "PRESENT_FINAL_REPORT",
+                    "AWAIT_HUMAN_DECISION": "PRESENT_FINAL_REPORT",
+                }[state]
+                if state == "AWAIT_HUMAN_DECISION":
+                    current["human_gate_reason"] = "REVIEW_LIMIT"
+                if state in {"BLOCKED", "AWAIT_HUMAN_DECISION"}:
+                    self.write_final_report(target)
+                rh.write_json(current_path, current)
+
+                errors = rh.validate_task(target, "001_feature")
+                self.assertTrue(any("visual review input manifest implementation_commit must match CURRENT" in error for error in errors), errors)
+
+        tmp, target = self.make_project()
+        with tmp:
+            self.require_visual_review(target)
+            self.freeze_and_start(target)
+            self.write_result(target, commit="impl-current")
+            self.write_visual_input_manifest(target, implementation_commit="impl-current")
+            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            visual_dir = rh.result_root(target, "001_feature") / "visual_review"
+            rh.write_json(visual_dir / "VISUAL_REVIEW.json", {"schema": "broken"})
+            errors = rh.validate_task(target, "001_feature")
+            self.assertTrue(any("missing required field" in error or "schema" in error for error in errors), errors)
 
     def test_ci_failure_uses_normal_review_round_budget(self) -> None:
         tmp, target = self.make_project()

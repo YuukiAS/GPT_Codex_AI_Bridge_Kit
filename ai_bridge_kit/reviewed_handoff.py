@@ -50,6 +50,12 @@ EXTERNAL_WAIT_STATE_OWNERS = {
     "NEEDS_GPT_PLANNER": "Planner",
     "READY_FOR_GPT_REVIEW": "Reviewer",
 }
+VISUAL_PENDING_ALLOWED_STATES = {
+    "WAITING_FOR_CI",
+    "READY_FOR_GPT_REVIEW",
+    "REVISE",
+    "BLOCKED",
+}
 FINAL_REPORT_HEADINGS = [
     "## What this task solved",
     "## What changed",
@@ -410,6 +416,15 @@ def reviewed_visual_review_status(target: Path, task_key: str, current: dict[str
     return {"required": True, "status": "PASS", "path": str(path.relative_to(target.resolve())), "errors": []}
 
 
+def visual_review_pending_allowed(current: dict[str, Any]) -> bool:
+    state = str(current.get("state") or "")
+    if state in VISUAL_PENDING_ALLOWED_STATES:
+        return True
+    if state == "AWAIT_HUMAN_DECISION":
+        return current.get("human_gate_reason") != "PASS"
+    return False
+
+
 def validate_final_report_strict(path: Path) -> list[str]:
     if not path.exists():
         return ["terminal state requires FINAL_REPORT.md"]
@@ -519,6 +534,22 @@ def reviewed_external_wait_status(target: Path, task_key: str, *, now: Any = Non
     current = load_json(task_root(target, task_key) / "CURRENT.json")
     state = str(current.get("state") or "")
     visual_status = reviewed_visual_review_status(target, task_key, current)
+    if state == "WAITING_FOR_CI" and current.get("ci_status") == "PENDING":
+        return {
+            "operational_status": "waiting_for_ci",
+            "external_owner": "GitHub Actions",
+            "wait_owner": "CI",
+            "current_identity": str(current.get("implementation_commit") or "").strip() or None,
+            "fresh_decision": False,
+            "stale_decision": False,
+            "may_block": False,
+            "visual_review": visual_status,
+            "blocker_required_evidence": [
+                "GitHub Actions checks are disabled, expired, unauthenticated, or unavailable",
+                "the published branch tip containing WAITING_FOR_CI cannot be checked",
+                "CI remains pending beyond the workflow's concrete operational deadline",
+            ],
+        }
     if state == "READY_FOR_GPT_REVIEW" and visual_status.get("required") and visual_status.get("status") == "PENDING":
         return {
             "operational_status": "waiting_visual_review_evidence",
@@ -634,12 +665,12 @@ def validate_task(target: Path, task_key: str) -> list[str]:
             status = visual_status.get("status")
             if status == "INVALID":
                 errors.extend(str(item) for item in visual_status.get("errors", []))
-            elif status == "PENDING" and state != "READY_FOR_GPT_REVIEW":
-                errors.append(f"{state} requires current VISUAL_REVIEW.json before leaving visual evidence pending")
             elif state == "PASS" and status != "PASS":
                 errors.append("PASS requires visual review PASS evidence")
             elif state == "AWAIT_HUMAN_DECISION" and current.get("human_gate_reason") == "PASS" and status != "PASS":
                 errors.append("PASS human gate requires visual review PASS evidence")
+            elif status == "PENDING" and not visual_review_pending_allowed(current):
+                errors.append(f"{state} does not allow pending visual review evidence")
 
     reviews = review_files(target, task_key)
     if len(reviews) > 2:
@@ -911,7 +942,7 @@ def record_review(
     visual_status = reviewed_visual_review_status(target, task_key, current)
     if visual_status.get("required"):
         status = visual_status.get("status")
-        if status == "PENDING":
+        if status == "PENDING" and source_state != "WAITING_FOR_CI" and decision != "BLOCKED":
             raise ValueError("visual review evidence pending; GPT review round must not be consumed")
         if status == "INVALID":
             raise ValueError("; ".join(str(item) for item in visual_status.get("errors", [])))

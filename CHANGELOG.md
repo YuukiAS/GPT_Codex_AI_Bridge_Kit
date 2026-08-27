@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Correct the Reviewed Handoff visual-review lifecycle for CI-required visual
+  tasks: `WAITING_FOR_CI` may carry a valid visual input manifest with pending
+  evidence while CI owns the wait, `READY_FOR_GPT_REVIEW` then waits for visual
+  evidence without consuming review rounds, and PASS states still require fresh
+  visual PASS evidence.
 - Keep repository-wide Reviewed Handoff validation backward compatible with
   historical terminal `AI_BRIDGE_REVIEWED_FINAL_REPORT_V1` reports that have
   valid frontmatter and substantive legacy sections, while keeping new terminal

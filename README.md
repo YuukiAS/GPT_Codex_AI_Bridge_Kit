@@ -476,6 +476,8 @@ results/<task_key>/visual_review/VISUAL_REVIEW.json
 
 Bridge Kit 不会把 API key 写进仓库，也不会打印 secret 值。
 
+在 Reviewed Handoff 中，`ci_required=true` 的视觉任务先发布实现、渲染图片和 `visual_inputs.json`，然后停在 `WAITING_FOR_CI` / `ci_status=PENDING`。CI 通过后才进入 `READY_FOR_GPT_REVIEW`，此时缺少 `VISUAL_REVIEW.json` 是正常的 `waiting_visual_review_evidence`；只有 fresh visual evidence 返回后，Scheduled GPT Reviewer 才开始正式 review。`PASS` 和 `human_gate_reason=PASS` 仍然必须绑定当前 implementation 的 visual PASS evidence。
+
 默认隐私策略是保守的：安装视觉复核能力不等于允许自动上传患者影像、私有临床数据、未公开科研图片、凭据或其他敏感内容。没有明确外部上传授权时应拒绝。
 
 ---

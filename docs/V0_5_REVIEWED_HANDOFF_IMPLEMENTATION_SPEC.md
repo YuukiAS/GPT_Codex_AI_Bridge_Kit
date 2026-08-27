@@ -117,6 +117,8 @@ an Executor-owned state.
 
 For CI-required tasks, Codex Executor must stop at `WAITING_FOR_CI` with `CURRENT.ci_status=PENDING`. `CURRENT.ci_status` is the only machine truth for CI. `RESULT.md` is execution narrative and must not be treated as a second CI authority. The Scheduled GPT reviewer reads the real GitHub checks for the current authorized branch tip that contains `CURRENT.state=WAITING_FOR_CI`; that branch tip is the CI locator. It is a normal Git locator, not semantic identity, and it is not written into a hash chain or receipt graph. Do not assume `implementation_commit` equals the GitHub workflow head SHA, because the watcher may publish both implementation and control-plane commits.
 
+For CI-required visual tasks, `WAITING_FOR_CI` may have `visual_review_required=true`, a valid task-local `visual_inputs.json` bound to the current `implementation_commit`, and no `VISUAL_REVIEW.json` yet. That state is owned by CI, not Visual Review. After CI PASS, Scheduled GPT advances the task to `READY_FOR_GPT_REVIEW`; only then does missing visual evidence become `waiting_visual_review_evidence`.
+
 `AWAIT_HUMAN_DECISION` and `BLOCKED` are user-facing terminal states. Every terminal state must have a structurally valid `FINAL_REPORT.md`; the user should never have to reconstruct the outcome from CI logs or Reviewer artifacts.
 
 ## External GPT wait contract
@@ -317,7 +319,20 @@ Opt-in is task-local via `CURRENT.visual_review_required=true`. The default evid
 results/<task_key>/visual_review/VISUAL_REVIEW.json
 ```
 
-The Executor must publish the rendered visual inputs and `results/<task_key>/visual_review/visual_inputs.json` before entering `READY_FOR_GPT_REVIEW`. The GitHub Actions Visual Review job can then read the already-published inputs and write `VISUAL_REVIEW.json`. Missing `VISUAL_REVIEW.json` with a valid input manifest is normal `waiting_visual_review_evidence`; missing or invalid input manifest is not a valid handoff.
+For non-CI visual tasks, the Executor must publish the rendered visual inputs and `results/<task_key>/visual_review/visual_inputs.json` before entering `READY_FOR_GPT_REVIEW`. The GitHub Actions Visual Review job can then read the already-published inputs and write `VISUAL_REVIEW.json`. Missing `VISUAL_REVIEW.json` with a valid input manifest is normal `waiting_visual_review_evidence`; missing or invalid input manifest is not a valid handoff.
+
+For CI-required visual tasks, the legal order is:
+
+```text
+WAITING_FOR_CI
+-> CI PASS
+-> READY_FOR_GPT_REVIEW
+-> waiting_visual_review_evidence
+-> fresh visual evidence
+-> GPT Reviewer
+```
+
+`WAITING_FOR_CI` with a valid `visual_inputs.json` and pending visual evidence is valid and remains owned by CI. `READY_FOR_GPT_REVIEW` with pending visual evidence is also valid, but the owner is Visual Review and the GPT Reviewer must wait without consuming `review_round`. CI failure may route to `REVISE` or non-PASS terminal states without first requiring Terra evidence. `PASS` and `AWAIT_HUMAN_DECISION` with `human_gate_reason=PASS` remain strict: they require current visual PASS evidence.
 
 For Reviewed Handoff, valid visual evidence is bound to:
 
