@@ -282,6 +282,80 @@ class ReviewedHandoffTests(unittest.TestCase):
             self.assertEqual(code, 1)
             self.assertIn("legacy report", "\n".join(lines))
 
+    def test_planner_decision_human_gate_allows_historical_stale_review(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            self.write_plan(target)
+            self.write_result(target, commit="impl-old", ci_status="PASS")
+            review_path = rh.result_root(target, "001_feature") / "REVIEW_1.md"
+            rh.write_text(
+                review_path,
+                (
+                    "---\n"
+                    f"schema: {rh.REVIEW_SCHEMA}\n"
+                    "task_key: 001_feature\n"
+                    "review_round: 1\n"
+                    "decision: REVISE\n"
+                    "implementation_commit: impl-old\n"
+                    "---\n\n"
+                    "Historical review for an earlier implementation.\n"
+                ),
+            )
+            self.write_result(target, commit="impl-new", ci_status="PASS")
+            current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+            current = rh.load_json(current_path)
+            current["state"] = "AWAIT_HUMAN_DECISION"
+            current["human_gate_reason"] = "PLANNER_DECISION"
+            current["next_action"] = "PRESENT_FINAL_REPORT"
+            current["review_round"] = 1
+            current["last_review_decision"] = "REVISE"
+            current["implementation_commit"] = "impl-new"
+            current["ci_status"] = "PASS"
+            rh.write_json(current_path, current)
+            self.write_final_report(target)
+
+            lines, code = rh.validate_reviewed_handoff(target)
+
+            self.assertEqual(code, 0, "\n".join(lines))
+
+    def test_review_limit_human_gate_still_rejects_stale_review(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            self.write_plan(target)
+            self.write_result(target, commit="impl-old", ci_status="PASS")
+            review_path = rh.result_root(target, "001_feature") / "REVIEW_1.md"
+            rh.write_text(
+                review_path,
+                (
+                    "---\n"
+                    f"schema: {rh.REVIEW_SCHEMA}\n"
+                    "task_key: 001_feature\n"
+                    "review_round: 1\n"
+                    "decision: REVISE\n"
+                    "implementation_commit: impl-old\n"
+                    "---\n\n"
+                    "Reviewer-bound closure cannot use stale review identity.\n"
+                ),
+            )
+            self.write_result(target, commit="impl-new", ci_status="PASS")
+            current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+            current = rh.load_json(current_path)
+            current["state"] = "AWAIT_HUMAN_DECISION"
+            current["human_gate_reason"] = "REVIEW_LIMIT"
+            current["next_action"] = "PRESENT_FINAL_REPORT"
+            current["review_round"] = 1
+            current["last_review_decision"] = "REVISE"
+            current["review_limit_reached"] = True
+            current["max_review_rounds"] = 1
+            current["implementation_commit"] = "impl-new"
+            current["ci_status"] = "PASS"
+            rh.write_json(current_path, current)
+            self.write_final_report(target)
+
+            errors = rh.validate_task(target, "001_feature")
+
+            self.assertIn("latest review must be bound to CURRENT implementation_commit", errors)
+
     def test_new_terminal_transition_still_requires_current_final_report_template(self) -> None:
         tmp, target = self.make_project()
         with tmp:

@@ -688,7 +688,11 @@ def validate_task(target: Path, task_key: str) -> list[str]:
         if current.get("last_review_decision") != latest_data.get("decision"):
             errors.append("CURRENT.last_review_decision must match the latest review artifact")
         latest_commit = latest_data.get("implementation_commit")
-        if state in {"REVISE", "PASS", "AWAIT_HUMAN_DECISION", "BLOCKED"} and latest_commit != str(current.get("implementation_commit")):
+        planner_terminal = state == "AWAIT_HUMAN_DECISION" and current.get("human_gate_reason") == "PLANNER_DECISION"
+        review_bound_terminal = state in {"REVISE", "PASS", "BLOCKED"} or (
+            state == "AWAIT_HUMAN_DECISION" and not planner_terminal
+        )
+        if review_bound_terminal and latest_commit != str(current.get("implementation_commit")):
             errors.append("latest review must be bound to CURRENT implementation_commit")
         decision = latest_data.get("decision")
         if state == "REVISE" and decision != "REVISE":
