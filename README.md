@@ -100,13 +100,17 @@ $CODEX_HOME/rules/ai-bridge-global.rules
 Host Policy 会尽量非破坏式修改已有配置，并在需要时创建备份。
 
 `ai-bridge plugin-replay` 是机器级 Host Policy 预授权的窄入口，不是新的
-workflow。它要求 caller 指定目标仓库身份、已安装插件名、任务/说明文件和一个
-或多个显式 input file；每次运行只把这些文件复制到
+workflow。它要求 caller 指定目标 Git 仓库、已安装插件名、任务/说明文件和一个
+或多个显式 input file。input 默认必须位于 target Git repo 内；外部文件只能先放入
+`${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}/plugin-replay/inbox/` 这个固定 trusted
+inbox；symlink resolve 后仍必须落在授权根内。task/说明文件只能来自 target repo、
+当前 caller repo 或 trusted inbox。每次运行只把这些文件复制到
 `${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}/plugin-replay/<run-id>/`，child Codex 的
 cwd 是隔离 workspace，默认 `workspace-write`、`approval_policy=never`、本地
-replay 网络关闭，完整输出保留在本机 state 目录。Host Policy 不会因此放开 raw
-`codex exec`、裸 shell/python、整个 consumer repo 写入、外部上传、危险 Git、
-发布或部署。
+replay 网络关闭，且使用当前 Codex identity，不允许通过该入口切换到另一个
+`CODEX_HOME`。完整输出保留在本机 state 目录。Host Policy 不会因此放开 raw
+`codex exec`、裸 shell/python、任意私人路径读取、整个 consumer repo 写入、外部上传、
+危险 Git、发布或部署。
 
 ---
 

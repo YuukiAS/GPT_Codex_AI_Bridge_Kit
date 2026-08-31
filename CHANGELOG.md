@@ -8,6 +8,13 @@
   `approval_policy=never` / local-network-off settings, records local
   `run.json` metadata and output paths, and rejects arbitrary Codex flag
   passthrough.
+- Harden `ai-bridge plugin-replay` before formal enablement: targets must
+  resolve to Git repository roots, inputs must resolve inside the target repo
+  or the fixed plugin-replay trusted inbox, task files are limited to the
+  target repo / caller repo / trusted inbox, public CLI callers cannot switch
+  `CODEX_HOME`, and real replay fails closed with
+  `READ_ISOLATION_NOT_ENFORCEABLE` if child Codex cannot prove restricted
+  read isolation.
 - Extend Host Policy install/validate so
   `$CODEX_HOME/rules/ai-bridge-global.rules` pre-authorizes only the trusted
   `ai-bridge plugin-replay` executable path while raw `codex exec`, broad

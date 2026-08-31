@@ -82,6 +82,23 @@ run.json         # non-secret run metadata / status
 ```
 
 Only explicitly listed input files are copied. Do not recursively ingest a parent directory.
+“Explicit input” does not mean an arbitrary absolute path. The replay target
+must resolve through `git -C <target> rev-parse --show-toplevel` to a canonical
+Git repository root. By default, every `--input` file must resolve inside that
+target repository root. The only external-file escape hatch is the fixed
+machine-local trusted inbox:
+
+```text
+${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}/plugin-replay/inbox/
+```
+
+The caller cannot choose another input root. Path checks must use resolved real
+paths, so `..`, relative-path tricks and symlink escapes such as
+`repo/link -> ~/.ssh` are rejected. A task/instruction file may resolve inside
+the target Git repository, the caller's current Git repository, or the trusted
+inbox; it may not be an arbitrary private file. If the caller's current working
+directory is not inside a Git repository, task files are limited to the target
+repository or trusted inbox.
 
 The child Codex working directory must be this isolated replay workspace, **not the consumer repository**. Do not rely on `--add-dir` as a write fence for the target repository. If additional context is needed, it must be supplied as another explicit input file or a deliberately copied bounded context artifact.
 
@@ -89,7 +106,13 @@ This keeps plugin replay independent of arbitrary repo write access and avoids m
 
 ### 2. Test the installed production plugin, not source-tree imitation
 
-The child runtime must use the normal Codex identity / installed plugin environment from the selected `CODEX_HOME`. The replay helper must not copy `SKILL.md` text into the prompt and pretend that this is equivalent to running the installed plugin.
+The child runtime must use the current Codex identity / installed plugin
+environment from the current process `CODEX_HOME` resolution (`$CODEX_HOME`,
+otherwise `~/.codex`). `CODEX_HOME` authorization is per identity:
+`plugin-replay` must not let a caller that is approved under one Host Policy
+select another Codex identity. The replay helper must not copy `SKILL.md` text
+into the prompt and pretend that this is equivalent to running the installed
+plugin.
 
 Require the caller to identify the intended plugin (for example `--plugin <name>`). If the current Codex CLI exposes a reliable installed-plugin inspection command, verify the plugin is actually installed; otherwise record the requested plugin name and fail clearly if production invocation cannot find it.
 
@@ -109,6 +132,12 @@ The child must have these semantic properties:
 - no arbitrary additional writable directory passthrough;
 - ephemeral/non-persistent session when supported;
 - network disabled by default for local artifact replay unless a future separately reviewed contract introduces an explicitly bounded network mode.
+
+Before running the real replay, the helper must verify that the child Codex
+runtime cannot read a known non-sensitive file outside the replay authorization
+root. If the current Codex CLI / platform cannot enforce that restricted read
+boundary, the helper must fail closed with
+`READ_ISOLATION_NOT_ENFORCEABLE` rather than processing private replay inputs.
 
 The helper may use `--skip-git-repo-check` because the isolated replay workspace is not required to be a Git repository.
 
@@ -170,11 +199,11 @@ The change is not complete unless all of these are demonstrated:
 2. `ai-bridge host install` installs the narrow replay pre-authorization for the trusted Bridge executable.
 3. `ai-bridge host validate` verifies `ai-bridge plugin-replay ... => allow` and confirms raw `codex exec` did not gain a broad allow.
 4. Force push, branch creation/switching, remote mutation, `reset --hard`, `git clean` and existing dangerous cases retain their current approval behavior.
-5. The replay helper accepts only explicit input files and does not recursively stage neighboring files.
+5. The replay helper accepts only explicit input files under the target Git repository or fixed trusted inbox, rejects resolved symlink escapes, and does not recursively stage neighboring files.
 6. The child cwd is the isolated machine-local replay workspace; the helper does not expose the whole target repository as a writable child workspace.
 7. The child command fixes bounded sandbox + no interactive approval and rejects arbitrary Codex flag passthrough.
 8. A dry-run shows target/plugin/input basenames, replay workspace/output path, resolved Codex executable and exact child argv without printing private contents.
-9. A real generic local smoke launches a fresh Codex runtime against a small temporary private-like text input and produces machine-local output without an outer approval prompt.
+9. A real generic local smoke launches a fresh Codex runtime against a small temporary private-like text input and proves the child cannot read a specified neighboring secret outside the replay authorization root before any real private replay proceeds.
 10. The smoke is generic: no `writing-style`, CARE, M&Ms, PDF title, task `044` or project-specific hard-code in implementation/tests.
 11. The first real consumer replay after the generic smoke is `AI_Skills_Collection` task `044_writing_style_deep_research_chinese_replay`; its private PDF and rewrite remain local.
 

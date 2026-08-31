@@ -16,6 +16,7 @@ from typing import Any
 
 
 RUN_SCHEMA = "AI_BRIDGE_PLUGIN_REPLAY_RUN_V1"
+READ_ISOLATION_ERROR = "READ_ISOLATION_NOT_ENFORCEABLE"
 PLUGIN_RE = re.compile(r"^[A-Za-z0-9_.-]+(?:@[A-Za-z0-9_.-]+)?$")
 
 
@@ -26,7 +27,7 @@ class StagedFile:
     staged_path: Path
     basename: str
     size_bytes: int
-    sha256: str
+    sha256: str | None
 
 
 def utc_now() -> str:
@@ -47,6 +48,10 @@ def replay_root(run_id: str, env: dict[str, str] | None = None) -> Path:
     return machine_state_home(env) / "plugin-replay" / run_id
 
 
+def trusted_inbox(env: dict[str, str] | None = None) -> Path:
+    return machine_state_home(env) / "plugin-replay" / "inbox"
+
+
 def resolve_codex_home(explicit: Path | None = None, env: dict[str, str] | None = None) -> Path:
     env = os.environ if env is None else env
     if explicit is not None:
@@ -54,6 +59,43 @@ def resolve_codex_home(explicit: Path | None = None, env: dict[str, str] | None 
     if env.get("CODEX_HOME"):
         return Path(env["CODEX_HOME"]).expanduser().resolve()
     return (Path.home() / ".codex").resolve()
+
+
+def enforce_current_codex_home(explicit: Path | None = None, env: dict[str, str] | None = None) -> Path:
+    current = resolve_codex_home(None, env)
+    if explicit is None:
+        return current
+    requested = explicit.expanduser().resolve()
+    if requested != current:
+        raise ValueError(f"--codex-home cannot select another Codex identity: {requested}")
+    return current
+
+
+def git_root_for(path: Path, *, required: bool = True) -> Path | None:
+    resolved = path.expanduser().resolve()
+    result = subprocess.run(
+        ["git", "-C", str(resolved), "rev-parse", "--show-toplevel"],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    if result.returncode == 0:
+        line = result.stdout.strip().splitlines()[0] if result.stdout.strip() else ""
+        if line:
+            return Path(line).expanduser().resolve()
+    if required:
+        detail = result.stderr.strip() or "not a Git repository"
+        raise ValueError(f"target must be a real Git repository: {resolved} ({detail})")
+    return None
+
+
+def _is_within(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+    except ValueError:
+        return False
+    return True
 
 
 def _safe_plugin_name(value: str) -> str:
@@ -69,6 +111,42 @@ def _require_file(path: Path, label: str) -> Path:
     if not resolved.is_file():
         raise ValueError(f"{label} must be an explicit file, not a directory: {resolved}")
     return resolved
+
+
+def _authorized_roots_text(roots: list[tuple[str, Path]]) -> str:
+    return ", ".join(f"{label}={root}" for label, root in roots)
+
+
+def _require_file_in_roots(path: Path, label: str, roots: list[tuple[str, Path]]) -> Path:
+    resolved = _require_file(path, label)
+    for _, root in roots:
+        if _is_within(resolved, root):
+            return resolved
+    raise ValueError(f"{label} is outside authorized plugin replay roots: {resolved}; allowed roots: {_authorized_roots_text(roots)}")
+
+
+def resolve_target_repo(target: Path) -> Path:
+    return git_root_for(target, required=True)  # type: ignore[return-value]
+
+
+def authorized_input_roots(target_repo: Path, env: dict[str, str] | None = None) -> list[tuple[str, Path]]:
+    return [
+        ("target_repo", target_repo.resolve()),
+        ("plugin_replay_inbox", trusted_inbox(env).resolve()),
+    ]
+
+
+def authorized_task_roots(
+    target_repo: Path,
+    *,
+    caller_cwd: Path | None = None,
+    env: dict[str, str] | None = None,
+) -> list[tuple[str, Path]]:
+    roots = authorized_input_roots(target_repo, env)
+    caller_root = git_root_for(Path.cwd() if caller_cwd is None else caller_cwd, required=False)
+    if caller_root is not None and caller_root not in [root for _, root in roots]:
+        roots.append(("caller_repo", caller_root))
+    return roots
 
 
 def _sha256(path: Path) -> str:
@@ -93,7 +171,7 @@ def stage_files(run_dir: Path, task_file: Path, input_files: list[Path], *, dry_
     for index, (role, source) in enumerate(sources, start=1):
         destination = inputs_dir / _staged_name(index, source, role)
         size = source.stat().st_size
-        digest = _sha256(source)
+        digest = None if dry_run else _sha256(source)
         if not dry_run:
             shutil.copy2(source, destination)
         staged.append(
@@ -160,7 +238,13 @@ def resolved_executable(name: str) -> str:
     return str(Path(resolved).resolve())
 
 
-def build_child_argv(*, workspace: Path, outputs_dir: Path, codex_executable: str = "codex") -> list[str]:
+def build_child_argv(
+    *,
+    workspace: Path,
+    outputs_dir: Path,
+    codex_executable: str = "codex",
+    last_message_name: str = "last-message.txt",
+) -> list[str]:
     return [
         codex_executable,
         "exec",
@@ -179,7 +263,7 @@ def build_child_argv(*, workspace: Path, outputs_dir: Path, codex_executable: st
         "--skip-git-repo-check",
         "--ephemeral",
         "-o",
-        str(outputs_dir / "last-message.txt"),
+        str(outputs_dir / last_message_name),
         "-",
     ]
 
@@ -195,6 +279,27 @@ def child_contract_errors(output: str) -> list[str]:
     if "(network access enabled)" in output:
         errors.append("child Codex reported network access enabled")
     return errors
+
+
+def run_child_command(
+    command: list[str],
+    *,
+    workspace: Path,
+    prompt: str,
+    codex_home: Path,
+) -> subprocess.CompletedProcess[str]:
+    env = os.environ.copy()
+    env["CODEX_HOME"] = str(codex_home)
+    return subprocess.run(
+        command,
+        cwd=workspace,
+        input=prompt,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        env=env,
+        check=False,
+    )
 
 
 def child_prompt(plugin: str, staged: list[StagedFile], outputs_dir: Path) -> str:
@@ -219,6 +324,56 @@ Keep all generated artifacts under:
 
 Do not access the original caller repository or parent input directories. Do not upload files externally. Treat network access as unavailable for this local replay. In the final answer, summarize what happened and point to any local artifacts; do not print private input contents.
 """
+
+
+def read_isolation_probe_prompt(secret_path: Path, result_path: Path) -> str:
+    return f"""Bridge Kit read-isolation preflight.
+
+Attempt to read this exact path outside the replay workspace:
+
+`{secret_path}`
+
+Do not print the file contents. If the read succeeds, write exactly `READABLE` to:
+
+`{result_path}`
+
+If the sandbox blocks the read, write exactly `BLOCKED` to that same path.
+"""
+
+
+def verify_child_read_isolation(
+    *,
+    child_argv: list[str],
+    workspace: Path,
+    outputs_dir: Path,
+    codex_home: Path,
+) -> dict[str, Any]:
+    secret_path = workspace.parent / "read-isolation-neighbor-secret.txt"
+    result_path = outputs_dir / "read-isolation-result.txt"
+    output_path = outputs_dir / "read-isolation-child-output.txt"
+    secret_path.write_text("AI_BRIDGE_READ_ISOLATION_PROBE_MARKER\n", encoding="utf-8")
+    prompt = read_isolation_probe_prompt(secret_path, result_path)
+    result = run_child_command(
+        child_argv,
+        workspace=workspace,
+        prompt=prompt,
+        codex_home=codex_home,
+    )
+    child_output = result.stdout or ""
+    output_path.write_text(child_output, encoding="utf-8")
+    marker = result_path.read_text(encoding="utf-8").strip() if result_path.exists() else ""
+    contract_errors = child_contract_errors(child_output)
+    passed = result.returncode == 0 and marker == "BLOCKED" and not contract_errors
+    return {
+        "status": "passed" if passed else "failed",
+        "error_code": None if passed else READ_ISOLATION_ERROR,
+        "exit_code": result.returncode,
+        "result_marker": marker,
+        "contract_errors": contract_errors,
+        "secret_path": str(secret_path),
+        "result_path": str(result_path),
+        "child_output_path": str(output_path),
+    }
 
 
 def _metadata_for(staged: list[StagedFile]) -> list[dict[str, Any]]:
@@ -270,6 +425,8 @@ def replay_summary(payload: dict[str, Any]) -> dict[str, Any]:
         "exit_code": payload.get("exit_code"),
         "child_output_path": payload.get("child_output_path"),
         "last_message_path": payload.get("last_message_path"),
+        "error_code": payload.get("error_code"),
+        "read_isolation": payload.get("read_isolation"),
     }
 
 
@@ -280,18 +437,24 @@ def run_plugin_replay(
     task_file: Path,
     input_files: list[Path],
     codex_home: Path | None = None,
+    caller_cwd: Path | None = None,
     dry_run: bool = False,
 ) -> tuple[dict[str, Any], int]:
     plugin = _safe_plugin_name(plugin)
-    target = target.expanduser().resolve()
-    if not target.exists() or not target.is_dir():
-        raise ValueError(f"target must be an existing directory: {target}")
-    task = _require_file(task_file, "task file")
-    inputs = [_require_file(path, "input") for path in input_files]
+    target_repo = resolve_target_repo(target)
+    selected_codex_home = enforce_current_codex_home(codex_home)
+    task = _require_file_in_roots(
+        task_file,
+        "task file",
+        authorized_task_roots(target_repo, caller_cwd=caller_cwd),
+    )
+    inputs = [
+        _require_file_in_roots(path, "input", authorized_input_roots(target_repo))
+        for path in input_files
+    ]
     if not inputs:
         raise ValueError("at least one --input file is required")
 
-    selected_codex_home = resolve_codex_home(codex_home)
     plugin_check = ensure_plugin_installed(plugin, codex_home=selected_codex_home)
     run_id = new_run_id()
     run_dir = replay_root(run_id)
@@ -299,7 +462,7 @@ def run_plugin_replay(
     outputs_dir = run_dir / "outputs"
     workspace.mkdir(parents=True, exist_ok=True)
     outputs_dir.mkdir(parents=True, exist_ok=True)
-    staged = stage_files(run_dir, task, inputs, dry_run=dry_run)
+    staged = stage_files(run_dir, task, inputs, dry_run=True)
     codex_executable = resolved_executable("codex")
     ai_bridge_executable = resolved_executable("ai-bridge")
     child_argv = build_child_argv(
@@ -317,7 +480,7 @@ def run_plugin_replay(
         "completed_at": None,
         "plugin": plugin,
         "plugin_check": plugin_check,
-        "target": str(target),
+        "target": str(target_repo),
         "codex_home": str(selected_codex_home),
         "run_dir": str(run_dir),
         "workspace": str(workspace),
@@ -329,24 +492,46 @@ def run_plugin_replay(
         "child_output_path": str(outputs_dir / "child-output.txt"),
         "last_message_path": str(outputs_dir / "last-message.txt"),
         "exit_code": None,
+        "error_code": None,
+        "read_isolation": {"status": "not_run_dry_run"} if dry_run else {"status": "pending"},
     }
     write_run_json(run_dir, payload)
     if dry_run:
         return replay_summary(payload), 0
 
+    read_isolation_argv = build_child_argv(
+        workspace=workspace,
+        outputs_dir=outputs_dir,
+        codex_executable=codex_executable,
+        last_message_name="read-isolation-last-message.txt",
+    )
+    read_isolation = verify_child_read_isolation(
+        child_argv=read_isolation_argv,
+        workspace=workspace,
+        outputs_dir=outputs_dir,
+        codex_home=selected_codex_home,
+    )
+    payload["read_isolation"] = read_isolation
+    if read_isolation["status"] != "passed":
+        payload["status"] = "failed"
+        payload["completed_at"] = utc_now()
+        payload["exit_code"] = 71
+        payload["error_code"] = READ_ISOLATION_ERROR
+        payload["contract_errors"] = read_isolation.get("contract_errors", [])
+        write_run_json(run_dir, payload)
+        return replay_summary(payload), 71
+
+    staged = stage_files(run_dir, task, inputs, dry_run=False)
+    payload["inputs"] = _metadata_for(staged)
+    write_run_json(run_dir, payload)
+
     prompt = child_prompt(plugin, staged, outputs_dir)
-    env = os.environ.copy()
-    env["CODEX_HOME"] = str(selected_codex_home)
     output_path = outputs_dir / "child-output.txt"
-    result = subprocess.run(
+    result = run_child_command(
         child_argv,
-        cwd=workspace,
-        input=prompt,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        env=env,
-        check=False,
+        workspace=workspace,
+        prompt=prompt,
+        codex_home=selected_codex_home,
     )
     child_output = result.stdout or ""
     contract_errors = child_contract_errors(child_output)
@@ -369,7 +554,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--plugin", required=True, help="Installed production plugin name, for example sites or sites@openai-bundled.")
     parser.add_argument("--task", type=Path, required=True, help="Explicit replay instruction/task file.")
     parser.add_argument("--input", dest="inputs", type=Path, action="append", required=True, help="Explicit input file to copy into the replay run. Repeat for multiple files.")
-    parser.add_argument("--codex-home", type=Path, default=None, help="Optional CODEX_HOME for the child Codex identity.")
     parser.add_argument("--dry-run", action="store_true", help="Validate and print the planned replay without launching child Codex.")
     return parser
 
@@ -383,7 +567,6 @@ def main(argv: list[str] | None = None) -> int:
             plugin=args.plugin,
             task_file=args.task,
             input_files=args.inputs,
-            codex_home=args.codex_home,
             dry_run=args.dry_run,
         )
     except (OSError, ValueError) as exc:

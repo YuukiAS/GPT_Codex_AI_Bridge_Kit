@@ -47,10 +47,15 @@ exercise an installed production plugin, use `ai-bridge plugin-replay`.
 
 - Do not assemble a raw nested `codex exec` command and request approval for it
   when the bounded replay wrapper fits the task.
-- Private replay inputs must be explicit files selected by the caller; do not
-  recursively ingest parent directories or discover adjacent private files.
+- Private replay inputs must be explicit files inside the target Git repository
+  or the fixed machine-local trusted inbox
+  `${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}/plugin-replay/inbox/`; do not pass
+  arbitrary private absolute paths, recursively ingest parent directories, or
+  discover adjacent private files.
 - Replay outputs remain machine-local under
   `${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}/plugin-replay/`.
+- `plugin-replay` uses the current Codex identity; it is not authority to switch
+  to another `CODEX_HOME`.
 - This authorization does not grant publishing, external upload, dangerous Git,
   branch/remote mutation, release, deployment, or product/scientific scope
   expansion authority.
