@@ -8,6 +8,7 @@ from pathlib import Path
 
 from ai_bridge_kit import bridge_cli
 from ai_bridge_kit import reviewed_handoff as rh
+from ai_bridge_kit import text_review
 from ai_bridge_kit import visual_review
 
 
@@ -140,6 +141,14 @@ class ReviewedHandoffTests(unittest.TestCase):
         current["visual_review_evidence_path"] = "results/001_feature/visual_review/VISUAL_REVIEW.json"
         rh.write_json(current_path, current)
 
+    def require_text_review(self, target: Path) -> None:
+        current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+        current = rh.load_json(current_path)
+        current["text_review_required"] = True
+        current["text_review_manifest_path"] = "results/001_feature/text_review/text_inputs.json"
+        current["text_review_evidence_path"] = "results/001_feature/text_review/TEXT_REVIEW.json"
+        rh.write_json(current_path, current)
+
     def require_ci(self, target: Path) -> None:
         current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
         current = rh.load_json(current_path)
@@ -185,6 +194,59 @@ class ReviewedHandoffTests(unittest.TestCase):
         )
         visual_review.write_json(visual_dir / "VISUAL_REVIEW.json", artifact)
 
+    def write_text_input_manifest(self, target: Path, implementation_commit: str, plaintext_sha: str | None = None) -> None:
+        text_dir = rh.result_root(target, "001_feature") / "text_review"
+        text_dir.mkdir(parents=True, exist_ok=True)
+        payload = text_dir / "payload.age"
+        payload.write_bytes(b"synthetic encrypted private text")
+        manifest = {
+            "schema": text_review.TEXT_INPUT_MANIFEST_SCHEMA,
+            "task_key": "001_feature",
+            "workflow_type": "reviewed_handoff",
+            "review_kind": "user-facing-text",
+            "privacy_policy": text_review.PRIVATE_TEXT_POLICY,
+            "external_upload_authorization": "Synthetic test authorization.",
+            "rubric": {"instructions": "Synthetic text fixture must satisfy reader-facing prose requirements."},
+            "identity_bindings": {"implementation_commit": implementation_commit},
+            "input": {
+                "logical_id": "primary_text",
+                "encrypted_payload_path": "results/001_feature/text_review/payload.age",
+                "ciphertext_sha256": text_review.file_sha256(payload),
+                "plaintext_sha256": plaintext_sha or ("a" * 64),
+                "plaintext_size_bytes": 123,
+                "mime_type": "text/markdown; charset=utf-8",
+                "source_basename": "final.md",
+            },
+        }
+        text_review.write_json(text_dir / "text_inputs.json", manifest)
+
+    def write_text_review(self, target: Path, implementation_commit: str, decision: str = "PASS") -> None:
+        self.write_text_input_manifest(target, implementation_commit)
+        text_dir = rh.result_root(target, "001_feature") / "text_review"
+        manifest = text_review.normalize_manifest(target, rh.load_json(text_dir / "text_inputs.json"))
+        artifact = text_review.assemble_text_review(
+            manifest=manifest,
+            model_output={
+                "overall_decision": decision,
+                "item_reviews": [{"item_id": "primary_text", "decision": decision, "summary": "ok", "requirement_ids": []}],
+                "blocking_findings": []
+                if decision == "PASS"
+                else [
+                    {
+                        "finding_id": "TXT-001",
+                        "requirement_id": "REQ_TEXT",
+                        "severity": "blocking",
+                        "summary": "Text artifact does not satisfy the frozen requirement.",
+                        "evidence": "Synthetic evidence.",
+                        "recommendation": "Revise the text artifact.",
+                    }
+                ],
+                "non_blocking_notes": [],
+            },
+            model="gpt-test",
+        )
+        text_review.write_json(text_dir / "TEXT_REVIEW.json", artifact)
+
     def test_bridge_cli_routes_reviewed_handoff_without_touching_legacy_cli(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "project"
@@ -202,6 +264,18 @@ class ReviewedHandoffTests(unittest.TestCase):
             branches = subprocess.check_output(["git", "branch", "--format", "%(refname:short)"], cwd=target, text=True).splitlines()
             self.assertEqual(branches, ["main"])
             self.assertFalse((target / ".codex").exists())
+
+    def test_task_init_can_require_text_review_without_changing_state_graph(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "project"
+            target.mkdir()
+            status, _ = rh.install_reviewed_handoff(target)
+            self.assertTrue(status.installed)
+            rh.init_task(target, "001_feature", objective="Review private text", text_review_required=True)
+            current = rh.load_json(rh.task_root(target, "001_feature") / "CURRENT.json")
+            self.assertTrue(current["text_review_required"])
+            self.assertEqual(current["text_review_manifest_path"], "results/001_feature/text_review/text_inputs.json")
+            self.assertEqual(current["text_review_evidence_path"], "results/001_feature/text_review/TEXT_REVIEW.json")
 
     def test_install_is_idempotent_without_force(self) -> None:
         tmp, target = self.make_project()
@@ -426,6 +500,25 @@ class ReviewedHandoffTests(unittest.TestCase):
             current = rh.load_json(rh.task_root(target, "001_feature") / "CURRENT.json")
             self.assertEqual(current["review_round"], 0)
 
+    def test_text_review_pending_does_not_consume_review_round(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            self.require_text_review(target)
+            self.freeze_and_start(target)
+            self.write_result(target, commit="impl-text")
+            self.write_text_input_manifest(target, implementation_commit="impl-text")
+            ready = rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            self.assertEqual(ready["state"], "READY_FOR_GPT_REVIEW")
+            plan = rh.plan_transition(target, "001_feature")
+            self.assertEqual(plan["next_action"], "WAIT_FOR_TEXT_REVIEW_EVIDENCE")
+            wait = rh.reviewed_external_wait_status(target, "001_feature")
+            self.assertEqual(wait["operational_status"], "waiting_text_review_evidence")
+            self.assertEqual(wait["wait_owner"], "Text Review")
+            with self.assertRaisesRegex(ValueError, "text review evidence pending"):
+                rh.record_review(target, "001_feature", decision="PASS", body="Looks good.")
+            current = rh.load_json(rh.task_root(target, "001_feature") / "CURRENT.json")
+            self.assertEqual(current["review_round"], 0)
+
     def test_visual_input_manifest_can_be_published_before_github_visual_review(self) -> None:
         tmp, target = self.make_project(git=True)
         with tmp:
@@ -511,6 +604,34 @@ class ReviewedHandoffTests(unittest.TestCase):
             self.assertEqual(current["state"], "PASS")
             self.assertEqual(current["review_round"], 1)
 
+    def test_current_text_review_can_be_consumed_by_reviewer(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            self.require_text_review(target)
+            self.freeze_and_start(target)
+            self.write_result(target, commit="impl-text")
+            self.write_text_input_manifest(target, implementation_commit="impl-text")
+            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            self.write_text_review(target, implementation_commit="impl-text")
+            current = rh.record_review(target, "001_feature", decision="PASS", body="Plan and text evidence satisfied.")
+            self.assertEqual(current["state"], "PASS")
+            self.assertEqual(current["review_round"], 1)
+
+    def test_text_review_revise_blocks_reviewer_pass(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            self.require_text_review(target)
+            self.freeze_and_start(target)
+            self.write_result(target, commit="impl-text")
+            self.write_text_input_manifest(target, implementation_commit="impl-text")
+            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            self.write_text_review(target, implementation_commit="impl-text", decision="REVISE")
+            with self.assertRaisesRegex(ValueError, "GPT review PASS requires text review PASS evidence, found REVISE"):
+                rh.record_review(target, "001_feature", decision="PASS", body="Cannot pass over text failure.")
+            current = rh.record_review(target, "001_feature", decision="REVISE", body="Text Review found a blocker.")
+            self.assertEqual(current["state"], "REVISE")
+            self.assertEqual(current["review_round"], 1)
+
     def test_stale_visual_review_is_rejected(self) -> None:
         tmp, target = self.make_project()
         with tmp:
@@ -522,6 +643,33 @@ class ReviewedHandoffTests(unittest.TestCase):
             self.write_visual_review(target, implementation_commit="impl-old")
             with self.assertRaisesRegex(ValueError, "identity binding mismatch"):
                 rh.record_review(target, "001_feature", decision="PASS", body="Cannot use stale visual evidence.")
+
+    def test_stale_text_review_is_rejected(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            self.require_text_review(target)
+            self.freeze_and_start(target)
+            self.write_result(target, commit="impl-current")
+            self.write_text_input_manifest(target, implementation_commit="impl-current")
+            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            self.write_text_review(target, implementation_commit="impl-old")
+            with self.assertRaisesRegex(ValueError, "text review input manifest implementation_commit must match CURRENT|identity binding mismatch"):
+                rh.record_review(target, "001_feature", decision="PASS", body="Cannot use stale text evidence.")
+
+        tmp, target = self.make_project()
+        with tmp:
+            self.require_text_review(target)
+            self.freeze_and_start(target)
+            self.write_result(target, commit="impl-current")
+            self.write_text_input_manifest(target, implementation_commit="impl-current", plaintext_sha="b" * 64)
+            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            self.write_text_review(target, implementation_commit="impl-current")
+            manifest_path = rh.result_root(target, "001_feature") / "text_review" / "text_inputs.json"
+            manifest = rh.load_json(manifest_path)
+            manifest["input"]["plaintext_sha256"] = "c" * 64
+            rh.write_json(manifest_path, manifest)
+            with self.assertRaisesRegex(ValueError, "reviewed_input_identity is stale|plaintext_artifact_sha256 mismatch"):
+                rh.record_review(target, "001_feature", decision="PASS", body="Cannot use old plaintext evidence.")
 
     def test_visual_pass_states_require_current_pass_evidence(self) -> None:
         tmp, target = self.make_project()
@@ -569,6 +717,24 @@ class ReviewedHandoffTests(unittest.TestCase):
             current = rh.record_review(target, "001_feature", decision="PASS", body="Fresh visual evidence satisfied.")
             self.assertEqual(current["state"], "PASS")
             self.assertEqual(rh.validate_task(target, "001_feature"), [])
+
+    def test_text_pass_states_require_current_pass_evidence(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            self.require_text_review(target)
+            self.freeze_and_start(target)
+            self.write_result(target, commit="impl-text")
+            self.write_text_input_manifest(target, implementation_commit="impl-text")
+            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            self.remote_write_review_transaction(target, decision="PASS", body="Claimed pass without text evidence.")
+            current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+            current = rh.load_json(current_path)
+            current["state"] = "PASS"
+            current["next_action"] = "PRESENT_FINAL_REPORT"
+            rh.write_json(current_path, current)
+
+            errors = rh.validate_task(target, "001_feature")
+            self.assertTrue(any("PASS requires text review PASS evidence" in error for error in errors), errors)
 
     def test_pass_human_gate_requires_current_visual_pass_evidence(self) -> None:
         tmp, target = self.make_project()
@@ -739,6 +905,19 @@ class ReviewedHandoffTests(unittest.TestCase):
         self.assertIn("`PASS -> AWAIT_HUMAN_DECISION`", prompt)
         self.assertIn("`## New capabilities / behavior`", prompt)
         self.assertIn("`## Example usage`", prompt)
+
+    def test_prompts_require_text_review_for_private_user_facing_artifacts(self) -> None:
+        planner = rh.read_text(Path("templates/reviewed_handoff/prompts/PLANNER.md"))
+        executor = rh.read_text(Path("templates/reviewed_handoff/prompts/CODEX_EXECUTOR.md"))
+        reviewer = rh.read_text(Path("templates/reviewed_handoff/prompts/REVIEWER_SCHEDULED_TASK.md"))
+
+        self.assertIn("Text Review transport", planner)
+        self.assertIn("host-local private", planner)
+        self.assertIn("ai-bridge text-review encrypt", executor)
+        self.assertIn("不要提交 plaintext", executor)
+        self.assertIn("TEXT_REVIEW.json", reviewer)
+        self.assertIn("plaintext SHA-256", reviewer)
+        self.assertIn("不得把明显 failure 推给 human gate", reviewer)
 
     def test_executor_prompt_routes_production_plugin_replay_to_bridge_wrapper(self) -> None:
         prompt = rh.read_text(Path("templates/reviewed_handoff/prompts/CODEX_EXECUTOR.md"))

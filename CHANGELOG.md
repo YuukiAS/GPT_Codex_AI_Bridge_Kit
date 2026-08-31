@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- Add `ai-bridge text-review` for private UTF-8 Markdown/plain-text artifact
+  review: local age public-key encryption publishes only encrypted payloads
+  and manifests, GitHub Actions decrypts ephemerally with
+  `AI_BRIDGE_PRIVATE_REVIEW_AGE_KEY`, OpenAI Responses API runs with
+  `store=false`, and `TEXT_REVIEW.json` records structured findings bound to
+  manifest identity and plaintext SHA-256 without storing private plaintext.
+- Extend Reviewed Handoff with task-local `text_review_required` evidence
+  gates so missing, malformed, stale, wrong-plaintext, or non-PASS Text Review
+  evidence cannot support PASS and does not consume review rounds while
+  evidence is pending.
+- Narrow the Visual Review GitHub Actions trigger to `visual_inputs.json`
+  changes or manual dispatch so ordinary non-visual tasks no longer display a
+  misleading AI Bridge Visual Review PASS job.
 - Add `ai-bridge plugin-replay` as a Host Policy-controlled production plugin
   replay wrapper. It stages only explicit files into a machine-local isolated
   run directory, launches child Codex with fixed `workspace-write` /

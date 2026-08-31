@@ -54,6 +54,8 @@ Executor 成功发布实现并把 `CURRENT` 推进到 GPT-owned state 后，外�
 
 如果 `CURRENT.visual_review_required=true` 且不需要 CI，Executor 必须先发布渲染图片和 `results/<task_key>/visual_review/visual_inputs.json`，再进入 `READY_FOR_GPT_REVIEW`。`VISUAL_REVIEW.json` 缺失但 input manifest 有效时是 `waiting_visual_review_evidence`，等待 GitHub Actions 写回 evidence；这不消耗 `review_round`，也不是 `BLOCKED`。
 
+如果 `CURRENT.text_review_required=true` 且不需要 CI，Executor 必须先发布 `results/<task_key>/text_review/payload.age` 和 `results/<task_key>/text_review/text_inputs.json`，再进入 `READY_FOR_GPT_REVIEW`。`TEXT_REVIEW.json` 缺失但 input manifest 有效时是 `waiting_text_review_evidence`，等待 GitHub Actions ephemeral decrypt + OpenAI Responses API `store=false` 写回 evidence；这不消耗 `review_round`，也不是 `BLOCKED`。plaintext private artifact、age private identity 和 OpenAI key 都不得提交到 repository。
+
 如果同一个视觉任务还设置了 `CURRENT.ci_required=true`，合法顺序是先发布 implementation/render/`visual_inputs.json` 并停在 `WAITING_FOR_CI` / `ci_status=PENDING`。此时 visual evidence 仍可缺失，waiting owner 是 CI。只有 CI PASS 后 Scheduled GPT 才把任务推进到 `READY_FOR_GPT_REVIEW`；随后缺失 `VISUAL_REVIEW.json` 才表示等待 Visual Review evidence。CI FAIL 可以直接进入 `REVISE` 或非 PASS 型终态，不必先等待 Terra evidence。
 
 等待从本轮实现首次正式发布并交棒给外部 GPT 起算，正常 minimum grace 是 `MIN_EXTERNAL_GPT_WAIT = 2 hours`。2 小时不是自动 deadline；超过 2 小时后，只要 repository state 合法、`RESULT.md` 和 `implementation_commit` 仍完整、Scheduled GPT/GitHub connector 没有明确失败，就继续报告 `waiting_external_review`，而不是写 terminal `FINAL_REPORT.md` 或把 `CURRENT.state` 改成 `BLOCKED`。

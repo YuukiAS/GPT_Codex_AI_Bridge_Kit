@@ -17,6 +17,10 @@ the ref rendered at install time. It does not vendor-copy `ai_bridge_kit/` into
 the consumer repository and does not run `pip install -e .` against the
 consumer project.
 
+The installed workflow runs on manual `workflow_dispatch` or on commits that
+change `results/**/visual_review/visual_inputs.json`. Non-visual pushes do not
+run a misleading AI Bridge Visual Review PASS job.
+
 Use the repository secret name `OPENAI_VISUAL_REVIEW_API_KEY`. In the workflow, map it only inside the visual review job:
 
 ```yaml
@@ -44,6 +48,5 @@ ai-bridge visual-review preflight --target <repo>
 This checks whether visual review is configured, whether a GitHub workflow references the standard secret name, and, when `gh` is available and logged in, whether `gh secret list` shows `OPENAI_VISUAL_REVIEW_API_KEY`. It never reads the secret value.
 
 Generated evidence must stay under the repository-relative path
-`results/<task_key>/visual_review/**`. The workflow ignores
-`results/**/visual_review/**` push changes so an evidence-only commit does not
-retrigger the visual review job.
+`results/<task_key>/visual_review/**`. Evidence-only commits do not retrigger
+the visual review job because the workflow only listens for the input manifest.

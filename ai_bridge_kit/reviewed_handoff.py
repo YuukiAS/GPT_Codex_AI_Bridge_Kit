@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from . import external_wait
+from . import text_review
 from . import visual_review
 
 
@@ -51,6 +52,12 @@ EXTERNAL_WAIT_STATE_OWNERS = {
     "READY_FOR_GPT_REVIEW": "Reviewer",
 }
 VISUAL_PENDING_ALLOWED_STATES = {
+    "WAITING_FOR_CI",
+    "READY_FOR_GPT_REVIEW",
+    "REVISE",
+    "BLOCKED",
+}
+TEXT_PENDING_ALLOWED_STATES = {
     "WAITING_FOR_CI",
     "READY_FOR_GPT_REVIEW",
     "REVISE",
@@ -257,6 +264,8 @@ def init_task(
     ci_required: bool = False,
     visual_review_required: bool = False,
     visual_review_manifest_path: str = "",
+    text_review_required: bool = False,
+    text_review_manifest_path: str = "",
 ) -> list[str]:
     target = target.resolve()
     if not TASK_KEY_RE.fullmatch(task_key):
@@ -296,6 +305,10 @@ def init_task(
         current["visual_review_required"] = True
         current["visual_review_manifest_path"] = visual_review_manifest_path or f"results/{task_key}/visual_review/visual_inputs.json"
         current["visual_review_evidence_path"] = f"results/{task_key}/visual_review/VISUAL_REVIEW.json"
+    if text_review_required:
+        current["text_review_required"] = True
+        current["text_review_manifest_path"] = text_review_manifest_path or f"results/{task_key}/text_review/text_inputs.json"
+        current["text_review_evidence_path"] = f"results/{task_key}/text_review/TEXT_REVIEW.json"
     write_json(root / "CURRENT.json", current)
     return [
         f"CREATE {root / 'REQUEST.md'}",
@@ -353,6 +366,20 @@ def visual_review_manifest_path(target: Path, task_key: str, current: dict[str, 
     rel = str(current.get("visual_review_manifest_path") or f"results/{task_key}/visual_review/visual_inputs.json")
     if Path(rel).is_absolute() or ".." in Path(rel).parts:
         raise ValueError("visual_review_manifest_path must be repository-relative")
+    return target.resolve() / rel
+
+
+def text_review_evidence_path(target: Path, task_key: str, current: dict[str, Any]) -> Path:
+    rel = str(current.get("text_review_evidence_path") or f"results/{task_key}/text_review/TEXT_REVIEW.json")
+    if Path(rel).is_absolute() or ".." in Path(rel).parts:
+        raise ValueError("text_review_evidence_path must be repository-relative")
+    return target.resolve() / rel
+
+
+def text_review_manifest_path(target: Path, task_key: str, current: dict[str, Any]) -> Path:
+    rel = str(current.get("text_review_manifest_path") or f"results/{task_key}/text_review/text_inputs.json")
+    if Path(rel).is_absolute() or ".." in Path(rel).parts:
+        raise ValueError("text_review_manifest_path must be repository-relative")
     return target.resolve() / rel
 
 
@@ -419,6 +446,81 @@ def reviewed_visual_review_status(target: Path, task_key: str, current: dict[str
 def visual_review_pending_allowed(current: dict[str, Any]) -> bool:
     state = str(current.get("state") or "")
     if state in VISUAL_PENDING_ALLOWED_STATES:
+        return True
+    if state == "AWAIT_HUMAN_DECISION":
+        return current.get("human_gate_reason") != "PASS"
+    return False
+
+
+def validate_text_review_manifest(target: Path, task_key: str, current: dict[str, Any]) -> tuple[dict[str, Any] | None, list[str]]:
+    path = text_review_manifest_path(target, task_key, current)
+    if not path.exists():
+        return None, [f"text review input manifest missing: {path.relative_to(target.resolve())}"]
+    try:
+        manifest = text_review.normalize_manifest(target.resolve(), load_json(path))
+    except Exception as exc:
+        return None, [f"text review input manifest invalid: {exc}"]
+    errors: list[str] = []
+    if manifest.get("task_key") != task_key:
+        errors.append("text review input manifest task_key mismatch")
+    if manifest.get("workflow_type") != "reviewed_handoff":
+        errors.append("text review input manifest workflow_type must be reviewed_handoff")
+    bindings = manifest.get("identity_bindings") if isinstance(manifest.get("identity_bindings"), dict) else {}
+    if bindings.get("implementation_commit") != str(current.get("implementation_commit") or ""):
+        errors.append("text review input manifest implementation_commit must match CURRENT")
+    return manifest, errors
+
+
+def reviewed_text_review_status(target: Path, task_key: str, current: dict[str, Any]) -> dict[str, Any]:
+    if not current.get("text_review_required"):
+        return {"required": False, "status": "NOT_REQUIRED", "errors": []}
+    path = text_review_evidence_path(target, task_key, current)
+    manifest, manifest_errors = validate_text_review_manifest(target, task_key, current)
+    if manifest_errors:
+        return {
+            "required": True,
+            "status": "INVALID",
+            "path": str(path.relative_to(target.resolve())),
+            "manifest_path": str(text_review_manifest_path(target, task_key, current).relative_to(target.resolve())),
+            "errors": manifest_errors,
+        }
+    if not path.exists():
+        return {
+            "required": True,
+            "status": "PENDING",
+            "path": str(path.relative_to(target.resolve())),
+            "manifest_path": str(text_review_manifest_path(target, task_key, current).relative_to(target.resolve())),
+            "errors": ["text review evidence pending"],
+        }
+    try:
+        payload = load_json(path)
+    except Exception as exc:
+        return {"required": True, "status": "INVALID", "path": str(path.relative_to(target.resolve())), "errors": [f"TEXT_REVIEW.json unreadable: {exc}"]}
+    assert manifest is not None
+    expected = {
+        "task_key": task_key,
+        "workflow_type": "reviewed_handoff",
+        "implementation_commit": str(current.get("implementation_commit") or ""),
+        "plaintext_sha256": manifest["input"]["plaintext_sha256"],
+        "manifest_identity": text_review.manifest_identity(manifest),
+        "logical_id": manifest["input"]["logical_id"],
+        "plaintext_size_bytes": manifest["input"]["plaintext_size_bytes"],
+        "mime_type": manifest["input"]["mime_type"],
+    }
+    errors = text_review.validate_text_review_payload(payload, expected=expected)
+    decision = payload.get("overall_decision")
+    if errors:
+        return {"required": True, "status": "INVALID", "path": str(path.relative_to(target.resolve())), "errors": errors}
+    if decision == "BLOCKED":
+        return {"required": True, "status": "BLOCKED", "path": str(path.relative_to(target.resolve())), "errors": []}
+    if decision == "REVISE":
+        return {"required": True, "status": "REVISE", "path": str(path.relative_to(target.resolve())), "errors": []}
+    return {"required": True, "status": "PASS", "path": str(path.relative_to(target.resolve())), "errors": []}
+
+
+def text_review_pending_allowed(current: dict[str, Any]) -> bool:
+    state = str(current.get("state") or "")
+    if state in TEXT_PENDING_ALLOWED_STATES:
         return True
     if state == "AWAIT_HUMAN_DECISION":
         return current.get("human_gate_reason") != "PASS"
@@ -534,6 +636,7 @@ def reviewed_external_wait_status(target: Path, task_key: str, *, now: Any = Non
     current = load_json(task_root(target, task_key) / "CURRENT.json")
     state = str(current.get("state") or "")
     visual_status = reviewed_visual_review_status(target, task_key, current)
+    text_status = reviewed_text_review_status(target, task_key, current)
     if state == "WAITING_FOR_CI" and current.get("ci_status") == "PENDING":
         return {
             "operational_status": "waiting_for_ci",
@@ -544,6 +647,7 @@ def reviewed_external_wait_status(target: Path, task_key: str, *, now: Any = Non
             "stale_decision": False,
             "may_block": False,
             "visual_review": visual_status,
+            "text_review": text_status,
             "blocker_required_evidence": [
                 "GitHub Actions checks are disabled, expired, unauthenticated, or unavailable",
                 "the published branch tip containing WAITING_FOR_CI cannot be checked",
@@ -564,6 +668,22 @@ def reviewed_external_wait_status(target: Path, task_key: str, *, now: Any = Non
                 "GitHub Actions visual-review workflow is disabled, expired, unauthenticated, or lacks required secret access",
                 "visual input manifest or image artifact is inaccessible from the published branch",
                 "VISUAL_REVIEW.json cannot be produced because of a concrete service failure",
+            ],
+        }
+    if state == "READY_FOR_GPT_REVIEW" and text_status.get("required") and text_status.get("status") == "PENDING":
+        return {
+            "operational_status": "waiting_text_review_evidence",
+            "external_owner": "GitHub Actions",
+            "wait_owner": "Text Review",
+            "current_identity": str(current.get("implementation_commit") or "").strip() or None,
+            "fresh_decision": False,
+            "stale_decision": False,
+            "may_block": False,
+            "text_review": text_status,
+            "blocker_required_evidence": [
+                "GitHub Actions text-review workflow is disabled, expired, unauthenticated, or lacks required secret access",
+                "encrypted text payload or manifest is inaccessible from the published branch",
+                "TEXT_REVIEW.json cannot be produced because of a concrete service failure",
             ],
         }
     owner_map = dict(EXTERNAL_WAIT_STATE_OWNERS)
@@ -671,6 +791,18 @@ def validate_task(target: Path, task_key: str) -> list[str]:
                 errors.append("PASS human gate requires visual review PASS evidence")
             elif status == "PENDING" and not visual_review_pending_allowed(current):
                 errors.append(f"{state} does not allow pending visual review evidence")
+
+        text_status = reviewed_text_review_status(target, task_key, current)
+        if text_status.get("required"):
+            status = text_status.get("status")
+            if status == "INVALID":
+                errors.extend(str(item) for item in text_status.get("errors", []))
+            elif state == "PASS" and status != "PASS":
+                errors.append("PASS requires text review PASS evidence")
+            elif state == "AWAIT_HUMAN_DECISION" and current.get("human_gate_reason") == "PASS" and status != "PASS":
+                errors.append("PASS human gate requires text review PASS evidence")
+            elif status == "PENDING" and not text_review_pending_allowed(current):
+                errors.append(f"{state} does not allow pending text review evidence")
 
     reviews = review_files(target, task_key)
     if len(reviews) > 2:
@@ -818,6 +950,14 @@ def plan_transition(target: Path, task_key: str) -> dict[str, Any]:
                 "next_action": "WAIT_FOR_VISUAL_REVIEW_EVIDENCE",
                 "visual_review": visual_status,
             }
+        text_status = reviewed_text_review_status(target, task_key, current)
+        if text_status.get("required") and text_status.get("status") == "PENDING":
+            return {
+                "state": state,
+                "valid": True,
+                "next_action": "WAIT_FOR_TEXT_REVIEW_EVIDENCE",
+                "text_review": text_status,
+            }
         return {
             "state": state,
             "valid": True,
@@ -952,6 +1092,15 @@ def record_review(
             raise ValueError("; ".join(str(item) for item in visual_status.get("errors", [])))
         if decision == "PASS" and status != "PASS":
             raise ValueError(f"GPT review PASS requires visual review PASS evidence, found {status}")
+    text_status = reviewed_text_review_status(target, task_key, current)
+    if text_status.get("required"):
+        status = text_status.get("status")
+        if status == "PENDING" and source_state != "WAITING_FOR_CI" and decision != "BLOCKED":
+            raise ValueError("text review evidence pending; GPT review round must not be consumed")
+        if status == "INVALID":
+            raise ValueError("; ".join(str(item) for item in text_status.get("errors", [])))
+        if decision == "PASS" and status != "PASS":
+            raise ValueError(f"GPT review PASS requires text review PASS evidence, found {status}")
     next_round = int(current.get("review_round", 0)) + 1
     max_rounds = int(current.get("max_review_rounds", 2))
     if next_round > max_rounds:
@@ -1032,6 +1181,8 @@ def build_parser() -> argparse.ArgumentParser:
     task_init.add_argument("--ci-required", action="store_true")
     task_init.add_argument("--visual-review-required", action="store_true")
     task_init.add_argument("--visual-review-manifest-path", default="")
+    task_init.add_argument("--text-review-required", action="store_true")
+    task_init.add_argument("--text-review-manifest-path", default="")
 
     transition = sub.add_parser("transition")
     transition_sub = transition.add_subparsers(dest="transition_command")
@@ -1087,6 +1238,8 @@ def main(argv: list[str] | None = None) -> int:
             ci_required=args.ci_required,
             visual_review_required=args.visual_review_required,
             visual_review_manifest_path=args.visual_review_manifest_path,
+            text_review_required=args.text_review_required,
+            text_review_manifest_path=args.text_review_manifest_path,
         ):
             print(action)
         return 0

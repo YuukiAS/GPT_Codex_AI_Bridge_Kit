@@ -287,6 +287,8 @@ Reviewed Handoff v0.5 的权威规格：
 docs/V0_5_REVIEWED_HANDOFF_IMPLEMENTATION_SPEC.md
 ```
 
+如果 Reviewed Handoff 的验收依赖完整 user-facing Markdown/plain-text artifact，但 plaintext 不能公开提交，使用 Text Review evidence path：本机用 `ai-bridge text-review encrypt` 通过 age public recipient 生成 encrypted payload + `text_inputs.json`，GitHub Actions 用 `AI_BRIDGE_PRIVATE_REVIEW_AGE_KEY` 临时解密并调用 OpenAI Responses API `store=false` 产出 `TEXT_REVIEW.json`。`TEXT_REVIEW.json` 是现有 Scheduled GPT Reviewer 消费的 evidence，不是新 role；缺失、stale、plaintext SHA mismatch 或 manifest identity mismatch 都不得支持 PASS。
+
 ## 7. Agent-Flow Core：仅对高风险 repository 显式安装
 
 只有当任务需要独立合同审计、独立 Verifier、Stable Review Snapshot、Final Critic 和严格 human gate 时，才在 repository 叠加 Agent-Flow。

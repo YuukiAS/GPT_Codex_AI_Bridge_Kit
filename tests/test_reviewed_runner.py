@@ -12,6 +12,7 @@ from unittest import mock
 
 from ai_bridge_kit import reviewed_handoff as rh
 from ai_bridge_kit import reviewed_runner as runner
+from ai_bridge_kit import text_review
 
 
 class ReviewedRunnerTests(unittest.TestCase):
@@ -72,6 +73,53 @@ class ReviewedRunnerTests(unittest.TestCase):
         rh.write_json(current_path, current)
         subprocess.check_call(["git", "add", str(result_path.relative_to(target)), str(current_path.relative_to(target))], cwd=target)
         subprocess.check_call(["git", "commit", "-m", "handoff to reviewer"], cwd=target, stdout=subprocess.DEVNULL)
+        return implementation_commit
+
+    def commit_text_review_handoff(self, target: Path) -> str:
+        implementation_commit = self.commit_valid_executor_handoff(target)
+        current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+        current = rh.load_json(current_path)
+        current["text_review_required"] = True
+        current["text_review_manifest_path"] = "results/001_feature/text_review/text_inputs.json"
+        current["text_review_evidence_path"] = "results/001_feature/text_review/TEXT_REVIEW.json"
+        rh.write_json(current_path, current)
+        text_dir = rh.result_root(target, "001_feature") / "text_review"
+        text_dir.mkdir(parents=True, exist_ok=True)
+        payload = text_dir / "payload.age"
+        payload.write_bytes(b"synthetic encrypted private text")
+        text_review.write_json(
+            text_dir / "text_inputs.json",
+            {
+                "schema": text_review.TEXT_INPUT_MANIFEST_SCHEMA,
+                "task_key": "001_feature",
+                "workflow_type": "reviewed_handoff",
+                "review_kind": "user-facing-text",
+                "privacy_policy": text_review.PRIVATE_TEXT_POLICY,
+                "external_upload_authorization": "Synthetic test authorization.",
+                "rubric": {"instructions": "Review the full private text artifact."},
+                "identity_bindings": {"implementation_commit": implementation_commit},
+                "input": {
+                    "logical_id": "primary_text",
+                    "encrypted_payload_path": "results/001_feature/text_review/payload.age",
+                    "ciphertext_sha256": text_review.file_sha256(payload),
+                    "plaintext_sha256": "a" * 64,
+                    "plaintext_size_bytes": 123,
+                    "mime_type": "text/markdown; charset=utf-8",
+                    "source_basename": "final.md",
+                },
+            },
+        )
+        subprocess.check_call(
+            [
+                "git",
+                "add",
+                str(current_path.relative_to(target)),
+                str((text_dir / "payload.age").relative_to(target)),
+                str((text_dir / "text_inputs.json").relative_to(target)),
+            ],
+            cwd=target,
+        )
+        subprocess.check_call(["git", "commit", "-m", "handoff private text review"], cwd=target, stdout=subprocess.DEVNULL)
         return implementation_commit
 
     def remove_out_of_scope_from_plan(self, target: Path) -> None:
@@ -148,6 +196,21 @@ class ReviewedRunnerTests(unittest.TestCase):
             self.assertEqual(result["status"], "waiting_external_review")
             self.assertEqual(result["external_owner"], "Reviewer")
             self.assertFalse((runner.state_path(target)).exists())
+
+    def test_watcher_reports_text_review_wait_without_launching_executor(self) -> None:
+        tmp, target, state_home = self.make_project()
+        with tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(state_home)}):
+            self.commit_text_review_handoff(target)
+
+            result = runner.watcher_once(target, branch="main", sync=False)
+            status = runner.watcher_status(target, branch="main")
+
+            self.assertEqual(result["status"], "waiting_text_review_evidence")
+            self.assertEqual(result["wait_owner"], "Text Review")
+            task = status["tasks"][0]
+            self.assertEqual(task["waiting_owner"], "Text Review")
+            self.assertFalse(task["running"])
+            self.assertIsNone(task["last_result"])
 
     def test_exit_zero_without_state_progress_is_not_marked_complete(self) -> None:
         tmp, target, state_home = self.make_project()

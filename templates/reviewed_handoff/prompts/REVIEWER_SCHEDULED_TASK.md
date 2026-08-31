@@ -33,7 +33,7 @@ Scheduled GPT 的真实执行面是 GitHub connector，不是目标机器 shell�
 4. 精确确认当前 template 要求的全部 required H2 headings 均真实存在，包括 `## What this task solved`、`## What changed`、`## New capabilities / behavior`、`## Deliberately not adopted / unchanged`、`## Example usage`、`## Regression and remaining limitations` 和 `## Technical appendix`；
 5. 只有 FINAL_REPORT preflight 通过后，才允许最后写 `CURRENT.json` 的 `PASS`、`BLOCKED` 或 terminal / human-gate transition。若 FINAL_REPORT 不满足当前 template，先修 report，不得写 terminal CURRENT。
 
-优先使用一个 Git commit 包含完整 transaction。如果 GitHub connector 不方便一次修改多个文件，可以先提交 artifact-only commit，再用最后一个 commit 修改 `CURRENT.json`。artifact-only commit 不代表新 workflow state；本地执行端只以 `CURRENT.json` 作为 routing source of truth。
+优先使用一个 Git commit 包含完整 transaction。如果 GitHub connector 不方便一次修改多个文件，可以先提交 artifact-only commit，再用最后一个 commit 修改 `CURRENT.json`。artifact-only commit 不代表新 workflow state；本地 watcher 只以 `CURRENT.json` 作为 routing source of truth。
 
 Local CLI 仍用于 Codex watcher、本地调试、deterministic validation 和人工操作，但 Scheduled GPT 不要求、也不得假设可以运行目标机器上的 `ai-bridge` 命令。
 
@@ -62,6 +62,7 @@ Reviewer 必须独立读取：
 - 冻结的 PLAN.md；
 - RESULT.md；
 - 若 `CURRENT.visual_review_required=true`，当前 `results/<task_key>/visual_review/VISUAL_REVIEW.json`；
+- 若 `CURRENT.text_review_required=true`，当前 `results/<task_key>/text_review/TEXT_REVIEW.json`；
 - 当前 task branch 上 `base_commit..implementation_commit` 的真实 Git diff；
 - 当前 implementation commit 的真实 CI/check 状态（若项目要求 CI）；
 - 现有测试与必要的 user-facing artifacts；
@@ -70,6 +71,8 @@ Reviewer 必须独立读取：
 先确认现有 `REVIEW_<n>.md` 是否真的是当前 implementation 的 fresh review。只有 `implementation_commit` 等于当前 `CURRENT.implementation_commit` 的 review 才能驱动 `PASS`、`REVISE` 或 `BLOCKED`；旧 commit 上的 review 是 stale context，不得重复执行旧 `REVISE`，也不得消耗新的 review/repair budget。
 
 如果 task 要求 Visual Review，先机械确认 `VISUAL_REVIEW.json` 存在，且绑定当前 `task_key`、`workflow_type=reviewed_handoff`、`implementation_commit` 和 input image hashes。证据缺失时保持等待，不写 `REVIEW_<round>.md`，不消耗 `review_round`。证据 stale 或 malformed 时不得 PASS。Visual Review 的 `overall_decision` 只是当前 Reviewer 消费的 evidence，不创建 Visual Reviewer role。CI-required visual task 的顺序必须保持为：`WAITING_FOR_CI` -> CI PASS -> `READY_FOR_GPT_REVIEW` -> `waiting_visual_review_evidence` -> fresh visual evidence -> GPT Reviewer。
+
+如果 task 要求 Text Review，先机械确认 `TEXT_REVIEW.json` 存在，且绑定当前 `task_key`、`workflow_type=reviewed_handoff`、`implementation_commit`、text manifest identity 和 plaintext SHA-256。证据缺失时保持等待，不写 `REVIEW_<round>.md`，不消耗 `review_round`。证据 stale、malformed、plaintext SHA mismatch 或 manifest identity mismatch 时不得 PASS。Text Review 的 `overall_decision` 只是当前 Reviewer 消费的 evidence，不创建新的 GPT role。若 Text Review 给出 blocking `REVISE`，Scheduled GPT Reviewer 必须把它作为 frozen requirement failure 进入普通 `REVISE` 路径，不得把明显 failure 推给 human gate；只有达到既有 review round limit 时才走 `REVIEW_LIMIT` human gate。
 
 `base_commit..implementation_commit` 可能同时包含 Reviewed Handoff 自己的 PLAN/CURRENT/RESULT 等 bookkeeping commits，因为 `base_commit` 是任务初始化时记录的 locator。不要因为这些合法 workflow 文件本身存在于 diff 就把它们当作产品实现或 regression。实现审核应聚焦冻结 Plan 定义的项目代码、配置、文档和 user-facing artifacts。相反，如果真实 diff 显示 Executor 修改了 `REQUEST.md`、`PLAN.md`、既有 `REVIEW_<n>.md`、`FINAL_REPORT.md` 或 review/plan limit 等 Planner/Reviewer authority，则这是协议违规，应阻断当前 review transaction；优先要求最小 recovery/repair，不要把可恢复 authority error 自动升级成 terminal BLOCKED。
 

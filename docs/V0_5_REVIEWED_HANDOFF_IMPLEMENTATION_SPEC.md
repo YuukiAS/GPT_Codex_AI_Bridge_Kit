@@ -355,6 +355,75 @@ It must not add `request_nonce`, Requirement Ledger, Stable Review Snapshot, `re
 
 The Scheduled Reviewer must check `VISUAL_REVIEW.json` before writing `REVIEW_<round>.md`. Missing visual evidence means wait for external visual evidence and do not consume `review_round`. Stale evidence whose `implementation_commit` does not match current `CURRENT.implementation_commit` is invalid and cannot support PASS. A model `REVISE` or `BLOCKED` decision is evidence for the existing Reviewer to consume; it does not create a Visual Reviewer role or a new top-level workflow state.
 
+## Optional Text Review evidence
+
+Reviewed Handoff may also opt into the shared Bridge Kit Text Review evidence
+producer for UTF-8 Markdown/plain-text artifacts whose full contents are needed
+for independent review but must not be committed as plaintext. This is the
+text sibling of Visual Review, not a new GPT role and not an Agent-Flow-style
+identity graph.
+
+Opt-in is task-local via `CURRENT.text_review_required=true`. The default
+evidence path is:
+
+```text
+results/<task_key>/text_review/TEXT_REVIEW.json
+```
+
+The production path is:
+
+```text
+private local text
+-> age public-key encryption
+-> encrypted payload + text_inputs.json on the reviewed task branch
+-> GitHub Actions ephemeral decrypt
+-> OpenAI Responses API text review with store=false
+-> TEXT_REVIEW.json writeback
+-> Scheduled GPT Reviewer consumes the evidence
+```
+
+Tracked repository files may include an age public recipient, encrypted
+payload, text input manifest and `TEXT_REVIEW.json`. They must never include
+the age private identity, plaintext private artifact, or OpenAI API key. The
+GitHub Secret for decryption is `AI_BRIDGE_PRIVATE_REVIEW_AGE_KEY`. The
+OpenAI key lookup prefers `OPENAI_REVIEW_API_KEY` and remains backward
+compatible with `OPENAI_VISUAL_REVIEW_API_KEY` so repositories that already
+enabled Visual Review do not need a second OpenAI key.
+
+For non-CI text-review tasks, the Executor must publish the encrypted payload
+and `results/<task_key>/text_review/text_inputs.json` before entering
+`READY_FOR_GPT_REVIEW`. For CI-required tasks, the same payload and manifest
+must be published before `WAITING_FOR_CI`; after CI PASS, Scheduled GPT moves
+to `READY_FOR_GPT_REVIEW` and waits for `TEXT_REVIEW.json` if it is still
+pending.
+
+For Reviewed Handoff, valid text evidence is bound to:
+
+```text
+task_key
+implementation_commit
+text manifest / rubric identity
+plaintext artifact SHA-256
+encrypted payload SHA-256
+```
+
+The Scheduled Reviewer must check `TEXT_REVIEW.json` before writing
+`REVIEW_<round>.md`. Missing text evidence means wait for external text
+evidence and do not consume `review_round`. Stale evidence whose
+`implementation_commit`, manifest identity or plaintext SHA does not match the
+current text input manifest is invalid and cannot support PASS. A model
+`REVISE` or `BLOCKED` decision is evidence for the existing Reviewer to
+consume; it does not create a Text Reviewer role or a new top-level workflow
+state.
+
+Planner preflight must reject logically impossible private-artifact plans. If
+acceptance depends on qualitative review of a user-facing artifact and the
+artifact cannot be committed for the GitHub-only Scheduled Reviewer to read,
+Planner must confirm a legal evidence path such as Text Review before
+`PLAN_FROZEN`. Otherwise it keeps the task in planning/waiting or routes to a
+recoverable decision; it must not freeze a plan that can only end in manual
+user review.
+
 ## Final report
 
 The final report is user-facing and required for all terminal states. Its first sections describe:

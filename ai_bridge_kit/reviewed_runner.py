@@ -18,6 +18,11 @@ from . import reviewed_handoff as rh
 
 
 ELIGIBLE_EXECUTOR_STATES = {"PLAN_FROZEN", "REVISE"}
+EXTERNAL_WAIT_STATUSES = {
+    "waiting_external_review",
+    "waiting_visual_review_evidence",
+    "waiting_text_review_evidence",
+}
 WATCHER_STATE_SCHEMA = "AI_BRIDGE_REVIEWED_WATCHER_STATE_V1"
 WATCHER_STATUS_SCHEMA = "AI_BRIDGE_REVIEWED_WATCHER_STATUS_V1"
 PROTECTED_CURRENT_FIELDS = {
@@ -558,7 +563,7 @@ def waiting_owner(target: Path, task_key: str, current: dict[str, Any]) -> str:
         status = rh.reviewed_external_wait_status(target, task_key)
     except Exception:
         status = {}
-    if status.get("operational_status") in {"waiting_external_review", "waiting_visual_review_evidence"}:
+    if status.get("operational_status") in EXTERNAL_WAIT_STATUSES:
         return str(status.get("wait_owner") or status.get("external_owner") or "External")
     if state == "WAITING_FOR_CI":
         return "CI"
@@ -633,7 +638,7 @@ def external_wait_events(target: Path) -> list[tuple[str, dict[str, Any]]]:
         if not current_path.exists():
             continue
         status = rh.reviewed_external_wait_status(target, task_dir.name)
-        if status.get("operational_status") in {"waiting_external_review", "waiting_visual_review_evidence"}:
+        if status.get("operational_status") in EXTERNAL_WAIT_STATUSES:
             waiting.append((task_dir.name, status))
     return waiting
 
@@ -1100,7 +1105,7 @@ def watcher_sleep_seconds(status: str | None, interval_seconds: int, *, invalid_
         return min(3600, max(600, interval_seconds * multiplier))
     if status == "dirty_worktree_wait":
         return max(600, interval_seconds)
-    if status in {"waiting_external_review", "waiting_visual_review_evidence"}:
+    if status in EXTERNAL_WAIT_STATUSES:
         return max(600, interval_seconds)
     return max(5, interval_seconds)
 

@@ -12,6 +12,7 @@ dependencies = []
 
 [project.optional-dependencies]
 visual-review = []
+text-review = []
 
 [project.scripts]
 ai-bridge = "ai_bridge_kit.bridge_cli:main"

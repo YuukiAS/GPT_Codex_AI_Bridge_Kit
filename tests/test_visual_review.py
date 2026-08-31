@@ -258,8 +258,10 @@ class VisualReviewTests(unittest.TestCase):
             self.assertFalse((consumer / "ai_bridge_kit").exists())
             self.assertIn(f"git+{visual_review.CANONICAL_BRIDGE_KIT_REPO}@{pinned_ref}", workflow)
             self.assertNotIn("pip install -e '.[visual-review]'", workflow)
+            self.assertIn("'results/**/visual_review/visual_inputs.json'", workflow)
+            self.assertNotIn("paths-ignore", workflow)
+            self.assertIn("No visual review manifest changed; not required.", workflow)
             self.assertNotIn("pip install -e .", workflow)
-            self.assertIn("paths-ignore:\n      - 'results/**/visual_review/**'", workflow)
 
     def make_git_consumer(self) -> tuple[tempfile.TemporaryDirectory[str], Path, str]:
         tmp = tempfile.TemporaryDirectory()

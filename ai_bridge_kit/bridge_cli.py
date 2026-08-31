@@ -17,6 +17,10 @@ def main(argv: list[str] | None = None) -> int:
         from . import visual_review
 
         return visual_review.main(args[1:])
+    if args and args[0] == "text-review":
+        from . import text_review
+
+        return text_review.main(args[1:])
     if args and args[0] == "overleaf":
         from . import overleaf
 

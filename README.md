@@ -494,11 +494,90 @@ Bridge Kit 不会把 API key 写进仓库，也不会打印 secret 值。
 
 在 Reviewed Handoff 中，`ci_required=true` 的视觉任务先发布实现、渲染图片和 `visual_inputs.json`，然后停在 `WAITING_FOR_CI` / `ci_status=PENDING`。CI 通过后才进入 `READY_FOR_GPT_REVIEW`，此时缺少 `VISUAL_REVIEW.json` 是正常的 `waiting_visual_review_evidence`；只有 fresh visual evidence 返回后，Scheduled GPT Reviewer 才开始正式 review。`PASS` 和 `human_gate_reason=PASS` 仍然必须绑定当前 implementation 的 visual PASS evidence。
 
+Visual Review workflow 只在 `results/**/visual_review/visual_inputs.json` 改动或手动 `workflow_dispatch` 时运行。普通非视觉任务不会触发一个容易被误读为“视觉已审查并 PASS”的 AI Bridge Visual Review job。
+
 默认隐私策略是保守的：安装视觉复核能力不等于允许自动上传患者影像、私有临床数据、未公开科研图片、凭据或其他敏感内容。没有明确外部上传授权时应拒绝。
 
 ---
 
-## 7. Agent-Flow Core（`0.4.0` 引入）：只有高风险任务才用
+## 7. Text Review：给私有文本产物增加独立全文检查
+
+Text Review 用于 Reviewed Handoff 中这类场景：最终验收必须读完整 user-facing Markdown/plain text，但正文不能作为 plaintext 提交到 public task branch。它不是新的 GPT role，而是和 Visual Review 平级的 evidence producer。
+
+默认路径是：
+
+```text
+private local text
+-> age public-key encryption
+-> encrypted payload + manifest committed to reviewed task branch
+-> GitHub Actions ephemeral decrypt
+-> OpenAI Responses API text review with store=false
+-> results/<task_key>/text_review/TEXT_REVIEW.json
+-> Scheduled GPT Reviewer consumes evidence
+```
+
+安装和预检：
+
+```bash
+ai-bridge text-review install --target /path/to/project
+ai-bridge text-review preflight --target /path/to/project
+```
+
+配置加密 transport：
+
+```bash
+ai-bridge text-review configure --target /path/to/project --repo owner/name
+```
+
+这会生成 age keypair，通过 `gh secret set` 把 private identity 写入 GitHub Secret：
+
+```text
+AI_BRIDGE_PRIVATE_REVIEW_AGE_KEY
+```
+
+并把 public recipient 写入：
+
+```text
+automation/reviewed_handoff/private_text_review.age.pub
+```
+
+如果 `gh` 权限不够，用户只需要手动配置这一个 GitHub Secret；不要把 secret 粘贴到聊天或仓库里。
+
+OpenAI key 优先使用未来通用名称：
+
+```text
+OPENAI_REVIEW_API_KEY
+```
+
+同时兼容已有 Visual Review secret：
+
+```text
+OPENAI_VISUAL_REVIEW_API_KEY
+```
+
+所以已经接入 Visual Review 的 repository 不需要为了 Text Review 再创建第二个 OpenAI key。默认模型仍为 `gpt-5.6-terra`，可用 `OPENAI_TEXT_REVIEW_MODEL` 或 CLI `--model` 显式覆盖。
+
+加密一个本机私有 Markdown artifact：
+
+```bash
+ai-bridge text-review encrypt \
+  --target /path/to/project \
+  --task-key 044_example \
+  --input /private/path/final.md \
+  --output results/044_example/text_review/payload.age \
+  --manifest results/044_example/text_review/text_inputs.json \
+  --implementation-commit <commit> \
+  --rubric "Read the complete artifact and decide whether it satisfies the frozen user-facing prose requirements." \
+  --external-upload-authorization "User authorized private text review through OpenAI Responses API with store=false for this task."
+```
+
+`TEXT_REVIEW.json` 会记录 `task_key`、`workflow_type`、`review_kind`、模型、prompt version、manifest identity、plaintext SHA-256、reviewed input identity、decision、item reviews、blocking findings 和 notes；它不会包含完整 private input。
+
+在 Reviewed Handoff 中，若 `CURRENT.text_review_required=true`，缺少 `TEXT_REVIEW.json`、plaintext SHA mismatch、manifest identity mismatch 或旧 artifact evidence 都不能支持 PASS，也不会消耗 review round；系统会等待 Text Review evidence 或要求恢复。
+
+---
+
+## 8. Agent-Flow Core（`0.4.0` 引入）：只有高风险任务才用
 
 Agent-Flow 面向“错误通过的代价很高”的任务，例如：
 
