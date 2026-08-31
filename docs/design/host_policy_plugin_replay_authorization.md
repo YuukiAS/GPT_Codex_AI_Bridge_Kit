@@ -1,21 +1,30 @@
 # Host Policy: unattended local plugin repair / replay
 
-Status: planner design note for a bounded Host Policy improvement.
+Status: frozen planner design for a bounded Host Policy improvement.
 
 ## Problem
 
-A real `AI_Skills_Collection` Reviewed Handoff task exposed an infrastructure failure before the plugin itself could be tested. The Executor needed to launch a fresh local `codex exec` runtime so the installed production plugin could process a user-authorized private research artifact and write the replay output to a local private directory. The outer Codex approval reviewer blocked that nested runtime because the command would pass private content to another Codex/model runtime and write outside the initial workspace root.
+A real `AI_Skills_Collection` Reviewed Handoff task exposed an infrastructure failure before the plugin itself could be tested. The Executor needed to launch a fresh local Codex runtime so an installed production plugin could process a user-authorized private research artifact. The outer Codex approval reviewer blocked that nested runtime because the command would pass private content to another model runtime and write outside the initial workspace root.
 
-This is not a plugin-quality failure. It is a Host Policy / production-replay authorization gap.
+This is not a plugin-quality failure. It is a machine-level Host Policy / production-replay authorization gap.
 
-The user explicitly authorizes trusted plugin repair workflows on their own machines to do the following without repeated interactive approval:
+The user explicitly authorizes trusted plugin repair workflows on their own machines to process explicitly selected local/private artifacts with a fresh OpenAI Codex production runtime without repeated approval, provided the replay stays inside a bounded local sandbox and does not publish private content.
 
-- process explicitly selected local/private artifacts with an OpenAI Codex production runtime;
-- launch a fresh nested Codex runtime when that is necessary to test an installed plugin through its real production entry point;
-- write replay outputs only to an explicitly selected local/private replay directory;
-- keep the private source and rewritten output out of public Git repositories unless the user separately asks to publish them.
+## Product boundary
 
-The goal is that plugin repair / replay can run unattended once the workflow and input are already authorized. The user should not need to approve the same safe local production-replay action every time a plugin is refined.
+This capability belongs to `GPT_Codex_AI_Bridge_Kit`, not to an individual consumer repository.
+
+- **Host Policy** is the machine-wide authorization source of truth. One `CODEX_HOME` installation applies to all repositories using that Codex identity.
+- **Bridge Kit** owns the bounded replay launcher that makes the authorization safe enough to pre-approve.
+- **Lite / Reviewed Handoff / other repo workflows** only learn to call the bounded launcher when they need a fresh production plugin runtime. They do not maintain their own permission allowlists.
+
+The intended behavior is:
+
+```text
+raw nested `codex exec`                         -> normal Host Policy / approval review
+`ai-bridge plugin-replay ...`                  -> globally pre-authorized bounded path
+branch / remote / destructive / publication    -> unchanged approval behavior
+```
 
 ## Existing behavior
 
@@ -27,9 +36,9 @@ sandbox_mode = "workspace-write"
 approvals_reviewer = "auto_review"
 ```
 
-and only pre-authorizes a small set of normal Git commands in `ai-bridge-global.rules`.
+and only pre-authorizes a small set of ordinary Git commands in `ai-bridge-global.rules`.
 
-Reviewed Handoff itself already launches its Executor with `codex exec`, but a plugin-repair Executor may need a second fresh Codex runtime to exercise an installed plugin as a normal user would. A raw nested `codex exec` currently falls back to the normal approval reviewer and can therefore block an otherwise fully authorized unattended workflow.
+Do not change those global defaults just to make plugin replay unattended.
 
 ## Rejected shortcuts
 
@@ -38,52 +47,141 @@ Do not solve this by:
 - setting global `approval_policy = "never"`;
 - setting global `sandbox_mode = "danger-full-access"`;
 - broadly allow-listing every `codex exec` invocation;
-- broadly allow-listing `bash`, `sh`, `python`, or another general-purpose shell/runtime;
+- broadly allow-listing `bash`, `sh`, `python`, or another general-purpose runtime;
 - adding one-off path rules for a single PDF, project, task number, or plugin;
+- granting a nested Codex the whole source repository merely because one private artifact is needed;
 - weakening destructive Git / branch / remote protections.
 
-These approaches either remain fail-closed, remove too much sandboxing, or turn one legitimate replay need into a machine-wide arbitrary execution permission.
+A raw `codex exec` prefix is too broad because prefix policy cannot validate all later arguments, paths and configuration overrides. The safe unit to pre-authorize is a Bridge-owned wrapper whose own argument contract is narrow and testable.
 
-## Frozen product decision
+## Frozen implementation shape
 
-Add one bounded Bridge Kit capability for **local production plugin replay** and pre-authorize that capability in Host Policy.
+Implement one first-class Bridge Kit command:
 
-The preferred shape is a Bridge-owned command (exact CLI naming may follow the existing router conventions) that is narrower than raw `codex exec`. Its job is only to launch a fresh Codex runtime for a user-authorized plugin replay with enforceable local boundaries.
+```text
+ai-bridge plugin-replay ...
+```
 
-The implementation must guarantee all of the following:
+The exact option names may follow existing CLI conventions, but the command itself is the stable product boundary.
 
-1. The child runtime is always launched with a bounded sandbox, not `danger-full-access`.
-2. Interactive approval inside the child runtime is disabled only because the wrapper has already validated the replay contract.
-3. The target repository is explicit.
-4. Input artifacts are explicit. Do not recursively harvest unrelated private files merely because they share a parent directory.
-5. Replay output is local and explicit. Private source/output must not be committed or pushed by the replay helper.
-6. The helper must not change Git branch topology, remotes, upstreams, tags, or publication targets.
-7. The helper must not become an arbitrary shell launcher or a generic way to bypass Host Policy.
-8. Direct raw `codex exec` remains governed by the normal Host Policy unless separately authorized.
-9. Host Policy should pre-authorize the narrow Bridge-owned replay command so an outer Codex Executor can invoke it without manual or automatic approval review.
-10. Existing dangerous-operation prompts and Host Policy behavior must remain unchanged.
+### 1. Machine-local isolated replay workspace
 
-A machine-local staging/output area under `AI_BRIDGE_STATE_HOME` / `~/.ai-bridge` is acceptable and may be preferable if it gives a cleaner boundary than granting a nested runtime broad access to an arbitrary source directory. The implementation may copy only the explicitly selected source files into that staging area before launching the child runtime.
+Each replay creates a fresh machine-local run directory under:
 
-## Reviewed Handoff integration
+```text
+${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}/plugin-replay/<run-id>/
+```
 
-Plugin-repair tasks should use this bounded replay path whenever they need a fresh production Codex/plugin runtime. They should not improvise a raw nested `codex exec` command and then block on approval.
+with a structure such as:
 
-This does not change Planner / Executor / Reviewer authority. The helper only removes repeated host-level approval friction for an already-authorized local replay. It does not authorize scope expansion, destructive actions, external publication, scientific substitutions, or Planner decisions.
+```text
+workspace/       # child Codex cwd
+inputs/          # copies of explicitly selected source files
+outputs/         # replay outputs
+run.json         # non-secret run metadata / status
+```
+
+Only explicitly listed input files are copied. Do not recursively ingest a parent directory.
+
+The child Codex working directory must be this isolated replay workspace, **not the consumer repository**. Do not rely on `--add-dir` as a write fence for the target repository. If additional context is needed, it must be supplied as another explicit input file or a deliberately copied bounded context artifact.
+
+This keeps plugin replay independent of arbitrary repo write access and avoids making a private source directory writable merely to test a plugin.
+
+### 2. Test the installed production plugin, not source-tree imitation
+
+The child runtime must use the normal Codex identity / installed plugin environment from the selected `CODEX_HOME`. The replay helper must not copy `SKILL.md` text into the prompt and pretend that this is equivalent to running the installed plugin.
+
+Require the caller to identify the intended plugin (for example `--plugin <name>`). If the current Codex CLI exposes a reliable installed-plugin inspection command, verify the plugin is actually installed; otherwise record the requested plugin name and fail clearly if production invocation cannot find it.
+
+### 3. Child Codex invocation is fixed by the wrapper
+
+The wrapper constructs the child command itself. The caller cannot append arbitrary Codex CLI flags.
+
+Use current CLI-supported argument ordering. In particular, approval policy is a top-level Codex option in current CLI builds, while sandbox / cwd options may be exec-specific. The implementation must inspect/test against the installed CLI rather than assume an invalid argument order.
+
+The child must have these semantic properties:
+
+- approval policy: `never` inside the already validated replay;
+- sandbox: bounded, normally `workspace-write`;
+- cwd: isolated replay workspace;
+- no `danger-full-access`;
+- no arbitrary `-c` / config override passthrough from the caller;
+- no arbitrary additional writable directory passthrough;
+- ephemeral/non-persistent session when supported;
+- network disabled by default for local artifact replay unless a future separately reviewed contract introduces an explicitly bounded network mode.
+
+The helper may use `--skip-git-repo-check` because the isolated replay workspace is not required to be a Git repository.
+
+### 4. Output stays machine-local
+
+Private source and full replay output remain under the machine-local replay run by default.
+
+The helper itself must not:
+
+- `git add` / commit / push replay source or output;
+- alter branch topology, remotes, upstreams, tags or release state;
+- copy outputs into a public repository automatically;
+- print private document contents in dry-run/status output.
+
+Consumer workflows can reference the machine-local output path in their RESULT without committing the private text.
+
+### 5. Host Policy pre-authorizes only this narrow entry point
+
+`ai-bridge host install` must install an execpolicy rule that allows the bounded replay command, not raw `codex exec`.
+
+Conceptually:
+
+```text
+ai-bridge plugin-replay ... -> allow
+codex exec ...              -> unchanged normal policy
+```
+
+Because basename allow rules can be unsafe if a different executable shadows the expected command, Host Policy should pin the trusted `ai-bridge` executable resolution when the current execpolicy supports `host_executable(...)` or an equivalent exact executable constraint. `host validate` must report the resolved trusted executable and fail on drift where practical.
+
+Use execpolicy `match` / `not_match` examples where supported so the rule validates its intended prefix at load/test time.
+
+### 6. Workflow integration is advisory, not a second permission layer
+
+Update generic Bridge Kit Lite / Reviewed Handoff Executor guidance so that when a frozen task genuinely requires a fresh production plugin runtime, it uses `ai-bridge plugin-replay` rather than constructing a raw nested `codex exec` command.
+
+Do not force ordinary implementation tasks through plugin replay. Do not add a new state machine, role, schema family or task type.
+
+## What this authorization does not cover
+
+The global replay authorization does not authorize:
+
+- arbitrary private-file discovery;
+- recursive harvesting of user directories;
+- secrets ingestion;
+- arbitrary external upload;
+- unrestricted network access;
+- destructive filesystem operations outside the replay workspace;
+- branch creation/switching, force push, remote mutation or release publication;
+- product/scientific scope expansion;
+- replacing Planner / Reviewer authority.
+
+Those actions remain under their existing policy and may still require approval or a separate explicit workflow contract.
 
 ## Acceptance
 
 The change is not complete unless all of these are demonstrated:
 
-- `ai-bridge host install` installs the new narrow pre-authorization without switching the machine to `approval_policy = "never"` or `danger-full-access`.
-- `ai-bridge host validate` can verify that the bounded replay command is allowed.
-- A real local replay can launch a fresh Codex runtime, read one explicitly selected private artifact, and write a local replay output without an approval prompt.
-- The same mechanism is generic across plugin repair workflows; it contains no CARE, M&Ms, writing-style, PDF title, task `044`, or project-specific hard-code.
-- Direct raw `codex exec` is not globally pre-authorized by the new rule.
-- Force push, branch creation/switching, remote mutation, `reset --hard`, `git clean`, and other existing dangerous cases still require approval.
-- Tests cover rule installation/validation and the replay helper's path/sandbox contract.
-- A dry-run or equivalent prints the exact child runtime command and local paths so the user can audit the boundary.
+1. `ai-bridge host install` keeps global `approval_policy = "on-request"`, `sandbox_mode = "workspace-write"`, and `approvals_reviewer = "auto_review"`.
+2. `ai-bridge host install` installs the narrow replay pre-authorization for the trusted Bridge executable.
+3. `ai-bridge host validate` verifies `ai-bridge plugin-replay ... => allow` and confirms raw `codex exec` did not gain a broad allow.
+4. Force push, branch creation/switching, remote mutation, `reset --hard`, `git clean` and existing dangerous cases retain their current approval behavior.
+5. The replay helper accepts only explicit input files and does not recursively stage neighboring files.
+6. The child cwd is the isolated machine-local replay workspace; the helper does not expose the whole target repository as a writable child workspace.
+7. The child command fixes bounded sandbox + no interactive approval and rejects arbitrary Codex flag passthrough.
+8. A dry-run shows target/plugin/input basenames, replay workspace/output path, resolved Codex executable and exact child argv without printing private contents.
+9. A real generic local smoke launches a fresh Codex runtime against a small temporary private-like text input and produces machine-local output without an outer approval prompt.
+10. The smoke is generic: no `writing-style`, CARE, M&Ms, PDF title, task `044` or project-specific hard-code in implementation/tests.
+11. The first real consumer replay after the generic smoke is `AI_Skills_Collection` task `044_writing_style_deep_research_chinese_replay`; its private PDF and rewrite remain local.
 
-## Real replay that motivated this change
+## Why this is preferred over alternatives
 
-The first replay after implementation is `AI_Skills_Collection` task `044_writing_style_deep_research_chinese_replay`. Its private research PDF and rewritten text remain local. That task is a replay of a known failure case, not an unseen generalization test.
+- **Global raw `codex exec` allow** removes too much review because later arguments and paths are not bounded by the prefix alone.
+- **Repo-local permission exceptions** duplicate machine policy and would have to be maintained separately for every plugin/repository.
+- **Changing global approval to `never`** makes unapproved commands fail rather than providing a selective trusted path and weakens normal interactive review semantics.
+- **Giving the child the whole repository or source directory** is unnecessary for a production plugin replay and creates a larger write surface.
+- **A Bridge-owned isolated launcher + one Host Policy allow** gives one machine-wide reusable path while preserving the existing review boundary everywhere else.
