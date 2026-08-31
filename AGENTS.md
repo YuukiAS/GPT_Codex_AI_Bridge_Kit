@@ -98,7 +98,7 @@ ai-bridge plugin-replay ...
 
 当用户或冻结 workflow 已经授权本机 production plugin repair/replay，且确实需要 fresh Codex runtime 测试当前 Codex identity 中已安装的插件时，使用这个入口。不要自行拼 raw nested `codex exec` 再申请审批。
 
-`plugin-replay` 只允许 target Git repo 内文件，或固定 trusted inbox `${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}/plugin-replay/inbox/` 内的显式 input file；symlink resolve 后仍必须落在这些授权根内。task/instruction file 只能来自 target Git repo、当前 caller Git repo 或同一 trusted inbox。replay 使用当前 Codex identity，不允许通过该入口切到另一个 `$CODEX_HOME`。replay 内容和完整输出留在 `${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}/plugin-replay/` 本机目录。它不授权外部上传、发布、危险 Git、branch/remote mutation、release/deploy 或产品/科学 scope expansion；这些仍按原 Host Policy 审核。
+`plugin-replay` 只允许 target Git repo 内文件，或固定 trusted inbox `${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}/plugin-replay/inbox/` 内的显式 input file；symlink resolve 后仍必须落在这些授权根内。task/instruction file 只能来自 target Git repo、当前 caller Git repo 或同一 trusted inbox。replay 使用当前 Codex identity，不允许通过该入口切到另一个 `$CODEX_HOME`。这是 write-isolated / execution-bounded trusted-local replay：当前 Codex runtime 可能读取同一用户可读文件，wrapper 只把 read scope 作为 diagnostic 如实记录，不宣称 strict read isolation。replay 内容和完整输出留在 `${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}/plugin-replay/` 本机目录。它不授权外部上传、发布、危险 Git、branch/remote mutation、release/deploy 或产品/科学 scope expansion；这些仍按原 Host Policy 审核。
 
 ### External Planner / Reviewer Waiting
 

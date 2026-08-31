@@ -93,7 +93,7 @@ $CODEX_HOME/rules/ai-bridge-global.rules
 - 用户可见的进度、计划、测试结果和完成报告默认使用自然中文；
 - 普通局部实现由 Codex 自行判断，真正会改变架构、范围、部署、Git 分支策略或科研语义的歧义才询问用户；
 - 当前 `main` 分支上的安全 `fetch`、快进 `pull`、正常 `add/commit/push origin main` 尽量减少重复授权；
-- 已明确授权的本机 production plugin repair/replay 可走受控入口 `ai-bridge plugin-replay`，让 fresh Codex runtime 在隔离 replay workspace 中测试已安装插件；
+- 已明确授权的本机 production plugin repair/replay 可走受控入口 `ai-bridge plugin-replay`，让 fresh Codex runtime 在 write-isolated replay workspace 中测试已安装插件；
 - `force push`、改 remote、删除分支、`reset --hard`、`git clean` 等危险操作仍然不能因为“自动化”而放开；
 - 如果下一步明确属于外部 GPT Planner/Reviewer/Critic，等待 GPT 不应被误判为任务失败。
 
@@ -106,11 +106,12 @@ workflow。它要求 caller 指定目标 Git 仓库、已安装插件名、任�
 inbox；symlink resolve 后仍必须落在授权根内。task/说明文件只能来自 target repo、
 当前 caller repo 或 trusted inbox。每次运行只把这些文件复制到
 `${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}/plugin-replay/<run-id>/`，child Codex 的
-cwd 是隔离 workspace，默认 `workspace-write`、`approval_policy=never`、本地
+cwd 是 write-isolated workspace，默认 `workspace-write`、`approval_policy=never`、本地
 replay 网络关闭，且使用当前 Codex identity，不允许通过该入口切换到另一个
-`CODEX_HOME`。完整输出保留在本机 state 目录。Host Policy 不会因此放开 raw
-`codex exec`、裸 shell/python、任意私人路径读取、整个 consumer repo 写入、外部上传、
-危险 Git、发布或部署。
+`CODEX_HOME`。完整输出保留在本机 state 目录。当前 Codex runtime 仍可能读取同一
+用户可读文件；wrapper 会如实记录 read-scope diagnostic，但不把它包装成 strict
+read isolation。Host Policy 不会因此放开 raw `codex exec`、裸 shell/python、任意
+私人路径作为 replay input、整个 consumer repo 写入、外部上传、危险 Git、发布或部署。
 
 ---
 

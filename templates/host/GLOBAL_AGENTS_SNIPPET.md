@@ -56,6 +56,10 @@ exercise an installed production plugin, use `ai-bridge plugin-replay`.
   `${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}/plugin-replay/`.
 - `plugin-replay` uses the current Codex identity; it is not authority to switch
   to another `CODEX_HOME`.
+- Treat plugin replay as write-isolated / execution-bounded trusted-local
+  replay. Current Codex runtimes may still read other same-user readable files;
+  the wrapper records that read-scope diagnostic honestly and does not claim
+  strict filesystem read isolation.
 - This authorization does not grant publishing, external upload, dangerous Git,
   branch/remote mutation, release, deployment, or product/scientific scope
   expansion authority.

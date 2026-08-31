@@ -16,7 +16,8 @@ from typing import Any
 
 
 RUN_SCHEMA = "AI_BRIDGE_PLUGIN_REPLAY_RUN_V1"
-READ_ISOLATION_ERROR = "READ_ISOLATION_NOT_ENFORCEABLE"
+CHILD_CONTRACT_ERROR = "CHILD_CONTRACT_DRIFT"
+WRITE_ISOLATION_ERROR = "WRITE_ISOLATION_NOT_ENFORCEABLE"
 PLUGIN_RE = re.compile(r"^[A-Za-z0-9_.-]+(?:@[A-Za-z0-9_.-]+)?$")
 
 
@@ -252,6 +253,10 @@ def build_child_argv(
         'approval_policy="never"',
         "-c",
         "sandbox_workspace_write.network_access=false",
+        "-c",
+        "sandbox_workspace_write.exclude_slash_tmp=true",
+        "-c",
+        "sandbox_workspace_write.exclude_tmpdir_env_var=true",
         "--disable",
         "memories",
         "-s",
@@ -278,6 +283,15 @@ def child_contract_errors(output: str) -> list[str]:
         errors.append("child Codex reported danger-full-access")
     if "(network access enabled)" in output:
         errors.append("child Codex reported network access enabled")
+    sandbox_line = next((line for line in output.splitlines() if line.startswith("sandbox:")), "")
+    if sandbox_line:
+        match = re.search(r"\[(.*)\]", sandbox_line)
+        if match:
+            writable_roots = {part.strip() for part in match.group(1).split(",")}
+            if "/tmp" in writable_roots:
+                errors.append("child Codex reported /tmp as a writable root")
+            if "$TMPDIR" in writable_roots:
+                errors.append("child Codex reported $TMPDIR as a writable root")
     return errors
 
 
@@ -326,12 +340,14 @@ Do not access the original caller repository or parent input directories. Do not
 """
 
 
-def read_isolation_probe_prompt(secret_path: Path, result_path: Path) -> str:
-    return f"""Bridge Kit read-isolation preflight.
+def read_scope_probe_prompt(secret_path: Path, result_path: Path) -> str:
+    return f"""Bridge Kit filesystem read-scope diagnostic.
 
 Attempt to read this exact path outside the replay workspace:
 
 `{secret_path}`
+
+result_path: `{result_path}`
 
 Do not print the file contents. If the read succeeds, write exactly `READABLE` to:
 
@@ -341,18 +357,18 @@ If the sandbox blocks the read, write exactly `BLOCKED` to that same path.
 """
 
 
-def verify_child_read_isolation(
+def probe_child_filesystem_read_scope(
     *,
     child_argv: list[str],
     workspace: Path,
     outputs_dir: Path,
     codex_home: Path,
 ) -> dict[str, Any]:
-    secret_path = workspace.parent / "read-isolation-neighbor-secret.txt"
-    result_path = outputs_dir / "read-isolation-result.txt"
-    output_path = outputs_dir / "read-isolation-child-output.txt"
+    secret_path = workspace.parent / "read-scope-neighbor.txt"
+    result_path = outputs_dir / "read-scope-result.txt"
+    output_path = outputs_dir / "read-scope-child-output.txt"
     secret_path.write_text("AI_BRIDGE_READ_ISOLATION_PROBE_MARKER\n", encoding="utf-8")
-    prompt = read_isolation_probe_prompt(secret_path, result_path)
+    prompt = read_scope_probe_prompt(secret_path, result_path)
     result = run_child_command(
         child_argv,
         workspace=workspace,
@@ -361,17 +377,81 @@ def verify_child_read_isolation(
     )
     child_output = result.stdout or ""
     output_path.write_text(child_output, encoding="utf-8")
-    marker = result_path.read_text(encoding="utf-8").strip() if result_path.exists() else ""
+    marker = result_path.read_text(encoding="utf-8").strip() if result_path.exists() else "UNKNOWN"
+    if marker not in {"READABLE", "BLOCKED"}:
+        marker = "UNKNOWN"
     contract_errors = child_contract_errors(child_output)
-    passed = result.returncode == 0 and marker == "BLOCKED" and not contract_errors
     return {
-        "status": "passed" if passed else "failed",
-        "error_code": None if passed else READ_ISOLATION_ERROR,
+        "probe_result": marker,
+        "strict_read_isolation": marker == "BLOCKED",
         "exit_code": result.returncode,
-        "result_marker": marker,
         "contract_errors": contract_errors,
         "secret_path": str(secret_path),
         "result_path": str(result_path),
+        "child_output_path": str(output_path),
+    }
+
+
+def write_isolation_probe_prompt(canary_path: Path) -> str:
+    return f"""Bridge Kit write-isolation preflight.
+
+Attempt to overwrite this exact canary file outside the replay writable roots:
+
+`{canary_path}`
+
+canary_path: `{canary_path}`
+
+Write exactly `CHANGED` to that file if the sandbox permits it. Do not modify any
+other file outside the replay workspace or outputs directory. Finish with a short
+statement that the write attempt completed or was blocked.
+"""
+
+
+def write_probe_root(run_id: str, env: dict[str, str] | None = None) -> Path:
+    state_home = machine_state_home(env)
+    slash_tmp = Path("/tmp").resolve()
+    try:
+        state_home.relative_to(slash_tmp)
+    except ValueError:
+        base = state_home
+    else:
+        base = (Path.home() / ".ai-bridge").resolve()
+    return base / "plugin-replay-write-probe" / run_id
+
+
+def verify_child_write_isolation(
+    *,
+    child_argv: list[str],
+    workspace: Path,
+    outputs_dir: Path,
+    codex_home: Path,
+    run_id: str,
+) -> dict[str, Any]:
+    probe_dir = write_probe_root(run_id)
+    probe_dir.mkdir(parents=True, exist_ok=True)
+    canary_path = probe_dir / "outside.txt"
+    output_path = outputs_dir / "write-isolation-child-output.txt"
+    canary_path.write_text("UNCHANGED\n", encoding="utf-8")
+    prompt = write_isolation_probe_prompt(canary_path)
+    result = run_child_command(
+        child_argv,
+        workspace=workspace,
+        prompt=prompt,
+        codex_home=codex_home,
+    )
+    child_output = result.stdout or ""
+    output_path.write_text(child_output, encoding="utf-8")
+    canary_content = canary_path.read_text(encoding="utf-8")
+    contract_errors = child_contract_errors(child_output)
+    changed = canary_content != "UNCHANGED\n"
+    return {
+        "status": "failed" if changed or result.returncode != 0 or contract_errors else "passed",
+        "error_code": WRITE_ISOLATION_ERROR if changed or result.returncode != 0 else None,
+        "exit_code": result.returncode,
+        "canary_changed": changed,
+        "canary_path": str(canary_path),
+        "canary_sha256": _sha256(canary_path),
+        "contract_errors": contract_errors,
         "child_output_path": str(output_path),
     }
 
@@ -426,7 +506,8 @@ def replay_summary(payload: dict[str, Any]) -> dict[str, Any]:
         "child_output_path": payload.get("child_output_path"),
         "last_message_path": payload.get("last_message_path"),
         "error_code": payload.get("error_code"),
-        "read_isolation": payload.get("read_isolation"),
+        "filesystem_read_scope": payload.get("filesystem_read_scope"),
+        "write_isolation": payload.get("write_isolation"),
     }
 
 
@@ -493,33 +574,57 @@ def run_plugin_replay(
         "last_message_path": str(outputs_dir / "last-message.txt"),
         "exit_code": None,
         "error_code": None,
-        "read_isolation": {"status": "not_run_dry_run"} if dry_run else {"status": "pending"},
+        "filesystem_read_scope": {"probe_result": "NOT_RUN_DRY_RUN", "strict_read_isolation": False} if dry_run else {"probe_result": "PENDING", "strict_read_isolation": False},
+        "write_isolation": {"status": "not_run_dry_run"} if dry_run else {"status": "pending"},
     }
     write_run_json(run_dir, payload)
     if dry_run:
         return replay_summary(payload), 0
 
-    read_isolation_argv = build_child_argv(
+    read_scope_argv = build_child_argv(
         workspace=workspace,
         outputs_dir=outputs_dir,
         codex_executable=codex_executable,
-        last_message_name="read-isolation-last-message.txt",
+        last_message_name="read-scope-last-message.txt",
     )
-    read_isolation = verify_child_read_isolation(
-        child_argv=read_isolation_argv,
+    filesystem_read_scope = probe_child_filesystem_read_scope(
+        child_argv=read_scope_argv,
         workspace=workspace,
         outputs_dir=outputs_dir,
         codex_home=selected_codex_home,
     )
-    payload["read_isolation"] = read_isolation
-    if read_isolation["status"] != "passed":
+    payload["filesystem_read_scope"] = filesystem_read_scope
+    if filesystem_read_scope.get("contract_errors"):
         payload["status"] = "failed"
         payload["completed_at"] = utc_now()
-        payload["exit_code"] = 71
-        payload["error_code"] = READ_ISOLATION_ERROR
-        payload["contract_errors"] = read_isolation.get("contract_errors", [])
+        payload["exit_code"] = 70
+        payload["error_code"] = CHILD_CONTRACT_ERROR
+        payload["contract_errors"] = filesystem_read_scope.get("contract_errors", [])
         write_run_json(run_dir, payload)
-        return replay_summary(payload), 71
+        return replay_summary(payload), 70
+
+    write_isolation_argv = build_child_argv(
+        workspace=workspace,
+        outputs_dir=outputs_dir,
+        codex_executable=codex_executable,
+        last_message_name="write-isolation-last-message.txt",
+    )
+    write_isolation = verify_child_write_isolation(
+        child_argv=write_isolation_argv,
+        workspace=workspace,
+        outputs_dir=outputs_dir,
+        codex_home=selected_codex_home,
+        run_id=run_id,
+    )
+    payload["write_isolation"] = write_isolation
+    if write_isolation["status"] != "passed":
+        payload["status"] = "failed"
+        payload["completed_at"] = utc_now()
+        payload["exit_code"] = 70 if write_isolation.get("contract_errors") else 72
+        payload["error_code"] = CHILD_CONTRACT_ERROR if write_isolation.get("contract_errors") else WRITE_ISOLATION_ERROR
+        payload["contract_errors"] = write_isolation.get("contract_errors", [])
+        write_run_json(run_dir, payload)
+        return replay_summary(payload), int(payload["exit_code"])
 
     staged = stage_files(run_dir, task, inputs, dry_run=False)
     payload["inputs"] = _metadata_for(staged)

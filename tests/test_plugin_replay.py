@@ -64,6 +64,8 @@ class PluginReplayTests(unittest.TestCase):
             self.assertEqual(argv[argv.index("-c") + 1], 'approval_policy="never"')
             self.assertEqual(argv[argv.index("-s") + 1], "workspace-write")
             self.assertIn("sandbox_workspace_write.network_access=false", argv)
+            self.assertIn("sandbox_workspace_write.exclude_slash_tmp=true", argv)
+            self.assertIn("sandbox_workspace_write.exclude_tmpdir_env_var=true", argv)
             self.assertIn("--disable", argv)
             self.assertEqual(argv[argv.index("--disable") + 1], "memories")
             self.assertIn("--skip-git-repo-check", argv)
@@ -71,6 +73,8 @@ class PluginReplayTests(unittest.TestCase):
             self.assertNotIn("danger-full-access", argv)
             self.assertNotIn(str(target), argv)
             self.assertFalse((Path(summary["run_dir"]) / "inputs").exists())
+            self.assertEqual(summary["filesystem_read_scope"]["probe_result"], "NOT_RUN_DRY_RUN")
+            self.assertEqual(summary["write_isolation"]["status"], "not_run_dry_run")
 
     def test_run_stages_only_explicit_files_and_saves_local_output(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(Path(tmp) / "state")}):
@@ -84,15 +88,18 @@ class PluginReplayTests(unittest.TestCase):
                 return subprocess.CompletedProcess(
                     args=command,
                     returncode=0,
-                    stdout="approval: never\nsandbox: workspace-write [workdir, /tmp, $TMPDIR]\nchild summary\n",
+                    stdout="approval: never\nsandbox: workspace-write [workdir, /state/run/outputs]\nchild summary\n",
                 )
 
             with mock.patch("ai_bridge_kit.plugin_replay._run_codex", side_effect=self.fake_plugin_check), mock.patch(
                 "ai_bridge_kit.plugin_replay.resolved_executable",
                 side_effect=lambda name: f"/trusted/bin/{name}",
             ), mock.patch(
-                "ai_bridge_kit.plugin_replay.verify_child_read_isolation",
-                return_value={"status": "passed", "error_code": None, "contract_errors": []},
+                "ai_bridge_kit.plugin_replay.probe_child_filesystem_read_scope",
+                return_value={"probe_result": "READABLE", "strict_read_isolation": False, "contract_errors": []},
+            ), mock.patch(
+                "ai_bridge_kit.plugin_replay.verify_child_write_isolation",
+                return_value={"status": "passed", "error_code": None, "contract_errors": [], "canary_changed": False},
             ), mock.patch("ai_bridge_kit.plugin_replay.run_child_command", side_effect=fake_child):
                 summary, code = plugin_replay.run_plugin_replay(
                     target=target,
@@ -112,6 +119,8 @@ class PluginReplayTests(unittest.TestCase):
             run_json = json.loads((Path(summary["run_dir"]) / "run.json").read_text(encoding="utf-8"))
             self.assertEqual(run_json["exit_code"], 0)
             self.assertEqual(run_json["contract_errors"], [])
+            self.assertFalse(run_json["filesystem_read_scope"]["strict_read_isolation"])
+            self.assertEqual(run_json["write_isolation"]["status"], "passed")
             self.assertNotIn("generic private-like smoke text", json.dumps(run_json))
             self.assertNotIn("do not stage me", json.dumps(run_json))
 
@@ -122,14 +131,17 @@ class PluginReplayTests(unittest.TestCase):
                 "ai_bridge_kit.plugin_replay.resolved_executable",
                 side_effect=lambda name: f"/trusted/bin/{name}",
             ), mock.patch(
-                "ai_bridge_kit.plugin_replay.verify_child_read_isolation",
-                return_value={"status": "passed", "error_code": None, "contract_errors": []},
+                "ai_bridge_kit.plugin_replay.probe_child_filesystem_read_scope",
+                return_value={"probe_result": "BLOCKED", "strict_read_isolation": True, "contract_errors": []},
+            ), mock.patch(
+                "ai_bridge_kit.plugin_replay.verify_child_write_isolation",
+                return_value={"status": "passed", "error_code": None, "contract_errors": [], "canary_changed": False},
             ), mock.patch(
                 "ai_bridge_kit.plugin_replay.run_child_command",
                 return_value=subprocess.CompletedProcess(
                     args=["codex"],
                     returncode=0,
-                    stdout="approval: on-request\nsandbox: workspace-write [workdir, /tmp, $TMPDIR] (network access enabled)\n",
+                    stdout="approval: on-request\nsandbox: danger-full-access (network access enabled)\n",
                 ),
             ):
                 summary, code = plugin_replay.run_plugin_replay(
@@ -143,6 +155,7 @@ class PluginReplayTests(unittest.TestCase):
             self.assertEqual(summary["status"], "failed")
             run_json = json.loads((Path(summary["run_dir"]) / "run.json").read_text(encoding="utf-8"))
             self.assertIn("approval: never", " ".join(run_json["contract_errors"]))
+            self.assertIn("danger-full-access", " ".join(run_json["contract_errors"]))
             self.assertIn("network access enabled", " ".join(run_json["contract_errors"]))
 
     def test_directory_inputs_are_rejected(self) -> None:
@@ -347,19 +360,188 @@ class PluginReplayTests(unittest.TestCase):
                     dry_run=True,
                 )
 
-    def test_read_isolation_failure_fails_closed_without_copying_inputs(self) -> None:
+    def test_readable_read_scope_is_diagnostic_and_replay_continues(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(Path(tmp) / "state")}):
+            target, task, input_file, _ = self.make_files(Path(tmp))
+            child_calls = []
+
+            def fake_child(command, **kwargs):
+                child_calls.append(command)
+                return subprocess.CompletedProcess(
+                    args=command,
+                    returncode=0,
+                    stdout="approval: never\nsandbox: workspace-write [workdir, /state/run/outputs]\nchild summary\n",
+                )
+
+            with mock.patch("ai_bridge_kit.plugin_replay._run_codex", side_effect=self.fake_plugin_check), mock.patch(
+                "ai_bridge_kit.plugin_replay.resolved_executable",
+                side_effect=lambda name: f"/trusted/bin/{name}",
+            ), mock.patch(
+                "ai_bridge_kit.plugin_replay.probe_child_filesystem_read_scope",
+                return_value={
+                    "probe_result": "READABLE",
+                    "strict_read_isolation": False,
+                    "exit_code": 0,
+                    "contract_errors": [],
+                },
+            ), mock.patch(
+                "ai_bridge_kit.plugin_replay.verify_child_write_isolation",
+                return_value={"status": "passed", "error_code": None, "contract_errors": [], "canary_changed": False},
+            ), mock.patch("ai_bridge_kit.plugin_replay.run_child_command", side_effect=fake_child):
+                summary, code = plugin_replay.run_plugin_replay(
+                    target=target,
+                    plugin="sites",
+                    task_file=task,
+                    input_files=[input_file],
+                )
+
+            self.assertEqual(code, 0)
+            self.assertEqual(summary["status"], "completed")
+            self.assertEqual(summary["filesystem_read_scope"]["probe_result"], "READABLE")
+            self.assertFalse(summary["filesystem_read_scope"]["strict_read_isolation"])
+            self.assertEqual(len(child_calls), 1)
+            self.assertTrue((Path(summary["run_dir"]) / "inputs").exists())
+
+    def test_blocked_read_scope_is_recorded_and_replay_continues(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(Path(tmp) / "state")}):
             target, task, input_file, _ = self.make_files(Path(tmp))
             with mock.patch("ai_bridge_kit.plugin_replay._run_codex", side_effect=self.fake_plugin_check), mock.patch(
                 "ai_bridge_kit.plugin_replay.resolved_executable",
                 side_effect=lambda name: f"/trusted/bin/{name}",
             ), mock.patch(
-                "ai_bridge_kit.plugin_replay.verify_child_read_isolation",
+                "ai_bridge_kit.plugin_replay.probe_child_filesystem_read_scope",
+                return_value={
+                    "probe_result": "BLOCKED",
+                    "strict_read_isolation": True,
+                    "exit_code": 0,
+                    "contract_errors": [],
+                },
+            ), mock.patch(
+                "ai_bridge_kit.plugin_replay.verify_child_write_isolation",
+                return_value={"status": "passed", "error_code": None, "contract_errors": [], "canary_changed": False},
+            ), mock.patch(
+                "ai_bridge_kit.plugin_replay.run_child_command",
+                return_value=subprocess.CompletedProcess(
+                    args=["codex"],
+                    returncode=0,
+                    stdout="approval: never\nsandbox: workspace-write [workdir, /state/run/outputs]\nchild summary\n",
+                ),
+            ):
+                summary, code = plugin_replay.run_plugin_replay(
+                    target=target,
+                    plugin="sites",
+                    task_file=task,
+                    input_files=[input_file],
+                )
+
+            self.assertEqual(code, 0)
+            self.assertEqual(summary["status"], "completed")
+            self.assertEqual(summary["filesystem_read_scope"]["probe_result"], "BLOCKED")
+            self.assertTrue(summary["filesystem_read_scope"]["strict_read_isolation"])
+
+    def test_read_scope_probe_records_readable_marker(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "run" / "workspace"
+            outputs = Path(tmp) / "run" / "outputs"
+            workspace.mkdir(parents=True)
+            outputs.mkdir(parents=True)
+
+            def fake_child(command, **kwargs):
+                result_path = Path(kwargs["prompt"].split("result_path: `")[1].split("`")[0])
+                result_path.write_text("READABLE\n", encoding="utf-8")
+                return subprocess.CompletedProcess(
+                    args=command,
+                    returncode=0,
+                    stdout="approval: never\nsandbox: workspace-write [workdir, /state/run/outputs]\n",
+                )
+
+            with mock.patch("ai_bridge_kit.plugin_replay.run_child_command", side_effect=fake_child):
+                result = plugin_replay.probe_child_filesystem_read_scope(
+                    child_argv=["codex", "exec"],
+                    workspace=workspace,
+                    outputs_dir=outputs,
+                    codex_home=Path(tmp) / "codex-home",
+                )
+
+            self.assertEqual(result["probe_result"], "READABLE")
+            self.assertFalse(result["strict_read_isolation"])
+            self.assertEqual(result["contract_errors"], [])
+
+    def test_read_scope_probe_records_blocked_marker(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "run" / "workspace"
+            outputs = Path(tmp) / "run" / "outputs"
+            workspace.mkdir(parents=True)
+            outputs.mkdir(parents=True)
+
+            def fake_child(command, **kwargs):
+                result_path = Path(kwargs["prompt"].split("result_path: `")[1].split("`")[0])
+                result_path.write_text("BLOCKED\n", encoding="utf-8")
+                return subprocess.CompletedProcess(
+                    args=command,
+                    returncode=0,
+                    stdout="approval: never\nsandbox: workspace-write [workdir, /state/run/outputs]\n",
+                )
+
+            with mock.patch("ai_bridge_kit.plugin_replay.run_child_command", side_effect=fake_child):
+                result = plugin_replay.probe_child_filesystem_read_scope(
+                    child_argv=["codex", "exec"],
+                    workspace=workspace,
+                    outputs_dir=outputs,
+                    codex_home=Path(tmp) / "codex-home",
+                )
+
+            self.assertEqual(result["probe_result"], "BLOCKED")
+            self.assertTrue(result["strict_read_isolation"])
+            self.assertEqual(result["contract_errors"], [])
+
+    def test_read_scope_contract_drift_fails_before_staging_inputs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(Path(tmp) / "state")}):
+            target, task, input_file, _ = self.make_files(Path(tmp))
+            with mock.patch("ai_bridge_kit.plugin_replay._run_codex", side_effect=self.fake_plugin_check), mock.patch(
+                "ai_bridge_kit.plugin_replay.resolved_executable",
+                side_effect=lambda name: f"/trusted/bin/{name}",
+            ), mock.patch(
+                "ai_bridge_kit.plugin_replay.probe_child_filesystem_read_scope",
+                return_value={
+                    "probe_result": "READABLE",
+                    "strict_read_isolation": False,
+                    "exit_code": 0,
+                    "contract_errors": ["child Codex did not report approval: never"],
+                },
+            ), mock.patch("ai_bridge_kit.plugin_replay.verify_child_write_isolation") as write_probe, mock.patch(
+                "ai_bridge_kit.plugin_replay.run_child_command"
+            ) as child_run:
+                summary, code = plugin_replay.run_plugin_replay(
+                    target=target,
+                    plugin="sites",
+                    task_file=task,
+                    input_files=[input_file],
+                )
+
+            self.assertEqual(code, 70)
+            self.assertEqual(summary["status"], "failed")
+            self.assertEqual(summary["error_code"], plugin_replay.CHILD_CONTRACT_ERROR)
+            write_probe.assert_not_called()
+            child_run.assert_not_called()
+            self.assertFalse((Path(summary["run_dir"]) / "inputs").exists())
+
+    def test_write_isolation_blocks_replay_when_canary_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(Path(tmp) / "state")}):
+            target, task, input_file, _ = self.make_files(Path(tmp))
+            with mock.patch("ai_bridge_kit.plugin_replay._run_codex", side_effect=self.fake_plugin_check), mock.patch(
+                "ai_bridge_kit.plugin_replay.resolved_executable",
+                side_effect=lambda name: f"/trusted/bin/{name}",
+            ), mock.patch(
+                "ai_bridge_kit.plugin_replay.probe_child_filesystem_read_scope",
+                return_value={"probe_result": "READABLE", "strict_read_isolation": False, "exit_code": 0, "contract_errors": []},
+            ), mock.patch(
+                "ai_bridge_kit.plugin_replay.verify_child_write_isolation",
                 return_value={
                     "status": "failed",
-                    "error_code": plugin_replay.READ_ISOLATION_ERROR,
+                    "error_code": plugin_replay.WRITE_ISOLATION_ERROR,
                     "exit_code": 0,
-                    "result_marker": "READABLE",
+                    "canary_changed": True,
                     "contract_errors": [],
                 },
             ), mock.patch("ai_bridge_kit.plugin_replay.run_child_command") as child_run:
@@ -370,11 +552,76 @@ class PluginReplayTests(unittest.TestCase):
                     input_files=[input_file],
                 )
 
-            self.assertEqual(code, 71)
+            self.assertEqual(code, 72)
             self.assertEqual(summary["status"], "failed")
-            self.assertEqual(summary["error_code"], plugin_replay.READ_ISOLATION_ERROR)
+            self.assertEqual(summary["error_code"], plugin_replay.WRITE_ISOLATION_ERROR)
             child_run.assert_not_called()
             self.assertFalse((Path(summary["run_dir"]) / "inputs").exists())
+
+    def test_write_isolation_canary_passes_when_child_cannot_modify_it(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(Path(tmp) / "state")}):
+            workspace = Path(tmp) / "state" / "plugin-replay" / "run" / "workspace"
+            outputs = Path(tmp) / "state" / "plugin-replay" / "run" / "outputs"
+            workspace.mkdir(parents=True)
+            outputs.mkdir(parents=True)
+            with mock.patch(
+                "ai_bridge_kit.plugin_replay.run_child_command",
+                return_value=subprocess.CompletedProcess(
+                    args=["codex"],
+                    returncode=0,
+                    stdout="approval: never\nsandbox: workspace-write [workdir, /state/run/outputs]\n",
+                ),
+            ), mock.patch("ai_bridge_kit.plugin_replay.write_probe_root", return_value=Path(tmp) / "write-probe" / "run"):
+                result = plugin_replay.verify_child_write_isolation(
+                    child_argv=["codex", "exec"],
+                    workspace=workspace,
+                    outputs_dir=outputs,
+                    codex_home=Path(tmp) / "codex-home",
+                    run_id="run",
+                )
+
+            self.assertEqual(result["status"], "passed")
+            self.assertFalse(result["canary_changed"])
+
+    def test_write_isolation_canary_detects_successful_outside_write(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(Path(tmp) / "state")}):
+            workspace = Path(tmp) / "state" / "plugin-replay" / "run" / "workspace"
+            outputs = Path(tmp) / "state" / "plugin-replay" / "run" / "outputs"
+            workspace.mkdir(parents=True)
+            outputs.mkdir(parents=True)
+
+            def fake_child(command, **kwargs):
+                canary = Path(kwargs["prompt"].split("canary_path: `")[1].split("`")[0])
+                canary.write_text("CHANGED\n", encoding="utf-8")
+                return subprocess.CompletedProcess(
+                    args=command,
+                    returncode=0,
+                    stdout="approval: never\nsandbox: workspace-write [workdir, /state/run/outputs]\n",
+                )
+
+            with mock.patch("ai_bridge_kit.plugin_replay.run_child_command", side_effect=fake_child), mock.patch(
+                "ai_bridge_kit.plugin_replay.write_probe_root",
+                return_value=Path(tmp) / "write-probe" / "run",
+            ):
+                result = plugin_replay.verify_child_write_isolation(
+                    child_argv=["codex", "exec"],
+                    workspace=workspace,
+                    outputs_dir=outputs,
+                    codex_home=Path(tmp) / "codex-home",
+                    run_id="run",
+                )
+
+            self.assertEqual(result["status"], "failed")
+            self.assertEqual(result["error_code"], plugin_replay.WRITE_ISOLATION_ERROR)
+            self.assertTrue(result["canary_changed"])
+
+    def test_child_contract_rejects_tmp_writable_roots(self) -> None:
+        errors = plugin_replay.child_contract_errors(
+            "approval: never\nsandbox: workspace-write [workdir, /tmp, $TMPDIR, /state/run/outputs]\n"
+        )
+
+        self.assertIn("child Codex reported /tmp as a writable root", errors)
+        self.assertIn("child Codex reported $TMPDIR as a writable root", errors)
 
     def test_uninstalled_plugin_is_rejected_when_cli_can_inspect_plugins(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
