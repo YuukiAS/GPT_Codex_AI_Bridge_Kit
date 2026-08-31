@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import contextlib
 from datetime import datetime, timedelta, timezone
+import io
 import subprocess
 import tempfile
 import unittest
@@ -948,7 +950,7 @@ class ReviewedHandoffTests(unittest.TestCase):
         self.assertIn("`## Out of scope`", prompt)
         self.assertIn("若 PLAN 不合法，保持 `CURRENT` 不进入 `PLAN_FROZEN`", prompt)
 
-    def test_reviewed_handoff_state_graph_stays_unchanged(self) -> None:
+    def test_reviewed_handoff_state_graph_matches_schema(self) -> None:
         expected = {
             "PLAN_REQUESTED": {"PLAN_FROZEN", "BLOCKED"},
             "PLAN_FROZEN": {"EXECUTING", "BLOCKED"},
@@ -958,13 +960,156 @@ class ReviewedHandoffTests(unittest.TestCase):
             "READY_FOR_GPT_REVIEW": {"REVISE", "PASS", "BLOCKED"},
             "REVISE": {"EXECUTING", "NEEDS_GPT_PLANNER", "AWAIT_HUMAN_DECISION", "BLOCKED"},
             "PASS": {"AWAIT_HUMAN_DECISION"},
-            "AWAIT_HUMAN_DECISION": set(),
+            "AWAIT_HUMAN_DECISION": {"REVISE", "NEEDS_GPT_PLANNER"},
             "BLOCKED": set(),
         }
         schema = rh.load_json(Path("templates/reviewed_handoff/schema.json"))
 
         self.assertEqual(rh.ALLOWED_TRANSITIONS, expected)
         self.assertEqual({key: set(value) for key, value in schema["allowed_transitions"].items()}, expected)
+
+    def test_human_reject_after_pass_can_route_to_revise_without_resetting_review_budget(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            self.write_plan(target)
+            self.write_result(target, commit="impl-pass", ci_status="PASS")
+            self.remote_write_review_transaction(target, decision="PASS", body="Reviewer pass history must remain intact.")
+
+            current = rh.record_human_decision(
+                target,
+                "001_feature",
+                decision="REJECT",
+                route="REVISE",
+                body="The current artifact violates the frozen requirement.",
+            )
+
+            self.assertEqual(current["state"], "REVISE")
+            self.assertEqual(current["next_action"], "RUN_CODEX_REPAIR")
+            self.assertEqual(current["review_round"], 1)
+            self.assertEqual(current["max_review_rounds"], 2)
+            self.assertEqual(current["last_review_decision"], "PASS")
+            self.assertEqual(current["human_rejection"]["route"], "REVISE")
+            latest, _path, errors = rh.latest_review_metadata(target, "001_feature")
+            self.assertEqual(errors, [])
+            self.assertEqual((latest or {}).get("decision"), "PASS")
+            self.assertEqual(rh.validate_task(target, "001_feature"), [])
+
+            executing = rh.apply_transition(target, "001_feature", expected_state="REVISE", next_state="EXECUTING")
+            self.assertEqual(executing["state"], "EXECUTING")
+            self.assertEqual(executing["review_round"], 1)
+            self.assertEqual(rh.validate_task(target, "001_feature"), [])
+
+            ready = rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            self.assertEqual(ready["state"], "READY_FOR_GPT_REVIEW")
+            second_review = rh.record_review(target, "001_feature", decision="PASS", body="Human rejection repair satisfied.")
+            self.assertEqual(second_review["review_round"], 2)
+            self.assertTrue((rh.result_root(target, "001_feature") / "REVIEW_2.md").exists())
+
+    def test_human_reject_after_pass_can_route_to_planner_without_resetting_budgets(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            self.write_plan(target)
+            self.write_result(target, commit="impl-pass", ci_status="PASS")
+            self.remote_write_review_transaction(target, decision="PASS", body="Reviewer pass history must remain intact.")
+
+            current = rh.record_human_decision(
+                target,
+                "001_feature",
+                decision="REJECT",
+                route="NEEDS_GPT_PLANNER",
+                body="The frozen Plan omitted the actual user-facing acceptance condition.",
+            )
+
+            self.assertEqual(current["state"], "NEEDS_GPT_PLANNER")
+            self.assertEqual(current["next_action"], "RUN_GPT_PLANNER")
+            self.assertEqual(current["review_round"], 1)
+            self.assertEqual(current["plan_revision"], 0)
+            self.assertEqual(current["last_review_decision"], "PASS")
+            self.assertEqual(current["human_rejection"]["route"], "NEEDS_GPT_PLANNER")
+            self.assertEqual(rh.validate_task(target, "001_feature"), [])
+
+    def test_human_reject_budget_exhaustion_cannot_reopen(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            self.write_plan(target)
+            self.write_result(target, commit="impl-pass", ci_status="PASS")
+            current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+            current = rh.load_json(current_path)
+            current["max_review_rounds"] = 1
+            rh.write_json(current_path, current)
+            self.remote_write_review_transaction(target, decision="PASS", body="Pass at final review budget.")
+
+            with self.assertRaisesRegex(ValueError, "review budget exhausted"):
+                rh.record_human_decision(target, "001_feature", decision="REJECT", route="REVISE", body="Reject.")
+
+        tmp, target = self.make_project()
+        with tmp:
+            self.write_plan(target)
+            self.write_result(target, commit="impl-pass", ci_status="PASS")
+            current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+            current = rh.load_json(current_path)
+            current["plan_revision"] = 1
+            rh.write_json(current_path, current)
+            self.remote_write_review_transaction(target, decision="PASS", body="Pass after planner budget was used.")
+
+            with self.assertRaisesRegex(ValueError, "plan revision budget exhausted"):
+                rh.record_human_decision(
+                    target,
+                    "001_feature",
+                    decision="REJECT",
+                    route="NEEDS_GPT_PLANNER",
+                    body="Reject.",
+                )
+
+    def test_human_reject_requires_pass_gate_and_cannot_bypass_transaction(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            self.write_plan(target)
+            self.write_result(target, commit="impl-pass", ci_status="PASS")
+            self.remote_write_review_transaction(target, decision="PASS", body="Reviewer pass history.")
+
+            with self.assertRaisesRegex(ValueError, "reviewed-handoff human record"):
+                rh.apply_transition(target, "001_feature", expected_state="AWAIT_HUMAN_DECISION", next_state="REVISE")
+
+            current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+            current = rh.load_json(current_path)
+            current["human_gate_reason"] = "REVIEW_LIMIT"
+            rh.write_json(current_path, current)
+            with self.assertRaisesRegex(ValueError, "only valid after a PASS human gate"):
+                rh.record_human_decision(target, "001_feature", decision="REJECT", route="REVISE", body="Reject.")
+
+    def test_bridge_cli_routes_human_decision_record(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            self.write_plan(target)
+            self.write_result(target, commit="impl-pass", ci_status="PASS")
+            self.remote_write_review_transaction(target, decision="PASS", body="Reviewer pass history.")
+
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(
+                    bridge_cli.main(
+                        [
+                            "reviewed-handoff",
+                            "human",
+                            "record",
+                            "--target",
+                            str(target),
+                            "--task-key",
+                            "001_feature",
+                            "--decision",
+                            "REJECT",
+                            "--route",
+                            "REVISE",
+                            "--body",
+                            "User found a frozen-plan violation.",
+                        ]
+                    ),
+                    0,
+                )
+
+            current = rh.load_json(rh.task_root(target, "001_feature") / "CURRENT.json")
+            self.assertEqual(current["state"], "REVISE")
+            self.assertEqual(current["review_round"], 1)
 
     def test_remote_ci_pass_transaction_matches_valid_ready_state(self) -> None:
         tmp, target = self.make_project()

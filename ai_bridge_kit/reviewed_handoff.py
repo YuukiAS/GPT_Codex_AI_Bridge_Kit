@@ -6,6 +6,7 @@ import re
 import subprocess
 import sys
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -41,11 +42,13 @@ ALLOWED_TRANSITIONS: dict[str, set[str]] = {
     "READY_FOR_GPT_REVIEW": {"REVISE", "PASS", "BLOCKED"},
     "REVISE": {"EXECUTING", "NEEDS_GPT_PLANNER", "AWAIT_HUMAN_DECISION", "BLOCKED"},
     "PASS": {"AWAIT_HUMAN_DECISION"},
-    "AWAIT_HUMAN_DECISION": set(),
+    "AWAIT_HUMAN_DECISION": {"REVISE", "NEEDS_GPT_PLANNER"},
     "BLOCKED": set(),
 }
 
 REVIEW_DECISIONS = {"PASS", "REVISE", "BLOCKED"}
+HUMAN_DECISIONS = {"ACCEPT", "REJECT"}
+HUMAN_REJECT_ROUTES = {"REVISE", "NEEDS_GPT_PLANNER"}
 TERMINAL_STATES = {"AWAIT_HUMAN_DECISION", "BLOCKED"}
 EXTERNAL_WAIT_STATE_OWNERS = {
     "NEEDS_GPT_PLANNER": "Planner",
@@ -133,6 +136,10 @@ def load_json(path: Path) -> dict[str, Any]:
 
 def write_json(path: Path, payload: dict[str, Any]) -> None:
     write_text(path, json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+
+
+def utc_now() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
 def git_output(target: Path, args: list[str]) -> str:
@@ -527,6 +534,29 @@ def text_review_pending_allowed(current: dict[str, Any]) -> bool:
     return False
 
 
+def active_human_rejection(current: dict[str, Any], *, route: str | None = None) -> bool:
+    rejection = current.get("human_rejection")
+    if not isinstance(rejection, dict):
+        return False
+    if rejection.get("decision") != "REJECT":
+        return False
+    if rejection.get("route") not in HUMAN_REJECT_ROUTES:
+        return False
+    if str(current.get("state") or "") != rejection.get("route"):
+        return False
+    return route is None or rejection.get("route") == route
+
+
+def valid_human_rejection_record(current: dict[str, Any]) -> bool:
+    rejection = current.get("human_rejection")
+    return (
+        isinstance(rejection, dict)
+        and rejection.get("decision") == "REJECT"
+        and rejection.get("route") in HUMAN_REJECT_ROUTES
+        and rejection.get("previous_human_gate_reason") == "PASS"
+    )
+
+
 def validate_final_report_strict(path: Path) -> list[str]:
     if not path.exists():
         return ["terminal state requires FINAL_REPORT.md"]
@@ -827,8 +857,11 @@ def validate_task(target: Path, task_key: str) -> list[str]:
         if review_bound_terminal and latest_commit != str(current.get("implementation_commit")):
             errors.append("latest review must be bound to CURRENT implementation_commit")
         decision = latest_data.get("decision")
-        if state == "REVISE" and decision != "REVISE":
+        human_reject_revise = state == "REVISE" and active_human_rejection(current, route="REVISE")
+        if state == "REVISE" and decision != "REVISE" and not human_reject_revise:
             errors.append("REVISE state requires latest review decision REVISE")
+        if human_reject_revise and decision != "PASS":
+            errors.append("human-rejection REVISE requires latest review decision PASS")
         if state == "PASS" and decision != "PASS":
             errors.append("PASS state requires latest review decision PASS")
     elif state in {"REVISE", "PASS"}:
@@ -845,6 +878,17 @@ def validate_task(target: Path, task_key: str) -> list[str]:
                 errors.append("review-limit human gate requires review_round=max_review_rounds")
         if current.get("implementation_commit") and not latest_data and gate_reason != "PLANNER_DECISION":
             errors.append("implementation-backed human gate requires a GPT review artifact or explicit PLANNER_DECISION escalation")
+    if active_human_rejection(current):
+        rejection = current["human_rejection"]
+        route = rejection.get("route")
+        if current.get("review_round", 0) < 1 or current.get("last_review_decision") != "PASS":
+            errors.append("human_rejection requires an existing PASS review history")
+        if route == "REVISE" and current.get("review_round", 0) >= current.get("max_review_rounds", 2):
+            errors.append("human_rejection REVISE requires remaining review budget")
+        if route == "NEEDS_GPT_PLANNER" and current.get("plan_revision", 0) >= current.get("max_plan_revisions", 1):
+            errors.append("human_rejection NEEDS_GPT_PLANNER requires remaining plan revision budget")
+    elif current.get("human_rejection") is not None and not valid_human_rejection_record(current):
+        errors.append("human_rejection is malformed")
     if state == "BLOCKED" and current.get("implementation_commit") and not latest_data and not current.get("runner_failure"):
         errors.append("implementation-backed BLOCKED state requires a GPT review artifact or runner_failure evidence")
     if state in TERMINAL_STATES:
@@ -1006,6 +1050,8 @@ def apply_transition(
         current["plan_revision"] = int(current.get("plan_revision", 0)) + 1
     if expected_state == "READY_FOR_GPT_REVIEW":
         raise ValueError("use reviewed-handoff review record for every READY_FOR_GPT_REVIEW exit so GPT review cannot be bypassed")
+    if expected_state == "AWAIT_HUMAN_DECISION":
+        raise ValueError("use reviewed-handoff human record for every AWAIT_HUMAN_DECISION re-entry")
     if expected_state == "WAITING_FOR_CI" and next_state in {"REVISE", "BLOCKED"}:
         raise ValueError("use reviewed-handoff review record for CI failure decisions")
     if expected_state == "WAITING_FOR_CI" and next_state == "READY_FOR_GPT_REVIEW":
@@ -1154,6 +1200,73 @@ def record_review(
     return current
 
 
+def record_human_decision(
+    target: Path,
+    task_key: str,
+    *,
+    decision: str,
+    route: str | None = None,
+    body: str = "",
+) -> dict[str, Any]:
+    decision = decision.upper()
+    if decision not in HUMAN_DECISIONS:
+        raise ValueError(f"unsupported human decision: {decision}")
+    if route is not None:
+        route = route.upper()
+    root = task_root(target, task_key)
+    current_path = root / "CURRENT.json"
+    original = load_json(current_path)
+    current = dict(original)
+    if current.get("state") != "AWAIT_HUMAN_DECISION":
+        raise ValueError("human decision can only be recorded from AWAIT_HUMAN_DECISION")
+    errors = validate_task(target, task_key)
+    if errors:
+        raise ValueError("; ".join(errors))
+    decision_record = {
+        "decision": decision,
+        "recorded_at": utc_now(),
+        "body": body.strip(),
+        "previous_human_gate_reason": current.get("human_gate_reason"),
+        "review_round": current.get("review_round"),
+        "plan_revision": current.get("plan_revision"),
+    }
+    if decision == "ACCEPT":
+        current["human_decision"] = decision_record
+        current["next_action"] = "NO_AUTOMATIC_TRANSITION"
+        write_json(current_path, current)
+        post_errors = validate_task(target, task_key)
+        if post_errors:
+            write_json(current_path, original)
+            raise ValueError("human decision would create invalid Reviewed Handoff state: " + "; ".join(post_errors))
+        return current
+
+    if current.get("human_gate_reason") != "PASS":
+        raise ValueError("human REJECT re-entry is only valid after a PASS human gate")
+    if current.get("last_review_decision") != "PASS" or int(current.get("review_round", 0)) < 1:
+        raise ValueError("human REJECT requires an existing Reviewer PASS history")
+    if route not in HUMAN_REJECT_ROUTES:
+        raise ValueError("human REJECT requires --route REVISE or --route NEEDS_GPT_PLANNER")
+    review_round = int(current.get("review_round", 0))
+    max_reviews = int(current.get("max_review_rounds", 2))
+    plan_revision = int(current.get("plan_revision", 0))
+    max_plan_revisions = int(current.get("max_plan_revisions", 1))
+    if route == "REVISE" and review_round >= max_reviews:
+        raise ValueError("review budget exhausted; cannot reopen automatic repair")
+    if route == "NEEDS_GPT_PLANNER" and plan_revision >= max_plan_revisions:
+        raise ValueError("plan revision budget exhausted; cannot reopen planner revision")
+    decision_record["route"] = route
+    current["human_rejection"] = decision_record
+    current["human_decision"] = decision_record
+    current["state"] = route
+    current["next_action"] = "RUN_CODEX_REPAIR" if route == "REVISE" else "RUN_GPT_PLANNER"
+    write_json(current_path, current)
+    post_errors = validate_task(target, task_key)
+    if post_errors:
+        write_json(current_path, original)
+        raise ValueError("human decision would create invalid Reviewed Handoff state: " + "; ".join(post_errors))
+    return current
+
+
 def prompt_text(target: Path, name: str) -> str:
     mapping = {
         "planner": "PLANNER.md",
@@ -1204,6 +1317,15 @@ def build_parser() -> argparse.ArgumentParser:
     review_record.add_argument("--decision", choices=sorted(REVIEW_DECISIONS), required=True)
     review_record.add_argument("--body", required=True)
     review_record.add_argument("--implementation-commit")
+
+    human = sub.add_parser("human")
+    human_sub = human.add_subparsers(dest="human_command")
+    human_record = human_sub.add_parser("record")
+    human_record.add_argument("--target", type=Path, default=Path.cwd())
+    human_record.add_argument("--task-key", required=True)
+    human_record.add_argument("--decision", choices=sorted(HUMAN_DECISIONS), required=True)
+    human_record.add_argument("--route", choices=sorted(HUMAN_REJECT_ROUTES))
+    human_record.add_argument("--body", default="")
 
     prompt = sub.add_parser("prompt")
     prompt.add_argument("--target", type=Path, default=Path.cwd())
@@ -1263,6 +1385,16 @@ def main(argv: list[str] | None = None) -> int:
             decision=args.decision,
             body=args.body,
             implementation_commit=args.implementation_commit,
+        )
+        print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
+        return 0
+    if args.command == "human" and args.human_command == "record":
+        result = record_human_decision(
+            args.target,
+            args.task_key,
+            decision=args.decision,
+            route=args.route,
+            body=args.body,
         )
         print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
         return 0

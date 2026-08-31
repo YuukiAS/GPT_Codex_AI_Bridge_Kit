@@ -259,9 +259,26 @@ class VisualReviewTests(unittest.TestCase):
             self.assertIn(f"git+{visual_review.CANONICAL_BRIDGE_KIT_REPO}@{pinned_ref}", workflow)
             self.assertNotIn("pip install -e '.[visual-review]'", workflow)
             self.assertIn("'results/**/visual_review/visual_inputs.json'", workflow)
+            self.assertIn("      - 'reviewed/**'", workflow)
+            self.assertIn('git push origin "HEAD:${GITHUB_REF_NAME}"', workflow)
             self.assertNotIn("paths-ignore", workflow)
             self.assertIn("No visual review manifest changed; not required.", workflow)
             self.assertNotIn("pip install -e .", workflow)
+
+    def test_visual_review_workflow_triggers_on_main_and_reviewed_branches_only_for_input_manifest(self) -> None:
+        workflow = (
+            Path(__file__).resolve().parents[1]
+            / "templates"
+            / "visual_review"
+            / "github-actions"
+            / "visual-review.yml"
+        ).read_text(encoding="utf-8")
+        self.assertIn("      - main", workflow)
+        self.assertIn("      - 'reviewed/**'", workflow)
+        self.assertIn("      - 'results/**/visual_review/visual_inputs.json'", workflow)
+        self.assertNotIn("results/**/visual_review/**", workflow)
+        self.assertIn('git push origin "HEAD:${GITHUB_REF_NAME}"', workflow)
+        self.assertIn('if [ "${GITHUB_REF_TYPE}" != "branch" ]; then', workflow)
 
     def make_git_consumer(self) -> tuple[tempfile.TemporaryDirectory[str], Path, str]:
         tmp = tempfile.TemporaryDirectory()

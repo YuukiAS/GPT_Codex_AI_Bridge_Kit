@@ -150,6 +150,39 @@ Review 2 REVISE -> final report -> AWAIT_HUMAN_DECISION
 
 There is no automatic third review/repair cycle. This is a product invariant, not a soft prompt preference.
 
+## Human rejection re-entry
+
+`AWAIT_HUMAN_DECISION` is terminal by default, but a user may explicitly reject
+an artifact that reached the `PASS` human gate. This is handled by a mechanical
+human-decision transaction, not by editing `CURRENT.json` by hand and not by
+pretending the user feedback is a new Reviewer decision.
+
+The supported entrypoint is:
+
+```bash
+ai-bridge reviewed-handoff human record \
+  --target /path/to/project \
+  --task-key <task_key> \
+  --decision REJECT \
+  --route REVISE|NEEDS_GPT_PLANNER \
+  --body "User-visible reason for rejection."
+```
+
+The transaction is legal only when `CURRENT.state=AWAIT_HUMAN_DECISION`,
+`human_gate_reason=PASS`, an existing fresh Reviewer `PASS` history remains in
+place, and the chosen route still has budget. If the user feedback asks only
+for repair under the existing frozen Plan, the route is `REVISE` and requires
+`review_round < max_review_rounds`. If the feedback proves the frozen Plan
+itself needs the one allowed minimal revision, the route is
+`NEEDS_GPT_PLANNER` and requires `plan_revision < max_plan_revisions`.
+
+The transaction must preserve `review_round`, `last_review_decision=PASS`, the
+original `REVIEW_<n>.md`, and the existing final report. It records
+`human_rejection.decision=REJECT`, the chosen route, the previous human gate
+reason and the user body. It must not create another review artifact, reset
+review or plan budgets, delete the original PASS history, or reopen terminal
+tasks after the relevant budget has been exhausted.
+
 ## Planner re-entry
 
 Execution can route to `NEEDS_GPT_PLANNER` when Codex encounters a material ambiguity that cannot be safely derived from the frozen Plan. The Scheduled GPT may make one minimal Plan revision (`max_plan_revisions=1`). A second material re-plan requirement writes a final report and escalates to the user.
@@ -355,6 +388,13 @@ It must not add `request_nonce`, Requirement Ledger, Stable Review Snapshot, `re
 
 The Scheduled Reviewer must check `VISUAL_REVIEW.json` before writing `REVIEW_<round>.md`. Missing visual evidence means wait for external visual evidence and do not consume `review_round`. Stale evidence whose `implementation_commit` does not match current `CURRENT.implementation_commit` is invalid and cannot support PASS. A model `REVISE` or `BLOCKED` decision is evidence for the existing Reviewer to consume; it does not create a Visual Reviewer role or a new top-level workflow state.
 
+The canonical Visual Review GitHub Actions trigger listens only to `main` and
+`reviewed/**` branch pushes whose changed path matches
+`results/**/visual_review/visual_inputs.json`, plus explicit
+`workflow_dispatch`. Evidence writeback must push to the same triggering branch
+with `HEAD:${GITHUB_REF_NAME}`; it must not silently write evidence to `main`
+when the task is running on `reviewed/<task_key>`.
+
 ## Optional Text Review evidence
 
 Reviewed Handoff may also opt into the shared Bridge Kit Text Review evidence
@@ -415,6 +455,13 @@ current text input manifest is invalid and cannot support PASS. A model
 `REVISE` or `BLOCKED` decision is evidence for the existing Reviewer to
 consume; it does not create a Text Reviewer role or a new top-level workflow
 state.
+
+The canonical Text Review GitHub Actions trigger listens only to `main` and
+`reviewed/**` branch pushes whose changed path matches
+`results/**/text_review/text_inputs.json`, plus explicit `workflow_dispatch`.
+Evidence writeback must push to the same triggering branch with
+`HEAD:${GITHUB_REF_NAME}`; ordinary `reviewed/**` pushes that do not change the
+text input manifest must not run the expensive review job.
 
 Planner preflight must reject logically impossible private-artifact plans. If
 acceptance depends on qualitative review of a user-facing artifact and the

@@ -218,8 +218,11 @@ class TextReviewTests(unittest.TestCase):
             )
             self.assertTrue(any("plaintext_artifact_sha256 mismatch" in error for error in errors), errors)
 
-    @unittest.skipUnless(shutil.which("age") and shutil.which("age-keygen"), "age CLI is not installed")
     def test_age_encrypt_decrypt_roundtrip_and_wrong_key_fail_closed(self) -> None:
+        if not (shutil.which("age") and shutil.which("age-keygen")):
+            if os.environ.get("CI"):
+                self.fail("age and age-keygen must be installed in CI for private text transport tests")
+            self.skipTest("age CLI is not installed")
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             plaintext = base / "input.md"
@@ -244,6 +247,34 @@ class TextReviewTests(unittest.TestCase):
             corrupt.write_bytes(encrypted.read_bytes()[:16] + b"corrupt")
             with self.assertRaisesRegex(text_review.TextReviewError, "failed closed"):
                 text_review.decrypt_with_age(corrupt, base / "corrupt.md", identity_file=identity_a)
+
+    def test_ciphertext_sha_mismatch_fails_closed(self) -> None:
+        tmp, target, manifest, _plaintext, _output = self.make_project()
+        with tmp:
+            payload = target / "results/001_text/text_review/payload.age"
+            payload.write_bytes(b"different ciphertext bytes")
+            with self.assertRaisesRegex(text_review.TextReviewError, "encrypted text review payload sha256 mismatch"):
+                text_review.normalize_manifest(target, text_review.load_json(manifest))
+
+    def test_main_ci_installs_age_so_transport_tests_do_not_skip(self) -> None:
+        workflow = (Path(__file__).resolve().parents[1] / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
+        self.assertIn("Install age transport dependency", workflow)
+        self.assertIn("sudo apt-get install -y age", workflow)
+
+    def test_text_review_workflow_triggers_on_main_and_reviewed_branches_only_for_input_manifest(self) -> None:
+        workflow = (
+            Path(__file__).resolve().parents[1]
+            / "templates"
+            / "text_review"
+            / "github-actions"
+            / "text-review.yml"
+        ).read_text(encoding="utf-8")
+        self.assertIn("      - main", workflow)
+        self.assertIn("      - 'reviewed/**'", workflow)
+        self.assertIn("      - 'results/**/text_review/text_inputs.json'", workflow)
+        self.assertNotIn("results/**/text_review/**", workflow)
+        self.assertIn('git push origin "HEAD:${GITHUB_REF_NAME}"', workflow)
+        self.assertIn('if [ "${GITHUB_REF_TYPE}" != "branch" ]; then', workflow)
 
     def test_cli_routes_text_review_preflight_and_install(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -271,3 +302,5 @@ class TextReviewTests(unittest.TestCase):
             workflow = (target / ".github" / "workflows" / "ai-bridge-text-review.yml").read_text(encoding="utf-8")
             self.assertIn(text_review.AGE_SECRET_NAME, workflow)
             self.assertIn(text_review.LEGACY_OPENAI_KEY_ENV, workflow)
+            self.assertIn("      - 'reviewed/**'", workflow)
+            self.assertIn('git push origin "HEAD:${GITHUB_REF_NAME}"', workflow)

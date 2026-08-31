@@ -25,6 +25,8 @@ Scheduled GPT 的真实执行面是 GitHub connector，不是目标机器 shell�
 
 任何把 `CURRENT.state` 写为 `PLAN_FROZEN` 的 transaction 都必须先重新读取刚写入的 `PLAN.md`，按当前 `automation/reviewed_handoff/templates/PLAN.md` 自检 frontmatter 和全部 required sections，尤其确认 `## Out of scope` 存在。若 PLAN 不合法，不得写 `CURRENT=PLAN_FROZEN`；保持 task 在 GPT-owned repair/planner state，或在需要用户改变产品/科学语义时进入 human gate。不要把可修的 PLAN 结构问题直接写成 BLOCKED。
 
+如果当前 task 位于 `AWAIT_HUMAN_DECISION`、`human_gate_reason=PASS`，且用户明确 `REJECT` 当前 artifact，使用机械 human decision 事务而不是写新的 Reviewer decision：用户反馈只要求按现有冻结 Plan 修复时，路由到 `REVISE`；用户反馈证明冻结 Plan 本身需要一次最小修订时，路由到 `NEEDS_GPT_PLANNER`。保留原 `REVIEW_<n>.md`、`last_review_decision=PASS`、`review_round` 和 `plan_revision` 历史；不得重置预算、不得自动生成第三轮 review、不得把 human rejection 冒充为 Reviewer `REVISE`。如果对应 review 或 plan revision budget 已用尽，保持 human gate / review-limit contract，不得无限重开。
+
 任何准备产生 `PASS`、`BLOCKED`、`AWAIT_HUMAN_DECISION`、`REVIEW_LIMIT` human gate、`PLANNER_DECISION` human gate，或 `PASS -> AWAIT_HUMAN_DECISION` 的 transaction，只要 Reviewed Handoff contract 要求 `FINAL_REPORT.md`，都必须先做 FINAL_REPORT preflight：
 
 1. 重新读取 `automation/reviewed_handoff/templates/FINAL_REPORT.md`，以运行时当前 template 为 source of truth，不允许凭记忆猜 headings；

@@ -14,6 +14,7 @@ on:
   push:
     branches:
       - main
+      - 'reviewed/**'
     paths:
       - 'results/**/text_review/text_inputs.json'
 
@@ -134,4 +135,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "Add AI Bridge text review evidence"
-          git push
+          if [ "${GITHUB_REF_TYPE}" != "branch" ]; then
+            echo "Text review writeback requires a branch ref."
+            exit 1
+          fi
+          git push origin "HEAD:${GITHUB_REF_NAME}"

@@ -86,3 +86,5 @@ results/<task_key>/FINAL_REPORT.md
 ```
 
 Review 最多两轮。第二轮仍为 `REVISE` 时必须进入 `AWAIT_HUMAN_DECISION`，不得继续自动返修。Planner 在执行中最多允许一次 scheduled re-plan；再次出现需要改变冻结 Plan 的实质歧义时交给用户。所有终态都必须有 `FINAL_REPORT.md`，因此用户回来后始终有一份面向人的总结可读，而不是只能翻 CI/Reviewer 日志。
+
+如果 Reviewer 已经 `PASS` 并进入 `AWAIT_HUMAN_DECISION`，但用户实际检查 artifact 后明确拒绝，不能手改 `CURRENT.json`，也不能把用户拒绝冒充成 Reviewer decision。使用 `ai-bridge reviewed-handoff human record --decision REJECT --route REVISE|NEEDS_GPT_PLANNER` 记录机械事务：只需按冻结 Plan 修复时回到 `REVISE`，证明 Plan 本身需要一次最小修订时回到 `NEEDS_GPT_PLANNER`。事务保留原 `REVIEW_<n>.md`、`last_review_decision=PASS` 和当前 `review_round`，相关预算用尽后不得无限重开。

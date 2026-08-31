@@ -193,6 +193,8 @@ ai-bridge reviewed-handoff task init \
 
 这套流程默认最多两轮 GPT 复核。第一轮如果返回 `REVISE`，允许 Codex 自动返修一次；第二轮仍未通过，就进入人工决策，不继续无限循环。
 
+如果复核已经 `PASS` 并进入 `AWAIT_HUMAN_DECISION`，但用户阅读全文或检查 artifact 后明确拒绝当前结果，使用 `ai-bridge reviewed-handoff human record --decision REJECT --route REVISE|NEEDS_GPT_PLANNER` 记录这次 human decision。只需按冻结 Plan 修复时回到 `REVISE`；如果拒绝理由证明 Plan 自身需要一次最小修订，则回到 `NEEDS_GPT_PLANNER`。这个入口不会重置 `review_round`，不会删除原 Reviewer PASS，也不会在预算用尽后开启第三轮。
+
 GPT 侧可以通过 ChatGPT「安排任务」定期查看 GitHub 中的任务状态；Codex 侧可以运行轻量监视器，在 `PLAN_FROZEN` 或 `REVISE` 时启动执行：
 
 ```bash
@@ -494,7 +496,7 @@ Bridge Kit 不会把 API key 写进仓库，也不会打印 secret 值。
 
 在 Reviewed Handoff 中，`ci_required=true` 的视觉任务先发布实现、渲染图片和 `visual_inputs.json`，然后停在 `WAITING_FOR_CI` / `ci_status=PENDING`。CI 通过后才进入 `READY_FOR_GPT_REVIEW`，此时缺少 `VISUAL_REVIEW.json` 是正常的 `waiting_visual_review_evidence`；只有 fresh visual evidence 返回后，Scheduled GPT Reviewer 才开始正式 review。`PASS` 和 `human_gate_reason=PASS` 仍然必须绑定当前 implementation 的 visual PASS evidence。
 
-Visual Review workflow 只在 `results/**/visual_review/visual_inputs.json` 改动或手动 `workflow_dispatch` 时运行。普通非视觉任务不会触发一个容易被误读为“视觉已审查并 PASS”的 AI Bridge Visual Review job。
+Visual Review workflow 只在 `main` / `reviewed/**` 上的 `results/**/visual_review/visual_inputs.json` 改动或手动 `workflow_dispatch` 时运行。普通非视觉任务不会触发一个容易被误读为“视觉已审查并 PASS”的 AI Bridge Visual Review job；evidence writeback 会写回触发它的同一个 branch。
 
 默认隐私策略是保守的：安装视觉复核能力不等于允许自动上传患者影像、私有临床数据、未公开科研图片、凭据或其他敏感内容。没有明确外部上传授权时应拒绝。
 
@@ -574,6 +576,8 @@ ai-bridge text-review encrypt \
 `TEXT_REVIEW.json` 会记录 `task_key`、`workflow_type`、`review_kind`、模型、prompt version、manifest identity、plaintext SHA-256、reviewed input identity、decision、item reviews、blocking findings 和 notes；它不会包含完整 private input。
 
 在 Reviewed Handoff 中，若 `CURRENT.text_review_required=true`，缺少 `TEXT_REVIEW.json`、plaintext SHA mismatch、manifest identity mismatch 或旧 artifact evidence 都不能支持 PASS，也不会消耗 review round；系统会等待 Text Review evidence 或要求恢复。
+
+Text Review workflow 只在 `main` / `reviewed/**` 上的 `results/**/text_review/text_inputs.json` 改动或手动 `workflow_dispatch` 时运行，普通 `reviewed/**` push 不会触发昂贵 review job。`TEXT_REVIEW.json` writeback 会推回触发它的同一个 branch。
 
 ---
 
