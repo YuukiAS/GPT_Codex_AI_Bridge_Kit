@@ -34,6 +34,16 @@ prompts/tasks/<task_key>.md
 8. 写回 `results/<task_key>/result.md`。
 9. 在最终回复中简短说明 result 文件已写入。
 
+如果任务单明确授权并要求用 fresh production Codex runtime 测试当前
+Codex identity 中已经安装的插件，优先调用全局受控入口：
+
+```bash
+ai-bridge plugin-replay --target <repo> --plugin <plugin> --task <task-file> --input <explicit-file>
+```
+
+不要自行拼 raw nested `codex exec` 来做 production plugin replay。普通代码
+实现、普通本地测试、普通 handoff 执行不需要经过 `plugin-replay`。
+
 ## 必查 frontmatter 字段
 
 任务单至少应包含：
@@ -71,6 +81,7 @@ requires_human_approval: false
 - 不要主动把 `docs/notes/` 或 `docs/wiki/` 当作任务执行。
 - 不要只在聊天里总结而不写 result 文件。
 - 不要把日志、表格、图、导出包、长报告或中间输出塞进 `prompts/tasks/` 或 `docs/notes/`；这些文件型产物应写到同名 `results/<task_key>/`，并用 `results/<task_key>/MANIFEST.md` 索引。
+- 不要把 `ai-bridge plugin-replay` 产生的 private machine-local 输入或完整输出提交到 Git；result 里只引用必要的本机路径和摘要。
 
 ## result 文件要求
 

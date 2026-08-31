@@ -5,6 +5,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -71,6 +72,7 @@ class HostStatus:
     narrative_language: str
     artifact_language_policy: str
     rules_state: str
+    trusted_ai_bridge_executable: Path | None
     project_overrides: list[Path]
     overall_state: str
 
@@ -89,8 +91,25 @@ def desired_agents_block() -> str:
     return f"{HOST_BEGIN_MARKER}\n{snippet}\n{HOST_END_MARKER}\n"
 
 
-def desired_rules_text() -> str:
-    return read_text(kit_root() / "templates" / "host" / "rules" / "ai-bridge-global.rules")
+def resolve_ai_bridge_executable() -> Path | None:
+    resolved = shutil.which("ai-bridge")
+    if resolved:
+        return Path(resolved).resolve()
+    argv0 = Path(sys.argv[0]).expanduser()
+    if argv0.name == "ai-bridge" and argv0.exists():
+        return argv0.resolve()
+    return None
+
+
+def _starlark_string(value: str) -> str:
+    return json.dumps(value)
+
+
+def desired_rules_text(ai_bridge_executable: Path | None = None) -> str:
+    text = read_text(kit_root() / "templates" / "host" / "rules" / "ai-bridge-global.rules")
+    executable = ai_bridge_executable or resolve_ai_bridge_executable()
+    replacement = _starlark_string(str(executable)) if executable else '"AI_BRIDGE_EXECUTABLE_NOT_RESOLVED"'
+    return text.replace('"@@AI_BRIDGE_EXECUTABLE@@"', replacement)
 
 
 def _section_for_line(line: str, current: str) -> str:
@@ -263,7 +282,8 @@ def install_host_policy(codex_home: Path) -> tuple[HostStatus, list[str]]:
     current_agents = read_text(agents_path) if agents_path.exists() else None
     next_agents = install_managed_block(current_agents, desired_agents_block())
     current_rules = read_text(rules_path) if rules_path.exists() else None
-    next_rules = desired_rules_text()
+    trusted_executable = resolve_ai_bridge_executable()
+    next_rules = desired_rules_text(trusted_executable)
 
     changes: list[tuple[Path, str]] = []
     if next_config != current_config:
@@ -345,10 +365,10 @@ def _narrative_language_state(path: Path) -> str:
     )
 
 
-def _rules_state(path: Path) -> str:
+def _rules_state(path: Path, ai_bridge_executable: Path | None = None) -> str:
     if not path.exists():
         return "missing"
-    return "configured" if read_text(path) == desired_rules_text() else "drifted"
+    return "configured" if read_text(path) == desired_rules_text(ai_bridge_executable) else "drifted"
 
 
 def detect_project_overrides(cwd: Path | None = None) -> list[Path]:
@@ -359,11 +379,12 @@ def detect_project_overrides(cwd: Path | None = None) -> list[Path]:
 
 def inspect_host_policy(codex_home: Path, cwd: Path | None = None) -> HostStatus:
     config_path = codex_home / "config.toml"
+    trusted_executable = resolve_ai_bridge_executable()
     config_checks = _check_config(config_path)
     config_state = _state_from_checks(config_checks) if config_path.exists() else "missing"
     agents_state = _agents_state(codex_home / "AGENTS.md")
     narrative_language_state = _narrative_language_state(codex_home / "AGENTS.md")
-    rules_state = _rules_state(codex_home / RULES_RELATIVE_PATH)
+    rules_state = _rules_state(codex_home / RULES_RELATIVE_PATH, trusted_executable)
     states = {config_state, agents_state, narrative_language_state, rules_state}
     if "drifted" in states:
         overall = "drifted"
@@ -380,6 +401,7 @@ def inspect_host_policy(codex_home: Path, cwd: Path | None = None) -> HostStatus
         narrative_language="zh-CN",
         artifact_language_policy="repository/task controlled",
         rules_state=rules_state,
+        trusted_ai_bridge_executable=trusted_executable,
         project_overrides=detect_project_overrides(cwd),
         overall_state=overall,
     )
@@ -428,9 +450,17 @@ def _feature_availability() -> tuple[dict[str, bool], list[str]]:
     return features, issues
 
 
-def _execpolicy_decision(rules_path: Path, command: list[str]) -> tuple[str | None, str]:
+def _execpolicy_decision(
+    rules_path: Path,
+    command: list[str],
+    *,
+    resolve_host_executables: bool = False,
+) -> tuple[str | None, str]:
     try:
-        result = _run_codex(["execpolicy", "check", "--rules", str(rules_path), *command])
+        args = ["execpolicy", "check", "--rules", str(rules_path)]
+        if resolve_host_executables:
+            args.append("--resolve-host-executables")
+        result = _run_codex([*args, *command])
     except FileNotFoundError:
         return None, "codex executable not found"
     output = "\n".join(part for part in [result.stdout.strip(), result.stderr.strip()] if part)
@@ -481,6 +511,7 @@ def _with_incompatible(status: HostStatus) -> HostStatus:
         status.narrative_language,
         status.artifact_language_policy,
         status.rules_state,
+        status.trusted_ai_bridge_executable,
         status.project_overrides,
         "incompatible",
     )
@@ -513,42 +544,68 @@ def validate_host_policy(codex_home: Path, cwd: Path | None = None) -> tuple[Hos
         lines.append("Feature availability: default_mode_request_user_input and memories available/enabled")
 
     rules_path = codex_home / RULES_RELATIVE_PATH
-    checks: list[tuple[list[str], str, str]] = [
-        (["git", "fetch", "origin", "main"], "allow", "direct"),
-        (["git", "pull", "--ff-only", "origin", "main"], "allow", "direct"),
-        (["git", "pull", "--rebase", "origin", "main"], "prompt", "effective"),
-        (["git", "pull", "--ff-only", "--autostash", "origin", "main"], "prompt", "effective"),
-        (["git", "pull", "--ff-only", "origin", "main", "--autostash"], "prompt", "effective"),
-        (["git", "add", "README.md"], "allow", "direct"),
-        (["git", "commit", "-m", "test"], "allow", "direct"),
-        (["git", "commit", "--amend", "--no-edit"], "allow", "direct"),
-        (["git", "push", "origin", "main"], "allow", "direct"),
-        (["git", "push", "origin", "test-branch"], "prompt", "effective"),
-        (["git", "push", "upstream", "main"], "no_match", "direct"),
-        (["git", "switch", "main"], "prompt", "effective"),
-        (["git", "switch", "-c", "test-branch"], "prompt", "effective"),
-        (["git", "checkout", "-b", "test-branch"], "prompt", "effective"),
-        (["git", "branch", "test-branch"], "prompt", "effective"),
-        (["git", "reset", "--hard"], "prompt", "effective"),
-        (["git", "clean", "-fd"], "prompt", "effective"),
-        (["git", "restore", "README.md"], "prompt", "effective"),
-        (["git", "remote", "add", "mirror", "https://example.invalid/repo.git"], "prompt", "effective"),
-        (["git", "remote", "remove", "origin"], "prompt", "effective"),
-        (["git", "remote", "set-url", "origin", "https://example.invalid/repo.git"], "prompt", "effective"),
-        (["git", "branch", "-d", "test-branch"], "prompt", "effective"),
-        (["git", "branch", "-D", "test-branch"], "prompt", "effective"),
-        (["git", "branch", "-m", "old-branch", "new-branch"], "prompt", "effective"),
-        (["git", "worktree", "add", "../wt", "-b", "test-branch"], "prompt", "effective"),
-        (["git", "push", "-u", "origin", "test-branch"], "prompt", "effective"),
-        (["git", "push", "--set-upstream", "origin", "test-branch"], "prompt", "effective"),
-        (["git", "push", "origin", "--delete", "test-branch"], "prompt", "effective"),
-        (["git", "push", "origin", "--force", "main"], "prompt", "effective"),
-        (["git", "push", "origin", "main", "--force"], "prompt", "effective"),
-        (["git", "push", "origin", "main", "--force-with-lease"], "prompt", "effective"),
-        (["git", "push", "origin", "main", "-f"], "prompt", "effective"),
+    trusted_executable = resolve_ai_bridge_executable()
+    if trusted_executable:
+        lines.append(f"Trusted ai-bridge executable: {trusted_executable}")
+    else:
+        exit_code = 1
+        status = _with_incompatible(status)
+        lines.append("Incompatible: ai-bridge executable not found for host_executable pinning")
+    replay_command = [
+        "ai-bridge",
+        "plugin-replay",
+        "--target",
+        str(cwd or Path.cwd()),
+        "--plugin",
+        "sites",
+        "--task",
+        "TASK.md",
+        "--input",
+        "INPUT.txt",
+        "--dry-run",
     ]
-    for command, expected, comparison in checks:
-        decision, raw = _execpolicy_decision(rules_path, command)
+    checks: list[tuple[list[str], str, str, bool]] = [
+        (replay_command, "allow", "direct", True),
+        (["codex", "exec", "-C", "/tmp", "-"], "prompt", "effective", False),
+        (["git", "fetch", "origin", "main"], "allow", "direct", False),
+        (["git", "pull", "--ff-only", "origin", "main"], "allow", "direct", False),
+        (["git", "pull", "--rebase", "origin", "main"], "prompt", "effective", False),
+        (["git", "pull", "--ff-only", "--autostash", "origin", "main"], "prompt", "effective", False),
+        (["git", "pull", "--ff-only", "origin", "main", "--autostash"], "prompt", "effective", False),
+        (["git", "add", "README.md"], "allow", "direct", False),
+        (["git", "commit", "-m", "test"], "allow", "direct", False),
+        (["git", "commit", "--amend", "--no-edit"], "allow", "direct", False),
+        (["git", "push", "origin", "main"], "allow", "direct", False),
+        (["git", "push", "origin", "test-branch"], "prompt", "effective", False),
+        (["git", "push", "upstream", "main"], "no_match", "direct", False),
+        (["git", "switch", "main"], "prompt", "effective", False),
+        (["git", "switch", "-c", "test-branch"], "prompt", "effective", False),
+        (["git", "checkout", "-b", "test-branch"], "prompt", "effective", False),
+        (["git", "branch", "test-branch"], "prompt", "effective", False),
+        (["git", "reset", "--hard"], "prompt", "effective", False),
+        (["git", "clean", "-fd"], "prompt", "effective", False),
+        (["git", "restore", "README.md"], "prompt", "effective", False),
+        (["git", "remote", "add", "mirror", "https://example.invalid/repo.git"], "prompt", "effective", False),
+        (["git", "remote", "remove", "origin"], "prompt", "effective", False),
+        (["git", "remote", "set-url", "origin", "https://example.invalid/repo.git"], "prompt", "effective", False),
+        (["git", "branch", "-d", "test-branch"], "prompt", "effective", False),
+        (["git", "branch", "-D", "test-branch"], "prompt", "effective", False),
+        (["git", "branch", "-m", "old-branch", "new-branch"], "prompt", "effective", False),
+        (["git", "worktree", "add", "../wt", "-b", "test-branch"], "prompt", "effective", False),
+        (["git", "push", "-u", "origin", "test-branch"], "prompt", "effective", False),
+        (["git", "push", "--set-upstream", "origin", "test-branch"], "prompt", "effective", False),
+        (["git", "push", "origin", "--delete", "test-branch"], "prompt", "effective", False),
+        (["git", "push", "origin", "--force", "main"], "prompt", "effective", False),
+        (["git", "push", "origin", "main", "--force"], "prompt", "effective", False),
+        (["git", "push", "origin", "main", "--force-with-lease"], "prompt", "effective", False),
+        (["git", "push", "origin", "main", "-f"], "prompt", "effective", False),
+    ]
+    for command, expected, comparison, resolve_host in checks:
+        decision, raw = _execpolicy_decision(
+            rules_path,
+            command,
+            resolve_host_executables=resolve_host,
+        )
         observed = _effective_execpolicy_decision(decision) if comparison == "effective" else decision
         label = " ".join(command)
         if observed == expected:
@@ -579,6 +636,10 @@ def format_status(status: HostStatus) -> str:
             f"ai-bridge-global.rules: {status.rules_state}",
         ]
     )
+    if status.trusted_ai_bridge_executable:
+        lines.append(f"trusted ai-bridge executable: {status.trusted_ai_bridge_executable}")
+    else:
+        lines.append("trusted ai-bridge executable: unresolved")
     if status.project_overrides:
         lines.append("project override awareness:")
         for path in status.project_overrides:

@@ -740,6 +740,14 @@ class ReviewedHandoffTests(unittest.TestCase):
         self.assertIn("`## New capabilities / behavior`", prompt)
         self.assertIn("`## Example usage`", prompt)
 
+    def test_executor_prompt_routes_production_plugin_replay_to_bridge_wrapper(self) -> None:
+        prompt = rh.read_text(Path("templates/reviewed_handoff/prompts/CODEX_EXECUTOR.md"))
+
+        self.assertIn("ai-bridge plugin-replay", prompt)
+        self.assertIn("fresh production Codex runtime", prompt)
+        self.assertIn("不要自行拼 raw nested `codex exec`", prompt)
+        self.assertIn("普通代码实现、普通测试和普通 Reviewed Handoff", prompt)
+
     def test_planner_prompt_requires_final_report_preflight_for_terminal_human_gate(self) -> None:
         prompt = rh.read_text(Path("templates/reviewed_handoff/prompts/PLANNER.md"))
 

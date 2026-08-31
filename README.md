@@ -19,6 +19,7 @@
 | Reviewed Handoff | `0.5.0` | GPT 规划、Codex 执行、GPT 最多两轮独立复核 |
 | Visual Review | `0.5.2` | 对图片、PPT 截图等生成可验证视觉证据 |
 | Overleaf Bridge | `0.6.0` | 科研单一仓库中只把论文目录安全同步到 Overleaf |
+| Production Plugin Replay | Unreleased | 通过 Host Policy 预授权受控的本机真实插件回归入口 |
 
 本项目采用 `0.x` 迭代方式。每个 `0.x` 小版本通常代表一项可独立使用的能力进入稳定工作流；后面的补丁版本主要用于安全性、兼容性和默认行为修正。这不是严格的 Semantic Versioning 承诺，而是当前阶段的版本阅读方式。
 
@@ -92,10 +93,20 @@ $CODEX_HOME/rules/ai-bridge-global.rules
 - 用户可见的进度、计划、测试结果和完成报告默认使用自然中文；
 - 普通局部实现由 Codex 自行判断，真正会改变架构、范围、部署、Git 分支策略或科研语义的歧义才询问用户；
 - 当前 `main` 分支上的安全 `fetch`、快进 `pull`、正常 `add/commit/push origin main` 尽量减少重复授权；
+- 已明确授权的本机 production plugin repair/replay 可走受控入口 `ai-bridge plugin-replay`，让 fresh Codex runtime 在隔离 replay workspace 中测试已安装插件；
 - `force push`、改 remote、删除分支、`reset --hard`、`git clean` 等危险操作仍然不能因为“自动化”而放开；
 - 如果下一步明确属于外部 GPT Planner/Reviewer/Critic，等待 GPT 不应被误判为任务失败。
 
 Host Policy 会尽量非破坏式修改已有配置，并在需要时创建备份。
+
+`ai-bridge plugin-replay` 是机器级 Host Policy 预授权的窄入口，不是新的
+workflow。它要求 caller 指定目标仓库身份、已安装插件名、任务/说明文件和一个
+或多个显式 input file；每次运行只把这些文件复制到
+`${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}/plugin-replay/<run-id>/`，child Codex 的
+cwd 是隔离 workspace，默认 `workspace-write`、`approval_policy=never`、本地
+replay 网络关闭，完整输出保留在本机 state 目录。Host Policy 不会因此放开 raw
+`codex exec`、裸 shell/python、整个 consumer repo 写入、外部上传、危险 Git、
+发布或部署。
 
 ---
 
@@ -591,6 +602,9 @@ Host Policy
 ai-bridge host install
 ai-bridge host status
 ai-bridge host validate
+
+# 本机真实插件回归
+ai-bridge plugin-replay --target /path/to/project --plugin <plugin> --task <task-file> --input <explicit-file>
 
 # 普通项目交接
 ai-bridge init --target /path/to/project

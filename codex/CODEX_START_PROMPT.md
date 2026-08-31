@@ -87,6 +87,12 @@ Check frontmatter before acting:
 Stop if an unapproved network call, upload, deletion, expensive command,
 deployment/security/migration change, or out-of-scope direction is needed.
 
+If an authorized task explicitly requires a fresh production Codex runtime to
+exercise an installed plugin, use `ai-bridge plugin-replay` with explicit input
+files. Do not assemble a raw nested `codex exec` command for production plugin
+replay. Ordinary implementation and ordinary tests do not use this replay
+wrapper.
+
 ## Required Output
 
 Normal execution task:

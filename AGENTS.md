@@ -88,6 +88,18 @@ git push origin main
 
 这些规则用于跳过当前已选 `main` 分支安全同步、task-owned staging、普通 commit 和默认 `origin/main` push 的 manual/auto review。其他长期分支如果也需要低打扰 push，应由项目规则或用户明确授权补充，不得靠泛化 `git push origin ...` 猜测。`git pull --rebase ...`、`git pull ... --autostash`、`git push -u origin ...`、`git push --set-upstream origin ...`、`git push origin <new-branch>`、`git push origin --delete ...`、force push、创建或改变 upstream、创建新远端分支等不是普通同步或普通 push，必须先问用户。它们也不是对危险 Git 行为的授权；危险操作仍受 Host AGENTS 行为规则禁止。
 
+### Production Plugin Replay
+
+Host Policy 可以全局预授权一个受控的真实插件回归入口：
+
+```text
+ai-bridge plugin-replay ...
+```
+
+当用户或冻结 workflow 已经授权本机 production plugin repair/replay，且确实需要 fresh Codex runtime 测试当前 Codex identity 中已安装的插件时，使用这个入口。不要自行拼 raw nested `codex exec` 再申请审批。
+
+`plugin-replay` 只允许显式 input file，replay 内容和完整输出留在 `${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}/plugin-replay/` 本机目录。它不授权外部上传、发布、危险 Git、branch/remote mutation、release/deploy 或产品/科学 scope expansion；这些仍按原 Host Policy 审核。
+
 ### External Planner / Reviewer Waiting
 
 全局 Host AGENTS 还必须携带通用 external GPT 等待规则。只要 repository-controlled workflow 明确表示下一动作属于外部 GPT Planner、Reviewer、Critic、Final Critic 或同类 reasoning role，尚未出现新 decision 就是正常等待，不是实现失败。

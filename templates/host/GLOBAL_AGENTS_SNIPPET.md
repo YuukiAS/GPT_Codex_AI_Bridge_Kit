@@ -39,6 +39,22 @@ is a project decision controlled by the user.
 Even if a broad execpolicy rule technically matches a dangerous Git command,
 these behavior rules remain binding and must not be bypassed.
 
+## Production Plugin Replay
+
+When the user or a frozen repository workflow has authorized local production
+plugin repair/replay, and the task genuinely requires a fresh Codex runtime to
+exercise an installed production plugin, use `ai-bridge plugin-replay`.
+
+- Do not assemble a raw nested `codex exec` command and request approval for it
+  when the bounded replay wrapper fits the task.
+- Private replay inputs must be explicit files selected by the caller; do not
+  recursively ingest parent directories or discover adjacent private files.
+- Replay outputs remain machine-local under
+  `${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}/plugin-replay/`.
+- This authorization does not grant publishing, external upload, dangerous Git,
+  branch/remote mutation, release, deployment, or product/scientific scope
+  expansion authority.
+
 ## User Input Policy
 
 Because host policy enables `default_mode_request_user_input`, ask the user when

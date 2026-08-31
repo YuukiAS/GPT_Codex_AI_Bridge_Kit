@@ -282,6 +282,14 @@ A repository using Reviewed Handoff should normally have one ChatGPT Scheduled T
 
 The Scheduled Task uses GitHub as its transaction surface. It reads tracked workflow artifacts, repository state, and GitHub Actions/checks through the GitHub connector; it does not run the target machine's local `ai-bridge` CLI. Local CLI commands remain for the Codex watcher, local debugging, deterministic validation, and human/manual operation.
 
+If a frozen Plan explicitly requires testing an installed production Codex
+plugin in a fresh local runtime, the Executor should call the Host
+Policy-controlled `ai-bridge plugin-replay` wrapper with explicit input files.
+This is an advisory execution tool, not a Reviewed Handoff state, role, schema,
+or review identity. Ordinary implementation, ordinary local tests, and the
+watcher's normal Executor launch still use the existing Reviewed Handoff
+runtime path.
+
 Every GPT-owned state change follows the same transaction rule:
 
 1. write the model-owned artifact first, such as `PLAN.md`, `REVIEW_<round>.md`, or `FINAL_REPORT.md`;

@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Add `ai-bridge plugin-replay` as a Host Policy-controlled production plugin
+  replay wrapper. It stages only explicit files into a machine-local isolated
+  run directory, launches child Codex with fixed `workspace-write` /
+  `approval_policy=never` / local-network-off settings, records local
+  `run.json` metadata and output paths, and rejects arbitrary Codex flag
+  passthrough.
+- Extend Host Policy install/validate so
+  `$CODEX_HOME/rules/ai-bridge-global.rules` pre-authorizes only the trusted
+  `ai-bridge plugin-replay` executable path while raw `codex exec`, broad
+  shell/python, destructive Git, branch mutation, remote mutation, and force
+  push remain under the existing approval behavior.
 - Harden Scheduled GPT terminal transactions for Reviewed Handoff by requiring
   a runtime `FINAL_REPORT.md` template preflight before PASS, BLOCKED, or
   human-gate `CURRENT.json` writes.

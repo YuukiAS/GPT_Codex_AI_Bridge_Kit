@@ -21,6 +21,7 @@ from ai_bridge_kit.host import (
     install_host_policy,
     install_managed_block,
     patch_config_text,
+    resolve_ai_bridge_executable,
     resolve_codex_home,
     validate_host_policy,
 )
@@ -135,6 +136,8 @@ memories = false
             rules_path = codex_home / "rules" / "ai-bridge-global.rules"
 
             self.assertEqual(rules_path.read_text(encoding="utf-8"), desired_rules_text())
+            self.assertIn("host_executable(", rules_path.read_text(encoding="utf-8"))
+            self.assertIn('pattern = ["ai-bridge", "plugin-replay"]', rules_path.read_text(encoding="utf-8"))
             _, actions = install_host_policy(codex_home)
             self.assertEqual(actions, ["No changes needed; host policy is already configured."])
 
@@ -212,7 +215,11 @@ memories = false
             status, lines, exit_code = validate_host_policy(codex_home)
 
             self.assertEqual(status.overall_state, "configured")
+            self.assertEqual(status.trusted_ai_bridge_executable, resolve_ai_bridge_executable())
             self.assertEqual(exit_code, 0, "\n".join(lines))
+            self.assertTrue(any("Trusted ai-bridge executable:" in line for line in lines))
+            self.assertTrue(any("ai-bridge plugin-replay" in line and "=> allow" in line for line in lines))
+            self.assertTrue(any("codex exec -C /tmp - => prompt" in line for line in lines))
             self.assertTrue(any("git fetch origin main => allow" in line for line in lines))
             self.assertTrue(any("git pull --ff-only origin main => allow" in line for line in lines))
             self.assertTrue(any("git pull --rebase origin main => prompt" in line for line in lines))
@@ -253,6 +260,8 @@ memories = false
             install_host_policy(codex_home)
             rules_path = codex_home / RULES_RELATIVE_PATH
             expectations = {
+                ("ai-bridge", "plugin-replay", "--target", str(Path.cwd()), "--plugin", "sites", "--task", "TASK.md", "--input", "INPUT.txt", "--dry-run"): "allow",
+                ("codex", "exec", "-C", "/tmp", "-"): "prompt",
                 ("git", "fetch", "origin", "main"): "allow",
                 ("git", "pull", "--ff-only", "origin", "main"): "allow",
                 ("git", "pull", "--rebase", "origin", "main"): "prompt",
@@ -289,9 +298,34 @@ memories = false
 
             for command, expected in expectations.items():
                 with self.subTest(command=" ".join(command)):
-                    decision, raw = _execpolicy_decision(rules_path, list(command))
+                    decision, raw = _execpolicy_decision(
+                        rules_path,
+                        list(command),
+                        resolve_host_executables=command[0] == "ai-bridge",
+                    )
                     observed = decision if expected == "no_match" else _effective_execpolicy_decision(decision)
                     self.assertEqual(observed, expected, raw)
+
+    def test_execpolicy_does_not_trust_repo_local_fake_ai_bridge(self) -> None:
+        if shutil.which("codex") is None:
+            self.skipTest("codex CLI is not installed")
+        with tempfile.TemporaryDirectory() as tmp:
+            codex_home = Path(tmp) / "codex-home"
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            fake = repo / "ai-bridge"
+            fake.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            fake.chmod(0o700)
+            install_host_policy(codex_home)
+            rules_path = codex_home / RULES_RELATIVE_PATH
+
+            decision, raw = _execpolicy_decision(
+                rules_path,
+                ["./ai-bridge", "plugin-replay", "--plugin", "sites"],
+                resolve_host_executables=True,
+            )
+
+            self.assertEqual(_effective_execpolicy_decision(decision), "prompt", raw)
 
 
 if __name__ == "__main__":

@@ -1,3 +1,14 @@
+host_executable(
+    name = "ai-bridge",
+    paths = ["@@AI_BRIDGE_EXECUTABLE@@"],
+)
+
+prefix_rule(
+    pattern = ["ai-bridge", "plugin-replay"],
+    decision = "allow",
+    justification = "The user permanently authorizes Bridge Kit's bounded production plugin replay wrapper across this CODEX_HOME; the wrapper must enforce explicit input files, isolated local replay workspace, workspace-write sandbox, no interactive child approvals, no danger-full-access, no arbitrary Codex flag passthrough, no repository write fence, and no automatic publication.",
+)
+
 prefix_rule(
     pattern = ["git", "fetch", "origin", "main"],
     decision = "allow",
