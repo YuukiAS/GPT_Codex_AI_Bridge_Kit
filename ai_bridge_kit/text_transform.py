@@ -131,6 +131,13 @@ def _logical_text_mime(path: Path) -> str:
         raise TextTransformError(str(exc).replace("text review", "text transform")) from exc
 
 
+def _logical_instruction_mime(path: Path) -> str:
+    suffix = path.suffix.lower()
+    if suffix == ".json":
+        return "application/json; charset=utf-8"
+    return _logical_text_mime(path)
+
+
 def _age_binary() -> str:
     try:
         return text_review._age_binary()
@@ -282,7 +289,7 @@ def normalize_instruction_files(target: Path, files: list[str | Path]) -> tuple[
                 "path": rel,
                 "sha256": sha256_bytes(data),
                 "size_bytes": len(data),
-                "mime_type": _logical_text_mime(path),
+                "mime_type": _logical_instruction_mime(path),
             }
         )
     return normalized, instruction_bundle_identity(normalized)
@@ -329,7 +336,7 @@ def normalize_manifest(target: Path, manifest: dict[str, Any]) -> dict[str, Any]
                 "path": rel,
                 "sha256": sha,
                 "size_bytes": path.stat().st_size,
-                "mime_type": str(item.get("mime_type") or _logical_text_mime(path)),
+                "mime_type": str(item.get("mime_type") or _logical_instruction_mime(path)),
             }
         )
     bundle_sha = instruction_bundle_identity(normalized_files)

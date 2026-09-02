@@ -8,6 +8,8 @@
   ephemerally, calls OpenAI Responses API with `store=false`, encrypts the
   generated plaintext back to a local-only output receiver, and writes only
   `output.age` plus `TEXT_TRANSFORM.json` metadata to Git.
+- Allow `text-transform` instruction bundles to include UTF-8 JSON files, while
+  keeping private source inputs limited to Markdown/plain text.
 - Add `ai-bridge text-review` for private UTF-8 Markdown/plain-text artifact
   review: local age public-key encryption publishes only encrypted payloads
   and manifests, GitHub Actions decrypts ephemerally with

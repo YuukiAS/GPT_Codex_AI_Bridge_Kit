@@ -53,6 +53,21 @@ class TextTransformTests(unittest.TestCase):
             "# Contract\n\nRewrite the complete source into natural Chinese while preserving every fact.\n",
             encoding="utf-8",
         )
+        seed_instruction = target / "docs" / "seed-transformations.json"
+        seed_instruction.write_text(
+            json.dumps(
+                [
+                    {
+                        "id": "seed-001",
+                        "rewrite_problem": "workflow-language",
+                        "source": "unit-test",
+                    }
+                ],
+                ensure_ascii=False,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
         source = base / "private-source.md"
         source.write_text(
             "# Source\n\n"
@@ -80,7 +95,7 @@ class TextTransformTests(unittest.TestCase):
             output_path=Path("results/048_text/text_transform/input.age"),
             manifest_path=manifest,
             output_recipient_file=Path(receiver["recipient_path"]),
-            instruction_files=[Path("docs/contract.md")],
+            instruction_files=[Path("docs/contract.md"), Path("docs/seed-transformations.json")],
             goal="Rewrite the complete source according to the bound contract.",
             implementation_commit="impl-048",
             external_upload_authorization="Unit test private text transform authorization.",
@@ -118,6 +133,7 @@ class TextTransformTests(unittest.TestCase):
             self.assertFalse(captured["body"]["store"])
             self.assertIn("provenance 和 estimand", request_text)
             self.assertIn("docs/contract.md", request_text)
+            self.assertIn("docs/seed-transformations.json", request_text)
             self.assertNotIn("sk-transform-secret", request_text)
             self.assertEqual(captured["timeout"], 17)
             self.assertEqual(artifact["schema"], text_transform.TEXT_TRANSFORM_RESULT_SCHEMA)
@@ -185,6 +201,33 @@ class TextTransformTests(unittest.TestCase):
             text_transform.write_json(manifest, payload)
             with self.assertRaisesRegex(text_transform.TextTransformError, "instruction file SHA-256 mismatch"):
                 text_transform.normalize_manifest(target, text_transform.load_json(manifest))
+
+    def test_json_instruction_file_is_allowed_but_private_json_source_is_not(self) -> None:
+        tmp, target, _source, _output_identity, _output_age, _result = self.make_project()
+        with tmp:
+            manifest = json.loads(
+                (target / "results/048_text/text_transform/text_transform_inputs.json").read_text(encoding="utf-8")
+            )
+            mime_types = {item["path"]: item["mime_type"] for item in manifest["instructions"]["files"]}
+            self.assertEqual(mime_types["docs/seed-transformations.json"], "application/json; charset=utf-8")
+
+            private_json = Path(tmp.name) / "private-source.json"
+            private_json.write_text('{"source": "private"}\n', encoding="utf-8")
+            with self.assertRaisesRegex(text_transform.TextTransformError, "Markdown/plain text"):
+                text_transform.encrypt_text_transform_input(
+                    target,
+                    task_key="048_text",
+                    input_path=private_json,
+                    input_recipient_file=target / text_transform.DEFAULT_INPUT_RECIPIENT_PATH,
+                    output_path=Path("results/048_text/text_transform/input.age"),
+                    manifest_path=Path("results/048_text/text_transform/text_transform_inputs.json"),
+                    output_recipient_file=Path("results/048_text/text_transform/output.age.pub"),
+                    instruction_files=[Path("docs/contract.md")],
+                    goal="Private JSON input must stay out of this transport.",
+                    implementation_commit="impl-048",
+                    external_upload_authorization="Unit test private text transform authorization.",
+                    force=True,
+                )
 
     def test_output_receiver_private_identity_refuses_target_repo_path(self) -> None:
         self.require_age()
