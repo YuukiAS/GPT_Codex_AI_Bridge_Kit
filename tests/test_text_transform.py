@@ -330,6 +330,7 @@ class TextTransformTests(unittest.TestCase):
         self.assertIn("      - 'reviewed/**'", workflow)
         self.assertIn("      - 'results/**/text_transform/text_transform_inputs.json'", workflow)
         self.assertNotIn("results/**/text_transform/**", workflow)
+        self.assertIn('git show --name-only --format= "${GITHUB_SHA}"', workflow)
         self.assertIn('git push origin "HEAD:${GITHUB_REF_NAME}"', workflow)
 
 
