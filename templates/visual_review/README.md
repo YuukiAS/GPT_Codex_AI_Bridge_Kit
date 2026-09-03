@@ -28,7 +28,23 @@ env:
   OPENAI_API_KEY: ${{ secrets.OPENAI_VISUAL_REVIEW_API_KEY }}
 ```
 
-The production default Visual Review model is `gpt-5.6-terra`. Ordinary consumer repositories do not need to set a model variable. Set `OPENAI_VISUAL_REVIEW_MODEL` as a GitHub Actions variable or plain environment variable only when a project has an explicit quality, cost, permission, or model-freeze reason to override the shared default. An explicit CLI `--model` value takes priority over `OPENAI_VISUAL_REVIEW_MODEL`, which takes priority over the Bridge Kit shared default.
+The production default Visual Review model is `gpt-5.6-terra`. Ordinary
+consumer repositories do not need to set a model variable. An explicit CLI
+`--model` value still takes priority over `OPENAI_VISUAL_REVIEW_MODEL`, which
+takes priority over the Bridge Kit shared default, but the paid-review guard
+currently accepts only the exact reviewed Terra pricing identity.
+
+Every paid Visual Review request uses the shared Bridge Kit paid-review guard.
+The default campaign contract is `gpt-5.6-terra`, at most two paid calls, USD
+0.50 total reserved worst-case cost, USD 0.25 per call, and zero automatic paid
+retries. The exact request, including image inputs, is counted first through
+`POST /responses/input_tokens`; the full worst-case amount is reserved in
+`results/<task_key>/paid_review_budget.json`; only then is the Responses request
+sent. GitHub Actions uses branch-level concurrency and writes the reservation
+commit before the paid request so reruns and fresh checkouts cannot reset the
+campaign budget.
+
+Unknown pricing or any model mismatch fails closed.
 
 Recommended OpenAI setup:
 
@@ -38,6 +54,9 @@ one restricted project-scoped key per repository
 ```
 
 Default privacy policy is `PUBLIC_SAFE_ONLY`. Do not upload patient images, private clinical data, unpublished research images, credentials, private screenshots, or proprietary assets unless the project profile or task manifest contains explicit external upload authorization.
+
+Visual Review sends image inputs only as Responses input. It does not enable
+image generation, web search, file search, computer use or any extra paid tool.
 
 Preflight:
 

@@ -12,6 +12,7 @@
     }
   ],
   "privacy_policy": "PUBLIC_SAFE_ONLY",
+  "paid_review_campaign_id": "<task_key>",
   "prompt_version": "ai-bridge.visual-review.v1",
   "review_kind": "rendered-artifact",
   "rubric": {

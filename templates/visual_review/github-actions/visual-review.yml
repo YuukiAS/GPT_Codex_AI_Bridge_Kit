@@ -21,6 +21,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: ai-bridge-paid-review-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   visual-review:
     runs-on: ubuntu-latest
@@ -30,6 +34,7 @@ jobs:
       AI_BRIDGE_VISUAL_REVIEW_MANIFEST: ${{ github.event.inputs.manifest }}
       AI_BRIDGE_VISUAL_REVIEW_OUTPUT: ${{ github.event.inputs.output }}
       AI_BRIDGE_KIT_PIP_SPEC: __AI_BRIDGE_KIT_PIP_SPEC__
+      AI_BRIDGE_PAID_REVIEW_GIT_RESERVE: "1"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -70,9 +75,8 @@ jobs:
         shell: bash
         run: |
           if [ -z "${OPENAI_API_KEY}" ]; then
-            echo "OPENAI_VISUAL_REVIEW_API_KEY is not configured; skipping live visual review."
-            echo "AI_BRIDGE_VISUAL_REVIEW_SKIP=1" >> "$GITHUB_ENV"
-            exit 0
+            echo "OPENAI_VISUAL_REVIEW_API_KEY is not configured; cannot run live visual review."
+            exit 1
           fi
 
       - name: Run visual review

@@ -14,6 +14,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Callable
 
+from . import paid_review
 from . import visual_review
 
 
@@ -25,6 +26,7 @@ LEGACY_OPENAI_KEY_ENV = visual_review.SECRET_NAME
 MODEL_ENV = "OPENAI_TEXT_REVIEW_MODEL"
 DEFAULT_MODEL = "gpt-5.6-terra"
 DEFAULT_PROMPT_VERSION = "ai-bridge.text-review.v1"
+DEFAULT_MAX_OUTPUT_TOKENS = paid_review.DEFAULT_MAX_OUTPUT_TOKENS
 PRIVATE_TEXT_POLICY = "PRIVATE_TEXT_REVIEW_AUTHORIZED"
 PUBLIC_SAFE_POLICY = visual_review.DEFAULT_PRIVACY_POLICY
 DECISIONS = visual_review.DECISIONS
@@ -268,6 +270,7 @@ def normalize_manifest(target: Path, manifest: dict[str, Any]) -> dict[str, Any]
     return {
         "schema": TEXT_INPUT_MANIFEST_SCHEMA,
         "task_key": task_key,
+        "paid_review_campaign_id": str(manifest.get("paid_review_campaign_id") or task_key).strip(),
         "workflow_type": workflow_type,
         "review_kind": review_kind,
         "prompt_version": str(manifest.get("prompt_version") or DEFAULT_PROMPT_VERSION),
@@ -355,6 +358,7 @@ def build_responses_request(manifest: dict[str, Any], plaintext: str, *, model: 
                 "schema": text_review_response_schema(),
             }
         },
+        "max_output_tokens": DEFAULT_MAX_OUTPUT_TOKENS,
     }
 
 
@@ -383,7 +387,8 @@ def call_openai_responses(
             raw = response.read()
     except urllib.error.HTTPError as exc:
         status = getattr(exc, "code", "UNKNOWN")
-        raise TextReviewError(f"OpenAI text review API failed closed: HTTP {status}") from exc
+        suffix = paid_review.billing_error_suffix_from_http_error(exc)
+        raise TextReviewError(f"OpenAI text review API failed closed: HTTP {status}{suffix}") from exc
     except Exception as exc:
         raise TextReviewError(f"OpenAI text review API failed closed: {exc.__class__.__name__}") from exc
     try:
@@ -408,6 +413,7 @@ def assemble_text_review(
     manifest: dict[str, Any],
     model_output: dict[str, Any],
     model: str,
+    paid_review_receipt: dict[str, Any] | None = None,
     created_at: str | None = None,
 ) -> dict[str, Any]:
     for key in ["overall_decision", "item_reviews", "blocking_findings", "non_blocking_notes"]:
@@ -421,7 +427,7 @@ def assemble_text_review(
             raise TextReviewError(f"model text review {key} must be a list")
     identity = manifest_identity(manifest)
     input_item = manifest["input"]
-    return {
+    artifact = {
         "schema": TEXT_REVIEW_SCHEMA,
         "evidence_id": f"text-review-{manifest['task_key']}-{identity[:12]}",
         "task_key": manifest["task_key"],
@@ -451,6 +457,9 @@ def assemble_text_review(
         "blocking_findings": model_output.get("blocking_findings", []),
         "non_blocking_notes": model_output.get("non_blocking_notes", []),
     }
+    if paid_review_receipt is not None:
+        artifact["paid_review"] = paid_review_receipt
+    return artifact
 
 
 def validate_text_review_payload(payload: dict[str, Any], *, expected: dict[str, Any] | None = None) -> list[str]:
@@ -539,6 +548,21 @@ def validate_text_review_payload(payload: dict[str, Any], *, expected: dict[str,
         errors.append("TEXT_REVIEW.json PASS cannot contain blocking_findings")
     if "plaintext_sha256" in expected and payload.get("plaintext_artifact_sha256") != expected["plaintext_sha256"]:
         errors.append("TEXT_REVIEW.json plaintext_artifact_sha256 mismatch")
+    paid_receipt = payload.get("paid_review")
+    if paid_receipt is not None:
+        if not isinstance(paid_receipt, dict):
+            errors.append("TEXT_REVIEW.json paid_review must be an object")
+        else:
+            for key in [
+                "campaign_identity",
+                "model_identity",
+                "exact_input_token_preflight",
+                "call_reservations",
+                "worst_case_reserved_cost_usd",
+                "cumulative_reserved_cost_usd",
+            ]:
+                if key not in paid_receipt:
+                    errors.append(f"TEXT_REVIEW.json paid_review missing {key}")
     return errors
 
 
@@ -564,13 +588,51 @@ def run_text_review(
     selected_key = api_key if api_key is not None else (
         os.environ.get(OPENAI_REVIEW_KEY_ENV, "") or os.environ.get(LEGACY_OPENAI_KEY_ENV, "") or os.environ.get("OPENAI_API_KEY", "")
     )
+    if not selected_key:
+        raise TextReviewError(f"{OPENAI_REVIEW_KEY_ENV} or {LEGACY_OPENAI_KEY_ENV} is not available")
+    try:
+        paid_review.validate_model_pricing(selected_model)
+    except paid_review.PaidReviewBudgetError as exc:
+        raise TextReviewError(str(exc)) from exc
     request_payload = build_responses_request(manifest, plaintext, model=selected_model)
+    try:
+        campaign_identity = paid_review.campaign_identity_from_manifest(manifest)
+        token_preflight = paid_review.count_input_tokens(request_payload, api_key=selected_key, timeout=timeout, opener=opener)
+        reservation_bundle = paid_review.reserve_paid_review_call(
+            target=target,
+            campaign_identity=campaign_identity,
+            review_type="text_review",
+            model=selected_model,
+            request_payload=request_payload,
+            input_token_preflight=token_preflight,
+        )
+        paid_review.persist_reservation_to_git_if_requested(target, reservation_bundle["state_path"])
+    except paid_review.PaidReviewBudgetError as exc:
+        raise TextReviewError(str(exc)) from exc
     response_payload = call_openai_responses(request_payload, api_key=selected_key, timeout=timeout, opener=opener)
+    paid_review.record_actual_usage(
+        target=target,
+        campaign_identity=campaign_identity,
+        reservation_id=reservation_bundle["reservation"]["reservation_id"],
+        response_payload=response_payload,
+    )
+    paid_review_receipt = paid_review.receipt_from_reservation(
+        campaign_identity=campaign_identity,
+        review_type="text_review",
+        model=selected_model,
+        reservation_bundle=reservation_bundle,
+        response_payload=response_payload,
+    )
     try:
         model_output = json.loads(_extract_response_text(response_payload))
     except json.JSONDecodeError as exc:
         raise TextReviewError("OpenAI text review output was not valid JSON") from exc
-    artifact = assemble_text_review(manifest=manifest, model_output=model_output, model=selected_model)
+    artifact = assemble_text_review(
+        manifest=manifest,
+        model_output=model_output,
+        model=selected_model,
+        paid_review_receipt=paid_review_receipt,
+    )
     errors = validate_text_review_payload(
         artifact,
         expected={
@@ -660,16 +722,21 @@ def bridge_kit_pip_spec(ref: str | None = None) -> str:
 
 def text_evidence_commit_needed(target: Path, output_path: Path | str) -> bool:
     rel = validate_generated_text_review_path(output_path)
-    subprocess.check_call(["git", "add", "--", rel], cwd=target)
+    task_key = Path(rel).parts[1]
+    paths = [rel]
+    budget_rel = f"results/{task_key}/paid_review_budget.json"
+    if (target / budget_rel).exists():
+        paths.append(budget_rel)
+    subprocess.check_call(["git", "add", "--", *paths], cwd=target)
     result = subprocess.run(
-        ["git", "diff", "--cached", "--quiet", "--", rel],
+        ["git", "diff", "--cached", "--quiet", "--", *paths],
         cwd=target,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         check=False,
     )
     if result.returncode not in {0, 1}:
-        raise subprocess.CalledProcessError(result.returncode, ["git", "diff", "--cached", "--quiet", "--", rel])
+        raise subprocess.CalledProcessError(result.returncode, ["git", "diff", "--cached", "--quiet", "--", *paths])
     return result.returncode == 1
 
 

@@ -10,6 +10,7 @@ import urllib.error
 from pathlib import Path
 
 from ai_bridge_kit import bridge_cli
+from ai_bridge_kit import paid_review
 from ai_bridge_kit import visual_review
 
 
@@ -72,6 +73,28 @@ class VisualReviewTests(unittest.TestCase):
             "non_blocking_notes": [],
         }
 
+    def opener_for(self, captured: dict, decision: str = "PASS", *, input_tokens: int = 2048):
+        def opener(request, timeout):
+            body = json.loads(request.data.decode("utf-8"))
+            if request.full_url.endswith("/responses/input_tokens"):
+                captured.setdefault("urls", []).append(request.full_url)
+                captured["token_body"] = body
+                captured["token_auth"] = request.headers.get("Authorization")
+                return FakeResponse({"input_tokens": input_tokens})
+            captured.setdefault("urls", []).append(request.full_url)
+            captured["body"] = body
+            captured["auth"] = request.headers.get("Authorization")
+            captured["timeout"] = timeout
+            return FakeResponse(
+                {
+                    "status": "completed",
+                    "usage": {"input_tokens": input_tokens, "output_tokens": 91, "total_tokens": input_tokens + 91},
+                    "output_text": json.dumps(self.model_payload(decision)),
+                }
+            )
+
+        return opener
+
     def test_missing_api_key_fails_closed_before_network(self) -> None:
         tmp, target, manifest, output = self.make_project()
         with tmp:
@@ -91,30 +114,31 @@ class VisualReviewTests(unittest.TestCase):
         with tmp:
             captured: dict = {}
 
-            def opener(request, timeout):
-                captured["body"] = json.loads(request.data.decode("utf-8"))
-                captured["auth"] = request.headers.get("Authorization")
-                captured["timeout"] = timeout
-                return FakeResponse({"status": "completed", "output_text": json.dumps(self.model_payload())})
-
             artifact = visual_review.run_visual_review(
                 target,
                 manifest,
                 output,
                 api_key="sk-test-secret",
-                model="gpt-test-vision",
+                model=visual_review.DEFAULT_MODEL,
                 timeout=12,
-                opener=opener,
+                opener=self.opener_for(captured),
             )
             self.assertEqual(artifact["schema"], visual_review.VISUAL_REVIEW_SCHEMA)
             self.assertEqual(artifact["overall_decision"], "PASS")
             self.assertEqual(artifact["status"], "PASS")
-            self.assertEqual(artifact["review_model"], "gpt-test-vision")
+            self.assertEqual(artifact["review_model"], visual_review.DEFAULT_MODEL)
             self.assertEqual(visual_review.validate_visual_review_payload(artifact, expected={"implementation_commit": "impl-1"}), [])
+            self.assertEqual(captured["token_body"], captured["body"])
+            self.assertEqual(captured["urls"], [paid_review.INPUT_TOKENS_URL, visual_review.API_URL])
             self.assertFalse(captured["body"]["store"])
             self.assertIn("input_image", json.dumps(captured["body"]))
+            self.assertNotIn("tools", captured["body"])
+            self.assertEqual(captured["body"]["max_output_tokens"], paid_review.DEFAULT_MAX_OUTPUT_TOKENS)
             self.assertEqual(captured["timeout"], 12)
             self.assertNotIn("sk-test-secret", json.dumps(captured["body"]))
+            self.assertEqual(artifact["paid_review"]["campaign_identity"], "001_visual")
+            self.assertEqual(artifact["paid_review"]["exact_input_token_preflight"]["input_tokens"], 2048)
+            self.assertEqual(artifact["paid_review"]["actual_response_usage"]["output_tokens"], 91)
 
     def test_default_model_uses_shared_production_default(self) -> None:
         tmp, target, manifest, output = self.make_project()
@@ -122,12 +146,8 @@ class VisualReviewTests(unittest.TestCase):
             previous = os.environ.pop(visual_review.MODEL_ENV, None)
             captured: dict = {}
 
-            def opener(request, timeout):
-                captured["body"] = json.loads(request.data.decode("utf-8"))
-                return FakeResponse({"status": "completed", "output_text": json.dumps(self.model_payload())})
-
             try:
-                artifact = visual_review.run_visual_review(target, manifest, output, api_key="sk-secret", opener=opener)
+                artifact = visual_review.run_visual_review(target, manifest, output, api_key="sk-secret", opener=self.opener_for(captured))
             finally:
                 if previous is not None:
                     os.environ[visual_review.MODEL_ENV] = previous
@@ -136,68 +156,64 @@ class VisualReviewTests(unittest.TestCase):
             self.assertEqual(captured["body"]["model"], "gpt-5.6-terra")
             self.assertEqual(artifact["review_model"], "gpt-5.6-terra")
 
-    def test_environment_model_override_is_supported(self) -> None:
+    def test_environment_model_override_fails_closed_before_network(self) -> None:
         tmp, target, manifest, output = self.make_project()
         with tmp:
             previous = os.environ.get(visual_review.MODEL_ENV)
             os.environ[visual_review.MODEL_ENV] = "gpt-test-override"
             captured: dict = {}
 
-            def opener(request, timeout):
-                captured["body"] = json.loads(request.data.decode("utf-8"))
-                return FakeResponse({"status": "completed", "output_text": json.dumps(self.model_payload())})
-
             try:
-                artifact = visual_review.run_visual_review(target, manifest, output, api_key="sk-secret", opener=opener)
+                with self.assertRaisesRegex(visual_review.VisualReviewError, "model/pricing mismatch"):
+                    visual_review.run_visual_review(target, manifest, output, api_key="sk-secret", opener=self.opener_for(captured))
             finally:
                 if previous is None:
                     os.environ.pop(visual_review.MODEL_ENV, None)
                 else:
                     os.environ[visual_review.MODEL_ENV] = previous
 
-            self.assertEqual(captured["body"]["model"], "gpt-test-override")
-            self.assertEqual(artifact["review_model"], "gpt-test-override")
+            self.assertEqual(captured, {})
 
-    def test_explicit_model_override_wins_over_environment(self) -> None:
+    def test_explicit_unknown_model_override_fails_closed_before_network(self) -> None:
         tmp, target, manifest, output = self.make_project()
         with tmp:
             previous = os.environ.get(visual_review.MODEL_ENV)
-            os.environ[visual_review.MODEL_ENV] = "gpt-test-env"
+            os.environ[visual_review.MODEL_ENV] = visual_review.DEFAULT_MODEL
             captured: dict = {}
 
-            def opener(request, timeout):
-                captured["body"] = json.loads(request.data.decode("utf-8"))
-                return FakeResponse({"status": "completed", "output_text": json.dumps(self.model_payload())})
-
             try:
-                artifact = visual_review.run_visual_review(
-                    target,
-                    manifest,
-                    output,
-                    api_key="sk-secret",
-                    model="gpt-explicit",
-                    opener=opener,
-                )
+                with self.assertRaisesRegex(visual_review.VisualReviewError, "model/pricing mismatch"):
+                    visual_review.run_visual_review(
+                        target,
+                        manifest,
+                        output,
+                        api_key="sk-secret",
+                        model="gpt-explicit",
+                        opener=self.opener_for(captured),
+                    )
             finally:
                 if previous is None:
                     os.environ.pop(visual_review.MODEL_ENV, None)
                 else:
                     os.environ[visual_review.MODEL_ENV] = previous
 
-            self.assertEqual(captured["body"]["model"], "gpt-explicit")
-            self.assertEqual(artifact["review_model"], "gpt-explicit")
+            self.assertEqual(captured, {})
 
     def test_malformed_model_output_fails_closed(self) -> None:
         tmp, target, manifest, output = self.make_project()
         with tmp:
-            def opener(*_args, **_kwargs):
+            def opener(request, timeout):
+                if request.full_url.endswith("/responses/input_tokens"):
+                    return FakeResponse({"input_tokens": 10})
                 return FakeResponse({"status": "completed", "output_text": "{not json"})
 
             with self.assertRaisesRegex(visual_review.VisualReviewError, "not valid JSON"):
                 visual_review.run_visual_review(target, manifest, output, api_key="sk-secret", opener=opener)
             self.assertFalse((target / output).exists())
 
-            def incomplete_opener(*_args, **_kwargs):
+            def incomplete_opener(request, timeout):
+                if request.full_url.endswith("/responses/input_tokens"):
+                    return FakeResponse({"input_tokens": 10})
                 return FakeResponse({"status": "completed", "output_text": json.dumps({"overall_decision": "PASS"})})
 
             with self.assertRaisesRegex(visual_review.VisualReviewError, "missing item_reviews"):
@@ -207,7 +223,9 @@ class VisualReviewTests(unittest.TestCase):
     def test_api_failure_fails_closed_without_secret_in_error(self) -> None:
         tmp, target, manifest, output = self.make_project()
         with tmp:
-            def opener(*_args, **_kwargs):
+            def opener(request, timeout):
+                if request.full_url.endswith("/responses/input_tokens"):
+                    return FakeResponse({"input_tokens": 10})
                 raise urllib.error.URLError("rate limited")
 
             with self.assertRaises(visual_review.VisualReviewError) as caught:
@@ -218,8 +236,7 @@ class VisualReviewTests(unittest.TestCase):
     def test_identity_and_image_sha_mismatch_are_rejected(self) -> None:
         tmp, target, manifest, output = self.make_project()
         with tmp:
-            def opener(*_args, **_kwargs):
-                return FakeResponse({"status": "completed", "output_text": json.dumps(self.model_payload())})
+            opener = self.opener_for({})
 
             artifact = visual_review.run_visual_review(target, manifest, output, api_key="sk-secret", opener=opener)
             artifact["images"][0]["sha256"] = "bad"
@@ -277,6 +294,9 @@ class VisualReviewTests(unittest.TestCase):
         self.assertIn("      - 'reviewed/**'", workflow)
         self.assertIn("      - 'results/**/visual_review/visual_inputs.json'", workflow)
         self.assertNotIn("results/**/visual_review/**", workflow)
+        self.assertIn("group: ai-bridge-paid-review-${{ github.repository }}-${{ github.ref }}", workflow)
+        self.assertIn('AI_BRIDGE_PAID_REVIEW_GIT_RESERVE: "1"', workflow)
+        self.assertIn("cannot run live visual review", workflow)
         self.assertIn('git push origin "HEAD:${GITHUB_REF_NAME}"', workflow)
         self.assertIn('if [ "${GITHUB_REF_TYPE}" != "branch" ]; then', workflow)
 

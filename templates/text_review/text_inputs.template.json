@@ -1,6 +1,7 @@
 {
   "schema": "AI_BRIDGE_TEXT_INPUT_MANIFEST_V1",
   "task_key": "001_task",
+  "paid_review_campaign_id": "001_task",
   "workflow_type": "reviewed_handoff",
   "review_kind": "user-facing-text",
   "prompt_version": "ai-bridge.text-review.v1",

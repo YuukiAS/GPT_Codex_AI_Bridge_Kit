@@ -47,8 +47,20 @@ OPENAI_VISUAL_REVIEW_API_KEY
 ```
 
 The second name preserves compatibility with repositories that already
-configured Visual Review. The model default is `gpt-5.6-terra`; override only
-with `OPENAI_TEXT_REVIEW_MODEL` or CLI `--model`.
+configured Visual Review.
+
+Every paid Text Review request uses the shared Bridge Kit paid-review guard.
+The default campaign contract is `gpt-5.6-terra`, at most two paid calls, USD
+0.50 total reserved worst-case cost, USD 0.25 per call, and zero automatic paid
+retries. The request is counted first through `POST /responses/input_tokens`,
+the full worst-case amount is reserved in
+`results/<task_key>/paid_review_budget.json`, and only then is the Responses
+request sent. GitHub Actions writes the reservation commit before the paid
+request so reruns and fresh checkouts cannot reset the campaign budget.
+
+The model default is `gpt-5.6-terra`. `OPENAI_TEXT_REVIEW_MODEL` and CLI
+`--model` remain accepted for interface compatibility, but Bridge Kit currently
+fails closed unless the selected model exactly matches reviewed Terra pricing.
 
 Encrypt a private artifact from the user machine:
 
@@ -65,4 +77,5 @@ ai-bridge text-review encrypt \
 ```
 
 The `TEXT_REVIEW.json` evidence contains SHA-256 bindings and structured
-findings, not the private plaintext.
+findings, paid-review reservation receipt data, actual response usage when the
+request succeeds, and no private plaintext.

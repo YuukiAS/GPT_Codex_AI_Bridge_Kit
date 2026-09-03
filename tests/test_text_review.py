@@ -8,10 +8,12 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+import urllib.error
 from pathlib import Path
 from unittest import mock
 
 from ai_bridge_kit import bridge_cli
+from ai_bridge_kit import paid_review
 from ai_bridge_kit import text_review
 
 
@@ -99,16 +101,32 @@ class TextReviewTests(unittest.TestCase):
             "non_blocking_notes": [],
         }
 
+    def opener_for(self, captured: dict, decision: str = "PASS", *, input_tokens: int = 1234):
+        def opener(request, timeout):
+            body = json.loads(request.data.decode("utf-8"))
+            if request.full_url.endswith("/responses/input_tokens"):
+                captured.setdefault("urls", []).append(request.full_url)
+                captured["token_body"] = body
+                captured["token_auth"] = request.headers.get("Authorization")
+                return FakeResponse({"input_tokens": input_tokens})
+            captured.setdefault("urls", []).append(request.full_url)
+            captured["body"] = body
+            captured["auth"] = request.headers.get("Authorization")
+            captured["timeout"] = timeout
+            return FakeResponse(
+                {
+                    "status": "completed",
+                    "usage": {"input_tokens": input_tokens, "output_tokens": 77, "total_tokens": input_tokens + 77},
+                    "output_text": json.dumps(self.model_payload(decision)),
+                }
+            )
+
+        return opener
+
     def test_mock_responses_api_reads_complete_plaintext_and_uses_store_false(self) -> None:
         tmp, target, manifest, plaintext, output = self.make_project()
         with tmp:
             captured: dict = {}
-
-            def opener(request, timeout):
-                captured["body"] = json.loads(request.data.decode("utf-8"))
-                captured["auth"] = request.headers.get("Authorization")
-                captured["timeout"] = timeout
-                return FakeResponse({"status": "completed", "output_text": json.dumps(self.model_payload("REVISE"))})
 
             artifact = text_review.run_text_review(
                 target,
@@ -116,41 +134,42 @@ class TextReviewTests(unittest.TestCase):
                 plaintext,
                 output,
                 api_key="sk-text-secret",
-                model="gpt-test-text",
+                model=text_review.DEFAULT_MODEL,
                 timeout=13,
-                opener=opener,
+                opener=self.opener_for(captured, "REVISE"),
             )
 
             request_text = json.dumps(captured["body"], ensure_ascii=False)
-            self.assertEqual(captured["body"]["model"], "gpt-test-text")
+            self.assertEqual(captured["token_body"], captured["body"])
+            self.assertEqual(captured["urls"], [paid_review.INPUT_TOKENS_URL, text_review.API_URL])
+            self.assertEqual(captured["body"]["model"], text_review.DEFAULT_MODEL)
             self.assertFalse(captured["body"]["store"])
+            self.assertEqual(captured["body"]["max_output_tokens"], paid_review.DEFAULT_MAX_OUTPUT_TOKENS)
             self.assertIn("provenance、estimand、calibration", request_text)
             self.assertNotIn("sk-text-secret", request_text)
             self.assertEqual(captured["timeout"], 13)
             self.assertEqual(artifact["schema"], text_review.TEXT_REVIEW_SCHEMA)
             self.assertEqual(artifact["overall_decision"], "REVISE")
-            self.assertEqual(artifact["model"], "gpt-test-text")
+            self.assertEqual(artifact["model"], text_review.DEFAULT_MODEL)
+            self.assertEqual(artifact["paid_review"]["campaign_identity"], "001_text")
+            self.assertEqual(artifact["paid_review"]["exact_input_token_preflight"]["input_tokens"], 1234)
+            self.assertEqual(artifact["paid_review"]["actual_response_usage"]["output_tokens"], 77)
             self.assertEqual(artifact["plaintext_artifact_sha256"], text_review.sha256_bytes(plaintext.read_bytes()))
             self.assertNotIn("这份面向普通读者", json.dumps(artifact, ensure_ascii=False))
 
-    def test_default_model_and_environment_override(self) -> None:
+    def test_default_model_and_unsupported_environment_override_fails_closed(self) -> None:
         tmp, target, manifest, plaintext, output = self.make_project()
         with tmp:
             previous = os.environ.pop(text_review.MODEL_ENV, None)
             captured: dict = {}
 
-            def opener(request, timeout):
-                captured["body"] = json.loads(request.data.decode("utf-8"))
-                return FakeResponse({"status": "completed", "output_text": json.dumps(self.model_payload("PASS"))})
-
             try:
-                artifact = text_review.run_text_review(target, manifest, plaintext, output, api_key="sk", opener=opener)
+                artifact = text_review.run_text_review(target, manifest, plaintext, output, api_key="sk", opener=self.opener_for(captured, "PASS"))
                 self.assertEqual(captured["body"]["model"], text_review.DEFAULT_MODEL)
                 self.assertEqual(artifact["model"], "gpt-5.6-terra")
                 os.environ[text_review.MODEL_ENV] = "gpt-env-text"
-                artifact = text_review.run_text_review(target, manifest, plaintext, output, api_key="sk", opener=opener)
-                self.assertEqual(captured["body"]["model"], "gpt-env-text")
-                self.assertEqual(artifact["model"], "gpt-env-text")
+                with self.assertRaisesRegex(text_review.TextReviewError, "model/pricing mismatch"):
+                    text_review.run_text_review(target, manifest, plaintext, output, api_key="sk", opener=self.opener_for(captured, "PASS"))
             finally:
                 if previous is not None:
                     os.environ[text_review.MODEL_ENV] = previous
@@ -168,35 +187,44 @@ class TextReviewTests(unittest.TestCase):
         ):
             captured: dict = {}
 
-            def opener(request, timeout):
-                captured["auth"] = request.headers.get("Authorization")
-                return FakeResponse({"status": "completed", "output_text": json.dumps(self.model_payload("PASS"))})
-
-            text_review.run_text_review(target, manifest, plaintext, output, opener=opener)
+            text_review.run_text_review(target, manifest, plaintext, output, opener=self.opener_for(captured, "PASS"))
             self.assertEqual(captured["auth"], "Bearer sk-review")
+            self.assertEqual(captured["token_auth"], "Bearer sk-review")
 
     def test_visual_review_key_is_backward_compatible(self) -> None:
         tmp, target, manifest, plaintext, output = self.make_project()
         with tmp, mock.patch.dict(os.environ, {text_review.LEGACY_OPENAI_KEY_ENV: "sk-visual"}, clear=True):
             captured: dict = {}
 
-            def opener(request, timeout):
-                captured["auth"] = request.headers.get("Authorization")
-                return FakeResponse({"status": "completed", "output_text": json.dumps(self.model_payload("PASS"))})
-
-            text_review.run_text_review(target, manifest, plaintext, output, opener=opener)
+            text_review.run_text_review(target, manifest, plaintext, output, opener=self.opener_for(captured, "PASS"))
             self.assertEqual(captured["auth"], "Bearer sk-visual")
+
+    def test_billing_quota_error_fails_without_paid_retry(self) -> None:
+        tmp, target, manifest, plaintext, output = self.make_project()
+        with tmp:
+            urls: list[str] = []
+
+            def opener(request, timeout):
+                urls.append(request.full_url)
+                if request.full_url.endswith("/responses/input_tokens"):
+                    return FakeResponse({"input_tokens": 10})
+                body = json.dumps({"error": {"code": "credit_balance_exhausted"}}).encode("utf-8")
+                raise urllib.error.HTTPError(request.full_url, 429, "quota", {}, io.BytesIO(body))
+
+            with self.assertRaisesRegex(text_review.TextReviewError, "credit_balance_exhausted; zero paid retry"):
+                text_review.run_text_review(target, manifest, plaintext, output, api_key="sk", opener=opener)
+            self.assertEqual(urls, [paid_review.INPUT_TOKENS_URL, text_review.API_URL])
+            self.assertFalse((target / output).exists())
+            state = text_review.load_json(target / "results/001_text/paid_review_budget.json")
+            self.assertEqual(len(state["reservations"]), 1)
 
     def test_plaintext_sha_stale_detection_fails_closed(self) -> None:
         tmp, target, manifest, plaintext, output = self.make_project()
         with tmp:
             plaintext.write_text("# Changed\n\nDifferent full text.\n", encoding="utf-8")
 
-            def opener(*_args, **_kwargs):
-                return FakeResponse({"status": "completed", "output_text": json.dumps(self.model_payload("PASS"))})
-
             with self.assertRaisesRegex(text_review.TextReviewError, "plaintext SHA-256"):
-                text_review.run_text_review(target, manifest, plaintext, output, api_key="sk", opener=opener)
+                text_review.run_text_review(target, manifest, plaintext, output, api_key="sk", opener=self.opener_for({}, "PASS"))
             self.assertFalse((target / output).exists())
 
     def test_validate_rejects_stale_manifest_identity(self) -> None:
@@ -273,6 +301,8 @@ class TextReviewTests(unittest.TestCase):
         self.assertIn("      - 'reviewed/**'", workflow)
         self.assertIn("      - 'results/**/text_review/text_inputs.json'", workflow)
         self.assertNotIn("results/**/text_review/**", workflow)
+        self.assertIn("group: ai-bridge-paid-review-${{ github.repository }}-${{ github.ref }}", workflow)
+        self.assertIn('AI_BRIDGE_PAID_REVIEW_GIT_RESERVE: "1"', workflow)
         self.assertIn('git push origin "HEAD:${GITHUB_REF_NAME}"', workflow)
         self.assertIn('if [ "${GITHUB_REF_TYPE}" != "branch" ]; then', workflow)
 
