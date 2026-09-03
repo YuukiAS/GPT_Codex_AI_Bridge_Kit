@@ -18,14 +18,40 @@ class PaidReviewBudgetTests(unittest.TestCase):
             "model": paid_review.DEFAULT_MODEL,
             "store": False,
             "input": [{"role": "user", "content": [{"type": "input_text", "text": "Review this."}]}],
-            "max_output_tokens": paid_review.DEFAULT_MAX_OUTPUT_TOKENS,
+            **paid_review.request_safety_fields(),
         }
 
     def token_preflight(self, input_tokens: int = 1000) -> dict:
         return {
-            "endpoint": "/responses/input_tokens",
+            "endpoint": "/v1/responses/input_tokens",
             "input_tokens": input_tokens,
             "raw_response": {"input_tokens": input_tokens},
+        }
+
+    def response_payload(
+        self,
+        *,
+        input_tokens: int = 100,
+        cached_tokens: int = 0,
+        cache_write_tokens: int = 0,
+        output_tokens: int = 20,
+        reasoning_tokens: int = 0,
+        model: str = paid_review.DEFAULT_MODEL,
+        service_tier: str = paid_review.DEFAULT_SERVICE_TIER,
+    ) -> dict:
+        return {
+            "id": "resp_paid_review_test",
+            "model": model,
+            "service_tier": service_tier,
+            "usage": {
+                "input_tokens": input_tokens,
+                "input_tokens_details": {
+                    "cached_tokens": cached_tokens,
+                    "cache_write_tokens": cache_write_tokens,
+                },
+                "output_tokens": output_tokens,
+                "output_tokens_details": {"reasoning_tokens": reasoning_tokens},
+            },
         }
 
     def reserve(self, target: Path, *, campaign: str = "001_paid", input_tokens: int = 1000) -> dict:
@@ -50,6 +76,7 @@ class PaidReviewBudgetTests(unittest.TestCase):
         self.assertEqual(contract["pricing"]["cache_write_input_usd_per_1m_tokens"], "2.500000")
         self.assertEqual(contract["pricing"]["worst_case_input_usd_per_1m_tokens"], "2.500000")
         self.assertEqual(contract["pricing"]["output_usd_per_1m_tokens"], "12.000000")
+        self.assertEqual(contract["pricing"]["long_context_threshold"], 272_000)
         self.assertTrue(contract["pricing"]["runtime_uses_worst_case_input_price"])
 
     def test_reservation_persists_across_restart_or_rerun(self) -> None:
@@ -79,11 +106,18 @@ class PaidReviewBudgetTests(unittest.TestCase):
                 self.reserve(target, input_tokens=101_000)
             self.assertFalse((target / "results/001_paid/paid_review_budget.json").exists())
 
+    def test_long_context_input_fails_closed_before_reservation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp)
+            with self.assertRaisesRegex(paid_review.PaidReviewBudgetError, "long-context pricing boundary"):
+                self.reserve(target, input_tokens=272_001)
+            self.assertFalse((target / "results/001_paid/paid_review_budget.json").exists())
+
     def test_worst_case_input_uses_cache_write_price(self) -> None:
         cost = paid_review.calculate_worst_case_cost(1000, 1000)
         self.assertEqual(paid_review._money(cost), "0.014500")
 
-    def test_count_input_tokens_uses_endpoint_compatible_payload(self) -> None:
+    def test_count_input_tokens_uses_exact_paid_request_payload(self) -> None:
         captured: dict = {}
 
         def opener(request, timeout):
@@ -93,14 +127,10 @@ class PaidReviewBudgetTests(unittest.TestCase):
         payload = {
             **self.request_payload(),
             "text": {"format": {"type": "json_schema"}},
-            "reasoning": {"effort": "low"},
         }
         result = paid_review.count_input_tokens(payload, api_key="sk-test", opener=opener)
         self.assertEqual(result["input_tokens"], 10)
-        self.assertEqual(set(captured["body"]), {"model", "input"})
-        self.assertNotIn("max_output_tokens", captured["body"])
-        self.assertNotIn("store", captured["body"])
-        self.assertNotIn("text", captured["body"])
+        self.assertEqual(captured["body"], payload)
 
     def test_input_token_http_error_reports_openai_code(self) -> None:
         def opener(request, timeout):
@@ -110,7 +140,7 @@ class PaidReviewBudgetTests(unittest.TestCase):
         with self.assertRaisesRegex(paid_review.PaidReviewBudgetError, "HTTP 403 \\(missing_scope\\)"):
             paid_review.count_input_tokens(self.request_payload(), api_key="sk-test", opener=opener)
 
-    def test_actual_usage_cost_is_persisted_and_blocks_unverified_cache_write(self) -> None:
+    def test_actual_usage_cost_is_persisted_and_cache_write_is_verified(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp)
             first = self.reserve(target)
@@ -118,20 +148,115 @@ class PaidReviewBudgetTests(unittest.TestCase):
                 target=target,
                 campaign_identity="001_paid",
                 reservation_id=first["reservation"]["reservation_id"],
-                response_payload={
-                    "usage": {
-                        "input_tokens": 100,
-                        "input_tokens_details": {"cached_tokens": 10, "cache_write_tokens": 5},
-                        "output_tokens": 20,
-                    }
-                },
+                response_payload=self.response_payload(input_tokens=100, cached_tokens=10, cache_write_tokens=5, output_tokens=20),
             )
             state = json.loads((target / "results/001_paid/paid_review_budget.json").read_text(encoding="utf-8"))
             reservation = state["reservations"][0]
-            self.assertEqual(reservation["actual_cost_status"], "ACCOUNTING_UNVERIFIED")
+            self.assertEqual(reservation["accounting_status"], "ACCOUNTING_VERIFIED")
             self.assertEqual(reservation["actual_model_cost_usd"], "0.000425")
+
+    def test_accounting_unverified_blocks_next_paid_request(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp)
+            first = self.reserve(target)
+            paid_review.record_actual_usage(
+                target=target,
+                campaign_identity="001_paid",
+                reservation_id=first["reservation"]["reservation_id"],
+                response_payload=self.response_payload(model="gpt-5.6-sol"),
+            )
+            state = json.loads((target / "results/001_paid/paid_review_budget.json").read_text(encoding="utf-8"))
+            self.assertEqual(state["reservations"][0]["accounting_status"], "ACCOUNTING_UNVERIFIED")
             with self.assertRaisesRegex(paid_review.PaidReviewBudgetError, "accounting is unverified"):
                 self.reserve(target)
+
+    def test_actual_cost_never_refunds_reserved_capacity(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp)
+            first = self.reserve(target, input_tokens=1000)
+            paid_review.record_actual_usage(
+                target=target,
+                campaign_identity="001_paid",
+                reservation_id=first["reservation"]["reservation_id"],
+                response_payload=self.response_payload(input_tokens=1, output_tokens=1),
+            )
+            state = json.loads((target / "results/001_paid/paid_review_budget.json").read_text(encoding="utf-8"))
+            self.assertEqual(state["cumulative_reserved_worst_case_cost_usd"], "0.051652")
+            self.assertEqual(state["cumulative_actual_model_cost_usd"], "0.000014")
+            self.reserve(target, input_tokens=1000)
+            with self.assertRaisesRegex(paid_review.PaidReviewBudgetError, "call limit exhausted"):
+                self.reserve(target, input_tokens=1000)
+
+    def test_actual_cost_formula_normal_cached_cache_write_and_mixed_tokens(self) -> None:
+        cases = [
+            (self.response_payload(input_tokens=100, output_tokens=20), "0.000440"),
+            (self.response_payload(input_tokens=100, cached_tokens=40, output_tokens=20), "0.000368"),
+            (self.response_payload(input_tokens=100, cached_tokens=10, cache_write_tokens=5, output_tokens=20), "0.000425"),
+            (self.response_payload(input_tokens=1000, cached_tokens=200, cache_write_tokens=100, output_tokens=50), "0.002290"),
+        ]
+        for payload, expected in cases:
+            with self.subTest(expected=expected):
+                accounting = paid_review.verified_actual_accounting(
+                    payload,
+                    expected_model=paid_review.DEFAULT_MODEL,
+                    expected_service_tier=paid_review.DEFAULT_SERVICE_TIER,
+                )
+                self.assertEqual(accounting["actual_model_cost_usd"], expected)
+
+    def test_reasoning_tokens_are_not_double_counted(self) -> None:
+        no_reasoning = paid_review.verified_actual_accounting(
+            self.response_payload(input_tokens=100, output_tokens=20, reasoning_tokens=0),
+            expected_model=paid_review.DEFAULT_MODEL,
+            expected_service_tier=paid_review.DEFAULT_SERVICE_TIER,
+        )
+        with_reasoning = paid_review.verified_actual_accounting(
+            self.response_payload(input_tokens=100, output_tokens=20, reasoning_tokens=20),
+            expected_model=paid_review.DEFAULT_MODEL,
+            expected_service_tier=paid_review.DEFAULT_SERVICE_TIER,
+        )
+        self.assertEqual(with_reasoning["actual_model_cost_usd"], no_reasoning["actual_model_cost_usd"])
+
+    def test_malformed_required_usage_fails_closed(self) -> None:
+        payload = self.response_payload()
+        payload["usage"]["input_tokens"] = "100"
+        with self.assertRaisesRegex(paid_review.PaidReviewBudgetError, "malformed required usage field"):
+            paid_review.verified_actual_accounting(
+                payload,
+                expected_model=paid_review.DEFAULT_MODEL,
+                expected_service_tier=paid_review.DEFAULT_SERVICE_TIER,
+            )
+
+    def test_negative_token_decomposition_fails_closed(self) -> None:
+        with self.assertRaisesRegex(paid_review.PaidReviewBudgetError, "negative token decomposition"):
+            paid_review.verified_actual_accounting(
+                self.response_payload(input_tokens=10, cached_tokens=8, cache_write_tokens=5),
+                expected_model=paid_review.DEFAULT_MODEL,
+                expected_service_tier=paid_review.DEFAULT_SERVICE_TIER,
+            )
+
+    def test_wrong_model_and_unexpected_service_tier_fail_closed(self) -> None:
+        with self.assertRaisesRegex(paid_review.PaidReviewBudgetError, "wrong response model"):
+            paid_review.verified_actual_accounting(
+                self.response_payload(model="gpt-5.6-sol"),
+                expected_model=paid_review.DEFAULT_MODEL,
+                expected_service_tier=paid_review.DEFAULT_SERVICE_TIER,
+            )
+        with self.assertRaisesRegex(paid_review.PaidReviewBudgetError, "unexpected service tier"):
+            paid_review.verified_actual_accounting(
+                self.response_payload(service_tier="flex"),
+                expected_model=paid_review.DEFAULT_MODEL,
+                expected_service_tier=paid_review.DEFAULT_SERVICE_TIER,
+            )
+
+    def test_unknown_positive_token_category_fails_closed(self) -> None:
+        payload = self.response_payload()
+        payload["usage"]["input_tokens_details"]["mystery_tokens"] = 1
+        with self.assertRaisesRegex(paid_review.PaidReviewBudgetError, "unknown input token category"):
+            paid_review.verified_actual_accounting(
+                payload,
+                expected_model=paid_review.DEFAULT_MODEL,
+                expected_service_tier=paid_review.DEFAULT_SERVICE_TIER,
+            )
 
     def test_zero_billing_failure_preserves_and_reuses_matching_reservation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

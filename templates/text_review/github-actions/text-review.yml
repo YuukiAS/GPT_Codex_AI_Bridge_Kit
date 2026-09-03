@@ -11,25 +11,19 @@ on:
         description: Repository-relative TEXT_REVIEW.json output path
         required: true
         default: results/001_task/text_review/TEXT_REVIEW.json
-  push:
-    branches:
-      - main
-      - 'reviewed/**'
-    paths:
-      - 'results/**/text_review/text_inputs.json'
 
 permissions:
   contents: write
 
 concurrency:
-  group: ai-bridge-paid-review-${{ github.repository }}-${{ github.ref }}
+  group: ai-bridge-paid-review-${{ github.repository }}
   cancel-in-progress: false
 
 jobs:
   text-review:
     runs-on: ubuntu-latest
     env:
-      OPENAI_API_KEY: ${{ secrets.OPENAI_REVIEW_API_KEY || secrets.OPENAI_VISUAL_REVIEW_API_KEY }}
+      OPENAI_REVIEW_API_KEY: ${{ secrets.OPENAI_REVIEW_API_KEY }}
       OPENAI_TEXT_REVIEW_MODEL: ${{ vars.OPENAI_TEXT_REVIEW_MODEL }}
       AI_BRIDGE_TEXT_REVIEW_MANIFEST: ${{ github.event.inputs.manifest }}
       AI_BRIDGE_TEXT_REVIEW_OUTPUT: ${{ github.event.inputs.output }}
@@ -88,8 +82,8 @@ jobs:
             echo "AI_BRIDGE_PRIVATE_REVIEW_AGE_KEY is not configured; cannot decrypt private text review payload."
             exit 1
           fi
-          if [ -z "${OPENAI_API_KEY}" ]; then
-            echo "OPENAI_REVIEW_API_KEY or OPENAI_VISUAL_REVIEW_API_KEY is not configured; cannot run live text review."
+          if [ -z "${OPENAI_REVIEW_API_KEY}" ]; then
+            echo "OPENAI_REVIEW_API_KEY is not configured; cannot run live text review."
             exit 1
           fi
 

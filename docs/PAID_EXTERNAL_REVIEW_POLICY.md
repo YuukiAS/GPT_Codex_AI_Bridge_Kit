@@ -16,6 +16,11 @@ max paid calls: 2
 campaign reserved-cost hard ceiling: USD 0.50
 per-call worst-case ceiling: USD 0.25
 automatic paid retries: 0
+service tier: default
+reasoning effort: low
+max output tokens: 4096
+paid tools: none
+prompt cache: explicit mode with no cache breakpoints
 ```
 
 A retry, workflow rerun, process restart, machine restart or fresh checkout must not reset the campaign budget.
@@ -26,8 +31,8 @@ Before a paid Responses request is sent:
 
 1. construct the exact request;
 2. count its exact input tokens through the provider-supported Responses input-token count path, including image inputs when present;
-3. calculate worst-case cost from uncached input plus bounded maximum output;
-4. validate model/pricing identity;
+3. validate model, service tier, reasoning, tools and prompt-cache settings;
+4. calculate worst-case cost from standard-tier USD 2.50/M input reservation plus bounded maximum output;
 5. persistently reserve one paid call and the full worst-case amount;
 6. only then send the request.
 
@@ -39,9 +44,30 @@ The current reviewed Terra baseline as of 2026-09-03 is:
 input: USD 2 / 1M tokens
 cached input: USD 0.20 / 1M tokens
 output: USD 12 / 1M tokens
+cache write: USD 2.50 / 1M tokens
 ```
 
-Runtime preflight uses uncached input. Unknown/stale model pricing or a model-ID mismatch must fail closed.
+Runtime preflight reserves input at USD 2.50 / 1M tokens, the reviewed worst standard input-side rate. Unknown/stale model pricing, model-ID mismatch, unexpected service tier, unsupported long-context pricing above 272,000 input tokens or malformed usage must fail closed.
+
+Successful responses must persist both independent totals:
+
+```text
+cumulative_reserved_worst_case_cost_usd
+cumulative_actual_model_cost_usd
+```
+
+Actual model cost is calculated only from verified standard-tier Terra response usage:
+
+```text
+regular_input_tokens = input_tokens - cached_input_tokens - cache_write_tokens
+actual_model_cost_usd =
+  regular_input_tokens * 2.00 / 1_000_000
+  + cached_input_tokens * 0.20 / 1_000_000
+  + cache_write_tokens * 2.50 / 1_000_000
+  + output_tokens * 12.00 / 1_000_000
+```
+
+`usage.output_tokens` already includes reasoning tokens. Do not add reasoning tokens separately. If accounting cannot be verified, record `ACCOUNTING_UNVERIFIED`, preserve the existing reservation and refuse subsequent paid calls in the same campaign.
 
 Do not use Organization Admin API credentials or organization/day cost buckets as the runtime gate.
 
@@ -77,6 +103,8 @@ Paid review should be invoked explicitly by a bounded consumer workflow. Ordinar
 ## Secret boundary
 
 Consumer repository secret names may remain separate for text and visual review. Bridge Kit must not encourage silent fallback from one missing review credential to an unrelated credential path.
+
+Text Review uses `OPENAI_REVIEW_API_KEY` only. Visual Review uses `OPENAI_VISUAL_REVIEW_API_KEY` only. Neither runtime falls back to the other review credential or to a generic `OPENAI_API_KEY`.
 
 Never print, persist or commit secret values.
 

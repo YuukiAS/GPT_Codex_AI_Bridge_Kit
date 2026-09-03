@@ -87,8 +87,17 @@ class VisualReviewTests(unittest.TestCase):
             captured["timeout"] = timeout
             return FakeResponse(
                 {
+                    "id": "resp_visual_review_test",
+                    "model": visual_review.DEFAULT_MODEL,
+                    "service_tier": paid_review.DEFAULT_SERVICE_TIER,
                     "status": "completed",
-                    "usage": {"input_tokens": input_tokens, "output_tokens": 91, "total_tokens": input_tokens + 91},
+                    "usage": {
+                        "input_tokens": input_tokens,
+                        "input_tokens_details": {"cached_tokens": 0, "cache_write_tokens": 0},
+                        "output_tokens": 91,
+                        "output_tokens_details": {"reasoning_tokens": 7},
+                        "total_tokens": input_tokens + 91,
+                    },
                     "output_text": json.dumps(self.model_payload(decision)),
                 }
             )
@@ -128,22 +137,45 @@ class VisualReviewTests(unittest.TestCase):
             self.assertEqual(artifact["status"], "PASS")
             self.assertEqual(artifact["review_model"], visual_review.DEFAULT_MODEL)
             self.assertEqual(visual_review.validate_visual_review_payload(artifact, expected={"implementation_commit": "impl-1"}), [])
-            self.assertEqual(set(captured["token_body"]), {"model", "input"})
-            self.assertEqual(captured["token_body"]["model"], captured["body"]["model"])
-            self.assertEqual(captured["token_body"]["input"], captured["body"]["input"])
-            self.assertNotIn("max_output_tokens", captured["token_body"])
-            self.assertNotIn("text", captured["token_body"])
-            self.assertNotIn("store", captured["token_body"])
+            self.assertEqual(captured["token_body"], captured["body"])
             self.assertEqual(captured["urls"], [paid_review.INPUT_TOKENS_URL, visual_review.API_URL])
             self.assertFalse(captured["body"]["store"])
-            self.assertIn("input_image", json.dumps(captured["body"]))
-            self.assertNotIn("tools", captured["body"])
+            body_json = json.dumps(captured["body"])
+            self.assertIn("input_image", body_json)
+            self.assertEqual(captured["body"]["service_tier"], paid_review.DEFAULT_SERVICE_TIER)
+            self.assertEqual(captured["body"]["reasoning"], {"effort": paid_review.DEFAULT_REASONING_EFFORT})
+            self.assertEqual(captured["body"]["tools"], [])
+            self.assertEqual(captured["body"]["prompt_cache_options"], {"mode": "explicit"})
+            self.assertNotIn("prompt_cache_breakpoint", body_json)
+            for forbidden in ("web_search", "file_search", "image_generation", "computer_use", "code_interpreter", "hosted_shell"):
+                self.assertNotIn(forbidden, body_json)
             self.assertEqual(captured["body"]["max_output_tokens"], paid_review.DEFAULT_MAX_OUTPUT_TOKENS)
             self.assertEqual(captured["timeout"], 12)
             self.assertNotIn("sk-test-secret", json.dumps(captured["body"]))
             self.assertEqual(artifact["paid_review"]["campaign_identity"], "001_visual")
             self.assertEqual(artifact["paid_review"]["exact_input_token_preflight"]["input_tokens"], 2048)
+            self.assertEqual(artifact["paid_review"]["response_id"], "resp_visual_review_test")
             self.assertEqual(artifact["paid_review"]["actual_response_usage"]["output_tokens"], 91)
+            self.assertEqual(artifact["paid_review"]["actual_response_usage"]["reasoning_tokens"], 7)
+            self.assertEqual(artifact["paid_review"]["accounting_status"], "ACCOUNTING_VERIFIED")
+
+    def test_visual_review_rejects_text_and_generic_api_key_fallback(self) -> None:
+        tmp, target, manifest, output = self.make_project()
+        with tmp:
+            calls: list[object] = []
+
+            def opener(*args, **kwargs):
+                calls.append((args, kwargs))
+                return FakeResponse({})
+
+            with unittest.mock.patch.dict(
+                os.environ,
+                {"OPENAI_REVIEW_API_KEY": "sk-text", "OPENAI_API_KEY": "sk-generic"},
+                clear=True,
+            ):
+                with self.assertRaisesRegex(visual_review.VisualReviewError, visual_review.SECRET_NAME):
+                    visual_review.run_visual_review(target, manifest, output, opener=opener)
+            self.assertEqual(calls, [])
 
     def test_default_model_uses_shared_production_default(self) -> None:
         tmp, target, manifest, output = self.make_project()
@@ -216,6 +248,8 @@ class VisualReviewTests(unittest.TestCase):
                 visual_review.run_visual_review(target, manifest, output, api_key="sk-secret", opener=opener)
             self.assertFalse((target / output).exists())
 
+        tmp, target, manifest, output = self.make_project()
+        with tmp:
             def incomplete_opener(request, timeout):
                 if request.full_url.endswith("/responses/input_tokens"):
                     return FakeResponse({"input_tokens": 10})
@@ -280,14 +314,17 @@ class VisualReviewTests(unittest.TestCase):
             self.assertFalse((consumer / "ai_bridge_kit").exists())
             self.assertIn(f"git+{visual_review.CANONICAL_BRIDGE_KIT_REPO}@{pinned_ref}", workflow)
             self.assertNotIn("pip install -e '.[visual-review]'", workflow)
-            self.assertIn("'results/**/visual_review/visual_inputs.json'", workflow)
-            self.assertIn("      - 'reviewed/**'", workflow)
+            self.assertNotIn("\n  push:", workflow)
+            self.assertIn("workflow_dispatch:", workflow)
+            self.assertIn("group: ai-bridge-paid-review-${{ github.repository }}", workflow)
+            self.assertIn("OPENAI_VISUAL_REVIEW_API_KEY: ${{ secrets.OPENAI_VISUAL_REVIEW_API_KEY }}", workflow)
+            self.assertNotIn("OPENAI_API_KEY:", workflow)
             self.assertIn('git push origin "HEAD:${GITHUB_REF_NAME}"', workflow)
             self.assertNotIn("paths-ignore", workflow)
             self.assertIn("No visual review manifest changed; not required.", workflow)
             self.assertNotIn("pip install -e .", workflow)
 
-    def test_visual_review_workflow_triggers_on_main_and_reviewed_branches_only_for_input_manifest(self) -> None:
+    def test_visual_review_workflow_is_manual_and_repo_wide(self) -> None:
         workflow = (
             Path(__file__).resolve().parents[1]
             / "templates"
@@ -295,11 +332,12 @@ class VisualReviewTests(unittest.TestCase):
             / "github-actions"
             / "visual-review.yml"
         ).read_text(encoding="utf-8")
-        self.assertIn("      - main", workflow)
-        self.assertIn("      - 'reviewed/**'", workflow)
-        self.assertIn("      - 'results/**/visual_review/visual_inputs.json'", workflow)
+        self.assertNotIn("\n  push:", workflow)
+        self.assertIn("  workflow_dispatch:", workflow)
         self.assertNotIn("results/**/visual_review/**", workflow)
-        self.assertIn("group: ai-bridge-paid-review-${{ github.repository }}-${{ github.ref }}", workflow)
+        self.assertIn("group: ai-bridge-paid-review-${{ github.repository }}", workflow)
+        self.assertIn("OPENAI_VISUAL_REVIEW_API_KEY: ${{ secrets.OPENAI_VISUAL_REVIEW_API_KEY }}", workflow)
+        self.assertNotIn("OPENAI_API_KEY:", workflow)
         self.assertIn('AI_BRIDGE_PAID_REVIEW_GIT_RESERVE: "1"', workflow)
         self.assertIn("cannot run live visual review", workflow)
         self.assertIn('git push origin "HEAD:${GITHUB_REF_NAME}"', workflow)

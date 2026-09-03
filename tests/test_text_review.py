@@ -115,8 +115,17 @@ class TextReviewTests(unittest.TestCase):
             captured["timeout"] = timeout
             return FakeResponse(
                 {
+                    "id": "resp_text_review_test",
+                    "model": text_review.DEFAULT_MODEL,
+                    "service_tier": paid_review.DEFAULT_SERVICE_TIER,
                     "status": "completed",
-                    "usage": {"input_tokens": input_tokens, "output_tokens": 77, "total_tokens": input_tokens + 77},
+                    "usage": {
+                        "input_tokens": input_tokens,
+                        "input_tokens_details": {"cached_tokens": 0, "cache_write_tokens": 0},
+                        "output_tokens": 77,
+                        "output_tokens_details": {"reasoning_tokens": 12},
+                        "total_tokens": input_tokens + 77,
+                    },
                     "output_text": json.dumps(self.model_payload(decision)),
                 }
             )
@@ -140,15 +149,15 @@ class TextReviewTests(unittest.TestCase):
             )
 
             request_text = json.dumps(captured["body"], ensure_ascii=False)
-            self.assertEqual(set(captured["token_body"]), {"model", "input"})
-            self.assertEqual(captured["token_body"]["model"], captured["body"]["model"])
-            self.assertEqual(captured["token_body"]["input"], captured["body"]["input"])
-            self.assertNotIn("max_output_tokens", captured["token_body"])
-            self.assertNotIn("text", captured["token_body"])
-            self.assertNotIn("store", captured["token_body"])
+            self.assertEqual(captured["token_body"], captured["body"])
             self.assertEqual(captured["urls"], [paid_review.INPUT_TOKENS_URL, text_review.API_URL])
             self.assertEqual(captured["body"]["model"], text_review.DEFAULT_MODEL)
             self.assertFalse(captured["body"]["store"])
+            self.assertEqual(captured["body"]["service_tier"], paid_review.DEFAULT_SERVICE_TIER)
+            self.assertEqual(captured["body"]["reasoning"], {"effort": paid_review.DEFAULT_REASONING_EFFORT})
+            self.assertEqual(captured["body"]["tools"], [])
+            self.assertEqual(captured["body"]["prompt_cache_options"], {"mode": "explicit"})
+            self.assertNotIn("prompt_cache_breakpoint", request_text)
             self.assertEqual(captured["body"]["max_output_tokens"], paid_review.DEFAULT_MAX_OUTPUT_TOKENS)
             self.assertIn("provenance、estimand、calibration", request_text)
             self.assertNotIn("sk-text-secret", request_text)
@@ -158,7 +167,15 @@ class TextReviewTests(unittest.TestCase):
             self.assertEqual(artifact["model"], text_review.DEFAULT_MODEL)
             self.assertEqual(artifact["paid_review"]["campaign_identity"], "001_text")
             self.assertEqual(artifact["paid_review"]["exact_input_token_preflight"]["input_tokens"], 1234)
+            self.assertRegex(artifact["paid_review"]["reservation_id"], r"^001_text-1-[0-9a-f]{12}$")
+            self.assertEqual(artifact["paid_review"]["call_number"], 1)
+            self.assertEqual(artifact["paid_review"]["service_tier"], paid_review.DEFAULT_SERVICE_TIER)
+            self.assertEqual(artifact["paid_review"]["response_id"], "resp_text_review_test")
             self.assertEqual(artifact["paid_review"]["actual_response_usage"]["output_tokens"], 77)
+            self.assertEqual(artifact["paid_review"]["actual_response_usage"]["reasoning_tokens"], 12)
+            self.assertEqual(artifact["paid_review"]["accounting_status"], "ACCOUNTING_VERIFIED")
+            self.assertEqual(artifact["paid_review"]["pricing_identity"]["long_context_threshold"], 272_000)
+            self.assertIn("cumulative_actual_model_cost_usd", artifact["paid_review"])
             self.assertEqual(artifact["plaintext_artifact_sha256"], text_review.sha256_bytes(plaintext.read_bytes()))
             self.assertNotIn("这份面向普通读者", json.dumps(artifact, ensure_ascii=False))
 
@@ -181,13 +198,13 @@ class TextReviewTests(unittest.TestCase):
                 else:
                     os.environ.pop(text_review.MODEL_ENV, None)
 
-    def test_openai_review_key_precedes_visual_review_key(self) -> None:
+    def test_openai_review_key_is_used_without_cross_review_fallback(self) -> None:
         tmp, target, manifest, plaintext, output = self.make_project()
         with tmp, mock.patch.dict(
             os.environ,
             {
                 text_review.OPENAI_REVIEW_KEY_ENV: "sk-review",
-                text_review.LEGACY_OPENAI_KEY_ENV: "sk-visual",
+                "OPENAI_VISUAL_REVIEW_API_KEY": "sk-visual",
             },
         ):
             captured: dict = {}
@@ -196,13 +213,22 @@ class TextReviewTests(unittest.TestCase):
             self.assertEqual(captured["auth"], "Bearer sk-review")
             self.assertEqual(captured["token_auth"], "Bearer sk-review")
 
-    def test_visual_review_key_is_backward_compatible(self) -> None:
+    def test_text_review_rejects_visual_and_generic_api_key_fallback(self) -> None:
         tmp, target, manifest, plaintext, output = self.make_project()
-        with tmp, mock.patch.dict(os.environ, {text_review.LEGACY_OPENAI_KEY_ENV: "sk-visual"}, clear=True):
-            captured: dict = {}
+        with tmp, mock.patch.dict(
+            os.environ,
+            {"OPENAI_VISUAL_REVIEW_API_KEY": "sk-visual", "OPENAI_API_KEY": "sk-generic"},
+            clear=True,
+        ):
+            calls: list[object] = []
 
-            text_review.run_text_review(target, manifest, plaintext, output, opener=self.opener_for(captured, "PASS"))
-            self.assertEqual(captured["auth"], "Bearer sk-visual")
+            def opener(*args, **kwargs):
+                calls.append((args, kwargs))
+                return FakeResponse({})
+
+            with self.assertRaisesRegex(text_review.TextReviewError, text_review.OPENAI_REVIEW_KEY_ENV):
+                text_review.run_text_review(target, manifest, plaintext, output, opener=opener)
+            self.assertEqual(calls, [])
 
     def test_billing_quota_error_fails_without_paid_retry(self) -> None:
         tmp, target, manifest, plaintext, output = self.make_project()
@@ -296,7 +322,7 @@ class TextReviewTests(unittest.TestCase):
         self.assertIn("Install age transport dependency", workflow)
         self.assertIn("sudo apt-get install -y age", workflow)
 
-    def test_text_review_workflow_triggers_on_main_and_reviewed_branches_only_for_input_manifest(self) -> None:
+    def test_text_review_workflow_is_manual_repo_wide_and_uses_canonical_secret(self) -> None:
         workflow = (
             Path(__file__).resolve().parents[1]
             / "templates"
@@ -304,11 +330,13 @@ class TextReviewTests(unittest.TestCase):
             / "github-actions"
             / "text-review.yml"
         ).read_text(encoding="utf-8")
-        self.assertIn("      - main", workflow)
-        self.assertIn("      - 'reviewed/**'", workflow)
-        self.assertIn("      - 'results/**/text_review/text_inputs.json'", workflow)
+        self.assertNotIn("\n  push:", workflow)
+        self.assertIn("  workflow_dispatch:", workflow)
         self.assertNotIn("results/**/text_review/**", workflow)
-        self.assertIn("group: ai-bridge-paid-review-${{ github.repository }}-${{ github.ref }}", workflow)
+        self.assertIn("group: ai-bridge-paid-review-${{ github.repository }}", workflow)
+        self.assertIn("OPENAI_REVIEW_API_KEY: ${{ secrets.OPENAI_REVIEW_API_KEY }}", workflow)
+        self.assertNotIn("OPENAI_API_KEY:", workflow)
+        self.assertNotIn("secrets.OPENAI_VISUAL_REVIEW_API_KEY", workflow)
         self.assertIn('AI_BRIDGE_PAID_REVIEW_GIT_RESERVE: "1"', workflow)
         self.assertIn('git push origin "HEAD:${GITHUB_REF_NAME}"', workflow)
         self.assertIn('if [ "${GITHUB_REF_TYPE}" != "branch" ]; then', workflow)
@@ -338,8 +366,10 @@ class TextReviewTests(unittest.TestCase):
                 )
             workflow = (target / ".github" / "workflows" / "ai-bridge-text-review.yml").read_text(encoding="utf-8")
             self.assertIn(text_review.AGE_SECRET_NAME, workflow)
-            self.assertIn(text_review.LEGACY_OPENAI_KEY_ENV, workflow)
-            self.assertIn("      - 'reviewed/**'", workflow)
+            self.assertIn(text_review.OPENAI_REVIEW_KEY_ENV, workflow)
+            self.assertNotIn("OPENAI_VISUAL_REVIEW_API_KEY", workflow)
+            self.assertNotIn("\n  push:", workflow)
+            self.assertIn("group: ai-bridge-paid-review-${{ github.repository }}", workflow)
             self.assertIn('git push origin "HEAD:${GITHUB_REF_NAME}"', workflow)
 
     def test_text_evidence_writeback_stages_shared_campaign_budget(self) -> None:

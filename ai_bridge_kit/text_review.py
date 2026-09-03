@@ -22,7 +22,6 @@ TEXT_INPUT_MANIFEST_SCHEMA = "AI_BRIDGE_TEXT_INPUT_MANIFEST_V1"
 TEXT_REVIEW_SCHEMA = "AI_BRIDGE_TEXT_REVIEW_V1"
 AGE_SECRET_NAME = "AI_BRIDGE_PRIVATE_REVIEW_AGE_KEY"
 OPENAI_REVIEW_KEY_ENV = "OPENAI_REVIEW_API_KEY"
-LEGACY_OPENAI_KEY_ENV = visual_review.SECRET_NAME
 MODEL_ENV = "OPENAI_TEXT_REVIEW_MODEL"
 DEFAULT_MODEL = "gpt-5.6-terra"
 DEFAULT_PROMPT_VERSION = "ai-bridge.text-review.v1"
@@ -358,7 +357,7 @@ def build_responses_request(manifest: dict[str, Any], plaintext: str, *, model: 
                 "schema": text_review_response_schema(),
             }
         },
-        "max_output_tokens": DEFAULT_MAX_OUTPUT_TOKENS,
+        **paid_review.request_safety_fields(),
     }
 
 
@@ -370,7 +369,7 @@ def call_openai_responses(
     opener: Callable[..., Any] | None = None,
 ) -> dict[str, Any]:
     if not api_key:
-        raise TextReviewError(f"{OPENAI_REVIEW_KEY_ENV} or {LEGACY_OPENAI_KEY_ENV} is not available")
+        raise TextReviewError(f"{OPENAI_REVIEW_KEY_ENV} is not available")
     body = canonical_json(request_payload).encode("utf-8")
     request = urllib.request.Request(
         API_URL,
@@ -555,11 +554,25 @@ def validate_text_review_payload(payload: dict[str, Any], *, expected: dict[str,
         else:
             for key in [
                 "campaign_identity",
+                "reservation_id",
+                "call_number",
+                "review_type",
+                "model",
                 "model_identity",
+                "service_tier",
+                "response_id",
+                "input_token_preflight",
                 "exact_input_token_preflight",
+                "max_output_tokens",
                 "call_reservations",
                 "worst_case_reserved_cost_usd",
+                "cumulative_reserved_worst_case_cost_usd",
                 "cumulative_reserved_cost_usd",
+                "actual_response_usage",
+                "actual_model_cost_usd",
+                "cumulative_actual_model_cost_usd",
+                "accounting_status",
+                "pricing_identity",
             ]:
                 if key not in paid_receipt:
                     errors.append(f"TEXT_REVIEW.json paid_review missing {key}")
@@ -585,11 +598,9 @@ def run_text_review(
     if plaintext_sha != manifest["input"]["plaintext_sha256"]:
         raise TextReviewError("plaintext SHA-256 does not match text review manifest")
     selected_model = model or os.environ.get(MODEL_ENV) or DEFAULT_MODEL
-    selected_key = api_key if api_key is not None else (
-        os.environ.get(OPENAI_REVIEW_KEY_ENV, "") or os.environ.get(LEGACY_OPENAI_KEY_ENV, "") or os.environ.get("OPENAI_API_KEY", "")
-    )
+    selected_key = api_key if api_key is not None else os.environ.get(OPENAI_REVIEW_KEY_ENV, "")
     if not selected_key:
-        raise TextReviewError(f"{OPENAI_REVIEW_KEY_ENV} or {LEGACY_OPENAI_KEY_ENV} is not available")
+        raise TextReviewError(f"{OPENAI_REVIEW_KEY_ENV} is not available")
     try:
         paid_review.validate_model_pricing(selected_model)
     except paid_review.PaidReviewBudgetError as exc:
@@ -631,7 +642,7 @@ def run_text_review(
             except paid_review.PaidReviewBudgetError as budget_exc:
                 raise TextReviewError(str(budget_exc)) from exc
         raise
-    paid_review.record_actual_usage(
+    reservation_bundle = paid_review.record_actual_usage(
         target=target,
         campaign_identity=campaign_identity,
         reservation_id=reservation_bundle["reservation"]["reservation_id"],
@@ -844,10 +855,8 @@ def preflight(target: Path, *, repo: str | None = None) -> dict[str, Any]:
         "secret": {
             "expected_age_identity_secret": AGE_SECRET_NAME,
             "age_identity_metadata_status": gh_secret_metadata_status(target, AGE_SECRET_NAME, repo=repo),
-            "preferred_openai_secret": OPENAI_REVIEW_KEY_ENV,
-            "backward_compatible_openai_secret": LEGACY_OPENAI_KEY_ENV,
-            "preferred_openai_metadata_status": gh_secret_metadata_status(target, OPENAI_REVIEW_KEY_ENV, repo=repo),
-            "legacy_openai_metadata_status": gh_secret_metadata_status(target, LEGACY_OPENAI_KEY_ENV, repo=repo),
+            "expected_openai_secret": OPENAI_REVIEW_KEY_ENV,
+            "openai_metadata_status": gh_secret_metadata_status(target, OPENAI_REVIEW_KEY_ENV, repo=repo),
             "value_read": False,
         },
         "model_env": MODEL_ENV,

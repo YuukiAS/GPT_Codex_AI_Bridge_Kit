@@ -290,7 +290,7 @@ def build_responses_request(manifest: dict[str, Any], *, model: str) -> dict[str
                 "schema": visual_review_response_schema(),
             }
         },
-        "max_output_tokens": DEFAULT_MAX_OUTPUT_TOKENS,
+        **paid_review.request_safety_fields(),
     }
 
 
@@ -497,11 +497,25 @@ def validate_visual_review_payload(payload: dict[str, Any], *, expected: dict[st
         else:
             for key in [
                 "campaign_identity",
+                "reservation_id",
+                "call_number",
+                "review_type",
+                "model",
                 "model_identity",
+                "service_tier",
+                "response_id",
+                "input_token_preflight",
                 "exact_input_token_preflight",
+                "max_output_tokens",
                 "call_reservations",
                 "worst_case_reserved_cost_usd",
+                "cumulative_reserved_worst_case_cost_usd",
                 "cumulative_reserved_cost_usd",
+                "actual_response_usage",
+                "actual_model_cost_usd",
+                "cumulative_actual_model_cost_usd",
+                "accounting_status",
+                "pricing_identity",
             ]:
                 if key not in paid_receipt:
                     errors.append(f"VISUAL_REVIEW.json paid_review missing {key}")
@@ -523,7 +537,7 @@ def run_visual_review(
     output_file = validate_visual_output_path(target, str(manifest["task_key"]), output_path)
     manifest_for_request = _manifest_with_absolute_paths(target, manifest)
     selected_model = model or os.environ.get(MODEL_ENV) or DEFAULT_MODEL
-    selected_key = api_key if api_key is not None else (os.environ.get(SECRET_NAME, "") or os.environ.get("OPENAI_API_KEY", ""))
+    selected_key = api_key if api_key is not None else os.environ.get(SECRET_NAME, "")
     if not selected_key:
         raise VisualReviewError(f"{SECRET_NAME} is not available")
     try:
@@ -567,7 +581,7 @@ def run_visual_review(
             except paid_review.PaidReviewBudgetError as budget_exc:
                 raise VisualReviewError(str(budget_exc)) from exc
         raise
-    paid_review.record_actual_usage(
+    reservation_bundle = paid_review.record_actual_usage(
         target=target,
         campaign_identity=campaign_identity,
         reservation_id=reservation_bundle["reservation"]["reservation_id"],

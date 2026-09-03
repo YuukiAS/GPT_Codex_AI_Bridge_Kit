@@ -17,15 +17,15 @@ the ref rendered at install time. It does not vendor-copy `ai_bridge_kit/` into
 the consumer repository and does not run `pip install -e .` against the
 consumer project.
 
-The installed workflow runs on manual `workflow_dispatch` or on commits that
-change `results/**/visual_review/visual_inputs.json`. Non-visual pushes do not
-run a misleading AI Bridge Visual Review PASS job.
+The installed workflow runs only on manual `workflow_dispatch`. Consumer
+dispatch logic owns when a paid visual review is scientifically/product-wise
+necessary.
 
 Use the repository secret name `OPENAI_VISUAL_REVIEW_API_KEY`. In the workflow, map it only inside the visual review job:
 
 ```yaml
 env:
-  OPENAI_API_KEY: ${{ secrets.OPENAI_VISUAL_REVIEW_API_KEY }}
+  OPENAI_VISUAL_REVIEW_API_KEY: ${{ secrets.OPENAI_VISUAL_REVIEW_API_KEY }}
 ```
 
 The production default Visual Review model is `gpt-5.6-terra`. Ordinary
@@ -37,12 +37,18 @@ currently accepts only the exact reviewed Terra pricing identity.
 Every paid Visual Review request uses the shared Bridge Kit paid-review guard.
 The default campaign contract is `gpt-5.6-terra`, at most two paid calls, USD
 0.50 total reserved worst-case cost, USD 0.25 per call, and zero automatic paid
-retries. The exact request, including image inputs, is counted first through
-`POST /responses/input_tokens`; the full worst-case amount is reserved in
+retries, `service_tier=default`, `reasoning.effort=low`,
+`max_output_tokens=4096`, no tools, and explicit prompt-cache mode with no
+cache breakpoint. The exact request, including image inputs, is counted first
+through `POST /v1/responses/input_tokens`; input-side reservation uses the
+conservative standard-tier USD 2.50/M cache-write rate; the full worst-case
+amount is reserved in
 `results/<task_key>/paid_review_budget.json`; only then is the Responses request
-sent. GitHub Actions uses branch-level concurrency and writes the reservation
+sent. GitHub Actions uses repo-wide concurrency and writes the reservation
 commit before the paid request so reruns and fresh checkouts cannot reset the
-campaign budget.
+campaign budget. Requests above 272,000 input tokens fail closed before
+`/v1/responses`. Actual model cost is calculated from successful response usage
+and never refunds the reservation.
 
 Unknown pricing or any model mismatch fails closed.
 

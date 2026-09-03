@@ -39,24 +39,29 @@ does not print the secret value.
 If `gh` permissions are unavailable, configure exactly this GitHub Secret
 manually. Do not paste the secret into chat or commit it to the repository.
 
-OpenAI key precedence in CI is:
+OpenAI key in CI is:
 
 ```text
 OPENAI_REVIEW_API_KEY
-OPENAI_VISUAL_REVIEW_API_KEY
 ```
 
-The second name preserves compatibility with repositories that already
-configured Visual Review.
+Text Review does not fall back to `OPENAI_VISUAL_REVIEW_API_KEY` or a generic
+`OPENAI_API_KEY`.
 
 Every paid Text Review request uses the shared Bridge Kit paid-review guard.
 The default campaign contract is `gpt-5.6-terra`, at most two paid calls, USD
 0.50 total reserved worst-case cost, USD 0.25 per call, and zero automatic paid
-retries. The request is counted first through `POST /responses/input_tokens`,
-the full worst-case amount is reserved in
+retries, `service_tier=default`, `reasoning.effort=low`,
+`max_output_tokens=4096`, no tools, and explicit prompt-cache mode with no
+cache breakpoint. The request is counted first through
+`POST /v1/responses/input_tokens`, input-side reservation uses the conservative
+standard-tier USD 2.50/M cache-write rate, the full worst-case amount is reserved in
 `results/<task_key>/paid_review_budget.json`, and only then is the Responses
-request sent. GitHub Actions writes the reservation commit before the paid
-request so reruns and fresh checkouts cannot reset the campaign budget.
+request sent. Requests above 272,000 input tokens fail closed before
+`/v1/responses`. GitHub Actions writes the reservation commit before the paid
+request so reruns and fresh checkouts cannot reset the campaign budget. Actual
+model cost is calculated from successful response usage and never refunds the
+reservation.
 
 The model default is `gpt-5.6-terra`. `OPENAI_TEXT_REVIEW_MODEL` and CLI
 `--model` remain accepted for interface compatibility, but Bridge Kit currently

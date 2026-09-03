@@ -388,12 +388,11 @@ It must not add `request_nonce`, Requirement Ledger, Stable Review Snapshot, `re
 
 The Scheduled Reviewer must check `VISUAL_REVIEW.json` before writing `REVIEW_<round>.md`. Missing visual evidence means wait for external visual evidence and do not consume `review_round`. Stale evidence whose `implementation_commit` does not match current `CURRENT.implementation_commit` is invalid and cannot support PASS. A model `REVISE` or `BLOCKED` decision is evidence for the existing Reviewer to consume; it does not create a Visual Reviewer role or a new top-level workflow state.
 
-The canonical Visual Review GitHub Actions trigger listens only to `main` and
-`reviewed/**` branch pushes whose changed path matches
-`results/**/visual_review/visual_inputs.json`, plus explicit
-`workflow_dispatch`. Evidence writeback must push to the same triggering branch
-with `HEAD:${GITHUB_REF_NAME}`; it must not silently write evidence to `main`
-when the task is running on `reviewed/<task_key>`.
+The canonical Visual Review GitHub Actions workflow is manual-only through
+`workflow_dispatch`. Consumer dispatch logic owns when a paid Visual Review is
+needed. Evidence writeback must push to the same checked-out branch with
+`HEAD:${GITHUB_REF_NAME}`; it must not silently write evidence to `main` when
+the task is running on `reviewed/<task_key>`.
 
 ## Optional Text Review evidence
 
@@ -425,10 +424,9 @@ private local text
 Tracked repository files may include an age public recipient, encrypted
 payload, text input manifest and `TEXT_REVIEW.json`. They must never include
 the age private identity, plaintext private artifact, or OpenAI API key. The
-GitHub Secret for decryption is `AI_BRIDGE_PRIVATE_REVIEW_AGE_KEY`. The
-OpenAI key lookup prefers `OPENAI_REVIEW_API_KEY` and remains backward
-compatible with `OPENAI_VISUAL_REVIEW_API_KEY` so repositories that already
-enabled Visual Review do not need a second OpenAI key.
+GitHub Secret for decryption is `AI_BRIDGE_PRIVATE_REVIEW_AGE_KEY`. Text
+Review uses `OPENAI_REVIEW_API_KEY` only and must not fall back to
+`OPENAI_VISUAL_REVIEW_API_KEY` or a generic `OPENAI_API_KEY`.
 
 For non-CI text-review tasks, the Executor must publish the encrypted payload
 and `results/<task_key>/text_review/text_inputs.json` before entering
@@ -456,12 +454,11 @@ current text input manifest is invalid and cannot support PASS. A model
 consume; it does not create a Text Reviewer role or a new top-level workflow
 state.
 
-The canonical Text Review GitHub Actions trigger listens only to `main` and
-`reviewed/**` branch pushes whose changed path matches
-`results/**/text_review/text_inputs.json`, plus explicit `workflow_dispatch`.
-Evidence writeback must push to the same triggering branch with
-`HEAD:${GITHUB_REF_NAME}`; ordinary `reviewed/**` pushes that do not change the
-text input manifest must not run the expensive review job.
+The canonical Text Review GitHub Actions workflow is manual-only through
+`workflow_dispatch`. Consumer dispatch logic owns when a paid Text Review is
+needed. Evidence writeback must push to the same checked-out branch with
+`HEAD:${GITHUB_REF_NAME}`; ordinary `reviewed/**` pushes must not implicitly run
+the expensive review job.
 
 Planner preflight must reject logically impossible private-artifact plans. If
 acceptance depends on qualitative review of a user-facing artifact and the

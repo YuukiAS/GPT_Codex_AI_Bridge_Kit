@@ -23,14 +23,19 @@ max paid calls: 2
 campaign reserved-cost hard ceiling: USD 0.50
 per-call worst-case ceiling: USD 0.25
 automatic paid retries: 0
+service tier: default
+reasoning effort: low
+max output tokens: 4096
+paid tools: none
+prompt cache: explicit mode with no cache breakpoints
 ```
 
 Before each paid Responses request:
 
 1. construct the exact request;
-2. count exact request input tokens using `POST /responses/input_tokens`; image inputs must be included for Visual Review;
-3. calculate worst-case cost with uncached input and the bounded maximum output;
-4. verify exact model/pricing identity;
+2. count exact request input tokens using `POST /v1/responses/input_tokens`; image inputs must be included for Visual Review;
+3. verify exact model, service tier, reasoning, tools and prompt-cache identity;
+4. calculate worst-case cost with standard-tier USD 2.50/M input reservation and the bounded maximum output;
 5. persistently reserve one call slot plus the full worst-case amount before sending;
 6. only then send the review request.
 
@@ -44,9 +49,30 @@ Current Terra price identity reviewed 2026-09-03:
 input = USD 2 / 1M tokens
 cached input = USD 0.20 / 1M tokens
 output = USD 12 / 1M tokens
+cache write = USD 2.50 / 1M tokens
 ```
 
-Preflight uses uncached input. Model/pricing mismatch or unknown price must fail closed.
+Preflight uses the conservative USD 2.50/M standard input-side reservation rate. Model/pricing mismatch, unknown price, unexpected service tier, malformed usage or input above the 272,000-token long-context threshold must fail closed.
+
+Successful responses persist verified actual usage and both campaign totals:
+
+```text
+cumulative_reserved_worst_case_cost_usd
+cumulative_actual_model_cost_usd
+```
+
+Actual model cost is:
+
+```text
+regular_input_tokens = input_tokens - cached_input_tokens - cache_write_tokens
+actual_model_cost_usd =
+  regular_input_tokens * 2.00 / 1_000_000
+  + cached_input_tokens * 0.20 / 1_000_000
+  + cache_write_tokens * 2.50 / 1_000_000
+  + output_tokens * 12.00 / 1_000_000
+```
+
+Reasoning tokens are diagnostic because `usage.output_tokens` already includes them. If accounting cannot be verified, record `ACCOUNTING_UNVERIFIED`, preserve the reservation and refuse subsequent paid calls in the same campaign.
 
 Billing/quota errors such as `credit_balance_exhausted`, project/org spend-limit errors and organization usage-limit errors must fail immediately with zero backoff.
 
@@ -67,7 +93,10 @@ Both review types must expose enough non-secret receipt data for the consumer to
 - worst-case reserved cost;
 - actual response usage when a response succeeds;
 - cumulative reserved cost;
+- cumulative actual model cost;
 - no secret value.
+
+Text Review must use only `OPENAI_REVIEW_API_KEY`; Visual Review must use only `OPENAI_VISUAL_REVIEW_API_KEY`. Neither runtime may borrow the other key or a generic `OPENAI_API_KEY`.
 
 ## Tests before consumer migration
 
