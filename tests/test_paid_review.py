@@ -6,6 +6,8 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
+import io
+import urllib.error
 
 from ai_bridge_kit import paid_review
 
@@ -45,8 +47,10 @@ class PaidReviewBudgetTests(unittest.TestCase):
         self.assertEqual(contract["automatic_paid_retries"], 0)
         self.assertEqual(contract["pricing"]["input_usd_per_1m_tokens"], "2.000000")
         self.assertEqual(contract["pricing"]["cached_input_usd_per_1m_tokens"], "0.200000")
+        self.assertEqual(contract["pricing"]["cache_write_input_usd_per_1m_tokens"], "2.500000")
+        self.assertEqual(contract["pricing"]["worst_case_input_usd_per_1m_tokens"], "2.500000")
         self.assertEqual(contract["pricing"]["output_usd_per_1m_tokens"], "12.000000")
-        self.assertTrue(contract["pricing"]["runtime_uses_uncached_input_price"])
+        self.assertTrue(contract["pricing"]["runtime_uses_worst_case_input_price"])
 
     def test_reservation_persists_across_restart_or_rerun(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -74,6 +78,60 @@ class PaidReviewBudgetTests(unittest.TestCase):
             with self.assertRaisesRegex(paid_review.PaidReviewBudgetError, "per-call"):
                 self.reserve(target, input_tokens=101_000)
             self.assertFalse((target / "results/001_paid/paid_review_budget.json").exists())
+
+    def test_worst_case_input_uses_cache_write_price(self) -> None:
+        cost = paid_review.calculate_worst_case_cost(1000, 1000)
+        self.assertEqual(paid_review._money(cost), "0.014500")
+
+    def test_count_input_tokens_uses_endpoint_compatible_payload(self) -> None:
+        captured: dict = {}
+
+        def opener(request, timeout):
+            captured["body"] = json.loads(request.data.decode("utf-8"))
+            return fake_response({"input_tokens": 10})
+
+        payload = {
+            **self.request_payload(),
+            "text": {"format": {"type": "json_schema"}},
+            "reasoning": {"effort": "low"},
+        }
+        result = paid_review.count_input_tokens(payload, api_key="sk-test", opener=opener)
+        self.assertEqual(result["input_tokens"], 10)
+        self.assertEqual(set(captured["body"]), {"model", "input"})
+        self.assertNotIn("max_output_tokens", captured["body"])
+        self.assertNotIn("store", captured["body"])
+        self.assertNotIn("text", captured["body"])
+
+    def test_input_token_http_error_reports_openai_code(self) -> None:
+        def opener(request, timeout):
+            body = json.dumps({"error": {"code": "missing_scope"}}).encode("utf-8")
+            raise urllib.error.HTTPError(request.full_url, 403, "forbidden", {}, io.BytesIO(body))
+
+        with self.assertRaisesRegex(paid_review.PaidReviewBudgetError, "HTTP 403 \\(missing_scope\\)"):
+            paid_review.count_input_tokens(self.request_payload(), api_key="sk-test", opener=opener)
+
+    def test_actual_usage_cost_is_persisted_and_blocks_unverified_cache_write(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp)
+            first = self.reserve(target)
+            paid_review.record_actual_usage(
+                target=target,
+                campaign_identity="001_paid",
+                reservation_id=first["reservation"]["reservation_id"],
+                response_payload={
+                    "usage": {
+                        "input_tokens": 100,
+                        "input_tokens_details": {"cached_tokens": 10, "cache_write_tokens": 5},
+                        "output_tokens": 20,
+                    }
+                },
+            )
+            state = json.loads((target / "results/001_paid/paid_review_budget.json").read_text(encoding="utf-8"))
+            reservation = state["reservations"][0]
+            self.assertEqual(reservation["actual_cost_status"], "ACCOUNTING_UNVERIFIED")
+            self.assertEqual(reservation["actual_model_cost_usd"], "0.000425")
+            with self.assertRaisesRegex(paid_review.PaidReviewBudgetError, "accounting is unverified"):
+                self.reserve(target)
 
     def test_campaign_ceiling_fails_closed_from_persistent_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -161,6 +219,14 @@ def subprocess_result(returncode: int):
     completed.stdout = ""
     completed.stderr = ""
     return completed
+
+
+def fake_response(payload: dict):
+    response = mock.Mock()
+    response.__enter__ = mock.Mock(return_value=response)
+    response.__exit__ = mock.Mock(return_value=False)
+    response.read.return_value = json.dumps(payload).encode("utf-8")
+    return response
 
 
 if __name__ == "__main__":

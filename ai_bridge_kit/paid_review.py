@@ -25,6 +25,8 @@ DEFAULT_MAX_OUTPUT_TOKENS = 4096
 TERRA_PRICING_REVIEWED_ON = "2026-09-03"
 TERRA_INPUT_USD_PER_1M = Decimal("2")
 TERRA_CACHED_INPUT_USD_PER_1M = Decimal("0.20")
+TERRA_CACHE_WRITE_INPUT_USD_PER_1M = Decimal("2.50")
+TERRA_WORST_CASE_INPUT_USD_PER_1M = TERRA_CACHE_WRITE_INPUT_USD_PER_1M
 TERRA_OUTPUT_USD_PER_1M = Decimal("12")
 ZERO_RETRY_BILLING_ERROR_CODES = {
     "credit_balance_exhausted",
@@ -67,8 +69,10 @@ def default_contract() -> dict[str, Any]:
             "reviewed_on": TERRA_PRICING_REVIEWED_ON,
             "input_usd_per_1m_tokens": _money(TERRA_INPUT_USD_PER_1M),
             "cached_input_usd_per_1m_tokens": _money(TERRA_CACHED_INPUT_USD_PER_1M),
+            "cache_write_input_usd_per_1m_tokens": _money(TERRA_CACHE_WRITE_INPUT_USD_PER_1M),
+            "worst_case_input_usd_per_1m_tokens": _money(TERRA_WORST_CASE_INPUT_USD_PER_1M),
             "output_usd_per_1m_tokens": _money(TERRA_OUTPUT_USD_PER_1M),
-            "runtime_uses_uncached_input_price": True,
+            "runtime_uses_worst_case_input_price": True,
         },
     }
 
@@ -162,6 +166,19 @@ def extract_input_tokens(token_payload: dict[str, Any]) -> int:
     raise PaidReviewBudgetError("Responses input-token preflight did not return input_tokens")
 
 
+def input_token_count_payload(request_payload: dict[str, Any]) -> dict[str, Any]:
+    """Return the endpoint-compatible subset accepted by /responses/input_tokens."""
+    payload: dict[str, Any] = {}
+    for key in ("model", "input", "instructions"):
+        if key in request_payload:
+            payload[key] = request_payload[key]
+    if "model" not in payload:
+        raise PaidReviewBudgetError("paid review input-token preflight requires request model")
+    if "input" not in payload:
+        raise PaidReviewBudgetError("paid review input-token preflight requires request input")
+    return payload
+
+
 def count_input_tokens(
     request_payload: dict[str, Any],
     *,
@@ -171,7 +188,7 @@ def count_input_tokens(
 ) -> dict[str, Any]:
     if not api_key:
         raise PaidReviewBudgetError("OpenAI API key is not available for paid review token preflight")
-    body = canonical_json(request_payload).encode("utf-8")
+    body = canonical_json(input_token_count_payload(request_payload)).encode("utf-8")
     request = urllib.request.Request(
         INPUT_TOKENS_URL,
         data=body,
@@ -208,9 +225,45 @@ def calculate_worst_case_cost(input_tokens: int, max_output_tokens: int) -> Deci
         raise PaidReviewBudgetError("paid review input_tokens must be non-negative")
     if not isinstance(max_output_tokens, int) or max_output_tokens <= 0:
         raise PaidReviewBudgetError("paid review max_output_tokens must be a positive integer")
-    input_cost = Decimal(input_tokens) * TERRA_INPUT_USD_PER_1M / Decimal(1_000_000)
+    input_cost = Decimal(input_tokens) * TERRA_WORST_CASE_INPUT_USD_PER_1M / Decimal(1_000_000)
     output_cost = Decimal(max_output_tokens) * TERRA_OUTPUT_USD_PER_1M / Decimal(1_000_000)
     return input_cost + output_cost
+
+
+def _usage_int(usage: dict[str, Any], key: str) -> int:
+    value = usage.get(key)
+    if isinstance(value, int) and value >= 0:
+        return value
+    return 0
+
+
+def calculate_actual_model_cost(usage: dict[str, Any]) -> dict[str, Any]:
+    input_tokens = _usage_int(usage, "input_tokens")
+    output_tokens = _usage_int(usage, "output_tokens")
+    input_details = usage.get("input_tokens_details")
+    if not isinstance(input_details, dict):
+        input_details = {}
+    cached_tokens = _usage_int(input_details, "cached_tokens")
+    cache_write_tokens = _usage_int(input_details, "cache_write_tokens")
+    uncached_tokens = max(input_tokens - cached_tokens - cache_write_tokens, 0)
+    cost = (
+        Decimal(uncached_tokens) * TERRA_INPUT_USD_PER_1M
+        + Decimal(cached_tokens) * TERRA_CACHED_INPUT_USD_PER_1M
+        + Decimal(cache_write_tokens) * TERRA_CACHE_WRITE_INPUT_USD_PER_1M
+        + Decimal(output_tokens) * TERRA_OUTPUT_USD_PER_1M
+    ) / Decimal(1_000_000)
+    status = "ACCOUNTING_VERIFIED" if cache_write_tokens == 0 else "ACCOUNTING_UNVERIFIED"
+    return {
+        "actual_cost_status": status,
+        "actual_model_cost_usd": _money(cost),
+        "actual_cost_tokens": {
+            "input_tokens": input_tokens,
+            "uncached_input_tokens": uncached_tokens,
+            "cached_input_tokens": cached_tokens,
+            "cache_write_tokens": cache_write_tokens,
+            "output_tokens": output_tokens,
+        },
+    }
 
 
 def request_sha256(request_payload: dict[str, Any]) -> str:
@@ -240,6 +293,8 @@ def reserve_paid_review_call(
     with locked_budget(state_path):
         state = load_budget_state(state_path, campaign_identity=campaign_identity)
         reservations = state["reservations"]
+        if any(item.get("actual_cost_status") == "ACCOUNTING_UNVERIFIED" for item in reservations):
+            raise PaidReviewBudgetError("paid review accounting is unverified; refusing next paid request")
         if len(reservations) >= DEFAULT_MAX_PAID_CALLS:
             raise PaidReviewBudgetError("paid review campaign call limit exhausted")
         current_reserved = sum((_decimal_from_json(item.get("worst_case_reserved_cost_usd", "0")) for item in reservations), Decimal("0"))
@@ -288,6 +343,7 @@ def record_actual_usage(
         for item in state["reservations"]:
             if item.get("reservation_id") == reservation_id:
                 item["actual_response_usage"] = usage
+                item.update(calculate_actual_model_cost(usage))
                 write_budget_state(state_path, state)
                 return
 
@@ -316,6 +372,7 @@ def receipt_from_reservation(
     usage = response_payload.get("usage") if isinstance(response_payload, dict) else None
     if isinstance(usage, dict):
         receipt["actual_response_usage"] = usage
+        receipt.update(calculate_actual_model_cost(usage))
     return receipt
 
 

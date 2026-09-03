@@ -140,7 +140,12 @@ class TextReviewTests(unittest.TestCase):
             )
 
             request_text = json.dumps(captured["body"], ensure_ascii=False)
-            self.assertEqual(captured["token_body"], captured["body"])
+            self.assertEqual(set(captured["token_body"]), {"model", "input"})
+            self.assertEqual(captured["token_body"]["model"], captured["body"]["model"])
+            self.assertEqual(captured["token_body"]["input"], captured["body"]["input"])
+            self.assertNotIn("max_output_tokens", captured["token_body"])
+            self.assertNotIn("text", captured["token_body"])
+            self.assertNotIn("store", captured["token_body"])
             self.assertEqual(captured["urls"], [paid_review.INPUT_TOKENS_URL, text_review.API_URL])
             self.assertEqual(captured["body"]["model"], text_review.DEFAULT_MODEL)
             self.assertFalse(captured["body"]["store"])
