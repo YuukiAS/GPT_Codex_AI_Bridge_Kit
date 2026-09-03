@@ -340,6 +340,24 @@ class VisualReviewTests(unittest.TestCase):
             latest_subject = subprocess.check_output(["git", "log", "-1", "--pretty=%s"], cwd=target, text=True).strip()
             self.assertEqual(latest_subject, "update visual evidence")
 
+    def test_visual_evidence_writeback_stages_shared_campaign_budget(self) -> None:
+        tmp, target, output = self.make_git_consumer()
+        with tmp:
+            output_path = target / output
+            output_path.parent.mkdir(parents=True)
+            output_path.write_text(
+                json.dumps({"schema": "test", "status": "PASS", "paid_review": {"campaign_identity": "shared_campaign"}}) + "\n",
+                encoding="utf-8",
+            )
+            budget = target / "results/shared_campaign/paid_review_budget.json"
+            budget.parent.mkdir(parents=True)
+            budget.write_text("{}\n", encoding="utf-8")
+
+            self.assertTrue(visual_review.visual_evidence_commit_needed(target, output))
+            staged = subprocess.check_output(["git", "diff", "--cached", "--name-only"], cwd=target, text=True)
+            self.assertIn(output, staged.splitlines())
+            self.assertIn("results/shared_campaign/paid_review_budget.json", staged.splitlines())
+
     def test_arbitrary_visual_review_output_paths_are_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "project"

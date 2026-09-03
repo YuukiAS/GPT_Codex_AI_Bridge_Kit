@@ -133,6 +133,49 @@ class PaidReviewBudgetTests(unittest.TestCase):
             with self.assertRaisesRegex(paid_review.PaidReviewBudgetError, "accounting is unverified"):
                 self.reserve(target)
 
+    def test_zero_billing_failure_preserves_and_reuses_matching_reservation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp)
+            first = self.reserve(target)
+            paid_review.record_zero_billing_failure(
+                target=target,
+                campaign_identity="001_paid",
+                reservation_id=first["reservation"]["reservation_id"],
+                error_code="credit_balance_exhausted",
+                http_status=429,
+            )
+
+            retry = self.reserve(target)
+            state = json.loads((target / "results/001_paid/paid_review_budget.json").read_text(encoding="utf-8"))
+            self.assertTrue(retry["reused_zero_billing_reservation"])
+            self.assertEqual(retry["reservation"]["reservation_id"], first["reservation"]["reservation_id"])
+            self.assertEqual(len(state["reservations"]), 1)
+            self.assertEqual(state["reservations"][0]["actual_cost_status"], "ZERO_BILLING_FAILURE")
+            self.assertEqual(state["reservations"][0]["actual_model_cost_usd"], "0.000000")
+            self.assertFalse(state["reservations"][0]["failure"]["automatic_paid_retry"])
+
+    def test_zero_billing_reuse_requires_same_request_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp)
+            first = self.reserve(target)
+            paid_review.record_zero_billing_failure(
+                target=target,
+                campaign_identity="001_paid",
+                reservation_id=first["reservation"]["reservation_id"],
+                error_code="credit_balance_exhausted",
+                http_status=429,
+            )
+            changed_payload = {**self.request_payload(), "input": [{"role": "user", "content": [{"type": "input_text", "text": "Different."}]}]}
+            second = paid_review.reserve_paid_review_call(
+                target=target,
+                campaign_identity="001_paid",
+                review_type="text_review",
+                model=paid_review.DEFAULT_MODEL,
+                request_payload=changed_payload,
+                input_token_preflight=self.token_preflight(),
+            )
+            self.assertEqual(second["reservation"]["call_number"], 2)
+
     def test_campaign_ceiling_fails_closed_from_persistent_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp)
@@ -196,6 +239,8 @@ class PaidReviewBudgetTests(unittest.TestCase):
 
             def fake_run(command, **_kwargs):
                 calls.append(command)
+                if command[:4] == ["git", "diff", "--cached", "--quiet"]:
+                    return subprocess_result(1)
                 return subprocess_result(0)
 
             with mock.patch.dict(
@@ -209,8 +254,33 @@ class PaidReviewBudgetTests(unittest.TestCase):
                 paid_review.persist_reservation_to_git_if_requested(target, state_path)
 
             self.assertEqual(calls[2], ["git", "add", "--", "results/001_paid/paid_review_budget.json"])
-            self.assertEqual(calls[3], ["git", "commit", "-m", "Reserve AI Bridge paid review budget"])
-            self.assertEqual(calls[4], ["git", "push", "origin", "HEAD:reviewed/task"])
+            self.assertEqual(calls[3], ["git", "diff", "--cached", "--quiet", "--", "results/001_paid/paid_review_budget.json"])
+            self.assertEqual(calls[4], ["git", "commit", "-m", "Reserve AI Bridge paid review budget"])
+            self.assertEqual(calls[5], ["git", "push", "origin", "HEAD:reviewed/task"])
+
+    def test_github_reservation_writeback_noops_when_budget_is_unchanged(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp)
+            state_path = target / "results/001_paid/paid_review_budget.json"
+            state_path.parent.mkdir(parents=True)
+            state_path.write_text("{}\n", encoding="utf-8")
+            calls: list[list[str]] = []
+
+            def fake_run(command, **_kwargs):
+                calls.append(command)
+                return subprocess_result(0)
+
+            with mock.patch.dict(
+                "os.environ",
+                {
+                    "AI_BRIDGE_PAID_REVIEW_GIT_RESERVE": "1",
+                    "GITHUB_REF_TYPE": "branch",
+                    "GITHUB_REF_NAME": "reviewed/task",
+                },
+            ), mock.patch("ai_bridge_kit.paid_review.subprocess.run", side_effect=fake_run):
+                paid_review.persist_reservation_to_git_if_requested(target, state_path)
+
+            self.assertEqual(calls[-1], ["git", "diff", "--cached", "--quiet", "--", "results/001_paid/paid_review_budget.json"])
 
 
 def subprocess_result(returncode: int):

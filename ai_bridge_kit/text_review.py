@@ -609,7 +609,28 @@ def run_text_review(
         paid_review.persist_reservation_to_git_if_requested(target, reservation_bundle["state_path"])
     except paid_review.PaidReviewBudgetError as exc:
         raise TextReviewError(str(exc)) from exc
-    response_payload = call_openai_responses(request_payload, api_key=selected_key, timeout=timeout, opener=opener)
+    try:
+        response_payload = call_openai_responses(request_payload, api_key=selected_key, timeout=timeout, opener=opener)
+    except TextReviewError as exc:
+        code = paid_review.zero_billing_error_code_from_message(str(exc))
+        if code:
+            status_match = re.search(r"HTTP ([0-9A-Z]+)", str(exc))
+            try:
+                paid_review.record_zero_billing_failure(
+                    target=target,
+                    campaign_identity=campaign_identity,
+                    reservation_id=reservation_bundle["reservation"]["reservation_id"],
+                    error_code=code,
+                    http_status=status_match.group(1) if status_match else "UNKNOWN",
+                )
+                paid_review.persist_reservation_to_git_if_requested(
+                    target,
+                    reservation_bundle["state_path"],
+                    message="Record AI Bridge paid review zero-billing failure",
+                )
+            except paid_review.PaidReviewBudgetError as budget_exc:
+                raise TextReviewError(str(budget_exc)) from exc
+        raise
     paid_review.record_actual_usage(
         target=target,
         campaign_identity=campaign_identity,
@@ -727,6 +748,17 @@ def text_evidence_commit_needed(target: Path, output_path: Path | str) -> bool:
     budget_rel = f"results/{task_key}/paid_review_budget.json"
     if (target / budget_rel).exists():
         paths.append(budget_rel)
+    if (target / rel).exists():
+        try:
+            payload = load_json(target / rel)
+        except Exception:
+            payload = {}
+        paid = payload.get("paid_review") if isinstance(payload, dict) else {}
+        campaign = paid.get("campaign_identity") if isinstance(paid, dict) else ""
+        if isinstance(campaign, str) and re.fullmatch(r"[A-Za-z0-9._-]+", campaign):
+            campaign_budget_rel = f"results/{campaign}/paid_review_budget.json"
+            if campaign_budget_rel not in paths and (target / campaign_budget_rel).exists():
+                paths.append(campaign_budget_rel)
     subprocess.check_call(["git", "add", "--", *paths], cwd=target)
     result = subprocess.run(
         ["git", "diff", "--cached", "--quiet", "--", *paths],

@@ -272,6 +272,28 @@ def request_sha256(request_payload: dict[str, Any]) -> str:
     return hashlib.sha256(canonical_json(request_payload).encode("utf-8")).hexdigest()
 
 
+def _matching_reusable_zero_billing_reservation(
+    reservations: list[dict[str, Any]],
+    *,
+    review_type: str,
+    model: str,
+    request_hash: str,
+) -> dict[str, Any] | None:
+    for item in reservations:
+        if item.get("actual_response_usage") is not None:
+            continue
+        if item.get("actual_cost_status") != "ZERO_BILLING_FAILURE":
+            continue
+        if item.get("review_type") != review_type:
+            continue
+        if item.get("model") != model:
+            continue
+        if item.get("request_sha256") != request_hash:
+            continue
+        return item
+    return None
+
+
 def reserve_paid_review_call(
     *,
     target: Path,
@@ -289,12 +311,27 @@ def reserve_paid_review_call(
     worst_case_cost = calculate_worst_case_cost(input_tokens, max_output_tokens)
     if worst_case_cost > DEFAULT_PER_CALL_WORST_CASE_CEILING_USD:
         raise PaidReviewBudgetError("paid review per-call worst-case cost exceeds USD 0.25")
+    request_hash = request_sha256(request_payload)
     state_path = budget_state_path(target, campaign_identity)
     with locked_budget(state_path):
         state = load_budget_state(state_path, campaign_identity=campaign_identity)
         reservations = state["reservations"]
         if any(item.get("actual_cost_status") == "ACCOUNTING_UNVERIFIED" for item in reservations):
             raise PaidReviewBudgetError("paid review accounting is unverified; refusing next paid request")
+        reusable = _matching_reusable_zero_billing_reservation(
+            reservations,
+            review_type=review_type,
+            model=model,
+            request_hash=request_hash,
+        )
+        if reusable is not None:
+            return {
+                "state_path": state_path,
+                "reservation": reusable,
+                "reservations": reservations,
+                "contract": default_contract(),
+                "reused_zero_billing_reservation": True,
+            }
         if len(reservations) >= DEFAULT_MAX_PAID_CALLS:
             raise PaidReviewBudgetError("paid review campaign call limit exhausted")
         current_reserved = sum((_decimal_from_json(item.get("worst_case_reserved_cost_usd", "0")) for item in reservations), Decimal("0"))
@@ -302,7 +339,6 @@ def reserve_paid_review_call(
         if cumulative > DEFAULT_CAMPAIGN_RESERVED_COST_HARD_CEILING_USD:
             raise PaidReviewBudgetError("paid review campaign reserved-cost hard ceiling exceeds USD 0.50")
         call_number = len(reservations) + 1
-        request_hash = request_sha256(request_payload)
         reservation = {
             "reservation_id": f"{campaign_identity}-{call_number}-{request_hash[:12]}",
             "call_number": call_number,
@@ -348,6 +384,43 @@ def record_actual_usage(
                 return
 
 
+def record_zero_billing_failure(
+    *,
+    target: Path,
+    campaign_identity: str,
+    reservation_id: str,
+    error_code: str,
+    http_status: int | str,
+) -> None:
+    if error_code not in ZERO_RETRY_BILLING_ERROR_CODES:
+        raise PaidReviewBudgetError("paid review zero-billing failure requires a reviewed billing error code")
+    state_path = budget_state_path(target, campaign_identity)
+    with locked_budget(state_path):
+        state = load_budget_state(state_path, campaign_identity=campaign_identity)
+        for item in state["reservations"]:
+            if item.get("reservation_id") == reservation_id:
+                item["actual_cost_status"] = "ZERO_BILLING_FAILURE"
+                item["actual_model_cost_usd"] = "0.000000"
+                item["actual_cost_tokens"] = {
+                    "input_tokens": 0,
+                    "uncached_input_tokens": 0,
+                    "cached_input_tokens": 0,
+                    "cache_write_tokens": 0,
+                    "output_tokens": 0,
+                }
+                item["failure"] = {
+                    "failure_class": "ZERO_BILLING_FAILURE",
+                    "http_status": str(http_status),
+                    "openai_error_code": error_code,
+                    "automatic_paid_retry": False,
+                    "reservation_preserved": True,
+                    "retry_requires_explicit_human_resume": True,
+                }
+                write_budget_state(state_path, state)
+                return
+    raise PaidReviewBudgetError("paid review reservation id not found for failure accounting")
+
+
 def receipt_from_reservation(
     *,
     campaign_identity: str,
@@ -376,7 +449,12 @@ def receipt_from_reservation(
     return receipt
 
 
-def persist_reservation_to_git_if_requested(target: Path, state_path: Path) -> None:
+def persist_reservation_to_git_if_requested(
+    target: Path,
+    state_path: Path,
+    *,
+    message: str = "Reserve AI Bridge paid review budget",
+) -> None:
     if os.environ.get("AI_BRIDGE_PAID_REVIEW_GIT_RESERVE") != "1":
         return
     if os.environ.get("GITHUB_REF_TYPE") != "branch" or not os.environ.get("GITHUB_REF_NAME"):
@@ -386,11 +464,17 @@ def persist_reservation_to_git_if_requested(target: Path, state_path: Path) -> N
         ["git", "config", "user.name", "github-actions[bot]"],
         ["git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"],
         ["git", "add", "--", rel],
-        ["git", "commit", "-m", "Reserve AI Bridge paid review budget"],
+        ["git", "diff", "--cached", "--quiet", "--", rel],
+        ["git", "commit", "-m", message],
         ["git", "push", "origin", f"HEAD:{os.environ['GITHUB_REF_NAME']}"],
     ]
     for command in commands:
         result = subprocess.run(command, cwd=target, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+        if command[:4] == ["git", "diff", "--cached", "--quiet"]:
+            if result.returncode == 0:
+                return
+            if result.returncode == 1:
+                continue
         if result.returncode != 0:
             detail = (result.stderr or result.stdout).strip().splitlines()
             message = detail[-1] if detail else "git reservation writeback failed"
@@ -417,3 +501,10 @@ def billing_error_suffix_from_http_error(exc: urllib.error.HTTPError) -> str:
     if code in ZERO_RETRY_BILLING_ERROR_CODES:
         return f" ({code}; zero paid retry)"
     return f" ({code})" if code else ""
+
+
+def zero_billing_error_code_from_message(message: str) -> str:
+    for code in ZERO_RETRY_BILLING_ERROR_CODES:
+        if code in message:
+            return code
+    return ""

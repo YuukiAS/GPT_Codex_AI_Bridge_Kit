@@ -222,6 +222,8 @@ class TextReviewTests(unittest.TestCase):
             self.assertFalse((target / output).exists())
             state = text_review.load_json(target / "results/001_text/paid_review_budget.json")
             self.assertEqual(len(state["reservations"]), 1)
+            self.assertEqual(state["reservations"][0]["actual_cost_status"], "ZERO_BILLING_FAILURE")
+            self.assertEqual(state["reservations"][0]["failure"]["openai_error_code"], "credit_balance_exhausted")
 
     def test_plaintext_sha_stale_detection_fails_closed(self) -> None:
         tmp, target, manifest, plaintext, output = self.make_project()
@@ -339,3 +341,28 @@ class TextReviewTests(unittest.TestCase):
             self.assertIn(text_review.LEGACY_OPENAI_KEY_ENV, workflow)
             self.assertIn("      - 'reviewed/**'", workflow)
             self.assertIn('git push origin "HEAD:${GITHUB_REF_NAME}"', workflow)
+
+    def test_text_evidence_writeback_stages_shared_campaign_budget(self) -> None:
+        tmp, target, manifest, plaintext, output = self.make_project()
+        with tmp:
+            subprocess.check_call(["git", "init", "--initial-branch", "main"], cwd=target, stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "config", "user.email", "test@example.org"], cwd=target)
+            subprocess.check_call(["git", "config", "user.name", "Test User"], cwd=target)
+            manifest_payload = text_review.load_json(manifest)
+            manifest_payload["paid_review_campaign_id"] = "shared_campaign"
+            text_review.write_json(manifest, manifest_payload)
+            artifact = text_review.assemble_text_review(
+                manifest=text_review.normalize_manifest(target, manifest_payload),
+                model_output=self.model_payload("PASS"),
+                model=text_review.DEFAULT_MODEL,
+                paid_review_receipt={"campaign_identity": "shared_campaign"},
+            )
+            text_review.write_json(target / output, artifact)
+            budget = target / "results/shared_campaign/paid_review_budget.json"
+            budget.parent.mkdir(parents=True)
+            budget.write_text("{}\n", encoding="utf-8")
+
+            self.assertTrue(text_review.text_evidence_commit_needed(target, output))
+            staged = subprocess.check_output(["git", "diff", "--cached", "--name-only"], cwd=target, text=True)
+            self.assertIn(output.as_posix(), staged.splitlines())
+            self.assertIn("results/shared_campaign/paid_review_budget.json", staged.splitlines())
