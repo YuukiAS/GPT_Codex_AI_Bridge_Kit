@@ -33,7 +33,7 @@ prompt cache: explicit mode with no cache breakpoints
 Before each paid Responses request:
 
 1. construct the exact request;
-2. count exact request input tokens using `POST /v1/responses/input_tokens`; image inputs must be included for Visual Review;
+2. count input tokens using `POST /v1/responses/input_tokens` with the provider-compatible projection of the exact request; original `input` values, including Visual Review image inputs, must pass through unchanged;
 3. verify exact model, service tier, reasoning, tools and prompt-cache identity;
 4. calculate worst-case cost with standard-tier USD 2.50/M input reservation and the bounded maximum output;
 5. persistently reserve one call slot plus the full worst-case amount before sending;

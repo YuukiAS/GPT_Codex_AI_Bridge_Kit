@@ -54,7 +54,8 @@ The default campaign contract is `gpt-5.6-terra`, at most two paid calls, USD
 retries, `service_tier=default`, `reasoning.effort=low`,
 `max_output_tokens=4096`, no tools, and explicit prompt-cache mode with no
 cache breakpoint. The request is counted first through
-`POST /v1/responses/input_tokens`, input-side reservation uses the conservative
+`POST /v1/responses/input_tokens` using the provider-compatible projection of
+the canonical request, input-side reservation uses the conservative
 standard-tier USD 2.50/M cache-write rate, the full worst-case amount is reserved in
 `results/<task_key>/paid_review_budget.json`, and only then is the Responses
 request sent. Requests above 272,000 input tokens fail closed before

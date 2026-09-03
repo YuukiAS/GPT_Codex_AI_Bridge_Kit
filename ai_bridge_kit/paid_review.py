@@ -25,6 +25,20 @@ DEFAULT_MAX_OUTPUT_TOKENS = 4096
 DEFAULT_SERVICE_TIER = "default"
 DEFAULT_REASONING_EFFORT = "low"
 LONG_CONTEXT_INPUT_TOKEN_THRESHOLD = 272_000
+INPUT_TOKEN_COUNT_SUPPORTED_FIELDS = (
+    "conversation",
+    "input",
+    "instructions",
+    "model",
+    "parallel_tool_calls",
+    "personality",
+    "previous_response_id",
+    "reasoning",
+    "text",
+    "tool_choice",
+    "tools",
+    "truncation",
+)
 TERRA_PRICING_REVIEWED_ON = "2026-09-03"
 TERRA_INPUT_USD_PER_1M = Decimal("2")
 TERRA_CACHED_INPUT_USD_PER_1M = Decimal("0.20")
@@ -217,12 +231,17 @@ def extract_input_tokens(token_payload: dict[str, Any]) -> int:
 
 
 def input_token_count_payload(request_payload: dict[str, Any]) -> dict[str, Any]:
-    """Return the exact paid Responses request used for token preflight."""
+    """Return the provider-compatible token-count projection of a Responses request."""
     if "model" not in request_payload:
         raise PaidReviewBudgetError("paid review input-token preflight requires request model")
-    if "input" not in request_payload:
-        raise PaidReviewBudgetError("paid review input-token preflight requires request input")
-    return json.loads(canonical_json(request_payload))
+    if "input" not in request_payload and "conversation" not in request_payload:
+        raise PaidReviewBudgetError("paid review input-token preflight requires request input or conversation")
+    canonical_payload = json.loads(canonical_json(request_payload))
+    return {
+        key: canonical_payload[key]
+        for key in INPUT_TOKEN_COUNT_SUPPORTED_FIELDS
+        if key in canonical_payload
+    }
 
 
 def count_input_tokens(

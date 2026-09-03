@@ -30,7 +30,7 @@ A retry, workflow rerun, process restart, machine restart or fresh checkout must
 Before a paid Responses request is sent:
 
 1. construct the exact request;
-2. count its exact input tokens through the provider-supported Responses input-token count path, including image inputs when present;
+2. count input tokens through `POST /v1/responses/input_tokens` using the provider-compatible projection of that exact request, preserving provider-supported token-relevant fields and the original `input`, including image inputs when present;
 3. validate model, service tier, reasoning, tools and prompt-cache settings;
 4. calculate worst-case cost from standard-tier USD 2.50/M input reservation plus bounded maximum output;
 5. persistently reserve one paid call and the full worst-case amount;
@@ -94,7 +94,7 @@ Text Review may receive the candidate plus the frozen rubric/context required fo
 
 Visual Review uses supported image inputs and returns textual review evidence. It does not enable image generation, web search, file search, computer use or other paid tools unless a separate explicitly authorized product contract requires them.
 
-Image inputs must be included in the same exact-request input-token preflight. Platform `images/min` capacity is not a budget control.
+Image inputs must be included unchanged in the same provider-compatible input-token preflight projection. Platform `images/min` capacity is not a budget control.
 
 ## Trigger boundary
 

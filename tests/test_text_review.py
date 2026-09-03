@@ -149,7 +149,13 @@ class TextReviewTests(unittest.TestCase):
             )
 
             request_text = json.dumps(captured["body"], ensure_ascii=False)
-            self.assertEqual(captured["token_body"], captured["body"])
+            self.assertEqual(captured["token_body"], paid_review.input_token_count_payload(captured["body"]))
+            self.assertEqual(captured["token_body"]["input"], captured["body"]["input"])
+            self.assertEqual(captured["token_body"]["text"], captured["body"]["text"])
+            self.assertEqual(captured["token_body"]["reasoning"], captured["body"]["reasoning"])
+            self.assertEqual(captured["token_body"]["tools"], captured["body"]["tools"])
+            for omitted in ("max_output_tokens", "service_tier", "store", "prompt_cache_options"):
+                self.assertNotIn(omitted, captured["token_body"])
             self.assertEqual(captured["urls"], [paid_review.INPUT_TOKENS_URL, text_review.API_URL])
             self.assertEqual(captured["body"]["model"], text_review.DEFAULT_MODEL)
             self.assertFalse(captured["body"]["store"])

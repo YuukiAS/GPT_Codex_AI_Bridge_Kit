@@ -117,20 +117,56 @@ class PaidReviewBudgetTests(unittest.TestCase):
         cost = paid_review.calculate_worst_case_cost(1000, 1000)
         self.assertEqual(paid_review._money(cost), "0.014500")
 
-    def test_count_input_tokens_uses_exact_paid_request_payload(self) -> None:
+    def test_count_input_tokens_uses_provider_compatible_projection(self) -> None:
         captured: dict = {}
 
         def opener(request, timeout):
             captured["body"] = json.loads(request.data.decode("utf-8"))
             return fake_response({"input_tokens": 10})
 
+        image_content = {"type": "input_image", "image_url": "data:image/png;base64,abc123"}
+        text_schema = {"format": {"type": "json_schema", "name": "review", "schema": {"type": "object"}}}
         payload = {
             **self.request_payload(),
-            "text": {"format": {"type": "json_schema"}},
+            "conversation": "conv_123",
+            "input": [{"role": "user", "content": [{"type": "input_text", "text": "Review this."}, image_content]}],
+            "instructions": "Count this request.",
+            "parallel_tool_calls": False,
+            "personality": "concise",
+            "previous_response_id": "resp_previous",
+            "text": text_schema,
+            "tool_choice": "none",
+            "truncation": "disabled",
         }
         result = paid_review.count_input_tokens(payload, api_key="sk-test", opener=opener)
         self.assertEqual(result["input_tokens"], 10)
-        self.assertEqual(captured["body"], payload)
+        expected = {
+            "conversation": payload["conversation"],
+            "input": payload["input"],
+            "instructions": payload["instructions"],
+            "model": payload["model"],
+            "parallel_tool_calls": payload["parallel_tool_calls"],
+            "personality": payload["personality"],
+            "previous_response_id": payload["previous_response_id"],
+            "reasoning": payload["reasoning"],
+            "text": payload["text"],
+            "tool_choice": payload["tool_choice"],
+            "tools": payload["tools"],
+            "truncation": payload["truncation"],
+        }
+        self.assertEqual(captured["body"], expected)
+        self.assertEqual(captured["body"]["input"][0]["content"][1], image_content)
+        self.assertEqual(captured["body"]["text"], text_schema)
+        self.assertEqual(captured["body"]["reasoning"], {"effort": paid_review.DEFAULT_REASONING_EFFORT})
+        self.assertEqual(captured["body"]["tools"], [])
+        for omitted in ("max_output_tokens", "service_tier", "store", "prompt_cache_options"):
+            self.assertNotIn(omitted, captured["body"])
+
+        canonical_request = json.loads(paid_review.canonical_json(payload))
+        self.assertEqual(canonical_request["max_output_tokens"], paid_review.DEFAULT_MAX_OUTPUT_TOKENS)
+        self.assertEqual(canonical_request["service_tier"], paid_review.DEFAULT_SERVICE_TIER)
+        self.assertFalse(canonical_request["store"])
+        self.assertEqual(canonical_request["prompt_cache_options"], {"mode": "explicit"})
 
     def test_input_token_http_error_reports_openai_code(self) -> None:
         def opener(request, timeout):
