@@ -71,6 +71,44 @@ exercise an installed production plugin, use `ai-bridge plugin-replay`.
   branch/remote mutation outside the dedicated Reviewed Handoff branch policy,
   release, deployment, or product/scientific scope expansion authority.
 
+## Remote SSH / Production Tunnel Safety
+
+Codex Desktop Remote SSH can generate sustained multi-MB/s transport traffic
+because of app-server/application-layer behavior. Do not assume that the SSH,
+Cloudflare, Tailscale, jump-host, or other transport carrying those bytes is the
+root cause.
+
+- Production server tunnels and SSH infrastructure are not ordinary diagnostic
+  knobs. Do not kill, restart, disable, delete, recreate, or rewrite production
+  server tunnels/services as a workaround for Codex Remote SSH bandwidth,
+  reconnect, app-server, or WebSocket problems unless the user explicitly
+  authorizes that server-side infrastructure change in the current task.
+- If an environment/project policy declares a production tunnel set immutable,
+  that constraint is absolute. Prefer read-only server inspection and
+  client-local evidence collection.
+- If interruption is necessary and authorized, target only the affected local
+  Remote SSH session/process. Do not broadly kill unrelated `ssh`, `cloudflared`,
+  Tailscale, or other transport processes.
+- Diagnose the remote Codex identity separately from the transport. Resolve the
+  actual remote `$CODEX_HOME`, inspect `codex features list`, and correlate
+  app-server/Desktop timestamps before changing network topology.
+- A known Remote SSH regression can cause repeated Apps/App Directory payloads
+  when remote `apps=true`. When sustained app-server/SSH traffic is reproduced
+  and Apps are not required on that remote identity, the preferred current
+  workaround is `codex features disable apps`, followed by reconnecting only the
+  affected client Remote SSH session. This is a Codex feature-state workaround,
+  not authority to restart production tunnels.
+- Do not disable `plugins`, `remote_plugin`, or other feature surfaces merely by
+  analogy. Very large `plugin/list` responses plus WebSocket `1006` are a
+  separate failure class and require matching evidence before mitigation.
+- After a Codex Desktop/remote runtime upgrade or remote `$CODEX_HOME`
+  replacement, re-check relevant feature state and perform a short idle/light
+  workload bandwidth sanity check. Sustained MB/s traffic should be investigated
+  rather than accepted as normal Remote SSH overhead.
+
+See `docs/design/remote_ssh_bandwidth_guardrail.md` for the evidence model and
+upstream issue references.
+
 ## User Input Policy
 
 Because host policy enables `default_mode_request_user_input`, ask the user when
