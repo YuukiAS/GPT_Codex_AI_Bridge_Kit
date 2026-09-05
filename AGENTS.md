@@ -4,26 +4,26 @@
 
 ## 1. 先判断作用域，不要把所有能力混成一次安装
 
-Bridge Kit 的能力按作用域分成机器层、项目层和任务层。真正的安装对象只有机器层和项目层；Reviewed Handoff task 与 Agent-Flow task 都是运行实例，不是新的安装层。
+Bridge Kit 的能力按作用域分成机器层、项目层和任务层。真正的安装对象只有机器层和项目层；Review task 与 Control task 都是运行实例，不是新的安装层。
 
 ```text
 机器层
 └── Host Policy                    once per CODEX_HOME
 
 项目层
-├── Lite Handoff                   default per repository
-├── Reviewed Handoff               optional GPT-planned/reviewed workflow
-├── Generic Notifier               optional
-├── Overleaf Bridge                optional manuscript publication mirror
-└── Agent-Flow Core                optional for high-risk repositories
+├── Lite                default per repository
+├── Review              optional GPT-planned/reviewed workflow
+├── Generic Notifier    optional
+├── Overleaf Bridge     optional manuscript publication mirror
+└── Control             optional for high-risk repositories
 
 任务层
 ├── Lite task
-├── Reviewed Handoff task
-└── Agent-Flow task                runtime instance, not installation
+├── Review task
+└── Control task          runtime instance, not installation
 ```
 
-配置前必须先确认用户要处理的是“新机器/新 Codex identity”“新 repository”“中档 Reviewed Handoff”“通知能力”“Overleaf 论文镜像能力”还是“某个具体高风险任务”。不要因为用户说“把 Bridge Kit 配上”就静默安装全部可选层。
+配置前必须先确认用户要处理的是“新机器/新 Codex identity”“新 repository”“中档 Review”“通知能力”“Overleaf 论文镜像能力”还是“某个具体高风险任务”。不要因为用户说“把 Bridge Kit 配上”就静默安装全部可选层。
 
 对既有 repository 做安装、升级或盘点时，必须先做真实 workflow inventory，再决定是否更新 repo 内模板。不要只按猜测目录或截图标签判断。至少检查这些标准位置和关键文件：
 
@@ -35,7 +35,7 @@ automation/agent_flow/tasks/*/CURRENT.json
 automation/agent_flow/ROLE_AUTHORITY_POLICY.md
 ```
 
-判断规则是：只有 Lite Handoff 时通常只更新 Host Policy；发现 `automation/reviewed_handoff/` 时应按 Reviewed Handoff 更新控制模板/提示词；发现 `automation/agent_flow/` 时应按 Agent-Flow 更新控制模板/提示词；发现自定义 Planner/Reviewer 状态机时，先读取其 schema、state ownership、`next_action` 和 workflow contract，再判断是否需要同步 External GPT wait 规则。若用户点名某个 repo “不可能没有”，必须重新查标准控制目录、关键 state 文件和 `AGENTS.md`/`prompts` 中的 workflow marker，不能沿用先前结论。
+判断规则是：只有 Lite 时通常只更新 Host Policy；发现 `automation/reviewed_handoff/` 时应按 Review 更新控制模板/提示词；发现 `automation/agent_flow/` 时应按 Control 更新控制模板/提示词；发现自定义 Planner/Reviewer 状态机时，先读取其 schema、state ownership、`next_action` 和 workflow contract，再判断是否需要同步 External GPT wait 规则。若用户点名某个 repo “不可能没有”，必须重新查标准控制目录、关键 state 文件和 `AGENTS.md`/`prompts` 中的 workflow marker，不能沿用先前结论。
 
 ## 2. 新机器 / 新 Codex identity
 
@@ -104,7 +104,7 @@ ai-bridge plugin-replay ...
 
 全局 Host AGENTS 还必须携带通用 external GPT 等待规则。只要 repository-controlled workflow 明确表示下一动作属于外部 GPT Planner、Reviewer、Critic、Final Critic 或同类 reasoning role，尚未出现新 decision 就是正常等待，不是实现失败。
 
-这条规则适用于 Lite/custom repository workflow、Reviewed Handoff、Agent-Flow，以及以后安装的 Planner-driven workflow。识别时优先看当前 state ownership、`next_action`、role policy、repository schema 和 workflow contract；不要只靠固定状态字符串。`READY_FOR_GPT_REVIEW`、`NEEDS_GPT_PLANNER`、`READY_FOR_PLANNER_REVIEW`、`WAITING_FOR_EXTERNAL_GPT`、`READY_FOR_CRITIC_FINAL_AUDIT` 等只是常见例子。
+这条规则适用于 Lite/custom repository workflow、Review、Control，以及以后安装的 Planner-driven workflow。识别时优先看当前 state ownership、`next_action`、role policy、repository schema 和 workflow contract；不要只靠固定状态字符串。`READY_FOR_GPT_REVIEW`、`NEEDS_GPT_PLANNER`、`READY_FOR_PLANNER_REVIEW`、`WAITING_FOR_EXTERNAL_GPT`、`READY_FOR_CRITIC_FINAL_AUDIT` 等只是常见例子。
 
 外部 GPT 等待的正常最短窗口是 `MIN_EXTERNAL_GPT_WAIT = 2 hours`，从本轮实现正式发布并交棒到 external-GPT-owned state 起算。2 小时是 minimum grace，不是自动 `BLOCKED` deadline。超过 2 小时后，只要 repository state 仍合法、implementation/result 仍完整、外部 GPT 机制仍存在，且没有明确 connector/auth/scheduler/schema/artifact-access/user-decision/workflow-contract failure，就继续视为 `waiting_external_review`。
 
@@ -116,9 +116,9 @@ ai-bridge plugin-replay ...
 
 只有存在可观察证据时才允许 external-review `BLOCKED`：例如 Scheduled GPT automation 明确 disabled/deleted/expired，connector/auth 重复失败，外部角色安装缺失，repository state 非法，必需 review artifact 无法访问，visual review 环境确定无法读取必要图片，用户必须做新的产品/科学/branch 决策，或 workflow 规定的真实 hard deadline 已过。每个 `BLOCKED` 必须写明 actual failure、observed evidence、为什么继续等待不能自动恢复，以及 recovery action。
 
-## 3. 新 repository：默认先装 Lite Handoff
+## 3. 新 repository：默认先装 Lite
 
-绝大多数正式 repository 应先使用 Lite Handoff，而不是 Reviewed Handoff 或 Agent-Flow。
+绝大多数正式 repository 应先使用 Lite，而不是 Review 或 Control。
 
 ```bash
 ai-bridge init --target /path/to/project
@@ -135,7 +135,7 @@ docs/
 .agents/skills/agent-task-executor/SKILL.md
 ```
 
-不要让 `ai-bridge init` 静默修改 `$CODEX_HOME`，不要静默安装 Reviewed Handoff、Notifier、Overleaf Bridge 或 Agent-Flow。Host Policy 和 repo Handoff 是不同生命周期。
+不要让 `ai-bridge init` 静默修改 `$CODEX_HOME`，不要静默安装 Review、Notifier、Overleaf Bridge 或 Control。Host Policy 和 repo Handoff 是不同生命周期。
 
 Lite task 的默认入口仍是：
 
@@ -179,7 +179,7 @@ ai-bridge notifier send results/<task_key>/notification_brief.json
 
 ## 5. Overleaf Bridge：只有需要论文 publication mirror 时配置
 
-Overleaf Bridge 是项目层可选能力，不是 Handoff task、Reviewed Handoff、Agent-Flow、watcher、Scheduled Task 或新的 role。它用于科研 monorepo：Codex 仍在整个 repository 根目录读取代码、分析、结果、docs 和论文；Overleaf 只接收配置的 `paper_root`。
+Overleaf Bridge 是项目层可选能力，不是 Handoff task、Review、Control、watcher、Scheduled Task 或新的 role。它用于科研 monorepo：Codex 仍在整个 repository 根目录读取代码、分析、结果、docs 和论文；Overleaf 只接收配置的 `paper_root`。
 
 Overleaf 本身不能从一个 GitHub monorepo 中只 Pull 某个子目录。Bridge Kit 的正确语义是：在机器本地维护独立 Overleaf Git mirror，并把 consumer repo 中配置的 manuscript publication root 投影进去。不要把文档写成“Overleaf 从 GitHub 拉取 paper folder”。
 
@@ -218,9 +218,9 @@ ai-bridge overleaf validate --target /path/to/repo
 
 同步安全优先级高于便利性。必须维护 baseline digest，并在每次 push/pull 前比较 `baseline`、`local`、`remote`：remote ahead 拒绝 push；local ahead 拒绝 pull；双边变化且内容不同为 diverged，必须 fail closed；local 与 remote 等价时只刷新 baseline，不制造垃圾 commit。`pull` 只把 Overleaf 内容导入 `paper_root`，只删除 Bridge 曾管理的 publication files，保留 `exclude_paths`，不得修改 `paper_root` 外任何文件，也不得自动 commit 或 `git push origin main`。
 
-## 6. Reviewed Handoff：中等风险任务的默认独立复核模式
+## 6. Review：中等风险任务的默认独立复核模式
 
-当任务需要 GPT 先做产品/语义/架构取舍、Codex 执行后再由独立 GPT 审核，但不需要 Agent-Flow 的独立合同、Verifier 和 Final Critic 时，使用 Reviewed Handoff。
+当任务需要 GPT 先做产品/语义/架构取舍、Codex 执行后再由独立 GPT 审核，但不需要 Control 的独立合同、Verifier 和 Final Critic 时，使用 Review。
 
 典型场景包括外部 repository/skill intake、第三方能力引入、中等规模重构、文档体系迁移和普通产品 feature。它的判断标准不是修改文件数量，而是：Codex 不应该自己发明产品语义，并且用户希望实现后有一次真正独立的 GPT review。
 
@@ -235,9 +235,9 @@ ai-bridge reviewed-handoff validate --target /path/to/project
 Planner -> Executor -> Reviewer
 ```
 
-Controller 只做机械状态推进，不是第四个 reasoning role。不得为了“更可靠”新增 Critic、Verifier、Auditor 或 Final Critic；需要这些角色时应直接改用 Agent-Flow。
+Controller 只做机械状态推进，不是第四个 reasoning role。不得为了“更可靠”新增 Critic、Verifier、Auditor 或 Final Critic；需要这些角色时应直接改用 Control。
 
-Reviewed Handoff 的运行原则：
+Review 的运行原则：
 
 - GPT Planner 负责读取 source of truth、外部来源和已有能力，然后冻结 `PLAN.md`。产品/科学/架构取舍不得留给 Executor 自行决定。
 - Executor 只在 `PLAN_FROZEN` 或 `REVISE` 执行。若冻结 Plan 存在无法安全推导的实质歧义，写 `NEEDS_GPT_PLANNER`，不要在 unattended run 中等待用户输入。
@@ -260,9 +260,9 @@ Watcher 只处理 `PLAN_FROZEN` / `REVISE`，只使用已经 checkout 且获授�
 
 Watcher 不保留 persistent role thread、独立 worktree receipt 或 hash event identity。每个 executor event 启动一次新的 `codex exec`。Codex exit 0 本身不代表完成；只有 `CURRENT` 真正离开原 event 才算 progress。同一 event 自动执行尝试必须有界，耗尽时发布可见 operational `BLOCKED` 和 `FINAL_REPORT.md`，不得无限循环。
 
-### Reviewed Handoff Anti-Overengineering Invariants
+### Review Anti-Overengineering Invariants
 
-Reviewed Handoff 不是“小号 Agent-Flow”。禁止加入：
+Review 不是“小号 Control”。禁止加入：
 
 ```text
 request nonce
@@ -279,19 +279,19 @@ independent Verifier role
 
 `base_commit` 和 `implementation_commit` 只是 Reviewer 定位真实 diff 的 Git locator，不是 workflow identity。不要因为 control-plane/state commit 移动就产生新的 review object。
 
-如果发现一个 false-PASS 风险只能靠以上 Agent-Flow 证明机制解决，正确动作是升级该任务到 Agent-Flow，而不是继续加重 Reviewed Handoff。
+如果发现一个 false-PASS 风险只能靠以上 Control 证明机制解决，正确动作是升级该任务到 Control，而不是继续加重 Review。
 
-Reviewed Handoff v0.5 的权威规格：
+Review v0.5 的权威规格：
 
 ```text
 docs/V0_5_REVIEWED_HANDOFF_IMPLEMENTATION_SPEC.md
 ```
 
-如果 Reviewed Handoff 的验收依赖完整 user-facing Markdown/plain-text artifact，但 plaintext 不能公开提交，使用 Text Review evidence path：本机用 `ai-bridge text-review encrypt` 通过 age public recipient 生成 encrypted payload + `text_inputs.json`，GitHub Actions 用 `AI_BRIDGE_PRIVATE_REVIEW_AGE_KEY` 临时解密并调用 OpenAI Responses API `store=false` 产出 `TEXT_REVIEW.json`。`TEXT_REVIEW.json` 是现有 Scheduled GPT Reviewer 消费的 evidence，不是新 role；缺失、stale、plaintext SHA mismatch 或 manifest identity mismatch 都不得支持 PASS。
+如果 Review 的验收依赖完整 user-facing Markdown/plain-text artifact，但 plaintext 不能公开提交，使用 Text Review evidence path：本机用 `ai-bridge text-review encrypt` 通过 age public recipient 生成 encrypted payload + `text_inputs.json`，GitHub Actions 用 `AI_BRIDGE_PRIVATE_REVIEW_AGE_KEY` 临时解密并调用 OpenAI Responses API `store=false` 产出 `TEXT_REVIEW.json`。`TEXT_REVIEW.json` 是现有 Scheduled GPT Reviewer 消费的 evidence，不是新 role；缺失、stale、plaintext SHA mismatch 或 manifest identity mismatch 都不得支持 PASS。
 
-## 7. Agent-Flow Core：仅对高风险 repository 显式安装
+## 7. Control：仅对高风险 repository 显式安装
 
-只有当任务需要独立合同审计、独立 Verifier、Stable Review Snapshot、Final Critic 和严格 human gate 时，才在 repository 叠加 Agent-Flow。
+只有当任务需要独立合同审计、独立 Verifier、Stable Review Snapshot、Final Critic 和严格 human gate 时，才在 repository 叠加 Control。
 
 典型适用场景包括科研架构实现、昂贵训练/计算、数据或安全敏感逻辑、生产部署、重大迁移，以及 false PASS 代价很高的工作。
 
@@ -300,7 +300,7 @@ ai-bridge agent-flow install --target /path/to/project
 ai-bridge agent-flow validate --target /path/to/project
 ```
 
-Agent-Flow install 必须 additive / idempotent，并且不得：
+Control install 必须 additive / idempotent，并且不得：
 
 ```text
 修改 $CODEX_HOME
@@ -308,10 +308,10 @@ Agent-Flow install 必须 additive / idempotent，并且不得：
 创建 branch
 创建 PR
 修改 Notifier secret/state
-替换或破坏 Lite Handoff / Reviewed Handoff
+替换或破坏 Lite / Review
 ```
 
-Agent-Flow 的五个长期角色固定为：
+Control 的五个长期角色固定为：
 
 ```text
 Planner
@@ -323,9 +323,9 @@ Executor
 
 不要新增功能重叠的 Reviewer/Auditor/Coordinator 角色来扩大流程。Planner 拥有用户/产品/科学意图与实现审查权；Critic 只参与 initial contract audit、必要 contract review 和 final audit；Controller 只做机械状态/路由；Verifier 只能基于冻结 requirement 建立阻断 oracle；Executor 只负责实现和授权 runtime evidence。
 
-Agent-Flow 的核心设计必须保持“严格验证、简单编排”。不要把 CARE 原型中的大量 receipt/hash/moving Git target 复制进 generic core。Stable Review Snapshot 的语义身份只能由真正的合同、Requirement Ledger、implementation semantic source 和 verifier semantic source 决定；CURRENT、Controller receipt、通知、文档等控制平面变化不得默认触发 heavy re-verification。
+Control 的核心设计必须保持“严格验证、简单编排”。不要把 CARE 原型中的大量 receipt/hash/moving Git target 复制进 generic core。Stable Review Snapshot 的语义身份只能由真正的合同、Requirement Ledger、implementation semantic source 和 verifier semantic source 决定；CURRENT、Controller receipt、通知、文档等控制平面变化不得默认触发 heavy re-verification。
 
-### Agent-Flow Anti-Overengineering Invariants
+### Control Anti-Overengineering Invariants
 
 Semantic identity must stay small. `review_target_id` 只能由 task identity、frozen contract digest、Requirement Ledger digest、implementation semantic digest 和 verifier semantic digest 组成。未经用户明确架构决策，不得把 Git locator SHA、`CURRENT.json`、Controller state、Controller merge commit、role/session receipt hashes、Review Bundle hash、Planner review packet hash、Final Critic artifact hash、CI-record commit、runtime receipt commit、notification brief 或 documentation-only files 加入 `review_target_id`。Git SHA 可以作为 locator/provenance，但不能因为 Git history 移动而改变 semantic review identity。
 
@@ -339,7 +339,7 @@ Review Bundle stays compact. `REVIEW_BUNDLE.json` 只包含当前 target 所需�
 
 New provenance fields need justification. 未来如果 Codex 认为需要增加新的 SHA、digest、receipt、manifest、binding 或 state，必须先回答：它防止什么具体 false PASS；现有 semantic identity / typed evidence 为什么不能解决；它是否会导致 receipt-only 或 control-plane-only change 触发昂贵重跑；是否形成新的 hash dependency chain；是否可以通过普通字段或 locator 解决而无需 hash。没有明确收益时不增加。
 
-Agent-Flow v0.4 的当前实现与正确性要求以以下文件为准：
+Control v0.4 的当前实现与正确性要求以以下文件为准：
 
 ```text
 docs/V0_4_AGENT_FLOW_IMPLEMENTATION_SPEC.md
@@ -347,9 +347,9 @@ docs/AGENT_FLOW_V3_POST_CARE_EXTRACTION_DECISIONS.md
 docs/CARE_AGENT_FLOW_V3_POSTMORTEM_20260811.md
 ```
 
-## 8. Agent-Flow task：这是运行实例，不是安装层
+## 8. Control task：这是运行实例，不是安装层
 
-在 repository 已安装 Agent-Flow 后，只有出现一项具体高风险任务时才初始化 task：
+在 repository 已安装 Control 后，只有出现一项具体高风险任务时才初始化 task：
 
 ```bash
 ai-bridge agent-flow task init \
@@ -357,31 +357,31 @@ ai-bridge agent-flow task init \
   --task-key <task_key>
 ```
 
-这一步创建的是该任务自己的 `REQUEST.json`、`CURRENT.json` 和后续 contract/evidence 生命周期。它不能被描述为新的安装层。同一个 Agent-Flow Core 可以承载多个互相独立的 task，每个 task 必须拥有独立 objective、request nonce、frozen contract、Requirement Ledger、review target、repair history 和 human gate。
+这一步创建的是该任务自己的 `REQUEST.json`、`CURRENT.json` 和后续 contract/evidence 生命周期。它不能被描述为新的安装层。同一个 Control 可以承载多个互相独立的 task，每个 task 必须拥有独立 objective、request nonce、frozen contract、Requirement Ledger、review target、repair history 和 human gate。
 
-如果没有一个具体的高风险 objective，不要为了“预先配置好”而创建空 Agent-Flow task。
+如果没有一个具体的高风险 objective，不要为了“预先配置好”而创建空 Control task。
 
 ## 9. 安装决策默认值
 
 当用户只说“在新服务器把 Bridge Kit 配好”，默认完成 package + Host Policy，并验证 Host Policy。不要顺便初始化任意 repository。
 
-当用户只说“把这个 repository 接入 Handoff”，默认安装 Lite Handoff，并检查 Host Policy 状态；不要因为 repository 很复杂就自动加 Reviewed Handoff 或 Agent-Flow。
+当用户只说“把这个 repository 接入 Handoff”，默认安装 Lite，并检查 Host Policy 状态；不要因为 repository 很复杂就自动加 Review 或 Control。
 
-当用户明确要求“GPT 先规划、Codex 实现、再让 GPT 自动审核/返修”，或者明确选择 Reviewed Handoff 时，在 Lite 基础上安装 Reviewed Handoff。若是否启用独立 GPT review 会实质改变用户工作方式而用户没有表达，应先说明/确认，不要静默升级。
+当用户明确要求“GPT 先规划、Codex 实现、再让 GPT 自动审核/返修”，或者明确选择 Review 时，在 Lite 基础上安装 Review。若是否启用独立 GPT review 会实质改变用户工作方式而用户没有表达，应先说明/确认，不要静默升级。
 
 当用户明确说“这个项目需要终态通知”，在所选 workflow 基础上配置 Notifier。
 
 当用户明确说“把论文同步到 Overleaf”“安装 Overleaf Bridge”或等价表达时，在所选 repository 中配置 Overleaf Bridge。若 `paper_root`、`main_document`、真实 Overleaf project URL 或首次接入方向会实质改变论文协作语义，应先确认；不要自行选择 `prefer-local` / `prefer-remote` 或把整个 GitHub repo 导入 Overleaf。
 
-当用户明确要求 Agent-Flow，或任务明显属于高风险且用户已经选择 Agent-Flow 工作方式时，再安装 Agent-Flow Core。若是否升级到 Agent-Flow 会实质改变工作流，应向用户确认，而不是自行决定。
+当用户明确要求 Control，或任务明显属于高风险且用户已经选择 Control 工作方式时，再安装 Control。若是否升级到 Control 会实质改变工作流，应向用户确认，而不是自行决定。
 
-当用户说“用 Agent-Flow 做这次 XXX”，如果 repository 尚未安装 Agent-Flow，则先安装/验证 Agent-Flow Core，再为 XXX 创建 task；如果已经安装，则只创建或复用对应 task，不要重复安装整个 Core。
+当用户说“用 Control 做这次 XXX”，如果 repository 尚未安装 Control，则先安装/验证 Control，再为 XXX 创建 task；如果已经安装，则只创建或复用对应 task，不要重复安装整个 Core。
 
 ## 10. Git 与 branch 规则
 
 在本仓库及通过本 Kit 管理的 repository 中，默认继续当前 branch。当前已选 `main` 分支上的 `git fetch origin main`、clean worktree 下的 `git pull --ff-only origin main`、task-owned 文件 staging、普通 commit 和 `git push origin main` 是预授权开发动作；其他明确获授权的普通 `origin` push 可按项目规则执行。未经用户明确授权，不得执行任何会创建、切换、checkout、重命名或删除 branch 的命令，包括 `git switch`、`git switch -c`、`git checkout`、`git checkout -b`、`git branch <new>`、`git branch -d/-D/-m`、通过 worktree 创建或选择 branch，或把新 remote branch / upstream 当作“不推当前 branch”的替代方案。
 
-Reviewed Handoff watcher 只能同步和使用用户已经授权且当前 checkout 的 branch，不得自动 switch branch。Agent-Flow 为 Verifier/Executor 做角色隔离时，优先使用 detached worktree；如果确实需要长期 role branch，先向用户请求该 branch 的明确授权。
+Review watcher 只能同步和使用用户已经授权且当前 checkout 的 branch，不得自动 switch branch。Control 为 Verifier/Executor 做角色隔离时，优先使用 detached worktree；如果确实需要长期 role branch，先向用户请求该 branch 的明确授权。
 
 当前已选 `main` 分支上的安全同步、task-owned staging、普通 commit 和 `origin/main` push 可按 Host Policy 执行。不得自动 rebase/autostash pull、force push、`--force-with-lease`、删除远端 branch/tag、设置/改变 upstream、创建新远端分支、reset/clean/restore 用户工作、添加/删除/重定向 remote。
 
@@ -391,7 +391,7 @@ Reviewed Handoff watcher 只能同步和使用用户已经授权且当前 checko
 
 根 `AGENTS.md` 是写给 Codex 的操作入口，应保持可执行、明确、低歧义。复杂 workflow 状态机、schema 和历史设计放在 `docs/`，不要把全部实现规格重复复制到 README。
 
-如果 README 与实现发生冲突，应修 README；Reviewed Handoff 行为与 `docs/V0_5_REVIEWED_HANDOFF_IMPLEMENTATION_SPEC.md` 冲突时优先修实现；Agent-Flow 行为与 `docs/V0_4_AGENT_FLOW_IMPLEMENTATION_SPEC.md` 冲突时也优先按规格修实现，除非用户明确改变了架构决策。
+如果 README 与实现发生冲突，应修 README；Review 行为与 `docs/V0_5_REVIEWED_HANDOFF_IMPLEMENTATION_SPEC.md` 冲突时优先修实现；Control 行为与 `docs/V0_4_AGENT_FLOW_IMPLEMENTATION_SPEC.md` 冲突时也优先按规格修实现，除非用户明确改变了架构决策。
 
 ## 12. 兼容性和发布
 
@@ -409,13 +409,13 @@ ai-bridge overleaf ...
 ai-bridge agent-flow ...
 ```
 
-并保持 Reviewed Handoff 新入口：
+并保持 Review 新入口：
 
 ```text
 ai-bridge reviewed-handoff ...
 ai-bridge reviewed-handoff watcher ...
 ```
 
-Lite Handoff 不能因为 Reviewed Handoff、Overleaf Bridge 或 Agent-Flow 演进而变复杂。Host Policy、Lite、Reviewed Handoff、Notifier、Overleaf Bridge、Agent-Flow 彼此保持清晰边界，新增一层不得静默改变其他层。
+Lite 不能因为 Review、Overleaf Bridge 或 Control 演进而变复杂。Host Policy、Lite、Review、Notifier、Overleaf Bridge、Control 彼此保持清晰边界，新增一层不得静默改变其他层。
 
 发布前必须运行现有回归测试和对应新功能测试。没有真实 GitHub Actions green evidence 时，不要把“本地测试通过”描述成“远端 CI 已通过”。稳定 tag 不得移动或覆盖；没有用户授权时不要创建新的 release tag。

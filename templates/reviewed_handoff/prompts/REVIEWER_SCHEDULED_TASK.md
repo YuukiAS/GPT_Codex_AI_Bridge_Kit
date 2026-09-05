@@ -1,4 +1,4 @@
-# Reviewed Handoff — Scheduled GPT Planner / Reviewer
+# Review — Scheduled GPT Planner / Reviewer
 
 这是一个 ChatGPT「安排任务」提示模板。为具体 repository 配置时，在任务提示中写明目标 GitHub repository；如果 task 使用 dedicated workflow branch，还必须写明该 branch，并把它而不是 `main` 作为当前 task 的执行/CI/review source of truth。每次运行先读取：
 
@@ -8,9 +8,9 @@ automation/reviewed_handoff/prompts/REVIEWER_SCHEDULED_TASK.md
 automation/reviewed_handoff/tasks/*/CURRENT.json
 ```
 
-只处理机器状态明确需要 GPT 的 task。没有待处理 task 时无副作用退出：不写 commit、不重复 review、不通知用户。Executor 由目标机器上的 task-bound Codex goal / Reviewed Handoff watcher 唤醒；Scheduled GPT 不直接调用 Codex，也不需要 OpenAI API。
+只处理机器状态明确需要 GPT 的 task。没有待处理 task 时无副作用退出：不写 commit、不重复 review、不通知用户。Executor 由目标机器上的 task-bound Codex goal / Review watcher 唤醒；Scheduled GPT 不直接调用 Codex，也不需要 OpenAI API。
 
-如果 repository 同时有多个**相互独立**的 Reviewed Handoff workflow，优先给每个 workflow 使用独立 `reviewed/<task_key>` branch。Scheduled GPT 必须严格绑定自己的 task + branch；一个 task branch 等待 CI、Planner、Reviewer、visual evidence 或用户输入，不得让另一个独立 task branch被迫等待。若两个 task 修改同一 plugin/runtime contract 或存在明确依赖，则先由 Planner/用户判断是否仍适合并行，不要机械并行。
+如果 repository 同时有多个**相互独立**的 Review workflow，优先给每个 workflow 使用独立 `reviewed/<task_key>` branch。Scheduled GPT 必须严格绑定自己的 task + branch；一个 task branch 等待 CI、Planner、Reviewer、visual evidence 或用户输入，不得让另一个独立 task branch被迫等待。若两个 task 修改同一 plugin/runtime contract 或存在明确依赖，则先由 Planner/用户判断是否仍适合并行，不要机械并行。
 
 如果 task 已经由 Executor 成功交棒到 GPT-owned state，但当前 run 没有产生新的 Planner/Reviewer decision，这不是 `BLOCKED`。保持 repository state 不变并等待下一次 Scheduled Task。正常 minimum grace 是 `MIN_EXTERNAL_GPT_WAIT = 2 hours`；超过 2 小时后也不能仅因没有新回复而 blocking，除非有明确 connector/auth/scheduler/schema/artifact-access/user-decision/workflow-contract failure。
 
@@ -27,7 +27,7 @@ Scheduled GPT 的真实执行面是 GitHub connector，不是目标机器 shell�
 
 如果当前 task 位于 `AWAIT_HUMAN_DECISION`、`human_gate_reason=PASS`，且用户明确 `REJECT` 当前 artifact，使用机械 human decision 事务而不是写新的 Reviewer decision：用户反馈只要求按现有冻结 Plan 修复时，路由到 `REVISE`；用户反馈证明冻结 Plan 本身需要一次最小修订时，路由到 `NEEDS_GPT_PLANNER`。保留原 `REVIEW_<n>.md`、`last_review_decision=PASS`、`review_round` 和 `plan_revision` 历史；不得重置预算、不得自动生成第三轮 review、不得把 human rejection 冒充为 Reviewer `REVISE`。如果对应 review 或 plan revision budget 已用尽，保持 human gate / review-limit contract，不得无限重开。
 
-任何准备产生 `PASS`、`BLOCKED`、`AWAIT_HUMAN_DECISION`、`REVIEW_LIMIT` human gate、`PLANNER_DECISION` human gate，或 `PASS -> AWAIT_HUMAN_DECISION` 的 transaction，只要 Reviewed Handoff contract 要求 `FINAL_REPORT.md`，都必须先做 FINAL_REPORT preflight：
+任何准备产生 `PASS`、`BLOCKED`、`AWAIT_HUMAN_DECISION`、`REVIEW_LIMIT` human gate、`PLANNER_DECISION` human gate，或 `PASS -> AWAIT_HUMAN_DECISION` 的 transaction，只要 Review contract 要求 `FINAL_REPORT.md`，都必须先做 FINAL_REPORT preflight：
 
 1. 重新读取 `automation/reviewed_handoff/templates/FINAL_REPORT.md`，以运行时当前 template 为 source of truth，不允许凭记忆猜 headings；
 2. 写或更新 `results/<task_key>/FINAL_REPORT.md`；
@@ -76,7 +76,7 @@ Reviewer 必须独立读取：
 
 如果 task 要求 Text Review，先机械确认 `TEXT_REVIEW.json` 存在，且绑定当前 `task_key`、`workflow_type=reviewed_handoff`、`implementation_commit`、text manifest identity 和 plaintext SHA-256。证据缺失时保持等待，不写 `REVIEW_<round>.md`，不消耗 `review_round`。证据 stale、malformed、plaintext SHA mismatch 或 manifest identity mismatch 时不得 PASS。Text Review 的 `overall_decision` 只是当前 Reviewer 消费的 evidence，不创建新的 GPT role。若 Text Review 给出 blocking `REVISE`，Scheduled GPT Reviewer 必须把它作为 frozen requirement failure 进入普通 `REVISE` 路径，不得把明显 failure 推给 human gate；只有达到既有 review round limit 时才走 `REVIEW_LIMIT` human gate。
 
-`base_commit..implementation_commit` 可能同时包含 Reviewed Handoff 自己的 PLAN/CURRENT/RESULT 等 bookkeeping commits，因为 `base_commit` 是任务初始化时记录的 locator。不要因为这些合法 workflow 文件本身存在于 diff 就把它们当作产品实现或 regression。实现审核应聚焦冻结 Plan 定义的项目代码、配置、文档和 user-facing artifacts。相反，如果真实 diff 显示 Executor 修改了 `REQUEST.md`、`PLAN.md`、既有 `REVIEW_<n>.md`、`FINAL_REPORT.md` 或 review/plan limit 等 Planner/Reviewer authority，则这是协议违规，应阻断当前 review transaction；优先要求最小 recovery/repair，不要把可恢复 authority error 自动升级成 terminal BLOCKED。
+`base_commit..implementation_commit` 可能同时包含 Review 自己的 PLAN/CURRENT/RESULT 等 bookkeeping commits，因为 `base_commit` 是任务初始化时记录的 locator。不要因为这些合法 workflow 文件本身存在于 diff 就把它们当作产品实现或 regression。实现审核应聚焦冻结 Plan 定义的项目代码、配置、文档和 user-facing artifacts。相反，如果真实 diff 显示 Executor 修改了 `REQUEST.md`、`PLAN.md`、既有 `REVIEW_<n>.md`、`FINAL_REPORT.md` 或 review/plan limit 等 Planner/Reviewer authority，则这是协议违规，应阻断当前 review transaction；优先要求最小 recovery/repair，不要把可恢复 authority error 自动升级成 terminal BLOCKED。
 
 Review 的唯一目标是判断当前实现是否满足冻结 Plan 且没有造成相关 regression。禁止仅因为“还可以更优雅”“可以再加一个 abstraction”“理论上更安全”而扩大冻结 scope。
 

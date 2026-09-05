@@ -1,6 +1,6 @@
-# Reviewed Handoff Core
+# Review
 
-Reviewed Handoff 是 Lite Handoff 与 Agent-Flow 之间的中档工作流。它适合需要 GPT 先做产品/语义规划、Codex 大量实现、随后由独立 GPT 审核一到两轮的任务。
+Review 是 Lite 与 Control 之间的中档工作流。它适合需要 GPT 先做产品/语义规划、Codex 大量实现、随后由独立 GPT 审核一到两轮的任务。
 
 它只有三个逻辑角色：Planner、Executor、Reviewer。Controller 只允许做机械状态推进，不是独立思考角色。
 
@@ -64,7 +64,7 @@ Executor 成功发布实现并把 `CURRENT` 推进到 GPT-owned state 后，外�
 
 只有出现具体不可自动恢复的外部故障证据时才允许 `BLOCKED`，例如 Scheduled GPT 被禁用/删除/过期、GitHub connector/auth 重复失败、workflow 安装损坏、必需 artifact 无法访问、repository state 非法，或确实需要用户作新的产品/科学/branch 决策。每个 `BLOCKED` 必须写清 actual failure、observed evidence、为什么继续等待不能恢复，以及 recovery action。
 
-Reviewed Handoff 刻意不使用 Agent-Flow 的 Requirement Ledger、Stable Review Snapshot、角色 receipt graph 或 provenance hash graph。`base_commit` 与 `implementation_commit` 只作为 Git 定位信息；review 是否通过取决于冻结 Plan、当前 diff、真实测试/CI 和 regression risk。
+Review 刻意不使用 Control 的 Requirement Ledger、Stable Review Snapshot、角色 receipt graph 或 provenance hash graph。`base_commit` 与 `implementation_commit` 只作为 Git 定位信息；review 是否通过取决于冻结 Plan、当前 diff、真实测试/CI 和 regression risk。
 
 如果 `CURRENT.ci_required=true`，Executor 只能发布 `WAITING_FOR_CI` 且保持 `CURRENT.ci_status=PENDING`。Scheduled GPT 读取 GitHub 上当前授权 branch tip 的真实 checks；该 branch tip 是普通 CI locator，不要求等于 `implementation_commit`，也不会写入 hash/receipt 链。`CURRENT.ci_status` 是唯一机器 CI 真值，`RESULT.md` 只负责说明本地执行和验证。
 

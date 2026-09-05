@@ -342,15 +342,15 @@ Project State Bridge 是**横切的项目层可选能力**，不是新的任务�
 它应能与以下能力独立组合：
 
 ```text
-Lite Handoff
-Reviewed Handoff
-Agent-Flow Core
+Lite
+Review
+Control
 Generic Notifier
 Visual / Text Review
 Overleaf Bridge
 ```
 
-Reviewed Handoff / Agent-Flow 的内部 `CURRENT.json` 仍属于具体任务状态机，不能直接拿来充当 `PROJECT_STATE.json`。一个 task PASS 也不等于整个 project completed。
+Review / Control 的内部 `CURRENT.json` 仍属于具体任务状态机，不能直接拿来充当 `PROJECT_STATE.json`。一个 task PASS 也不等于整个 project completed。
 
 ---
 

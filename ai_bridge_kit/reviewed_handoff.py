@@ -253,7 +253,7 @@ def inspect_reviewed_handoff(target: Path) -> ReviewedStatus:
 def format_status(status: ReviewedStatus) -> str:
     state = "configured" if status.installed else "missing"
     lines = [
-        f"Reviewed Handoff: {state}",
+        f"Review: {state}",
         f"Target: {status.target}",
         f"Tasks: {status.task_count}",
     ]
@@ -278,13 +278,13 @@ def init_task(
     if not TASK_KEY_RE.fullmatch(task_key):
         raise ValueError("task_key must look like <id>_<1-3-word_slug>, for example 001_skill_intake")
     if max_review_rounds not in {1, 2}:
-        raise ValueError("Reviewed Handoff allows max_review_rounds of 1 or 2")
+        raise ValueError("Review allows max_review_rounds of 1 or 2")
     status = inspect_reviewed_handoff(target)
     if not status.installed:
-        raise ValueError("Reviewed Handoff is not installed; run reviewed-handoff install first")
+        raise ValueError("Review is not installed; run reviewed-handoff install first")
     root = task_root(target, task_key)
     if root.exists():
-        raise ValueError(f"Reviewed Handoff task already exists: {task_key}")
+        raise ValueError(f"Review task already exists: {task_key}")
     root.mkdir(parents=True)
     result_root(target, task_key).mkdir(parents=True, exist_ok=True)
     request_template = read_text(reviewed_root(target) / "templates" / "REQUEST.md")
@@ -836,7 +836,7 @@ def validate_task(target: Path, task_key: str) -> list[str]:
 
     reviews = review_files(target, task_key)
     if len(reviews) > 2:
-        errors.append("Reviewed Handoff allows at most two GPT review artifacts")
+        errors.append("Review allows at most two GPT review artifacts")
     latest_data: dict[str, str] | None = None
     for index, path in enumerate(reviews, start=1):
         data, review_errors = validate_review_file(path, task_key, expected_round=index)
@@ -930,7 +930,7 @@ def validate_reviewed_handoff(target: Path) -> tuple[list[str], int]:
         lines.extend(f"ERROR {item}" for item in errors)
         return lines, 1
     lines.extend(f"WARNING {item}" for item in warnings)
-    lines.append("Reviewed Handoff validation passed.")
+    lines.append("Review validation passed.")
     return lines, 0
 
 
@@ -1046,7 +1046,7 @@ def apply_transition(
             raise ValueError("; ".join(plan_errors))
     if expected_state == "NEEDS_GPT_PLANNER" and next_state == "PLAN_FROZEN":
         if current.get("plan_revision", 0) >= current.get("max_plan_revisions", 1):
-            raise ValueError("Reviewed Handoff allows only one scheduled GPT plan revision before human escalation")
+            raise ValueError("Review allows only one scheduled GPT plan revision before human escalation")
         current["plan_revision"] = int(current.get("plan_revision", 0)) + 1
     if expected_state == "READY_FOR_GPT_REVIEW":
         raise ValueError("use reviewed-handoff review record for every READY_FOR_GPT_REVIEW exit so GPT review cannot be bypassed")
@@ -1100,7 +1100,7 @@ def apply_transition(
     post_errors = validate_task(target, task_key)
     if post_errors:
         write_json(path, original)
-        raise ValueError("transition would create invalid Reviewed Handoff state: " + "; ".join(post_errors))
+        raise ValueError("transition would create invalid Review state: " + "; ".join(post_errors))
     return current
 
 
@@ -1196,7 +1196,7 @@ def record_review(
     if post_errors:
         write_json(current_path, original)
         review_path.unlink(missing_ok=True)
-        raise ValueError("review would create invalid Reviewed Handoff state: " + "; ".join(post_errors))
+        raise ValueError("review would create invalid Review state: " + "; ".join(post_errors))
     return current
 
 
@@ -1237,7 +1237,7 @@ def record_human_decision(
         post_errors = validate_task(target, task_key)
         if post_errors:
             write_json(current_path, original)
-            raise ValueError("human decision would create invalid Reviewed Handoff state: " + "; ".join(post_errors))
+            raise ValueError("human decision would create invalid Review state: " + "; ".join(post_errors))
         return current
 
     if current.get("human_gate_reason") != "PASS":
@@ -1263,7 +1263,7 @@ def record_human_decision(
     post_errors = validate_task(target, task_key)
     if post_errors:
         write_json(current_path, original)
-        raise ValueError("human decision would create invalid Reviewed Handoff state: " + "; ".join(post_errors))
+        raise ValueError("human decision would create invalid Review state: " + "; ".join(post_errors))
     return current
 
 

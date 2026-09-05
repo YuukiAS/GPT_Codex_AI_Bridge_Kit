@@ -1,6 +1,6 @@
 # Role Authority Policy
 
-Agent-Flow uses exactly five logical roles: Planner, Critic, Controller,
+Control uses exactly five logical roles: Planner, Critic, Controller,
 Verifier, and Executor.
 
 Planner owns user/product/scientific intent, contract interpretation,

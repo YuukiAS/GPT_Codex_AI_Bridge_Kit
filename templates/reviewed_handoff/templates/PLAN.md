@@ -4,7 +4,7 @@ task_key: <TASK_KEY>
 decision: PLAN_FROZEN
 ---
 
-# Reviewed Handoff Plan
+# Review Plan
 
 ## Objective and value
 

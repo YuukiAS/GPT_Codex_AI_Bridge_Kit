@@ -4,7 +4,7 @@ Status: frozen planner design for a bounded Host Policy improvement.
 
 ## Problem
 
-A real `AI_Skills_Collection` Reviewed Handoff task exposed an infrastructure failure before the plugin itself could be tested. The Executor needed to launch a fresh local Codex runtime so an installed production plugin could process a user-authorized private research artifact. The outer Codex approval reviewer blocked that nested runtime because the command would pass private content to another model runtime and write outside the initial workspace root.
+A real `AI_Skills_Collection` Review task exposed an infrastructure failure before the plugin itself could be tested. The Executor needed to launch a fresh local Codex runtime so an installed production plugin could process a user-authorized private research artifact. The outer Codex approval reviewer blocked that nested runtime because the command would pass private content to another model runtime and write outside the initial workspace root.
 
 This is not a plugin-quality failure. It is a machine-level Host Policy / production-replay authorization gap.
 
@@ -16,7 +16,7 @@ This capability belongs to `GPT_Codex_AI_Bridge_Kit`, not to an individual consu
 
 - **Host Policy** is the machine-wide authorization source of truth. One `CODEX_HOME` installation applies to all repositories using that Codex identity.
 - **Bridge Kit** owns the bounded replay launcher that makes the authorization safe enough to pre-approve.
-- **Lite / Reviewed Handoff / other repo workflows** only learn to call the bounded launcher when they need a fresh production plugin runtime. They do not maintain their own permission allowlists.
+- **Lite / Review / other repo workflows** only learn to call the bounded launcher when they need a fresh production plugin runtime. They do not maintain their own permission allowlists.
 
 The intended behavior is:
 
@@ -158,7 +158,7 @@ Host Policy should pin the trusted `ai-bridge` executable resolution when the cu
 
 ### 6. Workflow integration is advisory, not a second permission layer
 
-Update generic Bridge Kit Lite / Reviewed Handoff Executor guidance so that when a frozen task genuinely requires a fresh production plugin runtime, it uses `ai-bridge plugin-replay` rather than constructing a raw nested `codex exec` command.
+Update generic Bridge Kit Lite / Review Executor guidance so that when a frozen task genuinely requires a fresh production plugin runtime, it uses `ai-bridge plugin-replay` rather than constructing a raw nested `codex exec` command.
 
 Do not force ordinary implementation tasks through plugin replay. Do not add a new state machine, role, schema family or task type.
 

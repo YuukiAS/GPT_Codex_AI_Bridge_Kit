@@ -650,7 +650,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     agent_flow_parser = subparsers.add_parser(
         "agent-flow",
-        help="Install, validate, and operate the optional high-risk Agent-Flow core.",
+        help="Install, validate, and operate Control, the optional high-risk workflow.",
     )
     agent_flow_parser.add_argument("agent_flow_args", nargs=argparse.REMAINDER)
 

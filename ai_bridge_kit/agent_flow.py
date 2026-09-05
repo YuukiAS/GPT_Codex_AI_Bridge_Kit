@@ -292,7 +292,7 @@ def default_profile(project_name: str) -> dict[str, Any]:
     return {
         "schema": "AI_BRIDGE_PROJECT_PROFILE_V1",
         "project": project_name,
-        "project_objective": "Repository-specific high-risk Agent-Flow objective. Customize before production use.",
+        "project_objective": "Repository-specific high-risk Control objective. Customize before production use.",
         "repository_truth_sources": ["README.md", "AGENTS.md", "pyproject.toml"],
         "artifact_language_policy": "repository/task controlled",
         "contract_source_policy": {
@@ -519,7 +519,7 @@ def inspect_agent_flow(target: Path) -> AgentFlowStatus:
 def format_status(status: AgentFlowStatus) -> str:
     lines = [
         f"target: {status.target}",
-        f"agent_flow: {status.state}",
+        f"Control: {status.state}",
         f"current_branch: {status.current_branch}",
         f"project_profile: {status.project_profile}",
         f"task_count: {status.task_count}",
@@ -568,7 +568,7 @@ def load_project_profile(target: Path) -> dict[str, Any]:
         if privacy_policy != visual_review.DEFAULT_PRIVACY_POLICY and not visual_policy.get("external_upload_authorization"):
             raise ValueError("optional_visual_source_policy requires explicit external_upload_authorization for non-public data")
         if profile.get("external_boundaries", {}).get("requires_private_data") and not visual_policy.get("external_upload_authorization"):
-            raise ValueError("private-data Agent-Flow visual review requires explicit external_upload_authorization")
+            raise ValueError("private-data Control visual review requires explicit external_upload_authorization")
     if profile.get("integration_branch_policy", {}).get("create_branch_without_user_authorization"):
         raise ValueError("Project Profile cannot authorize branch creation without explicit user metadata")
     if profile.get("role_isolation_policy", {}).get("create_role_branches_without_user_authorization"):
@@ -2179,7 +2179,7 @@ def validate_agent_flow(target: Path) -> tuple[list[str], int]:
     if errors:
         lines.extend(f"ERROR {item}" for item in errors)
         return lines, 1
-    lines.append("Agent-Flow validation passed.")
+    lines.append("Control validation passed.")
     return lines, 0
 
 
@@ -2562,7 +2562,7 @@ def terminal_notification_brief(target: Path, task_key: str) -> dict[str, Any] |
         "project": target.name,
         "task_key": task_key,
         "terminal_status": status,
-        "key_conclusion": f"Agent-Flow reached {state}.",
+        "key_conclusion": f"Control reached {state}.",
         "next_step": "Review the current Review Bundle and decide the next human action.",
         "evidence_paths": [str((result_root(target, task_key) / "REVIEW_BUNDLE.json").as_posix())],
     }

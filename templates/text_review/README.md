@@ -1,6 +1,6 @@
 # AI Bridge Text Review
 
-Text Review is a shared optional evidence producer for Reviewed Handoff. It is
+Text Review is a shared optional evidence producer for Review. It is
 not a new GPT role. It lets a private UTF-8 Markdown/plain-text artifact be
 reviewed by OpenAI through GitHub Actions without committing plaintext.
 

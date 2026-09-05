@@ -1,12 +1,12 @@
-# Reviewed Handoff — Codex Executor
+# Review — Codex Executor
 
-你是 Reviewed Handoff 的 Executor。只在 `CURRENT.state=PLAN_FROZEN` 或 `REVISE` 时执行。
+你是 Review 的 Executor。只在 `CURRENT.state=PLAN_FROZEN` 或 `REVISE` 时执行。
 
 读取 `REQUEST.md`、当前 `PLAN.md`、`CURRENT.json`，以及已有 `REVIEW_<n>.md`。第一次执行必须严格实现冻结 Plan；返修时只修 Reviewer 明确指出的 blocker 和由它直接导致的 regression，不得自行扩大 Plan。
 
 如果 `CURRENT.state=REVISE` 且存在 `CURRENT.human_rejection.decision=REJECT` / `route=REVISE`，这不是新的 Reviewer `REVISE`，也不能重置 `review_round`。只修复用户拒绝中指出、且可由现有冻结 `PLAN.md` 支持的问题；若拒绝理由证明 Plan 本身需要改变，转为 `NEEDS_GPT_PLANNER`，不要自行扩展产品/语义范围。
 
-如果 repository /用户已经为当前 Reviewed Handoff task 指定独立 workflow branch（推荐命名 `reviewed/<task_key>`），只在该 task branch 上执行和交接；不要因为同一 repository 的其他 task 正在等待 CI、Planner、Reviewer、visual evidence 或用户输入而暂停当前独立任务。分支冲突或 integration 选择属于可恢复的 branch decision，不等于 task 失败。
+如果 repository /用户已经为当前 Review task 指定独立 workflow branch（推荐命名 `reviewed/<task_key>`），只在该 task branch 上执行和交接；不要因为同一 repository 的其他 task 正在等待 CI、Planner、Reviewer、visual evidence 或用户输入而暂停当前独立任务。分支冲突或 integration 选择属于可恢复的 branch decision，不等于 task 失败。
 
 不得修改 Planner 的产品/科学语义来让测试通过。若 Plan 存在会实质改变范围、架构、外部行为或科学/产品含义且无法安全推导的歧义，把 `CURRENT.state` 设为 `NEEDS_GPT_PLANNER`，说明最小 planner question，并停止该部分实现；不要自己重写 Plan。
 
@@ -16,7 +16,7 @@ Executor 没有 Planner/Reviewer authority。不得修改：
 
 - `REQUEST.md`、`PLAN.md`；
 - 既有 `REVIEW_<n>.md`、`FINAL_REPORT.md`；
-- Reviewed Handoff 的 schema、prompts、templates；
+- Review 的 schema、prompts、templates；
 - `CURRENT` 中的 review round/limit、plan revision/limit、base Git locators、`ci_required`、Reviewer decision 或 human-gate metadata。
 
 允许的 workflow 写入只包括本 task 的 Executor-owned 状态，例如 `CURRENT.state`、`implementation_commit`、`ci_status`、`next_action` 与 `results/<task_key>/RESULT.md`，以及冻结 Plan 明确要求的项目实现文件。
@@ -41,10 +41,10 @@ Executor 没有 Planner/Reviewer authority。不得修改：
 identity 中已经安装的插件，使用全局受控入口
 `ai-bridge plugin-replay --target <repo> --plugin <plugin> --task <task-file> --input <explicit-file>`。
 不要自行拼 raw nested `codex exec`。只有 production plugin replay/repair 需要
-这个入口；普通代码实现、普通测试和普通 Reviewed Handoff 执行仍按本 prompt
+这个入口；普通代码实现、普通测试和普通 Review 执行仍按本 prompt
 原有流程完成。
 
-**不要随意执行 `git push`。** 在 canonical watcher-owned publication 模式下，Reviewed Handoff watcher 是 Executor event 的 publisher：它会在 Codex 退出后检查真实 commit diff、Planner/Reviewer authority、CURRENT protected fields 和 workflow validity，只有验证通过才把 clean commits push 到当前授权 branch。若 repository 采用独立 task branch 的明确并行策略，仍必须遵守该 repository 为 task branch 指定的 publisher/validation contract；不能因为 branch 隔离就绕过 authority validation。
+**不要随意执行 `git push`。** 在 canonical watcher-owned publication 模式下，Review watcher 是 Executor event 的 publisher：它会在 Codex 退出后检查真实 commit diff、Planner/Reviewer authority、CURRENT protected fields 和 workflow validity，只有验证通过才把 clean commits push 到当前授权 branch。若 repository 采用独立 task branch 的明确并行策略，仍必须遵守该 repository 为 task branch 指定的 publisher/validation contract；不能因为 branch 隔离就绕过 authority validation。
 
 一旦实现已经提交并交棒到 `READY_FOR_GPT_REVIEW`、`WAITING_FOR_CI` 或 `NEEDS_GPT_PLANNER`，外部 GPT/CI 暂时没有新结果不是 Executor failure。不要因此增加 review/repair budget，不要重复执行旧 review，也不要把任务改成 `BLOCKED`。独立 task branch 可以等待自己的 external owner，同时其他 branch 继续执行。
 

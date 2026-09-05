@@ -234,7 +234,7 @@ def register_watcher_process(target: Path, branch: str) -> tuple[bool, dict[str,
                 "pid": marker_pid,
                 "target": str(target),
                 "branch": branch,
-                "reason": "recorded PID is alive but is not a verified Reviewed Handoff watcher for this target/branch",
+                "reason": "recorded PID is alive but is not a verified Review watcher for this target/branch",
             }
         _clear_watcher_marker(target, branch)
     pid = os.getpid()
@@ -325,7 +325,7 @@ def ensure_git_repo(target: Path) -> None:
     try:
         git_output(target, ["rev-parse", "--show-toplevel"])
     except Exception as exc:
-        raise ValueError(f"Reviewed Handoff watcher requires a Git repository: {exc}") from exc
+        raise ValueError(f"Review watcher requires a Git repository: {exc}") from exc
 
 
 def working_tree_dirty(target: Path) -> bool:
@@ -335,17 +335,17 @@ def working_tree_dirty(target: Path) -> bool:
 
 def ensure_clean_repo(target: Path) -> None:
     if working_tree_dirty(target):
-        raise ValueError("Reviewed Handoff watcher refuses to sync or launch Codex with a dirty working tree")
+        raise ValueError("Review watcher refuses to sync or launch Codex with a dirty working tree")
 
 
 def resolve_branch(target: Path, branch: str | None) -> str:
     ensure_git_repo(target)
     selected = branch or git_output(target, ["branch", "--show-current"])
     if not selected:
-        raise ValueError("Reviewed Handoff watcher requires an existing checked-out branch, not detached HEAD")
+        raise ValueError("Review watcher requires an existing checked-out branch, not detached HEAD")
     current = git_output(target, ["branch", "--show-current"])
     if current != selected:
-        raise ValueError(f"Reviewed Handoff watcher is on branch {current!r}, expected {selected!r}; it will not switch branches")
+        raise ValueError(f"Review watcher is on branch {current!r}, expected {selected!r}; it will not switch branches")
     return selected
 
 
@@ -367,7 +367,7 @@ def sync_origin_ff_only(target: Path, branch: str) -> None:
     local_head, remote_head = branch_heads(target, branch)
     if local_head != remote_head:
         raise ValueError(
-            "Reviewed Handoff watcher requires the local branch to equal origin before launching Codex; "
+            "Review watcher requires the local branch to equal origin before launching Codex; "
             "push or reconcile pre-existing local commits first"
         )
 
@@ -691,7 +691,7 @@ def executor_authority_errors(
         if review_match or final_match:
             errors.append(f"Executor changed Reviewer/user-report authority path: {path}")
         elif result_match and path != own_result:
-            errors.append(f"Executor changed another Reviewed Handoff task result: {path}")
+            errors.append(f"Executor changed another Review task result: {path}")
     return errors
 
 
@@ -702,7 +702,7 @@ def push_guard_environment(target: Path) -> dict[str, str]:
     hook = hooks_dir / "pre-push"
     hook.write_text(
         "#!/bin/sh\n"
-        "echo 'Reviewed Handoff Executor must not push; the watcher owns validated publication.' >&2\n"
+        "echo 'Review Executor must not push; the watcher owns validated publication.' >&2\n"
         "exit 1\n",
         encoding="utf-8",
     )
@@ -729,7 +729,7 @@ def executor_prompt(target: Path, task_key: str, current: dict[str, Any], branch
         if current.get("ci_required")
         else "This task does not require GitHub CI; finish successful local execution in `READY_FOR_GPT_REVIEW`."
     )
-    return f"""You are the Codex Executor for Reviewed Handoff task `{task_key}` in this repository.
+    return f"""You are the Codex Executor for Review task `{task_key}` in this repository.
 
 Read, in this order:
 1. repository `AGENTS.md` if present;
@@ -744,11 +744,11 @@ The machine state that triggered this run is `{state}`. Work only on this task. 
 
 Use the already checked-out existing branch `{branch}`. Do not create a branch or PR. Do not push. The watcher is the sole publisher for Executor events and will push only after validating your committed diff and workflow state. A pre-push guard is installed for this Codex process intentionally.
 
-Never modify `REQUEST.md`, `PLAN.md`, previous `REVIEW_<n>.md`, `FINAL_REPORT.md`, Reviewed Handoff schema/prompts/templates, review counters/limits, Planner counters/limits, base Git locators, CI requirement, or Reviewer decisions. You may update only Executor-owned workflow outputs such as this task's `CURRENT.state`, `implementation_commit`, `ci_status`, `next_action`, and `results/{task_key}/RESULT.md`, in addition to the actual Plan-owned implementation files.
+Never modify `REQUEST.md`, `PLAN.md`, previous `REVIEW_<n>.md`, `FINAL_REPORT.md`, Review schema/prompts/templates, review counters/limits, Planner counters/limits, base Git locators, CI requirement, or Reviewer decisions. You may update only Executor-owned workflow outputs such as this task's `CURRENT.state`, `implementation_commit`, `ci_status`, `next_action`, and `results/{task_key}/RESULT.md`, in addition to the actual Plan-owned implementation files.
 
 {ci_instruction}
 
-When implementation is complete, run the real local acceptance/regression checks, create an implementation commit containing the Plan-owned implementation changes, then write/update `results/{task_key}/RESULT.md` and `CURRENT.json` with that implementation commit as a locator in a separate control-plane commit. Leave the working tree clean. Do not add provenance hashes, receipt graphs, or Agent-Flow artifacts.
+When implementation is complete, run the real local acceptance/regression checks, create an implementation commit containing the Plan-owned implementation changes, then write/update `results/{task_key}/RESULT.md` and `CURRENT.json` with that implementation commit as a locator in a separate control-plane commit. Leave the working tree clean. Do not add provenance hashes, receipt graphs, or Control artifacts.
 """
 
 
@@ -835,7 +835,7 @@ def publish_operational_blocker(
     final_path.write_text(
         "# Final Report\n\n"
         "## What this task solved\n\n"
-        "Reviewed Handoff could not complete this task automatically because the local Codex watcher exhausted its bounded execution attempts. No successful final implementation is claimed.\n\n"
+        "Review could not complete this task automatically because the local Codex watcher exhausted its bounded execution attempts. No successful final implementation is claimed.\n\n"
         "## What changed\n\n"
         "The workflow stopped at an operational boundary rather than silently retrying forever. Any uncommitted local changes must be inspected before resuming.\n\n"
         "## New capabilities / behavior\n\n"
@@ -843,7 +843,7 @@ def publish_operational_blocker(
         "## Deliberately not adopted / unchanged\n\n"
         "The watcher did not discard or reset potentially useful local work and did not create a new branch.\n\n"
         "## Example usage\n\n"
-        "After resolving the local Codex/runtime problem, resume the same Reviewed Handoff task rather than creating a replacement task.\n\n"
+        "After resolving the local Codex/runtime problem, resume the same Review task rather than creating a replacement task.\n\n"
         "## Regression and remaining limitations\n\n"
         f"Executor event `{event}` did not make validated workflow progress after {attempts} attempts. Inspect the local watcher log before recovery.\n\n"
         "## Technical appendix\n\n"
@@ -860,7 +860,7 @@ def publish_operational_blocker(
     try:
         # --only commits exactly the control files, preserving unrelated dirty implementation work.
         git_output(target, ["add", rel_current, rel_final])
-        git_output(target, ["commit", "--only", rel_current, rel_final, "-m", f"Block Reviewed Handoff task {task_key} after runner failure"])
+        git_output(target, ["commit", "--only", rel_current, rel_final, "-m", f"Block Review task {task_key} after runner failure"])
         git_output(target, ["push", "origin", branch])
         return {"published": True, "state": "BLOCKED", "final_report": rel_final}
     except Exception as exc:
@@ -1003,7 +1003,7 @@ def watcher_once(
             result.update(
                 status="local_manual_recovery_required",
                 attempt=attempts,
-                reason="Codex advanced local Git history without publishing a valid Reviewed Handoff state; commits were not auto-pushed",
+                reason="Codex advanced local Git history without publishing a valid Review state; commits were not auto-pushed",
             )
             return result
 
@@ -1200,7 +1200,7 @@ def watcher_start(
                 "pid": marker_pid,
                 "target": str(target),
                 "branch": selected_branch,
-                "reason": "recorded PID is alive but is not a verified Reviewed Handoff watcher for this target/branch",
+                "reason": "recorded PID is alive but is not a verified Review watcher for this target/branch",
             }
         _clear_watcher_marker(target, selected_branch)
     log_path = watcher_log_path(target, selected_branch)

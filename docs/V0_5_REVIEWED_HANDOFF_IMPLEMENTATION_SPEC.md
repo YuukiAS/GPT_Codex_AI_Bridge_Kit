@@ -1,14 +1,14 @@
-# Reviewed Handoff v0.5 Implementation Spec
+# Review v0.5 Implementation Spec
 
 Status: shipped in `v0.5.0`; `v0.5.1` adds the generic External GPT wait contract without changing the role model.
 
 ## Product role
 
-Reviewed Handoff is the middle workflow between Lite Handoff and high-risk Agent-Flow. It is intended for tasks where GPT should make the semantic/product plan, Codex should perform the implementation, and an independent GPT should review the real implementation once or twice before the user sees the final report.
+Review is the middle workflow between Lite and high-risk Control. It is intended for tasks where GPT should make the semantic/product plan, Codex should perform the implementation, and an independent GPT should review the real implementation once or twice before the user sees the final report.
 
-Typical examples include external repository intake, medium-scale refactors, third-party capability adoption, documentation-system migrations, ordinary product features with semantic choices, and other tasks where Lite is too weak but Agent-Flow would impose unnecessary proof machinery.
+Typical examples include external repository intake, medium-scale refactors, third-party capability adoption, documentation-system migrations, ordinary product features with semantic choices, and other tasks where Lite is too weak but Control would impose unnecessary proof machinery.
 
-Reviewed Handoff is not a smaller Agent-Flow. It has three logical roles only:
+Review is not a smaller Control. It has three logical roles only:
 
 ```text
 Planner -> Executor -> Reviewer
@@ -64,7 +64,7 @@ results/<task_key>/REVIEW_2.md        # optional
 results/<task_key>/FINAL_REPORT.md
 ```
 
-Git history preserves older versions of mutable Markdown artifacts. Reviewed Handoff does not create a parallel history manifest.
+Git history preserves older versions of mutable Markdown artifacts. Review does not create a parallel history manifest.
 
 Watcher operational state and logs are machine-local and deliberately live outside the repository:
 
@@ -104,7 +104,7 @@ BLOCKED
 The canonical transition graph lives in `schema.json` and the Python core. Illegal transitions fail closed.
 
 `PLAN_FROZEN` is executable only when the current `PLAN.md` is structurally
-valid against the installed Reviewed Handoff PLAN template: required
+valid against the installed Review PLAN template: required
 frontmatter must exist and all required sections must be present, including
 `## Out of scope`. A Planner or Scheduled Planner transaction must write
 `PLAN.md` first, re-read it, self-check it against the current
@@ -125,7 +125,7 @@ For CI-required visual tasks, `WAITING_FOR_CI` may have `visual_review_required=
 
 When Executor has completed the authorized implementation, the implementation/result commits have been published, and `CURRENT` says the next action belongs to an external GPT Planner/Reviewer/Critic-style role, the task is `waiting_external_review`, not blocked.
 
-Reviewed Handoff examples are `NEEDS_GPT_PLANNER`, `READY_FOR_GPT_REVIEW`, and `WAITING_FOR_CI` after CI has produced a PASS/FAIL state that requires Scheduled GPT to write the next transaction. The generic Bridge Kit policy must not rely only on these exact strings. It should prefer state ownership, `next_action`, role policy, repository schema, and the workflow contract.
+Review examples are `NEEDS_GPT_PLANNER`, `READY_FOR_GPT_REVIEW`, and `WAITING_FOR_CI` after CI has produced a PASS/FAIL state that requires Scheduled GPT to write the next transaction. The generic Bridge Kit policy must not rely only on these exact strings. It should prefer state ownership, `next_action`, role policy, repository schema, and the workflow contract.
 
 `MIN_EXTERNAL_GPT_WAIT = 2 hours` is the minimum normal grace period from the first published handoff into an external-GPT-owned state. It is not an automatic deadline. After two hours, continued silence is still waiting if repository state is valid, the implementation/result artifacts are intact, the Scheduled GPT/GitHub connector mechanism exists, and there is no concrete connector/auth/scheduler/schema/artifact-access/user-decision/workflow-contract failure.
 
@@ -191,7 +191,7 @@ Planner re-entry is not permission to redesign the task. It exists only to prese
 
 ## Codex watcher
 
-The repository state alone does not wake Codex. Reviewed Handoff therefore includes a deliberately small persistent watcher:
+The repository state alone does not wake Codex. Review therefore includes a deliberately small persistent watcher:
 
 ```bash
 ai-bridge reviewed-handoff watcher run \
@@ -204,7 +204,7 @@ The watcher performs only operational orchestration:
 1. require a Git repository on an existing checked-out branch;
 2. refuse dirty working trees before sync/launch;
 3. fetch `origin/<branch>` and update only by `merge --ff-only`, except for the narrow unpublished Executor recovery below;
-4. validate Reviewed Handoff tracked state;
+4. validate Review tracked state;
 5. react only to `PLAN_FROZEN` and `REVISE`;
 6. launch one fresh `codex exec -C <repo> -` with the task-specific Executor prompt;
 7. confirm the task state actually moved away from the triggering event before marking the event complete locally.
@@ -244,7 +244,7 @@ ai-bridge reviewed-handoff watcher status \
 
 The status view reports `task`, `state`, `executor_event`, `phase`, `thread_id`, `runtime_type`, `started_at`, `running`, `completed`, `completed_at`, `last_exit_code`, `last_result`, `waiting_owner`, `last_publication_status`, `last_publication_error`, and `last_log_path`. It also reports `watcher_process.alive`, `pid`, `started_at`, `last_heartbeat`, `loaded_bridge_version`, `loaded_bridge_commit`, `current_bridge_commit`, `restart_required`, `active_executor_event`, and last process status. If the running watcher loaded an older Bridge Kit source commit than the current checkout, status must clearly show `restart_required=true`; it must not auto-restart a working watcher.
 
-Codex App visibility is an optional runtime property, not a Reviewed Handoff authority feature. The 2026-08-26 capability record in `docs/REVIEWED_HANDOFF_CODEX_APP_VISIBILITY_DECISION_2026-08-26.md` found that Codex CLI/App Server `0.148.0-alpha.9` with official `codex app-server --stdio` can create durable Codex threads with correct cwd/project binding and eventual Codex App project visibility, but the experiments only produced reliable post-completion UI visibility evidence. They did not verify bounded live discovery of an externally created running thread or safe multi-client writer takeover. Production therefore keeps using `codex exec` and records `runtime_type=codex_exec` with `thread_id=null`.
+Codex App visibility is an optional runtime property, not a Review authority feature. The 2026-08-26 capability record in `docs/REVIEWED_HANDOFF_CODEX_APP_VISIBILITY_DECISION_2026-08-26.md` found that Codex CLI/App Server `0.148.0-alpha.9` with official `codex app-server --stdio` can create durable Codex threads with correct cwd/project binding and eventual Codex App project visibility, but the experiments only produced reliable post-completion UI visibility evidence. They did not verify bounded live discovery of an externally created running thread or safe multi-client writer takeover. Production therefore keeps using `codex exec` and records `runtime_type=codex_exec` with `thread_id=null`.
 
 Do not re-test or adopt an App Server Executor launcher unless a real product capability changes: Codex CLI/App Server changes thread discovery or lifecycle behavior, official support appears for connecting to the currently running Codex App App Server instance through a stable API, a shared App Server / attach / discover / IPC mechanism is exposed, Codex App explicitly supports live discovery of externally created App Server threads, writer ownership / `thread/resume` semantics change, or official documentation promises running external threads appear in Codex App in real time. Implementations must not edit `~/.codex/session_index.jsonl`, Codex App databases, or private UI state to fake App visibility.
 
@@ -287,7 +287,7 @@ Reviewer must not make a new feature, abstraction, style preference, or theoreti
 
 ## Anti-overengineering boundary
 
-Reviewed Handoff deliberately does **not** use:
+Review deliberately does **not** use:
 
 ```text
 App visibility as workflow identity
@@ -307,20 +307,20 @@ role worktree identity
 
 `base_commit` and `implementation_commit` are locators so GPT can inspect the real Git diff. They are not workflow identity and do not invalidate the task merely because control-plane commits move.
 
-Do not add Agent-Flow provenance machinery to Reviewed Handoff unless a concrete false-PASS case cannot be addressed by the frozen Plan, the real diff, tests/CI, and bounded GPT review. If that level of proof is required, use Agent-Flow instead of enlarging Reviewed Handoff.
+Do not add Control provenance machinery to Review unless a concrete false-PASS case cannot be addressed by the frozen Plan, the real diff, tests/CI, and bounded GPT review. If that level of proof is required, use Control instead of enlarging Review.
 
 ## Scheduled Task contract
 
-A repository using Reviewed Handoff should normally have one ChatGPT Scheduled Task. Each run reads the repository's `schema.json`, scheduled reviewer prompt, and all task `CURRENT.json` files.
+A repository using Review should normally have one ChatGPT Scheduled Task. Each run reads the repository's `schema.json`, scheduled reviewer prompt, and all task `CURRENT.json` files.
 
 The Scheduled Task uses GitHub as its transaction surface. It reads tracked workflow artifacts, repository state, and GitHub Actions/checks through the GitHub connector; it does not run the target machine's local `ai-bridge` CLI. Local CLI commands remain for the Codex watcher, local debugging, deterministic validation, and human/manual operation.
 
 If a frozen Plan explicitly requires testing an installed production Codex
 plugin in a fresh local runtime, the Executor should call the Host
 Policy-controlled `ai-bridge plugin-replay` wrapper with explicit input files.
-This is an advisory execution tool, not a Reviewed Handoff state, role, schema,
+This is an advisory execution tool, not a Review state, role, schema,
 or review identity. Ordinary implementation, ordinary local tests, and the
-watcher's normal Executor launch still use the existing Reviewed Handoff
+watcher's normal Executor launch still use the existing Review
 runtime path.
 
 Every GPT-owned state change follows the same transaction rule:
@@ -352,7 +352,7 @@ For `NEEDS_GPT_PLANNER`, the remote Planner reads the task context, makes at mos
 
 ## Optional Visual Review evidence
 
-Reviewed Handoff may opt into the shared Bridge Kit Visual Review evidence producer. This is not a new role and must not import Agent-Flow machinery into Reviewed Handoff.
+Review may opt into the shared Bridge Kit Visual Review evidence producer. This is not a new role and must not import Control machinery into Review.
 
 Opt-in is task-local via `CURRENT.visual_review_required=true`. The default evidence path is:
 
@@ -375,7 +375,7 @@ WAITING_FOR_CI
 
 `WAITING_FOR_CI` with a valid `visual_inputs.json` and pending visual evidence is valid and remains owned by CI. `READY_FOR_GPT_REVIEW` with pending visual evidence is also valid, but the owner is Visual Review and the GPT Reviewer must wait without consuming `review_round`. CI failure may route to `REVISE` or non-PASS terminal states without first requiring Terra evidence. `PASS` and `AWAIT_HUMAN_DECISION` with `human_gate_reason=PASS` remain strict: they require current visual PASS evidence.
 
-For Reviewed Handoff, valid visual evidence is bound to:
+For Review, valid visual evidence is bound to:
 
 ```text
 task_key
@@ -396,10 +396,10 @@ the task is running on `reviewed/<task_key>`.
 
 ## Optional Text Review evidence
 
-Reviewed Handoff may also opt into the shared Bridge Kit Text Review evidence
+Review may also opt into the shared Bridge Kit Text Review evidence
 producer for UTF-8 Markdown/plain-text artifacts whose full contents are needed
 for independent review but must not be committed as plaintext. This is the
-text sibling of Visual Review, not a new GPT role and not an Agent-Flow-style
+text sibling of Visual Review, not a new GPT role and not an Control-style
 identity graph.
 
 Opt-in is task-local via `CURRENT.text_review_required=true`. The default
@@ -435,7 +435,7 @@ must be published before `WAITING_FOR_CI`; after CI PASS, Scheduled GPT moves
 to `READY_FOR_GPT_REVIEW` and waits for `TEXT_REVIEW.json` if it is still
 pending.
 
-For Reviewed Handoff, valid text evidence is bound to:
+For Review, valid text evidence is bound to:
 
 ```text
 task_key
@@ -507,8 +507,8 @@ report first and must not publish terminal `CURRENT` state.
 
 Before tagging `v0.5.0`:
 
-- all existing Lite/Host/Notifier/Agent-Flow tests remain green;
-- Reviewed Handoff install is additive and branch-free;
+- all existing Lite/Host/Notifier/Control tests remain green;
+- Review install is additive and branch-free;
 - illegal state jumps fail closed;
 - Plan/Result/Review artifacts are validated;
 - all terminal states require a valid Final Report;
@@ -520,12 +520,12 @@ Before tagging `v0.5.0`:
 - watcher dry-run does not mutate workflow state;
 - Codex exit 0 without state progress is not treated as completed;
 - watcher reacts only to Executor-owned states and never creates/switches branches;
-- no Agent-Flow provenance fields appear in Reviewed Handoff current state;
+- no Control provenance fields appear in Review current state;
 - GitHub Actions is green on Python 3.9 and current Python.
 
 For `v0.5.1`, the release gate additionally requires:
 
 - Host Policy managed `AGENTS.md` contains the generic external GPT wait policy;
-- Reviewed Handoff reports external silence before and after 2 hours as `waiting_external_review`, not `BLOCKED`;
+- Review reports external silence before and after 2 hours as `waiting_external_review`, not `BLOCKED`;
 - stale `REVIEW_<n>.md` artifacts are detected by `implementation_commit` mismatch and do not replay old `REVISE`;
 - watcher bounded retry behavior remains intact for true Executor no-progress events.

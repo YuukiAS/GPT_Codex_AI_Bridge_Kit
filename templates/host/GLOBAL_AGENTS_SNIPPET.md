@@ -18,8 +18,8 @@ is a project decision controlled by the user.
   so unrelated files, generated noise, or secrets are not included.
 - Do not create, switch, checkout, rename, delete, or otherwise change arbitrary
   Git branches without explicit user authorization for that branch strategy.
-- **Reviewed Handoff exception:** when a repository has multiple independent
-  Reviewed Handoff workflows, the user has authorized one task-owned branch per
+- **Review exception:** when a repository has multiple independent
+  Review workflows, the user has authorized one task-owned branch per
   workflow using the deterministic name `reviewed/<task_key>`. Creating,
   selecting and continuing on that exact task branch is part of the authorized
   workflow strategy; do not repeatedly ask whether independent tasks may be
@@ -27,7 +27,7 @@ is a project decision controlled by the user.
 - A `reviewed/<task_key>` branch is not authority to create unrelated branches,
   change remotes, create PRs, force-push, rewrite history, or choose a different
   integration strategy. If the requested branch does not correspond to the
-  current Reviewed Handoff task, ask the user.
+  current Review task, ask the user.
 - Until Bridge Kit provides a first-class bounded task-branch helper, Git
   execpolicy may still surface an approval/user-input interaction for branch
   creation or first push. Treat that as a recoverable authorization interaction,
@@ -68,7 +68,7 @@ exercise an installed production plugin, use `ai-bridge plugin-replay`.
   the wrapper records that read-scope diagnostic honestly and does not claim
   strict filesystem read isolation.
 - This authorization does not grant publishing, external upload, dangerous Git,
-  branch/remote mutation outside the dedicated Reviewed Handoff branch policy,
+  branch/remote mutation outside the dedicated Review branch policy,
   release, deployment, or product/scientific scope expansion authority.
 
 ## Remote SSH / Production Tunnel Safety

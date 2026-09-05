@@ -1,4 +1,4 @@
-# Bridge Kit v0.4.0 — Reusable Agent-Flow Implementation Specification
+# Bridge Kit v0.4.0 — Reusable Control Implementation Specification
 
 Status: **READY FOR CODEX IMPLEMENTATION**
 
@@ -28,14 +28,14 @@ Bridge Kit currently provides three reusable layers:
 
 ```text
 Host Policy
-Lite Handoff
+Lite
 Generic Notifier
 ```
 
 v0.4.0 adds a fourth, optional layer:
 
 ```text
-Reusable Agent-Flow Core
+Reusable Control
 ```
 
 The intended user experience is:
@@ -55,13 +55,13 @@ ai-bridge agent-flow validate --target /repo
 ai-bridge agent-flow task init --target /repo --task-key <task_key>
 ```
 
-Lite Handoff remains the default and must not become slower or more complex.
+Lite remains the default and must not become slower or more complex.
 
 ---
 
 ## 2. Architectural split
 
-### 2.1 Agent-Flow Core
+### 2.1 Control
 
 Domain-neutral code owned by Bridge Kit:
 
@@ -114,7 +114,7 @@ Adapters return typed evidence/findings. They do not alter core routing semantic
 
 ## 3. Repository layout
 
-Agent-Flow installation should be additive and clearly separate from Lite Handoff.
+Control installation should be additive and clearly separate from Lite.
 
 Recommended tracked layout:
 
@@ -162,7 +162,7 @@ results/
     notification_brief.json              # only when terminal/notifiable
 ```
 
-Do not create this tree for ordinary Lite-only repositories unless the user explicitly installs Agent-Flow.
+Do not create this tree for ordinary Lite-only repositories unless the user explicitly installs Control.
 
 Machine-local runtime state belongs outside Git, for example under a configurable user state root:
 
@@ -365,7 +365,7 @@ Must not:
 
 ## 6. Requirement Ledger
 
-Agent-Flow tasks require a frozen machine-readable ledger.
+Control tasks require a frozen machine-readable ledger.
 
 Minimum entry shape:
 
@@ -535,7 +535,7 @@ Write decision/review artifacts before updating `CURRENT.json` to the correspond
 
 ## 8.1 External GPT wait contract
 
-As of Bridge Kit `0.5.1`, Agent-Flow uses the generic External GPT wait
+As of Bridge Kit `0.5.1`, Control uses the generic External GPT wait
 contract. When the current state or `next_action` is owned by an external
 Planner, Critic, Final Critic, or equivalent reasoning role, absence of a fresh
 artifact is `waiting_external_review`, not a terminal blocker.
@@ -876,7 +876,7 @@ last produced role commit/evidence id
 
 ### 14.2 Worktree strategy and branch policy
 
-The host policy says branch creation is user-controlled. Agent-Flow must comply.
+The host policy says branch creation is user-controlled. Control must comply.
 
 Default behavior:
 
@@ -995,7 +995,7 @@ Green CI is necessary when Project Profile requires it, but not sufficient for P
 
 Reuse v0.3 notifier commands and configuration.
 
-Agent-Flow should emit a terminal brief only at configured terminal/user-decision states, especially:
+Control should emit a terminal brief only at configured terminal/user-decision states, especially:
 
 ```text
 AWAIT_HUMAN_DECISION
@@ -1008,8 +1008,8 @@ Normal states such as CI running, Planner waiting, Critic standby, implementatio
 The notifier consumes state; it does not decide state.
 
 The generic notifier's structured milestone path is available for other
-workflows that explicitly opt in, but it does not change Agent-Flow's default
-notification policy. Agent-Flow still emits notifier briefs only for true
+workflows that explicitly opt in, but it does not change Control's default
+notification policy. Control still emits notifier briefs only for true
 terminal/user-decision states unless a future Project Profile explicitly
 defines a narrower milestone policy.
 
@@ -1017,7 +1017,7 @@ defines a narrower milestone policy.
 
 ## 19. Host Policy integration
 
-Agent-Flow project installation must not modify `$CODEX_HOME`.
+Control project installation must not modify `$CODEX_HOME`.
 
 The existing Host Policy remains the source of user-level behavior, including:
 
@@ -1091,7 +1091,7 @@ At minimum test:
 20. Provenance-only repair uses lightweight validation.
 21. UI/status projection prefers authoritative typed state over historical keywords.
 22. Generic profile contains no CARE/MyoPS/nnU-Net/Slurm-required field.
-23. Agent-Flow install creates no Git branch.
+23. Control install creates no Git branch.
 24. Detached role worktree strategy functions without new branch creation in the generic test harness.
 
 ---
@@ -1154,17 +1154,17 @@ ai-bridge host ...
 ai-bridge notifier ...
 ```
 
-Existing initialized repositories must remain valid without adopting Agent-Flow.
+Existing initialized repositories must remain valid without adopting Control.
 
-Do not change Lite Handoff task/result mapping simply to reuse Agent-Flow state.
+Do not change Lite task/result mapping simply to reuse Control state.
 
-Agent-Flow may reference the same `task_key` and `results/<task_key>/` convention, but its control-plane files are additive.
+Control may reference the same `task_key` and `results/<task_key>/` convention, but its control-plane files are additive.
 
 ---
 
 ## Optional shared Visual Review evidence
 
-Agent-Flow may opt into the shared Bridge Kit Visual Review evidence producer through Project Profile `optional_visual_source_policy`. This policy is the canonical visual configuration surface; do not add a competing Agent-Flow-specific visual review client or a new visual role.
+Control may opt into the shared Bridge Kit Visual Review evidence producer through Project Profile `optional_visual_source_policy`. This policy is the canonical visual configuration surface; do not add a competing Control-specific visual review client or a new visual role.
 
 Default policy:
 
@@ -1175,7 +1175,7 @@ Default policy:
 }
 ```
 
-When enabled, `VISUAL_REVIEW.json` is review evidence. It must be bound to the current Agent-Flow identity:
+When enabled, `VISUAL_REVIEW.json` is review evidence. It must be bound to the current Control identity:
 
 ```text
 task_key
@@ -1276,6 +1276,6 @@ Do not advance to later phases by weakening failed tests in earlier phases.
 
 ## 26. Completion definition for v0.4.0
 
-v0.4.0 is complete when a user can initialize a normal repository exactly as before, optionally install Agent-Flow, initialize a high-risk task without creating a branch, generate and validate a stable semantic target, route typed findings without Controller domain judgment, execute the control-plane lifecycle through the two non-CARE portability examples, perform Final Critic closure, and reach a terminal human gate without CARE-specific assumptions.
+v0.4.0 is complete when a user can initialize a normal repository exactly as before, optionally install Control, initialize a high-risk task without creating a branch, generate and validate a stable semantic target, route typed findings without Controller domain judgment, execute the control-plane lifecycle through the two non-CARE portability examples, perform Final Critic closure, and reach a terminal human gate without CARE-specific assumptions.
 
 The release should make orchestration simpler than the CARE prototype. If the implementation requires users to reason about dozens of receipt hashes or manually repair normal session/CI/provenance transitions, it has failed the extraction goal even if all files technically exist.

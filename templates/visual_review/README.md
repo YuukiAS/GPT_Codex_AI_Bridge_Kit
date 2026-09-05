@@ -1,6 +1,6 @@
 # AI Bridge Visual Review
 
-Visual Review is a shared optional evidence producer for Reviewed Handoff and Agent-Flow. It is not a new GPT role and it does not give Planner, Critic, Controller, Verifier, Executor, Scheduled GPT, local Codex, or local watchers access to an OpenAI API key.
+Visual Review is a shared optional evidence producer for Review and Control. It is not a new GPT role and it does not give Planner, Critic, Controller, Verifier, Executor, Scheduled GPT, local Codex, or local watchers access to an OpenAI API key.
 
 Default live execution belongs in GitHub Actions:
 

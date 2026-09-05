@@ -6,17 +6,34 @@
 
 这个仓库的原则是：**默认保持简单，需要什么再加什么。** 普通项目只需要机器级规则和基础交接；只有确实需要时，才启用独立复核、高风险闭环、邮件通知、Overleaf 同步或视觉复核。
 
-当前版本：`0.6.0`。
+当前版本：`0.6.1`。
+
+## 三档 workflow
+
+```text
+Lite
+最轻量，普通任务默认使用
+
+Review
+GPT 先规划，Codex 执行，再由 GPT 独立复核
+
+Control
+高风险任务的严格多角色控制与验证
+```
+
+这些是面向用户讨论和选择 workflow 时使用的显示名称。具体命令仍保持兼容：
+Review 使用 `ai-bridge reviewed-handoff ...`，Control 使用
+`ai-bridge agent-flow ...`。
 
 ## 功能与版本
 
 | 能力 | 首次引入 | 作用 |
 |---|---:|---|
-| Lite Handoff | `0.1.0` | 最基础的 GPT → Codex → 复核文件交接 |
+| Lite | `0.1.0` | 最基础的 GPT → Codex → 复核文件交接 |
 | Host Policy | `0.2.0` | 一台机器上的 Codex 长期配置、Git 行为和通用规则 |
 | Generic Notifier | `0.3.0` | 任务合法终态后发送邮件通知 |
-| Agent-Flow Core | `0.4.0` | 高风险任务的严格多角色验证闭环 |
-| Reviewed Handoff | `0.5.0` | GPT 规划、Codex 执行、GPT 最多两轮独立复核 |
+| Control | `0.4.0` | 高风险任务的严格多角色验证闭环 |
+| Review | `0.5.0` | GPT 规划、Codex 执行、GPT 最多两轮独立复核 |
 | Visual Review | `0.5.2` | 对图片、PPT 截图等生成可验证视觉证据 |
 | Overleaf Bridge | `0.6.0` | 科研单一仓库中只把论文目录安全同步到 Overleaf |
 | Production Plugin Replay | Unreleased | 通过 Host Policy 预授权受控的本机真实插件回归入口 |
@@ -40,26 +57,26 @@
 └── Host Policy
 
 项目层：每个 Git 仓库按需安装
-├── Lite Handoff          基础 GPT ↔ Codex 交接，默认推荐
-├── Reviewed Handoff      GPT 先规划，Codex 执行，再由 GPT 独立复核
-├── Generic Notifier      任务结束后发邮件
-├── Overleaf Bridge       只把论文目录同步到 Overleaf
-├── Visual Review         对图片、PPT 截图等做独立视觉检查
-└── Agent-Flow Core       高风险任务的严格闭环
+├── Lite                 基础 GPT ↔ Codex 交接，默认推荐
+├── Review               GPT 先规划，Codex 执行，再由 GPT 独立复核
+├── Generic Notifier     任务结束后发邮件
+├── Overleaf Bridge      只把论文目录同步到 Overleaf
+├── Visual Review        对图片、PPT 截图等做独立视觉检查
+└── Control              高风险任务的严格闭环
 
 任务层：某一次具体工作的实例
 ├── Lite 任务
-├── Reviewed Handoff 任务
-└── Agent-Flow 任务
+├── Review 任务
+└── Control 任务
 ```
 
 绝大多数新项目建议从这里开始：
 
 ```text
-Host Policy + Lite Handoff
+Host Policy + Lite
 ```
 
-不要因为项目大、文件多、运行时间长，就自动启用 Agent-Flow。是否需要更重的流程，取决于“错误通过的代价”，而不是代码行数。
+不要因为项目大、文件多、运行时间长，就自动启用 Control。是否需要更重的流程，取决于“错误通过的代价”，而不是代码行数。
 
 ---
 
@@ -115,7 +132,7 @@ read isolation。Host Policy 不会因此放开 raw `codex exec`、裸 shell/pyt
 
 ---
 
-## 2. Lite Handoff（`0.1.0` 引入）：新项目默认安装
+## 2. Lite（`0.1.0` 引入）：新项目默认安装
 
 进入一个正式 Git 仓库后：
 
@@ -148,15 +165,15 @@ docs/
 .agents/skills/agent-task-executor/
 ```
 
-Lite Handoff 并不意味着“只能做小任务”。普通功能开发、修 bug、文档整理、常规重构，甚至较大的实现，只要不要求独立角色闭环，通常都够用。
+Lite 并不意味着“只能做小任务”。普通功能开发、修 bug、文档整理、常规重构，甚至较大的实现，只要不要求独立角色闭环，通常都够用。
 
 `ai-bridge init` 只配置当前项目，不会偷偷修改你的 `$CODEX_HOME`，也不会自动安装下面那些可选能力。
 
 ---
 
-## 3. Reviewed Handoff（`0.5.0` 引入）：需要 GPT 先定方案、完成后再独立复核
+## 3. Review（`0.5.0` 引入）：需要 GPT 先定方案、完成后再独立复核
 
-如果某项工作不能让 Codex 一边执行一边自己决定产品语义或科研方向，但又没有必要上最重的 Agent-Flow，可以使用 Reviewed Handoff。
+如果某项工作不能让 Codex 一边执行一边自己决定产品语义或科研方向，但又没有必要上最重的 Control，可以使用 Review。
 
 最直观的流程是：
 
@@ -175,7 +192,7 @@ GPT Reviewer
 最终交给用户
 ```
 
-安装：
+安装命令仍使用兼容 CLI 名称：
 
 ```bash
 ai-bridge reviewed-handoff install --target /path/to/project
@@ -227,7 +244,7 @@ ai-bridge reviewed-handoff watcher status \
   --branch <existing-authorized-branch>
 ```
 
-这个状态入口读取本机 watcher state 和仓库中的 `CURRENT.json`，报告 task、当前 state、Executor event、runtime 类型、可用 thread id、started/completed 时间、上次 exit/result、等待 owner 和上次发布状态。当前稳定生产路径仍是 `codex exec`。2026-08-26 的 Codex App/App Server 实验表明，外部 `codex app-server --stdio` 可以创建 durable、cwd 绑定且最终会出现在 App project 中的 thread，但没有验证到运行中 thread 的稳定实时发现，因此它不作为 Reviewed Handoff production launcher。完整记录见 `docs/REVIEWED_HANDOFF_CODEX_APP_VISIBILITY_DECISION_2026-08-26.md`。
+这个状态入口读取本机 watcher state 和仓库中的 `CURRENT.json`，报告 task、当前 state、Executor event、runtime 类型、可用 thread id、started/completed 时间、上次 exit/result、等待 owner 和上次发布状态。当前稳定生产路径仍是 `codex exec`。2026-08-26 的 Codex App/App Server 实验表明，外部 `codex app-server --stdio` 可以创建 durable、cwd 绑定且最终会出现在 App project 中的 thread，但没有验证到运行中 thread 的稳定实时发现，因此它不作为 Review production launcher。完整记录见 `docs/REVIEWED_HANDOFF_CODEX_APP_VISIBILITY_DECISION_2026-08-26.md`。
 
 外部 GPT、CI 或 Visual Review 尚未给出新决定时，属于正常等待，而不是 `BLOCKED`。
 
@@ -465,7 +482,7 @@ Visual Review 用来检查真正需要“看图”才能判断的问题，例如
 - 视觉结果是否符合给定检查标准；
 - 某个实现是否与参考截图明显不一致。
 
-它不是新的工作流角色，而是给 Reviewed Handoff、Agent-Flow 或普通项目提供一份可验证的视觉证据。
+它不是新的工作流角色，而是给 Review、Control 或普通项目提供一份可验证的视觉证据。
 
 安装和预检：
 
@@ -494,7 +511,7 @@ results/<task_key>/visual_review/VISUAL_REVIEW.json
 
 Bridge Kit 不会把 API key 写进仓库，也不会打印 secret 值。
 
-在 Reviewed Handoff 中，`ci_required=true` 的视觉任务先发布实现、渲染图片和 `visual_inputs.json`，然后停在 `WAITING_FOR_CI` / `ci_status=PENDING`。CI 通过后才进入 `READY_FOR_GPT_REVIEW`，此时缺少 `VISUAL_REVIEW.json` 是正常的 `waiting_visual_review_evidence`；只有 fresh visual evidence 返回后，Scheduled GPT Reviewer 才开始正式 review。`PASS` 和 `human_gate_reason=PASS` 仍然必须绑定当前 implementation 的 visual PASS evidence。
+在 Review 中，`ci_required=true` 的视觉任务先发布实现、渲染图片和 `visual_inputs.json`，然后停在 `WAITING_FOR_CI` / `ci_status=PENDING`。CI 通过后才进入 `READY_FOR_GPT_REVIEW`，此时缺少 `VISUAL_REVIEW.json` 是正常的 `waiting_visual_review_evidence`；只有 fresh visual evidence 返回后，Scheduled GPT Reviewer 才开始正式 review。`PASS` 和 `human_gate_reason=PASS` 仍然必须绑定当前 implementation 的 visual PASS evidence。
 
 Visual Review workflow 只在 `main` / `reviewed/**` 上的 `results/**/visual_review/visual_inputs.json` 改动或手动 `workflow_dispatch` 时运行。普通非视觉任务不会触发一个容易被误读为“视觉已审查并 PASS”的 AI Bridge Visual Review job；evidence writeback 会写回触发它的同一个 branch。
 
@@ -504,7 +521,7 @@ Visual Review workflow 只在 `main` / `reviewed/**` 上的 `results/**/visual_r
 
 ## 7. Text Review：给私有文本产物增加独立全文检查
 
-Text Review 用于 Reviewed Handoff 中这类场景：最终验收必须读完整 user-facing Markdown/plain text，但正文不能作为 plaintext 提交到 public task branch。它不是新的 GPT role，而是和 Visual Review 平级的 evidence producer。
+Text Review 用于 Review 中这类场景：最终验收必须读完整 user-facing Markdown/plain text，但正文不能作为 plaintext 提交到 public task branch。它不是新的 GPT role，而是和 Visual Review 平级的 evidence producer。
 
 默认路径是：
 
@@ -575,15 +592,15 @@ ai-bridge text-review encrypt \
 
 `TEXT_REVIEW.json` 会记录 `task_key`、`workflow_type`、`review_kind`、模型、prompt version、manifest identity、plaintext SHA-256、reviewed input identity、decision、item reviews、blocking findings 和 notes；它不会包含完整 private input。
 
-在 Reviewed Handoff 中，若 `CURRENT.text_review_required=true`，缺少 `TEXT_REVIEW.json`、plaintext SHA mismatch、manifest identity mismatch 或旧 artifact evidence 都不能支持 PASS，也不会消耗 review round；系统会等待 Text Review evidence 或要求恢复。
+在 Review 中，若 `CURRENT.text_review_required=true`，缺少 `TEXT_REVIEW.json`、plaintext SHA mismatch、manifest identity mismatch 或旧 artifact evidence 都不能支持 PASS，也不会消耗 review round；系统会等待 Text Review evidence 或要求恢复。
 
 Text Review workflow 只在 `main` / `reviewed/**` 上的 `results/**/text_review/text_inputs.json` 改动或手动 `workflow_dispatch` 时运行，普通 `reviewed/**` push 不会触发昂贵 review job。`TEXT_REVIEW.json` writeback 会推回触发它的同一个 branch。
 
 ---
 
-## 8. Agent-Flow Core（`0.4.0` 引入）：只有高风险任务才用
+## 8. Control（`0.4.0` 引入）：只有高风险任务才用
 
-Agent-Flow 面向“错误通过的代价很高”的任务，例如：
+Control 面向“错误通过的代价很高”的任务，例如：
 
 - 科研方法或系统架构的大改；
 - 昂贵训练或长时间计算；
@@ -592,14 +609,14 @@ Agent-Flow 面向“错误通过的代价很高”的任务，例如：
 - 重要迁移；
 - 必须能证明“为什么可以判定通过”的工作。
 
-安装：
+安装命令仍使用兼容 CLI 名称：
 
 ```bash
 ai-bridge agent-flow install --target /path/to/project
 ai-bridge agent-flow validate --target /path/to/project
 ```
 
-它会增加 `automation/agent_flow/` 控制目录，但不会替换 Lite Handoff，也不会自行创建 Git 分支。
+它会增加 `automation/agent_flow/` 控制目录，但不会替换 Lite，也不会自行创建 Git 分支。
 
 整体分工可以直观理解成：
 
@@ -612,9 +629,9 @@ Executor     只负责实现
 Human        最终保留人工决定权
 ```
 
-Agent-Flow 比 Reviewed Handoff 更重，因为它会显式保存冻结要求、验证依据、稳定审查对象和最终独立检查。它的目的不是“堆更多 Agent”，而是避免同一个角色既写要求、又改实现、又自己宣布通过。
+Control 比 Review 更重，因为它会显式保存冻结要求、验证依据、稳定审查对象和最终独立检查。它的目的不是“堆更多 Agent”，而是避免同一个角色既写要求、又改实现、又自己宣布通过。
 
-一个项目只需安装一次 Agent-Flow Core；每个高风险任务再单独创建任务实例：
+一个项目只需安装一次 Control；每个高风险任务再单独创建任务实例：
 
 ```bash
 ai-bridge agent-flow task init \
@@ -630,28 +647,28 @@ docs/V0_4_AGENT_FLOW_IMPLEMENTATION_SPEC.md
 
 ---
 
-## 8. 常见选择
+## 9. 常见选择
 
 ### 普通代码仓库
 
 ```text
 Host Policy
-+ Lite Handoff
++ Lite
 ```
 
 ### 需要 GPT 先做方案、Codex 实现、GPT 再独立看一遍
 
 ```text
 Host Policy
-+ Lite Handoff
-+ Reviewed Handoff
++ Lite
++ Review
 ```
 
 ### 科研仓库同时放代码和论文，并希望用 Overleaf 协作
 
 ```text
 Host Policy
-+ Lite Handoff
++ Lite
 + Overleaf Bridge
 ```
 
@@ -675,15 +692,15 @@ Visual Review
 
 ```text
 Host Policy
-+ Lite Handoff
-+ Agent-Flow Core
++ Lite
++ Control
 ```
 
 不要同时把所有可选层都装上，除非项目确实同时需要它们。
 
 ---
 
-## 9. 常用命令速查
+## 10. 常用命令速查
 
 ```bash
 # 机器级长期规则
@@ -725,7 +742,7 @@ ai-bridge agent-flow validate --target /path/to/project
 
 ---
 
-## 10. 设计原则
+## 11. 设计原则
 
 这套工具长期遵守几条简单原则：
 
@@ -739,7 +756,7 @@ ai-bridge agent-flow validate --target /path/to/project
 
 ---
 
-## 11. 进一步阅读
+## 12. 进一步阅读
 
 快速上手：
 

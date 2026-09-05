@@ -1,16 +1,16 @@
-# Reviewed Handoff: parallel task branches
+# Review: parallel task branches
 
 Status: frozen product decision; branch-aware GPT review can be used now, while first-class task-scoped watcher / branch lifecycle automation remains a runtime follow-up.
 
 ## Problem
 
-Reviewed Handoff was originally optimized for one active workflow per repository branch. In repositories such as `AI_Skills_Collection`, several independent plugin repairs are often active at the same time. Serializing them on `main` means one task can spend hours waiting for CI or an external GPT Reviewer while an unrelated plugin task is artificially prevented from progressing.
+Review was originally optimized for one active workflow per repository branch. In repositories such as `AI_Skills_Collection`, several independent plugin repairs are often active at the same time. Serializing them on `main` means one task can spend hours waiting for CI or an external GPT Reviewer while an unrelated plugin task is artificially prevented from progressing.
 
 That waiting is not a product requirement. It is an orchestration limitation.
 
 ## Product decision
 
-When multiple independent Reviewed Handoff workflows are active in the same repository, the default execution topology is **one dedicated branch per workflow**.
+When multiple independent Review workflows are active in the same repository, the default execution topology is **one dedicated branch per workflow**.
 
 Canonical branch name:
 
@@ -50,7 +50,7 @@ When independence is ambiguous, ask the user / Planner. Do not serialize all wor
 
 ## Branch ownership
 
-A dedicated Reviewed Handoff branch is task-owned.
+A dedicated Review branch is task-owned.
 
 - Planner, Executor and Reviewer for that task read/write that branch.
 - Scheduled GPT automation must name the branch explicitly and must not silently fall back to `main`.
@@ -77,7 +77,7 @@ The required runtime follow-up should be narrow: bind watcher execution/publicat
 
 ## BLOCKED is a last resort
 
-Reviewed Handoff must distinguish **needs a decision** from **cannot recover**.
+Review must distinguish **needs a decision** from **cannot recover**.
 
 Recoverable cases should not become `BLOCKED` merely to terminate the current process. Examples:
 

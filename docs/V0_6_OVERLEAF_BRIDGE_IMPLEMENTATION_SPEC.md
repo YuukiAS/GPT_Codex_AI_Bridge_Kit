@@ -51,14 +51,14 @@ machine layer
 └── Host Policy
 
 project layer
-├── Lite Handoff
-├── Reviewed Handoff        optional
+├── Lite
+├── Review        optional
 ├── Generic Notifier        optional
-├── Agent-Flow Core         optional
+├── Control         optional
 └── Overleaf Bridge         optional
 ```
 
-Installing Overleaf Bridge must not silently install Reviewed Handoff, Agent-Flow, Notifier, Visual Review, or any external GPT automation.
+Installing Overleaf Bridge must not silently install Review, Control, Notifier, Visual Review, or any external GPT automation.
 
 ## 3. External constraints from Overleaf
 
@@ -398,7 +398,7 @@ pyproject.toml
 ai_bridge_kit/__init__.py
 ```
 
-Do not refactor unrelated Agent-Flow, Reviewed Handoff, Visual Review, Notifier, or Host Policy code merely to share abstractions.
+Do not refactor unrelated Control, Review, Visual Review, Notifier, or Host Policy code merely to share abstractions.
 
 ## 13. Required tests
 

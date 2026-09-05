@@ -100,7 +100,25 @@ ai-bridge validate --target /path/to/project
 
 输出 `OK` 表示结构和任务文件基本合规。输出 `ERROR` 或 `WARN` 时，先修正路径、frontmatter 或命名，再交给 Codex 执行。
 
-## 7. 可选：同步论文目录到 Overleaf
+## 7. 可选：选择更重的 workflow
+
+日常默认是 Lite，也就是 `ai-bridge init` / `ai-bridge validate` 安装的基础交接。
+
+如果需要 GPT 先规划、Codex 执行、再由 GPT 独立复核，使用 Review。命令仍保持兼容名称：
+
+```bash
+ai-bridge reviewed-handoff install --target /path/to/project
+ai-bridge reviewed-handoff validate --target /path/to/project
+```
+
+如果任务属于高风险科研、生产或安全敏感工作，且需要严格多角色控制与验证，使用 Control。命令仍保持兼容名称：
+
+```bash
+ai-bridge agent-flow install --target /path/to/project
+ai-bridge agent-flow validate --target /path/to/project
+```
+
+## 8. 可选：同步论文目录到 Overleaf
 
 如果项目是科研 monorepo，Codex 仍应在整个 repository 根目录工作；Overleaf 只应接收论文 publication root，例如 `paper/manuscript`。Overleaf 本身不能从一个 GitHub monorepo 中只 Pull 某个子目录，Overleaf Bridge 是在本机把该目录投影到 Overleaf Git project。
 

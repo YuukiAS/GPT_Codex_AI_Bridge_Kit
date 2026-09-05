@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.6.1
+
+- Simplify workflow display names to Lite / Review / Control without changing
+  compatibility identifiers or workflow semantics.
 - Add `ai-bridge text-transform` as a sibling private UTF-8 Markdown/plain-text
   transform transport: local age encryption publishes only ciphertext,
   manifests, and output public recipients; GitHub Actions decrypts source text
@@ -16,7 +20,7 @@
   `AI_BRIDGE_PRIVATE_REVIEW_AGE_KEY`, OpenAI Responses API runs with
   `store=false`, and `TEXT_REVIEW.json` records structured findings bound to
   manifest identity and plaintext SHA-256 without storing private plaintext.
-- Extend Reviewed Handoff with task-local `text_review_required` evidence
+- Extend Review with task-local `text_review_required` evidence
   gates so missing, malformed, stale, wrong-plaintext, or non-PASS Text Review
   evidence cannot support PASS and does not consume review rounds while
   evidence is pending.
@@ -42,19 +46,19 @@
   `ai-bridge plugin-replay` executable path while raw `codex exec`, broad
   shell/python, destructive Git, branch mutation, remote mutation, and force
   push remain under the existing approval behavior.
-- Harden Scheduled GPT terminal transactions for Reviewed Handoff by requiring
+- Harden Scheduled GPT terminal transactions for Review by requiring
   a runtime `FINAL_REPORT.md` template preflight before PASS, BLOCKED, or
   human-gate `CURRENT.json` writes.
-- Correct the Reviewed Handoff visual-review lifecycle for CI-required visual
+- Correct the Review visual-review lifecycle for CI-required visual
   tasks: `WAITING_FOR_CI` may carry a valid visual input manifest with pending
   evidence while CI owns the wait, `READY_FOR_GPT_REVIEW` then waits for visual
   evidence without consuming review rounds, and PASS states still require fresh
   visual PASS evidence.
-- Keep repository-wide Reviewed Handoff validation backward compatible with
+- Keep repository-wide Review validation backward compatible with
   historical terminal `AI_BRIDGE_REVIEWED_FINAL_REPORT_V1` reports that have
   valid frontmatter and substantive legacy sections, while keeping new terminal
   transitions strict against the current `FINAL_REPORT.md` template.
-- Add a machine-local Reviewed Handoff watcher lifecycle: `watcher start`,
+- Add a machine-local Review watcher lifecycle: `watcher start`,
   `watcher stop`, and `watcher restart` enforce one official watcher per
   `target + branch`, record PID/heartbeat/loaded Bridge Kit version and source
   commit, recover dead PID markers, and make `watcher status` report
@@ -64,19 +68,19 @@
   not stash/reset/commit/push, but it records dirty paths, sleeps with bounded
   low-frequency backoff, and resumes routing after the tree is externally
   restored to clean.
-- Require `PLAN_FROZEN` to correspond to a structurally valid Reviewed
-  Handoff `PLAN.md`, including the required `## Out of scope` section, and
+- Require `PLAN_FROZEN` to correspond to a structurally valid Review
+  `PLAN.md`, including the required `## Out of scope` section, and
   update Planner/Scheduled Planner prompts to self-check the current PLAN
   template before publishing `CURRENT.state=PLAN_FROZEN`.
-- Keep the Reviewed Handoff persistent watcher alive on `invalid_workflow`
+- Keep the Review persistent watcher alive on `invalid_workflow`
   validation failures: it now records the local status/error, refuses to launch
   Executor, sleeps with low-frequency bounded backoff, and resumes routing
   automatically after the remote workflow is repaired.
-- Add a read-only Reviewed Handoff watcher status view that reports task,
+- Add a read-only Review watcher status view that reports task,
   state, Executor event, runtime type, optional thread id, start/completion
   timestamps, last exit/result, wait owner, and publication status from
   machine-local state.
-- Record the 2026-08-26 Reviewed Handoff Codex App/App Server visibility
+- Record the 2026-08-26 Review Codex App/App Server visibility
   decision: official `codex app-server --stdio` can create durable cwd-bound
   threads that eventually appear in Codex App, but bounded live discovery was
   not verified, so production Executor launches remain on `codex exec`.
