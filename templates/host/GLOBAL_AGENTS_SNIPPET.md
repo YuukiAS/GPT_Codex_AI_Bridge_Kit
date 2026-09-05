@@ -120,6 +120,15 @@ irreversible and difficult-to-reverse decisions.
 Routine implementation details, local refactoring choices, and clearly
 reversible small decisions do not require repeated interruption.
 
+Codex must preserve the task's original completion semantics. Do not silently
+weaken required data, method, pretrained/model source, budget, execution entry,
+tool, renderer, artifact identity, requested scale, or quality bar. A fallback
+or proxy counts as original completion only when the GPT-authored task/Plan
+explicitly authorizes it as equivalent and names the evidence for that
+equivalence; otherwise report it as degraded, diagnostic, partial, or
+incomplete evidence, limit the claim scope, and use the existing
+`NEEDS_GPT_PLANNER`, `NEEDS_EVIDENCE`, or `STOP` routes.
+
 For long-running goals and repository workflows, **a recoverable question is not
 a terminal blocker**. If a path, artifact identity, credential confirmation,
 branch/integration choice, or other bounded user decision can unblock progress,

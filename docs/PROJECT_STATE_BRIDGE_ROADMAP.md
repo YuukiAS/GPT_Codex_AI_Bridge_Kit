@@ -1,12 +1,12 @@
-# v0.7 Project State Bridge — Roadmap
+# Project State Bridge — Roadmap
 
-> 状态：设计阶段。本文只冻结目标、边界、数据流与验收标准；本轮不实现 CLI、同步脚本、GitHub Actions 或 consumer 安装逻辑。
+> 状态：未来路线图，版本未分配。本文只记录目标、边界、数据流与验收设想；当前正式 `0.7.0` release 不实现 CLI、同步脚本、GitHub Actions、consumer 安装逻辑或任何 Project State Bridge runtime。
 
 ## 1. 为什么需要这一层
 
 Bridge Kit 已经能解决 GPT → Codex 交接、独立复核、通知、视觉检查和 Overleaf 同步，但跨项目仍有一个很朴素的问题：**工作实际发生在 GitHub / Codex / GPT 中，项目总览却很容易变成另一份需要人工维护的账。**
 
-v0.7 的目标不是再造项目管理软件，而是让现有项目管理工具成为“自动更新的投影视图”。第一目标消费者是 Notion，但状态协议本身不得与 Notion 绑定。
+Project State Bridge 的目标不是再造项目管理软件，而是让现有项目管理工具成为“自动更新的投影视图”。第一目标消费者是 Notion，但状态协议本身不得与 Notion 绑定。
 
 最终体验应当是：
 
@@ -72,7 +72,7 @@ automation/project_state/
 
 ## 3. 当前状态模型
 
-`PROJECT_STATE.json` 的 v0.7 草案只保存项目级信息，不复制 issue、task、实验日志或聊天记录。
+`PROJECT_STATE.json` 的草案只保存项目级信息，不复制 issue、task、实验日志或聊天记录。
 
 示意：
 
@@ -153,10 +153,10 @@ completed 已完成
   "project_key": "gpt-codex-ai-bridge-kit",
   "milestones": [
     {
-      "milestone_key": "v0.7-design",
+      "milestone_key": "project-state-design",
       "date": "2026-09-01",
       "kind": "decision",
-      "title": "v0.7 Project State Bridge 方案确定",
+      "title": "Project State Bridge 方案确定",
       "summary": "确定 GitHub 为事实源，Notion 为单向投影视图。",
       "source_url": "https://github.com/owner/repo/..."
     }
@@ -307,7 +307,7 @@ NOTION_MILESTONES_DATA_SOURCE_ID
 
 ## 8. Notion 第一消费者的展示约定
 
-v0.7 不要求 Bridge Kit 接管用户整个 Notion workspace，只定义需要映射的字段与推荐视图。
+Project State Bridge 不要求 Bridge Kit 接管用户整个 Notion workspace，只定义需要映射的字段与推荐视图。
 
 推荐分成两张关联数据库。
 
@@ -354,7 +354,7 @@ Review / Control 的内部 `CURRENT.json` 仍属于具体任务状态机，不�
 
 ---
 
-## 10. v0.7 实现阶段建议
+## 10. Future implementation phase suggestions
 
 ### Phase A — 状态协议
 
@@ -392,7 +392,7 @@ Review / Control 的内部 `CURRENT.json` 仍属于具体任务状态机，不�
 
 通过后再批量安装到其他项目。
 
-### Phase E — v0.7.0 收口
+### Phase E — formal release closure
 
 - [ ] README 增加 Project State Bridge；
 - [ ] AGENTS 加入维护规则；
@@ -401,13 +401,13 @@ Review / Control 的内部 `CURRENT.json` 仍属于具体任务状态机，不�
 - [ ] 示例 Notion mapping 文档；
 - [ ] 回归测试确认不破坏 v0.1–v0.6 能力；
 - [ ] 真实 GitHub → Notion smoke test；
-- [ ] 再决定是否正式 bump `0.7.0`。
+- [ ] 再决定是否分配正式 release version。
 
 ---
 
 ## 11. 明确不做
 
-v0.7 第一版不做：
+第一版不做：
 
 - Notion → GitHub 双向同步；
 - 新的 Tasks database；
@@ -420,7 +420,7 @@ v0.7 第一版不做：
 
 ---
 
-## 12. v0.7.0 验收标准
+## 12. Future acceptance criteria
 
 只有同时满足以下条件，Project State Bridge 才算可进入正式版本：
 

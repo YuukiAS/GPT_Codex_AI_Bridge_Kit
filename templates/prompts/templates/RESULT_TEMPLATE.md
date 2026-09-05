@@ -38,6 +38,24 @@ If no commands were run, write `none`.
 
 If no tests were run, explain why.
 
+## Positive Completion Evidence
+
+- original goal result observed:
+- direct evidence:
+- supporting checks that are not completion by themselves:
+
+Do not treat green tests, CI, validators, file existence, or absence of
+known-bad patterns as full completion unless the task target is exactly that
+mechanism.
+
+## Deviations / Fallbacks / Claim Scope
+
+- fallback, proxy, toy/synthetic data, helper-only path, handmade artifact,
+  reduced scale, alternate entry, or weakened quality bar used:
+- whether the task explicitly authorized it as equivalent:
+- claim scope supported by actual evidence:
+- incomplete or planner decision needed:
+
 ## Artifact Paths
 
 - `results/000_short_task/MANIFEST.md`: artifact index linking task, result,

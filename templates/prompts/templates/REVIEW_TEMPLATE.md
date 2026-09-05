@@ -25,10 +25,35 @@ Allowed `promotion_decision` values:
 
 Restate the task goal and promotion gate from the task file.
 
+## Positive Completion Audit
+
+- original positive result:
+- direct evidence observed:
+- supporting mechanics that are not completion by themselves:
+
+Promotion cannot rely only on green tests, CI, validators, file existence, or
+absence of known-bad patterns unless the task target is exactly that mechanism.
+
 ## Claimed Completion
 
 Summarize the executor's self-assessed status and claims without accepting them
 yet.
+
+## Claim Scope Audit
+
+- final claim:
+- evidence scope:
+- overclaim risk:
+
+Smoke evidence proves only smoke behavior, synthetic evidence proves only the
+synthetic path, helper tests prove only the helper path, and mechanical
+validators prove only the configured checks.
+
+## Non-Substitutable Semantics Audit
+
+- task-forbidden weak substitute checked:
+- weaker data/method/source/scale/entry/artifact/quality bar observed:
+- conclusion:
 
 ## Audited Status
 

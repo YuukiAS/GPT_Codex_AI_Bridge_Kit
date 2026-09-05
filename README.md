@@ -6,7 +6,7 @@
 
 这个仓库的原则是：**默认保持简单，需要什么再加什么。** 普通项目只需要机器级规则和基础交接；只有确实需要时，才启用独立复核、高风险闭环、邮件通知、Overleaf 同步或视觉复核。
 
-当前版本：`0.6.1`。
+当前版本：`0.7.0`。
 
 ## 三档 workflow
 
@@ -36,9 +36,13 @@ Review 使用 `ai-bridge reviewed-handoff ...`，Control 使用
 | Review | `0.5.0` | GPT 规划、Codex 执行、GPT 最多两轮独立复核 |
 | Visual Review | `0.5.2` | 对图片、PPT 截图等生成可验证视觉证据 |
 | Overleaf Bridge | `0.6.0` | 科研单一仓库中只把论文目录安全同步到 Overleaf |
-| Production Plugin Replay | Unreleased | 通过 Host Policy 预授权受控的本机真实插件回归入口 |
+| Text Review / Text Transform | `0.6.1` | 私有 Markdown/plain-text 的加密复核与转换 transport |
+| Production Plugin Replay | `0.6.1` | 通过 Host Policy 预授权受控的本机真实插件回归入口 |
+| Goal Fidelity | `0.7.0` | Lite / Review / Control 防止把降级替代、窄证据或纯负面检查包装成原始目标完成 |
 
 本项目采用 `0.x` 迭代方式。每个 `0.x` 小版本通常代表一项可独立使用的能力进入稳定工作流；后面的补丁版本主要用于安全性、兼容性和默认行为修正。这不是严格的 Semantic Versioning 承诺，而是当前阶段的版本阅读方式。
+
+### 版本演进
 
 `0.2.1`、`0.3.1`、`0.5.1`、`0.5.3`、`0.5.4` 主要是已有能力的行为完善、安全修复或默认配置更新，不是新的顶层安装层：
 
@@ -47,6 +51,8 @@ Review 使用 `ai-bridge reviewed-handoff ...`，Control 使用
 - `0.5.1`：稳定 External GPT 等待规则和 Host Policy Git 授权语义。
 - `0.5.3`：稳定 Visual Review 的 GitHub Actions 安装和证据文件写回。
 - `0.5.4`：更新 Visual Review 默认模型。
+- `0.6.1`：把三档 workflow 的显示名称简化为 Lite / Review / Control，同时加入 Text Review、Text Transform、受控 production plugin replay、Review watcher lifecycle/status、dirty-tree waiting、FINAL_REPORT preflight 和 notifier ownership hardening。
+- `0.7.0`：加入 Goal Fidelity / anti-degradation 约束，要求完成声明必须有原始目标的正向结果、不可替代语义没有被削弱、证据范围覆盖 claim 范围；它不新增 workflow、角色、状态、schema、runner、watcher 或默认 API/Visual/Text 成本。
 
 ## 一眼看懂：我到底该装什么
 
@@ -752,7 +758,8 @@ ai-bridge agent-flow validate --target /path/to/project
 4. **Git 操作尽量安全且低打扰。** 正常开发可以自动化，改变分支结构和破坏性操作必须保守。
 5. **秘密信息不进仓库。** 邮件密码、Overleaf token、OpenAI API key 等都应保存在合适的私有位置。
 6. **等待不是失败。** 当任务明确交给外部 GPT 处理时，短时间没有新决定属于正常等待。
-7. **对真实风险严格，对形式主义克制。** 需要证明时就建立证据链；普通任务不为了流程漂亮增加无必要复杂度。
+7. **完成要对应原始目标。** 不能把没有命中 blacklist、窄范围测试通过、helper path 成功、toy/synthetic evidence 或降级 fallback 包装成完整目标完成。
+8. **对真实风险严格，对形式主义克制。** 需要证明时就建立证据链；普通任务不为了流程漂亮增加无必要复杂度。
 
 ---
 
@@ -770,6 +777,7 @@ QUICKSTART.md
 docs/V0_4_AGENT_FLOW_IMPLEMENTATION_SPEC.md
 docs/V0_5_REVIEWED_HANDOFF_IMPLEMENTATION_SPEC.md
 docs/V0_6_OVERLEAF_BRIDGE_IMPLEMENTATION_SPEC.md
+docs/PROJECT_STATE_BRIDGE_ROADMAP.md
 ```
 
 版本变化：

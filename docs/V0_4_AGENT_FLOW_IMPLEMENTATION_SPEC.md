@@ -57,6 +57,16 @@ ai-bridge agent-flow task init --target /repo --task-key <task_key>
 
 Lite remains the default and must not become slower or more complex.
 
+Goal Fidelity is a cross-workflow invariant for Control as of `0.7.0`, but it
+does not create a new Control role, state, schema field, verifier round, runner,
+or default paid review. Planner and Critic must freeze the positive completion
+target, intended claim scope, non-substitutable semantics, and evidence
+requirements in the existing contract/Requirement Ledger flow. Executor may not
+silently report fallback, proxy, toy/synthetic, helper-only, reduced-scale, or
+alternate-entry evidence as original completion unless the frozen contract
+explicitly authorizes equivalence. Verifier known-bad and mutation checks can
+block failures, but their absence is not by itself positive completion.
+
 ---
 
 ## 2. Architectural split

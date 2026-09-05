@@ -23,7 +23,7 @@ Scheduled GPT 的真实执行面是 GitHub connector，不是目标机器 shell�
 3. 最后写 `automation/reviewed_handoff/tasks/<task_key>/CURRENT.json`；
 4. 修改后重新读取最终文件，自检 `state`、`review_round`、`plan_revision`、`ci_status`、limit 和 final-report requirements。
 
-任何把 `CURRENT.state` 写为 `PLAN_FROZEN` 的 transaction 都必须先重新读取刚写入的 `PLAN.md`，按当前 `automation/reviewed_handoff/templates/PLAN.md` 自检 frontmatter 和全部 required sections，尤其确认 `## Out of scope` 存在。若 PLAN 不合法，不得写 `CURRENT=PLAN_FROZEN`；保持 task 在 GPT-owned repair/planner state，或在需要用户改变产品/科学语义时进入 human gate。不要把可修的 PLAN 结构问题直接写成 BLOCKED。
+任何把 `CURRENT.state` 写为 `PLAN_FROZEN` 的 transaction 都必须先重新读取刚写入的 `PLAN.md`，按当前 `automation/reviewed_handoff/templates/PLAN.md` 自检 frontmatter 和全部 required sections，尤其确认 `## Positive completion`、`## Non-substitutable semantics` 和 `## Out of scope` 存在。若 PLAN 不合法，不得写 `CURRENT=PLAN_FROZEN`；保持 task 在 GPT-owned repair/planner state，或在需要用户改变产品/科学语义时进入 human gate。不要把可修的 PLAN 结构问题直接写成 BLOCKED。
 
 如果当前 task 位于 `AWAIT_HUMAN_DECISION`、`human_gate_reason=PASS`，且用户明确 `REJECT` 当前 artifact，使用机械 human decision 事务而不是写新的 Reviewer decision：用户反馈只要求按现有冻结 Plan 修复时，路由到 `REVISE`；用户反馈证明冻结 Plan 本身需要一次最小修订时，路由到 `NEEDS_GPT_PLANNER`。保留原 `REVIEW_<n>.md`、`last_review_decision=PASS`、`review_round` 和 `plan_revision` 历史；不得重置预算、不得自动生成第三轮 review、不得把 human rejection 冒充为 Reviewer `REVISE`。如果对应 review 或 plan revision budget 已用尽，保持 human gate / review-limit contract，不得无限重开。
 
@@ -43,6 +43,8 @@ Local CLI 仍用于 Codex watcher、本地调试、deterministic validation 和�
 
 读取 REQUEST、当前 PLAN、RESULT/Reviewer finding 和当前 task branch 的真实 repository 状态。只允许一次最小 Plan revision，只解决 Executor 无法从原 Plan 安全推导的实质歧义。不要因为想到更好的架构而扩大 scope。修改 `PLAN.md` 后，先按当前 PLAN 模板自检 frontmatter 和 required sections；自检通过后，才在最后的 `CURRENT.json` transaction 中设置 `plan_revision += 1`、`state=PLAN_FROZEN` 和正确 `next_action`。若已达到 planner revision limit，或需要用户改变产品/科学语义，先写 `FINAL_REPORT.md` 解释需要用户决定的具体问题与已完成工作，再在最后的 `CURRENT.json` transaction 中设置 `human_gate_reason=PLANNER_DECISION`、`state=AWAIT_HUMAN_DECISION`。不要把“需要用户决定”伪装成 BLOCKED。
 
+Plan revision 也必须重新做 semantic red-team：当前文字是否允许一个更弱、更便宜、但没有完成用户真实目标的实现 PASS？如果会，先修 `## Positive completion`、`## Non-substitutable semantics` 或 evidence/claim scope，再冻结。
+
 ## WAITING_FOR_CI
 
 这个状态只用于 `ci_required=true` 的任务。Executor 已经完成本地实现并留下 `implementation_commit`，当前 task branch 已发布 clean commits；现在由 Scheduled GPT 使用 GitHub 的**真实当前 task branch check/workflow 状态**作为 CI source of truth。
@@ -61,7 +63,7 @@ CI failure review 与普通 Reviewer finding 使用同一个 review round 预算
 Reviewer 必须独立读取：
 
 - REQUEST.md；
-- 冻结的 PLAN.md；
+- 冻结的 PLAN.md，尤其是真实目标、`## Positive completion`、`## Non-substitutable semantics` 和 claim scope；
 - RESULT.md；
 - 若 `CURRENT.visual_review_required=true`，当前 `results/<task_key>/visual_review/VISUAL_REVIEW.json`；
 - 若 `CURRENT.text_review_required=true`，当前 `results/<task_key>/text_review/TEXT_REVIEW.json`；
@@ -78,11 +80,13 @@ Reviewer 必须独立读取：
 
 `base_commit..implementation_commit` 可能同时包含 Review 自己的 PLAN/CURRENT/RESULT 等 bookkeeping commits，因为 `base_commit` 是任务初始化时记录的 locator。不要因为这些合法 workflow 文件本身存在于 diff 就把它们当作产品实现或 regression。实现审核应聚焦冻结 Plan 定义的项目代码、配置、文档和 user-facing artifacts。相反，如果真实 diff 显示 Executor 修改了 `REQUEST.md`、`PLAN.md`、既有 `REVIEW_<n>.md`、`FINAL_REPORT.md` 或 review/plan limit 等 Planner/Reviewer authority，则这是协议违规，应阻断当前 review transaction；优先要求最小 recovery/repair，不要把可恢复 authority error 自动升级成 terminal BLOCKED。
 
-Review 的唯一目标是判断当前实现是否满足冻结 Plan 且没有造成相关 regression。禁止仅因为“还可以更优雅”“可以再加一个 abstraction”“理论上更安全”而扩大冻结 scope。
+Review 的唯一目标是判断当前实现是否满足冻结 Plan 且没有造成相关 regression。先问三件事：真实 positive completion 是否被观察到；冻结的 non-substitutable semantics 是否没有被弱化；证据 scope 是否覆盖 FINAL_REPORT / RESULT 中准备声明的 claim scope。禁止仅因为“还可以更优雅”“可以再加一个 abstraction”“理论上更安全”而扩大冻结 scope。
+
+如果现有 evidence 也可以由 Plan 不允许的更弱实现解释，例如 smoke 代替 formal/production、synthetic 代替真实数据、mechanical validator 代替定性质量、helper 代替 production entry、local artifact 代替 user-facing/hosted output，不能 PASS。测试、CI、validator、package PASS、文件存在和没有命中 blacklist 都只是 evidence，不是语义 authority。
 
 每个 blocking finding 必须说明：Plan/回归依据、真实 observed evidence、最小修复、修复后要看到的 evidence。没有冻结 Plan 或已有行为依据的问题只能作为 non-blocking note/backlog。
 
-写 `REVIEW_<round>.md`，decision 只能是 `PASS`、`REVISE` 或 `BLOCKED`。
+写 `REVIEW_<round>.md`，decision 只能是 `PASS`、`REVISE` 或 `BLOCKED`。`PASS` 必须明确回答：Positive completion 已被观察到；冻结语义没有弱化；当前证据足以支撑最终 claim。
 
 - `PASS`：先写 `REVIEW_<round>.md` 和 `FINAL_REPORT.md`，并完成 FINAL_REPORT preflight。若保持当前 state graph，需要先把 `CURRENT.state` 设为 `PASS`，再用下一次机械 `CURRENT.json` transaction 进入 `AWAIT_HUMAN_DECISION`；最终必须是 `human_gate_reason=PASS`、`last_review_decision=PASS`、`state=AWAIT_HUMAN_DECISION`。不要为了少一次 commit 改坏状态机。
 - 第一轮 `REVISE`：先写 `REVIEW_1.md`，最后写 `CURRENT.json`：`review_round=1`、`last_review_decision=REVISE`、`state=REVISE`。本地 task-bound Codex 后续自动启动一次最小 repair。

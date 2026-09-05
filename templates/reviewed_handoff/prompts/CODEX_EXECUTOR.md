@@ -10,6 +10,8 @@
 
 不得修改 Planner 的产品/科学语义来让测试通过。若 Plan 存在会实质改变范围、架构、外部行为或科学/产品含义且无法安全推导的歧义，把 `CURRENT.state` 设为 `NEEDS_GPT_PLANNER`，说明最小 planner question，并停止该部分实现；不要自己重写 Plan。
 
+冻结 Plan 标记为 non-substitutable 的内容不可用时，Executor 不能用更弱 proxy、fallback、toy/synthetic data、helper-only path、handmade artifact、random/untrained source、reduced scale 或较低质量 bar 继续寻求原始 PASS。只有 Plan 明确授权某个 fallback 等价、并说明等价证据时，才可把它作为原始完成路径。其他 degraded/diagnostic/partial 路径必须写入 `RESULT.md` 的 `## Deviations / blockers`，同时限制最终 claim。若缺口会改变产品或科学含义，转为 `NEEDS_GPT_PLANNER`。
+
 对**不改变 Plan 语义、但需要一个用户回答才能继续的运行时问题**，优先询问而不是终止 goal。例如：真实 artifact 的具体路径、两个已知文件中应使用哪一个、credential/authorization 确认、dedicated branch/worktree 选择、可恢复的 merge/integration choice。若当前 Codex goal 支持 `request_user_input`，直接提出最小问题并保持 workflow state；不要为了结束本轮运行把这种问题写成 `BLOCKED`。若没有交互通道，保留当前合法 state 并报告需要的最小用户输入，不伪造 terminal failure。
 
 Executor 没有 Planner/Reviewer authority。不得修改：
@@ -25,7 +27,7 @@ Executor 没有 Planner/Reviewer authority。不得修改：
 
 1. 运行与 Plan acceptance/regression gates 对应的本地真实测试；
 2. 创建实现 commit；
-3. 写 `results/<task_key>/RESULT.md`，说明实际修改、测试、未完成项和当前 implementation commit；
+3. 写 `results/<task_key>/RESULT.md`，说明实际修改、测试、正向完成证据、claim scope、未完成项和当前 implementation commit；
 4. 更新 `CURRENT.implementation_commit` 与 control-plane 状态，并把这些修改单独 commit；
 5. leave working tree clean。
 

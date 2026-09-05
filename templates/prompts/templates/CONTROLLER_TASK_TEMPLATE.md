@@ -39,6 +39,25 @@ coordinate.
 - Completion definition:
 - Promotion gate:
 
+## Positive Completion
+
+- Original goal result:
+- Direct observable evidence:
+- What is only supporting evidence, not completion by itself:
+
+## Non-Substitutable Semantics
+
+- Data/source/model:
+- Method/execution entry/tool/renderer:
+- Scale/budget/artifact/quality bar:
+- Explicitly authorized equivalent fallback, if any:
+
+## Claim Scope And Evidence Limit
+
+- Full claim allowed when:
+- Partial or diagnostic claim allowed when:
+- Claims that this task must not make:
+
 ## Scope
 
 The execution controller may plan executor/auditor subtasks only inside this
@@ -48,6 +67,9 @@ scope. It must not search for a new direction or replace the task goal.
 
 - Do not replace the goal with a different route unless the failure escalation
   policy explicitly allows it.
+- Do not count fallback, proxy, toy/synthetic data, helper-only path, handmade
+  artifact, reduced scale, alternate entry, lower quality bar, or blacklist-only
+  checks as original completion unless explicitly authorized as equivalent.
 - Do not count executor self-assessment as final completion.
 - Do not skip the auditor when `review_required: true`.
 
@@ -58,6 +80,7 @@ scope. It must not search for a new direction or replace the task goal.
 - Auditor review at `results/000_controller_task/subagents/auditor_review.md`
   or another path listed in the controller report.
 - Controller report at `results/000_controller_task/controller_report.md`.
+- Direct positive-completion evidence and claim-scope limit.
 - Command/test evidence with exit status.
 - Diff and artifact evidence where relevant.
 

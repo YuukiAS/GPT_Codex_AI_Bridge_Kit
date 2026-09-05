@@ -106,6 +106,7 @@ The canonical transition graph lives in `schema.json` and the Python core. Illeg
 `PLAN_FROZEN` is executable only when the current `PLAN.md` is structurally
 valid against the installed Review PLAN template: required
 frontmatter must exist and all required sections must be present, including
+`## Positive completion`, `## Non-substitutable semantics`, and
 `## Out of scope`. A Planner or Scheduled Planner transaction must write
 `PLAN.md` first, re-read it, self-check it against the current
 `automation/reviewed_handoff/templates/PLAN.md`, and only then write
@@ -113,7 +114,20 @@ frontmatter must exist and all required sections must be present, including
 `CURRENT` must remain in a GPT-owned repair/planning state rather than entering
 an Executor-owned state.
 
+`## Positive completion` states the real user/product/scientific/repository
+observable outcome and the maximum claim scope supported by planned evidence.
+`## Non-substitutable semantics` records the few semantics that decide whether
+the implementation is still the same task. Tests, CI, package validation,
+file existence, absence of forbidden tokens, or known-bad checks are evidence,
+not semantic completion authority unless the task target is exactly that
+mechanism.
+
 `READY_FOR_GPT_REVIEW` is not equivalent to completion. It requires a current `RESULT.md`, an `implementation_commit` locator, and `ci_status=PASS` when CI is required.
+
+Reviewer PASS requires more than a clean diff and green checks: the Reviewer
+must see positive completion evidence for the original Plan target, confirm
+that Plan-marked non-substitutable semantics were not weakened, and keep the
+final claim scope within the evidence scope.
 
 For CI-required tasks, Codex Executor must stop at `WAITING_FOR_CI` with `CURRENT.ci_status=PENDING`. `CURRENT.ci_status` is the only machine truth for CI. `RESULT.md` is execution narrative and must not be treated as a second CI authority. The Scheduled GPT reviewer reads the real GitHub checks for the current authorized branch tip that contains `CURRENT.state=WAITING_FOR_CI`; that branch tip is the CI locator. It is a normal Git locator, not semantic identity, and it is not written into a hash chain or receipt graph. Do not assume `implementation_commit` equals the GitHub workflow head SHA, because the watcher may publish both implementation and control-plane commits.
 

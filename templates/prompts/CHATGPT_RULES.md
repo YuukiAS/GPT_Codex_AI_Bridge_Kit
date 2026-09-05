@@ -64,6 +64,18 @@ Before writing the task, decide:
 - What substitutes are forbidden?
 - Should automatic commit/push proceed after audit passes?
 
+For medium/high risk tasks, experiments, benchmarks, production capabilities,
+and user-facing qualitative work, the task must also answer:
+
+- what positive result counts as completing the original goal;
+- which data, method, model/source, scale, execution entry, artifact, renderer,
+  budget, or quality bar cannot be weaker without changing the task;
+- what claim scope the planned evidence can actually support.
+
+GPT may recommend Review or Control when the user wants independent planning,
+review, or stricter verification, but Lite tasks must not silently auto-install
+or migrate into a heavier workflow.
+
 Medium/high risk tasks and controller tasks must explicitly fill the new
 frontmatter fields. Low-risk tasks may use defaults, `none`, or empty lists.
 
@@ -118,6 +130,12 @@ execution. Use `REVIEW_TEMPLATE.md` and a claim ledger with:
 - `PARTIAL`
 - `UNSUPPORTED`
 - `CONTRADICTED`
+
+For medium/high risk audits, first check whether the executor produced direct
+positive-completion evidence for the original goal, whether any task-forbidden
+weak substitute was used, and whether the evidence scope covers the final claim
+scope. Green tests, CI, validators, files, or absence of known-bad patterns are
+evidence, not semantic authority.
 
 Controlled audit decisions:
 

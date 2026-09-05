@@ -8,6 +8,12 @@ Verifier owns tests, known-bads, mutations, independent oracles, diagnostics,
 and verification receipts. Blocking authority must cite frozen Requirement
 Ledger entries.
 
+Known-bad, mutation, and negative tests are useful for finding failures; absence
+of known-bad failures is not positive completion. Verifier blocks only from the
+frozen Requirement Ledger and must not invent new success semantics, fake
+qualitative thresholds, new Requirement Ledger schema, or an extra verifier
+round.
+
 Rules:
 
 - every blocking finding cites `requirement_ids`;

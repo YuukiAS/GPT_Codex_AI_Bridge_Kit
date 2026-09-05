@@ -302,6 +302,52 @@ class ReviewedHandoffTests(unittest.TestCase):
             current = rh.apply_transition(target, "001_feature", expected_state="PLAN_REQUESTED", next_state="PLAN_FROZEN")
             self.assertEqual(current["state"], "PLAN_FROZEN")
 
+    def test_current_0_7_plan_template_is_valid_for_freeze(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            self.write_plan(target)
+            plan_path = rh.task_root(target, "001_feature") / "PLAN.md"
+            self.assertEqual(rh.validate_plan_file(plan_path, "001_feature"), [])
+            current = rh.apply_transition(target, "001_feature", expected_state="PLAN_REQUESTED", next_state="PLAN_FROZEN")
+            self.assertEqual(current["state"], "PLAN_FROZEN")
+
+    def test_plan_freeze_rejects_missing_positive_completion_section(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            self.write_plan(target)
+            plan_path = rh.task_root(target, "001_feature") / "PLAN.md"
+            plan_text = plan_path.read_text(encoding="utf-8")
+            section = (
+                "\n## Positive completion\n\n"
+                "State the real user, product, scientific, or repository observable outcome that\n"
+                "would make this task complete. Tests, CI, file existence, package validation, or\n"
+                "absence of forbidden tokens cannot alone define positive completion unless the\n"
+                "task target is exactly that mechanism. Also state the maximum claim scope that\n"
+                "the required evidence may support.\n"
+            )
+            plan_path.write_text(plan_text.replace(section, "\n"), encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "PLAN.md missing required section: ## Positive completion"):
+                rh.apply_transition(target, "001_feature", expected_state="PLAN_REQUESTED", next_state="PLAN_FROZEN")
+
+    def test_plan_freeze_rejects_missing_non_substitutable_semantics_section(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            self.write_plan(target)
+            plan_path = rh.task_root(target, "001_feature") / "PLAN.md"
+            plan_text = plan_path.read_text(encoding="utf-8")
+            section = (
+                "\n## Non-substitutable semantics\n\n"
+                "Record the few core semantics that decide whether this remains the same task.\n"
+                "Codex must not silently weaken required data, method, scale, execution entry,\n"
+                "artifact, renderer, model/source, or quality bar. If an equivalent fallback is\n"
+                "allowed, say why it is equivalent and what evidence must prove that equivalence.\n"
+            )
+            plan_path.write_text(plan_text.replace(section, "\n"), encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "PLAN.md missing required section: ## Non-substitutable semantics"):
+                rh.apply_transition(target, "001_feature", expected_state="PLAN_REQUESTED", next_state="PLAN_FROZEN")
+
     def test_plan_freeze_rejects_missing_out_of_scope_section(self) -> None:
         tmp, target = self.make_project()
         with tmp:
@@ -883,6 +929,8 @@ class ReviewedHandoffTests(unittest.TestCase):
         self.assertIn("先写 GPT 拥有的 artifact", prompt)
         self.assertIn("最后写 `automation/reviewed_handoff/tasks/<task_key>/CURRENT.json`", prompt)
         self.assertIn("按当前 `automation/reviewed_handoff/templates/PLAN.md` 自检", prompt)
+        self.assertIn("`## Positive completion`", prompt)
+        self.assertIn("`## Non-substitutable semantics`", prompt)
         self.assertIn("`## Out of scope`", prompt)
         self.assertIn("不得写 `CURRENT=PLAN_FROZEN`", prompt)
         self.assertIn("artifact-only commit 不代表新 workflow state", prompt)
@@ -947,6 +995,8 @@ class ReviewedHandoffTests(unittest.TestCase):
 
         self.assertIn("写 `CURRENT.state=PLAN_FROZEN` 前", prompt)
         self.assertIn("按当前 `automation/reviewed_handoff/templates/PLAN.md` 自检", prompt)
+        self.assertIn("`## Positive completion`", prompt)
+        self.assertIn("`## Non-substitutable semantics`", prompt)
         self.assertIn("`## Out of scope`", prompt)
         self.assertIn("若 PLAN 不合法，保持 `CURRENT` 不进入 `PLAN_FROZEN`", prompt)
 
@@ -967,6 +1017,21 @@ class ReviewedHandoffTests(unittest.TestCase):
 
         self.assertEqual(rh.ALLOWED_TRANSITIONS, expected)
         self.assertEqual({key: set(value) for key, value in schema["allowed_transitions"].items()}, expected)
+        self.assertEqual(schema["roles"], ["Planner", "Executor", "Reviewer"])
+        self.assertEqual(schema["schema"], "AI_BRIDGE_REVIEWED_HANDOFF_SCHEMA_V1")
+
+    def test_review_goal_fidelity_prompts_keep_legacy_identifiers(self) -> None:
+        schema = rh.load_json(Path("templates/reviewed_handoff/schema.json"))
+        planner = rh.read_text(Path("templates/reviewed_handoff/prompts/PLANNER.md"))
+        executor = rh.read_text(Path("templates/reviewed_handoff/prompts/CODEX_EXECUTOR.md"))
+        reviewer = rh.read_text(Path("templates/reviewed_handoff/prompts/REVIEWER_SCHEDULED_TASK.md"))
+
+        self.assertEqual(schema["roles"], ["Planner", "Executor", "Reviewer"])
+        self.assertEqual(schema["optional_evidence"]["visual_review"]["default_evidence_path"], "results/<task_key>/visual_review/VISUAL_REVIEW.json")
+        self.assertIn("workflow_type=reviewed_handoff", reviewer)
+        self.assertIn("semantic red-team", planner)
+        self.assertIn("non-substitutable", executor)
+        self.assertIn("Positive completion", reviewer)
 
     def test_human_reject_after_pass_can_route_to_revise_without_resetting_review_budget(self) -> None:
         tmp, target = self.make_project()

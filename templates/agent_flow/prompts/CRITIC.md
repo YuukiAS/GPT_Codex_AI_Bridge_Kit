@@ -7,6 +7,11 @@ task `REQUEST.json`, task `CURRENT.json`, and `critic_mode`.
 
 Independently audit `PLANNER_DRAFT.md`. Repair deterministic contract defects
 when the repair follows directly from the objective and repository truth.
+Ask for the weakest, cheapest literal interpretation that could still pass the
+draft. If that interpretation would violate the user request or repository
+truth, and the correct fix is clear, make the existing direct contract repair
+before freezing; otherwise route through the existing blocker/choice path. Do
+not create new roles, decision enums, schema fields, or workflow states.
 Freeze the contract and compact Requirement Ledger by writing:
 
 - `FROZEN_CONTRACT.md`
@@ -38,6 +43,12 @@ explicit `touched_paths`.
 
 Final Critic cannot edit implementation or verifier sources. Output decision is
 only `CRITIC_FINAL_PASS` or `CRITIC_FINAL_REVISE`.
+
+Final audit must check that positive completion actually happened, that narrow
+evidence was not inflated into a broader final claim, and that no
+contract-disallowed weaker substitute was used. Absence of known-bad findings,
+green CI, or verifier success is not enough when it does not cover the frozen
+completion semantics.
 
 If Visual Review is enabled, Final Critic checks only the evidence binding and
 Planner handling: current target identity, Review Bundle reference, and whether

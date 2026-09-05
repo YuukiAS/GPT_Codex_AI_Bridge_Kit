@@ -338,6 +338,8 @@ def validate_plan_file(path: Path, task_key: str) -> list[str]:
     text = read_text(path)
     for heading in [
         "## Frozen decisions",
+        "## Positive completion",
+        "## Non-substitutable semantics",
         "## Implementation scope",
         "## Acceptance and regression gates",
         "## Out of scope",

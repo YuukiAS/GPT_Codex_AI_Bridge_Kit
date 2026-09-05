@@ -95,6 +95,14 @@ state machine allows it.
 For `task_type: execution`:
 
 - Execute only the authorized task scope.
+- Preserve the task's non-substitutable semantics. Do not silently use weaker
+  data, method, model/source, budget, execution entry, tool, renderer, artifact,
+  scale, or quality bar to make the task look complete.
+- Use a fallback or proxy as original completion only when the GPT-authored task
+  explicitly authorizes it as equivalent and names the evidence required for
+  equivalence. Otherwise record it as degraded, diagnostic, partial, or
+  incomplete evidence, limit the claim, and use `NEEDS_GPT_PLANNER`,
+  `NEEDS_EVIDENCE`, or `STOP` as appropriate.
 - Write `results/<task_key>/result.md`.
 - Record files read, files changed, commands, exit statuses, tests, artifacts,
   diff summary, failures, incomplete items, approval needs, and auditable claims.
@@ -135,7 +143,9 @@ Auditors must be read-only:
 - Do not rerun execution commands unless a new execution task explicitly
   authorizes it.
 - Review claims against file, command, test, artifact, manifest, and diff
-  evidence.
+  evidence. Start with the original positive completion target, then check that
+  evidence scope covers claim scope and that no task-forbidden weaker substitute
+  was used.
 - Use controlled decisions from `HANDOFF_STATE_MACHINE.md`.
 
 ## Git Sync Policy
@@ -159,6 +169,9 @@ If the task cannot be completed safely:
 - Stop expanding scope.
 - Record completed work, blocker, missing permission or evidence, and required
   next state.
+- Do not package a fallback, reduced-scale run, proxy, helper-only execution, or
+  blacklist-only check as completion of the original goal unless the task
+  explicitly authorized it as equivalent.
 - Use `NEEDS_GPT_PLANNER` when a new direction or strategic judgment is needed.
 - Do not bypass `STOP`, `NEEDS_EVIDENCE`, `NEEDS_REVISION`,
   `NEEDS_HUMAN_APPROVAL`, or `NEEDS_GPT_PLANNER`.

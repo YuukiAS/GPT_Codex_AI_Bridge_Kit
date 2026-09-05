@@ -749,6 +749,23 @@ class AgentFlowTests(unittest.TestCase):
             for token in ["CARE", "MyoPS", "nnU-Net", "Slurm", "route_portfolio", "dataset_split"]:
                 self.assertNotIn(token, profile_text)
 
+    def test_control_roles_and_legacy_identifiers_stay_unchanged(self) -> None:
+        schema = agent_flow.load_json(Path("templates/agent_flow/schema.json"))
+        planner = Path("templates/agent_flow/prompts/PLANNER.md").read_text(encoding="utf-8")
+        critic = Path("templates/agent_flow/prompts/CRITIC.md").read_text(encoding="utf-8")
+        executor = Path("templates/agent_flow/prompts/EXECUTOR.md").read_text(encoding="utf-8")
+        verifier = Path("templates/agent_flow/prompts/VERIFIER.md").read_text(encoding="utf-8")
+
+        self.assertEqual(agent_flow.ROLES, {"Planner", "Critic", "Controller", "Verifier", "Executor"})
+        self.assertEqual(set(schema["roles"]), agent_flow.ROLES)
+        self.assertEqual(schema["schema"], "AI_BRIDGE_AGENT_FLOW_SCHEMA_V1")
+        self.assertEqual(agent_flow.SCHEMA_VERSION, "ai-bridge.agent_flow.v1")
+        self.assertIn("workflow_type", agent_flow.canonical_json({"workflow_type": "agent_flow"}))
+        self.assertIn("positive completion", planner)
+        self.assertIn("weakest, cheapest literal interpretation", critic)
+        self.assertIn("must not silently downgrade", executor)
+        self.assertIn("absence\nof known-bad failures is not positive completion", verifier)
+
     def test_visual_review_binds_current_review_target_and_bundle(self) -> None:
         tmp, target = self.make_project()
         with tmp:

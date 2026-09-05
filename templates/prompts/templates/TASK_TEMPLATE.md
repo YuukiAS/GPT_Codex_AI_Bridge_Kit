@@ -51,6 +51,29 @@ task; reference their paths instead.
 For medium/high risk tasks, define what evidence proves the mechanism worked.
 Executor self-assessment is not final completion.
 
+## Positive Completion
+
+- Original goal result:
+- Direct observable evidence:
+- What is only supporting evidence, not completion by itself:
+
+## Non-Substitutable Semantics
+
+- Data/source/model:
+- Method/execution entry/tool/renderer:
+- Scale/budget/artifact/quality bar:
+- Explicitly authorized equivalent fallback, if any:
+
+Do not treat a weaker fallback, proxy, toy/synthetic substitute, helper-only
+path, handmade artifact, reduced scale, or blacklist-only check as original
+completion unless this section explicitly authorizes it as equivalent.
+
+## Claim Scope And Evidence Limit
+
+- Full claim allowed when:
+- Partial or diagnostic claim allowed when:
+- Claims that this task must not make:
+
 ## Allowed Actions
 
 - Read files directly related to this task.
@@ -83,6 +106,8 @@ Executor self-assessment is not final completion.
 - Tests or validation:
 - Artifact paths:
 - Claims to audit:
+- Positive-completion evidence:
+- Claim-scope limit if evidence is partial:
 
 For low-risk tasks this can be short. For medium/high risk or controller tasks,
 make it explicit before execution starts.

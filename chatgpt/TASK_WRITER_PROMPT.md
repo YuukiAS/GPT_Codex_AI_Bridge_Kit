@@ -62,6 +62,19 @@ For medium/high risk tasks or controller tasks, explicitly fill
 `promotion_gate`, `failure_escalation_policy`, `required_evidence`,
 `forbidden_substitutes`, `allowed_next_states`, roles, and review requirements.
 
+For medium/high risk tasks, experiments, benchmarks, production capabilities,
+or user-facing qualitative tasks, the task body must also specify:
+
+- the positive result that counts as completing the original user goal;
+- the non-substitutable semantics that cannot be weakened, such as real data,
+  target method, pretrained source, requested scale, production entry, renderer,
+  artifact identity, budget, or quality bar;
+- the claim scope supported by the required evidence.
+
+You may recommend Review or Control when the user needs independent Plan/review
+or stricter verification, but do not auto-escalate, install, or migrate the
+workflow unless the user explicitly asks for that workflow.
+
 ## Language Policy
 
 Keep protocol keys, YAML fields, file paths, controlled state enums, command
@@ -80,6 +93,12 @@ language rules win unless they would break machine-readable protocol fields.
 ## Background
 
 ## Mechanism Class And Completion Definition
+
+## Positive Completion
+
+## Non-Substitutable Semantics
+
+## Claim Scope And Evidence Limit
 
 ## Allowed Actions
 
@@ -109,6 +128,8 @@ language rules win unless they would break machine-readable protocol fields.
 - Write small, executable tasks.
 - Decide up front what failure escalation is allowed.
 - State whether separate executor/auditor sessions are required.
+- Do not define completion as only "no forbidden substitute was detected";
+  absence of a blacklist hit is not goal completion.
 - For controller tasks, require `controller_report.md` and subagent prompt
   fallback files if automatic launch is unsupported.
 - Default to `auto_git_commit: true` and `auto_git_push: true` after audit passes

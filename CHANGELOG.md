@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+## 0.7.0
+
+- Add Goal Fidelity / anti-degradation guidance across Lite, Review, and
+  Control so completion claims must be supported by the original positive
+  result, non-substitutable semantics must not be silently weakened, and final
+  claim scope must stay within evidence scope.
+- Rewrite the generic Lite `MECHANISM_GATE_TEMPLATE.md` and update task,
+  ChatGPT, Codex, review, and Host Policy wording to treat fallbacks, proxies,
+  toy/synthetic data, helper-only paths, handmade artifacts, reduced scale, and
+  blacklist-only checks as partial/diagnostic evidence unless explicitly
+  authorized as equivalent.
+- Extend the Review `PLAN.md` template with required
+  `## Positive completion` and `## Non-substitutable semantics` sections, and
+  require the existing Plan freeze validator to reject 0.7 Plans missing either
+  section before `CURRENT.state=PLAN_FROZEN`.
+- Update Review Planner, Executor, and Reviewer prompts with semantic red-team,
+  fallback/deviation handling, positive-completion checks, and evidence-scope
+  limits while keeping roles, state graph, schema, CLI paths, workflow type, and
+  watcher behavior unchanged.
+- Update Control Planner, Critic, Executor, and Verifier prompts so frozen
+  contracts record positive completion, claim scope, non-substitutable
+  semantics, and evidence requirements without adding roles, states, schema
+  fields, Requirement Ledger changes, verifier rounds, or default API costs.
+- Rename the Project State Bridge document to
+  `docs/PROJECT_STATE_BRIDGE_ROADMAP.md`, mark it as an unversioned future
+  roadmap, and leave Project State Bridge implementation out of this release.
+
 ## 0.6.1
 
 - Simplify workflow display names to Lite / Review / Control without changing
