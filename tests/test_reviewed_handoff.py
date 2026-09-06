@@ -36,6 +36,29 @@ class ReviewedHandoffTests(unittest.TestCase):
         template = rh.read_text(rh.reviewed_root(target) / "templates" / "PLAN.md")
         rh.write_text(rh.task_root(target, task_key) / "PLAN.md", template.replace("<TASK_KEY>", task_key))
 
+    def write_legacy_plan(self, target: Path, task_key: str = "001_feature", *, omit_heading: str | None = None) -> None:
+        sections = [
+            ("Frozen decisions", "Freeze the legacy implementation decision.\n"),
+            ("Implementation scope", "Implement only the legacy scope.\n"),
+            ("Acceptance and regression gates", "Run the legacy acceptance gates.\n"),
+            ("Out of scope", "Do not expand legacy scope.\n"),
+        ]
+        body = "".join(
+            f"## {heading}\n\n{text}\n"
+            for heading, text in sections
+            if heading != omit_heading
+        )
+        text = (
+            "---\n"
+            f"schema: {rh.LEGACY_PLAN_SCHEMA}\n"
+            f"task_key: {task_key}\n"
+            "decision: PLAN_FROZEN\n"
+            "---\n\n"
+            "# Review Plan\n\n"
+            f"{body}"
+        )
+        rh.write_text(rh.task_root(target, task_key) / "PLAN.md", text)
+
     def write_final_report(self, target: Path) -> None:
         template = rh.read_text(rh.reviewed_root(target) / "templates" / "FINAL_REPORT.md")
         rh.write_text(rh.result_root(target, "001_feature") / "FINAL_REPORT.md", template)
@@ -302,11 +325,14 @@ class ReviewedHandoffTests(unittest.TestCase):
             current = rh.apply_transition(target, "001_feature", expected_state="PLAN_REQUESTED", next_state="PLAN_FROZEN")
             self.assertEqual(current["state"], "PLAN_FROZEN")
 
-    def test_current_0_7_plan_template_is_valid_for_freeze(self) -> None:
+    def test_current_0_7_1_plan_template_is_v2_and_valid_for_freeze(self) -> None:
         tmp, target = self.make_project()
         with tmp:
             self.write_plan(target)
             plan_path = rh.task_root(target, "001_feature") / "PLAN.md"
+            data, parse_error = rh.parse_frontmatter(plan_path)
+            self.assertIsNone(parse_error)
+            self.assertEqual(data["schema"], rh.CURRENT_PLAN_SCHEMA)
             self.assertEqual(rh.validate_plan_file(plan_path, "001_feature"), [])
             current = rh.apply_transition(target, "001_feature", expected_state="PLAN_REQUESTED", next_state="PLAN_FROZEN")
             self.assertEqual(current["state"], "PLAN_FROZEN")
@@ -358,6 +384,163 @@ class ReviewedHandoffTests(unittest.TestCase):
 
             with self.assertRaisesRegex(ValueError, "PLAN.md missing required section: ## Out of scope"):
                 rh.apply_transition(target, "001_feature", expected_state="PLAN_REQUESTED", next_state="PLAN_FROZEN")
+
+    def test_valid_legacy_v1_plan_passes_compatible_validation_without_goal_fidelity_sections(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            self.write_legacy_plan(target)
+            plan_path = rh.task_root(target, "001_feature") / "PLAN.md"
+            self.assertEqual(rh.validate_plan_file(plan_path, "001_feature"), [])
+
+    def test_malformed_legacy_v1_plan_still_fails_compatible_validation(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            self.write_legacy_plan(target, omit_heading="Implementation scope")
+            plan_path = rh.task_root(target, "001_feature") / "PLAN.md"
+            errors = rh.validate_plan_file(plan_path, "001_feature")
+            self.assertIn("PLAN.md missing required section: ## Implementation scope", errors)
+
+    def test_legacy_v1_plan_frontmatter_mismatches_still_fail(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            self.write_legacy_plan(target)
+            plan_path = rh.task_root(target, "001_feature") / "PLAN.md"
+
+            wrong_task = plan_path.read_text(encoding="utf-8").replace(
+                "task_key: 001_feature",
+                "task_key: 999_other",
+            )
+            plan_path.write_text(wrong_task, encoding="utf-8")
+            self.assertIn("PLAN.md task_key mismatch", rh.validate_plan_file(plan_path, "001_feature"))
+
+            self.write_legacy_plan(target)
+            wrong_decision = plan_path.read_text(encoding="utf-8").replace(
+                "decision: PLAN_FROZEN",
+                "decision: DRAFT",
+            )
+            plan_path.write_text(wrong_decision, encoding="utf-8")
+            self.assertIn("PLAN.md decision must be PLAN_FROZEN", rh.validate_plan_file(plan_path, "001_feature"))
+
+    def test_unknown_plan_schema_fails_compatible_validation(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            self.write_plan(target)
+            plan_path = rh.task_root(target, "001_feature") / "PLAN.md"
+            text = plan_path.read_text(encoding="utf-8").replace(
+                rh.CURRENT_PLAN_SCHEMA,
+                "AI_BRIDGE_REVIEWED_PLAN_V999",
+            )
+            plan_path.write_text(text, encoding="utf-8")
+            errors = rh.validate_plan_file(plan_path, "001_feature")
+            self.assertTrue(any("PLAN.md schema must be" in error for error in errors), errors)
+
+    def test_new_freeze_rejects_structurally_valid_legacy_v1_plan(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            self.write_legacy_plan(target)
+            with self.assertRaisesRegex(ValueError, "current freeze requires AI_BRIDGE_REVIEWED_PLAN_V2"):
+                rh.apply_transition(target, "001_feature", expected_state="PLAN_REQUESTED", next_state="PLAN_FROZEN")
+
+    def test_planner_refreeze_rejects_legacy_v1_and_accepts_v2(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            self.write_plan(target)
+            rh.apply_transition(target, "001_feature", expected_state="PLAN_REQUESTED", next_state="PLAN_FROZEN")
+            current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+            current = rh.load_json(current_path)
+            current["state"] = "NEEDS_GPT_PLANNER"
+            current["next_action"] = "RUN_GPT_PLANNER"
+            rh.write_json(current_path, current)
+
+            self.write_legacy_plan(target)
+            with self.assertRaisesRegex(ValueError, "current freeze requires AI_BRIDGE_REVIEWED_PLAN_V2"):
+                rh.apply_transition(target, "001_feature", expected_state="NEEDS_GPT_PLANNER", next_state="PLAN_FROZEN")
+
+            self.write_plan(target)
+            current = rh.apply_transition(target, "001_feature", expected_state="NEEDS_GPT_PLANNER", next_state="PLAN_FROZEN")
+            self.assertEqual(current["state"], "PLAN_FROZEN")
+            self.assertEqual(current["plan_revision"], 1)
+
+    def test_repository_validation_accepts_legacy_v1_with_compatibility_warning(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            self.write_legacy_plan(target)
+            current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+            current = rh.load_json(current_path)
+            current["state"] = "PLAN_FROZEN"
+            current["next_action"] = "RUN_CODEX_EXECUTOR"
+            rh.write_json(current_path, current)
+
+            lines, code = rh.validate_reviewed_handoff(target)
+
+            self.assertEqual(code, 0, "\n".join(lines))
+            self.assertTrue(any("legacy PLAN V1 accepted" in line for line in lines), lines)
+
+    def test_synthetic_legacy_consumer_with_multiple_v1_tasks_validates(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            rh.init_task(target, "002_active", objective="Legacy active task")
+            rh.init_task(target, "003_revise", objective="Legacy revise task")
+
+            self.write_legacy_plan(target, "001_feature")
+            self.write_legacy_plan(target, "002_active")
+            self.write_legacy_plan(target, "003_revise")
+
+            terminal_current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+            terminal_current = rh.load_json(terminal_current_path)
+            terminal_current["state"] = "AWAIT_HUMAN_DECISION"
+            terminal_current["human_gate_reason"] = "PLANNER_DECISION"
+            terminal_current["next_action"] = "PRESENT_FINAL_REPORT"
+            rh.write_json(terminal_current_path, terminal_current)
+            self.write_legacy_final_report(target)
+
+            active_current_path = rh.task_root(target, "002_active") / "CURRENT.json"
+            active_current = rh.load_json(active_current_path)
+            active_current["state"] = "PLAN_FROZEN"
+            active_current["next_action"] = "RUN_CODEX_EXECUTOR"
+            rh.write_json(active_current_path, active_current)
+
+            revise_current_path = rh.task_root(target, "003_revise") / "CURRENT.json"
+            revise_current = rh.load_json(revise_current_path)
+            revise_current["state"] = "REVISE"
+            revise_current["implementation_commit"] = "impl-legacy"
+            revise_current["ci_status"] = "NOT_REQUIRED"
+            revise_current["review_round"] = 1
+            revise_current["last_review_decision"] = "REVISE"
+            revise_current["next_action"] = "RUN_CODEX_REPAIR"
+            rh.write_json(revise_current_path, revise_current)
+            result_template = rh.read_text(rh.reviewed_root(target) / "templates" / "RESULT.md")
+            rh.write_text(
+                rh.result_root(target, "003_revise") / "RESULT.md",
+                result_template.replace("<TASK_KEY>", "003_revise").replace("<COMMIT>", "impl-legacy"),
+            )
+            review_text = (
+                "---\n"
+                f"schema: {rh.REVIEW_SCHEMA}\n"
+                "task_key: 003_revise\n"
+                "review_round: 1\n"
+                "decision: REVISE\n"
+                "implementation_commit: impl-legacy\n"
+                "---\n\n"
+                "Legacy review requires repair.\n"
+            )
+            rh.write_text(rh.result_root(target, "003_revise") / "REVIEW_1.md", review_text)
+
+            before = {
+                path.relative_to(target): path.read_bytes()
+                for path in target.rglob("*")
+                if path.is_file()
+            }
+            lines, code = rh.validate_reviewed_handoff(target)
+            after = {
+                path.relative_to(target): path.read_bytes()
+                for path in target.rglob("*")
+                if path.is_file()
+            }
+
+            self.assertEqual(code, 0, "\n".join(lines))
+            self.assertGreaterEqual(sum(1 for line in lines if "legacy PLAN V1 accepted" in line), 3)
+            self.assertEqual(before, after)
 
     def test_legacy_terminal_final_report_does_not_block_repository_validation(self) -> None:
         tmp, target = self.make_project()
@@ -928,6 +1111,8 @@ class ReviewedHandoffTests(unittest.TestCase):
         self.assertIn("GitHub connector", prompt)
         self.assertIn("先写 GPT 拥有的 artifact", prompt)
         self.assertIn("最后写 `automation/reviewed_handoff/tasks/<task_key>/CURRENT.json`", prompt)
+        self.assertIn("AI_BRIDGE_REVIEWED_PLAN_V2", prompt)
+        self.assertIn("AI_BRIDGE_REVIEWED_PLAN_V1", prompt)
         self.assertIn("按当前 `automation/reviewed_handoff/templates/PLAN.md` 自检", prompt)
         self.assertIn("`## Positive completion`", prompt)
         self.assertIn("`## Non-substitutable semantics`", prompt)
@@ -994,6 +1179,8 @@ class ReviewedHandoffTests(unittest.TestCase):
         prompt = rh.read_text(Path("templates/reviewed_handoff/prompts/PLANNER.md"))
 
         self.assertIn("写 `CURRENT.state=PLAN_FROZEN` 前", prompt)
+        self.assertIn("schema: AI_BRIDGE_REVIEWED_PLAN_V2", prompt)
+        self.assertIn("不能在当前 Bridge Kit 下作为新的 `PLAN_FROZEN` 输入", prompt)
         self.assertIn("按当前 `automation/reviewed_handoff/templates/PLAN.md` 自检", prompt)
         self.assertIn("`## Positive completion`", prompt)
         self.assertIn("`## Non-substitutable semantics`", prompt)
@@ -1032,6 +1219,8 @@ class ReviewedHandoffTests(unittest.TestCase):
         self.assertIn("semantic red-team", planner)
         self.assertIn("non-substitutable", executor)
         self.assertIn("Positive completion", reviewer)
+        self.assertIn("历史 `AI_BRIDGE_REVIEWED_PLAN_V1` frozen Plan", executor)
+        self.assertIn("retroactively 发明 Plan 没有写下的 requirement", reviewer)
 
     def test_human_reject_after_pass_can_route_to_revise_without_resetting_review_budget(self) -> None:
         tmp, target = self.make_project()

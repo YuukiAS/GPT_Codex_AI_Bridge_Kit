@@ -53,6 +53,28 @@ class ReviewedRunnerTests(unittest.TestCase):
         subprocess.check_call(["git", "commit", "-m", "wait for planner"], cwd=target, stdout=subprocess.DEVNULL)
         subprocess.check_call(["git", "push", "origin", "main"], cwd=target, stdout=subprocess.DEVNULL)
 
+    def replace_with_legacy_plan(self, target: Path) -> None:
+        text = (
+            "---\n"
+            f"schema: {rh.LEGACY_PLAN_SCHEMA}\n"
+            "task_key: 001_feature\n"
+            "decision: PLAN_FROZEN\n"
+            "---\n\n"
+            "# Review Plan\n\n"
+            "## Frozen decisions\n\n"
+            "Freeze the legacy runner contract.\n\n"
+            "## Implementation scope\n\n"
+            "Implement only the legacy scope.\n\n"
+            "## Acceptance and regression gates\n\n"
+            "Run the legacy gates.\n\n"
+            "## Out of scope\n\n"
+            "Do not expand the legacy task.\n"
+        )
+        plan_path = rh.task_root(target, "001_feature") / "PLAN.md"
+        rh.write_text(plan_path, text)
+        subprocess.check_call(["git", "add", str(plan_path.relative_to(target))], cwd=target)
+        subprocess.check_call(["git", "commit", "-m", "legacy v1 plan"], cwd=target, stdout=subprocess.DEVNULL)
+
     def commit_valid_executor_handoff(self, target: Path) -> str:
         (target / "src.py").write_text("VALUE = 2\n", encoding="utf-8")
         subprocess.check_call(["git", "add", "src.py"], cwd=target)
@@ -167,6 +189,17 @@ class ReviewedRunnerTests(unittest.TestCase):
             result = runner.watcher_once(target, branch="main", sync=False, dry_run=True)
             self.assertEqual(result["status"], "waiting_external_review")
             self.assertEqual(result["external_owner"], "Planner")
+
+    def test_watcher_dry_run_accepts_legacy_v1_plan_frozen_event(self) -> None:
+        tmp, target, state_home = self.make_project()
+        with tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(state_home)}):
+            self.replace_with_legacy_plan(target)
+
+            result = runner.watcher_once(target, branch="main", sync=False, dry_run=True)
+
+            self.assertEqual(result["status"], "dry_run")
+            self.assertEqual(result["task_key"], "001_feature")
+            self.assertNotEqual(result["status"], "invalid_workflow")
 
     def test_watcher_reports_external_wait_without_consuming_executor_attempts(self) -> None:
         tmp, target, state_home = self.make_project()

@@ -104,15 +104,23 @@ BLOCKED
 The canonical transition graph lives in `schema.json` and the Python core. Illegal transitions fail closed.
 
 `PLAN_FROZEN` is executable only when the current `PLAN.md` is structurally
-valid against the installed Review PLAN template: required
-frontmatter must exist and all required sections must be present, including
-`## Positive completion`, `## Non-substitutable semantics`, and
-`## Out of scope`. A Planner or Scheduled Planner transaction must write
-`PLAN.md` first, re-read it, self-check it against the current
+valid. Current Planner or Scheduled Planner freeze transactions must write
+`AI_BRIDGE_REVIEWED_PLAN_V2`, re-read it, self-check it against the current
 `automation/reviewed_handoff/templates/PLAN.md`, and only then write
-`CURRENT.json` with `CURRENT.state=PLAN_FROZEN`. If this self-check fails,
-`CURRENT` must remain in a GPT-owned repair/planning state rather than entering
-an Executor-owned state.
+`CURRENT.json` with `CURRENT.state=PLAN_FROZEN`. V2 requires frontmatter plus
+all current sections, including `## Positive completion`,
+`## Non-substitutable semantics`, and `## Out of scope`. If this self-check
+fails, `CURRENT` must remain in a GPT-owned repair/planning state rather than
+entering an Executor-owned state.
+
+`AI_BRIDGE_REVIEWED_PLAN_V1` remains a compatibility format for historical
+frozen Plans. Repository-wide validation and watcher continuation accept a V1
+Plan when its own frontmatter, task key, `PLAN_FROZEN` decision, and original
+required sections are valid. V1 does not retroactively require
+`## Positive completion` or `## Non-substitutable semantics`, but a new
+`PLAN_REQUESTED -> PLAN_FROZEN` or `NEEDS_GPT_PLANNER -> PLAN_FROZEN`
+transition must reject V1 and require V2. Bridge Kit must not rewrite historical
+Plans merely to add the new H2 sections.
 
 `## Positive completion` states the real user/product/scientific/repository
 observable outcome and the maximum claim scope supported by planned evidence.

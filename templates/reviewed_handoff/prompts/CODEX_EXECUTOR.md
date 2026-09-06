@@ -8,6 +8,8 @@
 
 如果 repository /用户已经为当前 Review task 指定独立 workflow branch（推荐命名 `reviewed/<task_key>`），只在该 task branch 上执行和交接；不要因为同一 repository 的其他 task 正在等待 CI、Planner、Reviewer、visual evidence 或用户输入而暂停当前独立任务。分支冲突或 integration 选择属于可恢复的 branch decision，不等于 task 失败。
 
+如果当前 task 使用历史 `AI_BRIDGE_REVIEWED_PLAN_V1` frozen Plan，它仍是合法 legacy contract。不要为了补齐 `## Positive completion` 或 `## Non-substitutable semantics` 而修改历史 `PLAN.md`，也不要把当前 Goal Fidelity prompt 当成扩大原 scope 的授权。只能从原 `REQUEST.md`、`## Frozen decisions`、`## Implementation scope`、`## Acceptance and regression gates` 和 `## Out of scope` 中保守解释任务；若继续执行时出现无法从这些内容安全推导的产品/科学语义，转为 `NEEDS_GPT_PLANNER` 或既有 human route。
+
 不得修改 Planner 的产品/科学语义来让测试通过。若 Plan 存在会实质改变范围、架构、外部行为或科学/产品含义且无法安全推导的歧义，把 `CURRENT.state` 设为 `NEEDS_GPT_PLANNER`，说明最小 planner question，并停止该部分实现；不要自己重写 Plan。
 
 冻结 Plan 标记为 non-substitutable 的内容不可用时，Executor 不能用更弱 proxy、fallback、toy/synthetic data、helper-only path、handmade artifact、random/untrained source、reduced scale 或较低质量 bar 继续寻求原始 PASS。只有 Plan 明确授权某个 fallback 等价、并说明等价证据时，才可把它作为原始完成路径。其他 degraded/diagnostic/partial 路径必须写入 `RESULT.md` 的 `## Deviations / blockers`，同时限制最终 claim。若缺口会改变产品或科学含义，转为 `NEEDS_GPT_PLANNER`。

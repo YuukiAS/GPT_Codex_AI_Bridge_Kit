@@ -1,5 +1,5 @@
 ---
-schema: AI_BRIDGE_REVIEWED_PLAN_V1
+schema: AI_BRIDGE_REVIEWED_PLAN_V2
 task_key: <TASK_KEY>
 decision: PLAN_FROZEN
 ---

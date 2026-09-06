@@ -23,7 +23,7 @@ Scheduled GPT 的真实执行面是 GitHub connector，不是目标机器 shell�
 3. 最后写 `automation/reviewed_handoff/tasks/<task_key>/CURRENT.json`；
 4. 修改后重新读取最终文件，自检 `state`、`review_round`、`plan_revision`、`ci_status`、limit 和 final-report requirements。
 
-任何把 `CURRENT.state` 写为 `PLAN_FROZEN` 的 transaction 都必须先重新读取刚写入的 `PLAN.md`，按当前 `automation/reviewed_handoff/templates/PLAN.md` 自检 frontmatter 和全部 required sections，尤其确认 `## Positive completion`、`## Non-substitutable semantics` 和 `## Out of scope` 存在。若 PLAN 不合法，不得写 `CURRENT=PLAN_FROZEN`；保持 task 在 GPT-owned repair/planner state，或在需要用户改变产品/科学语义时进入 human gate。不要把可修的 PLAN 结构问题直接写成 BLOCKED。
+任何把 `CURRENT.state` 写为 `PLAN_FROZEN` 的 transaction 都必须先重新读取刚写入的 `PLAN.md`，按当前 `automation/reviewed_handoff/templates/PLAN.md` 自检 frontmatter 和全部 required sections。当前新 freeze / re-freeze 必须写 `schema: AI_BRIDGE_REVIEWED_PLAN_V2`，尤其确认 `## Positive completion`、`## Non-substitutable semantics` 和 `## Out of scope` 存在；`AI_BRIDGE_REVIEWED_PLAN_V1` 只作为历史 frozen Plan 兼容格式，不能用于当前新冻结。若 PLAN 不合法，不得写 `CURRENT=PLAN_FROZEN`；保持 task 在 GPT-owned repair/planner state，或在需要用户改变产品/科学语义时进入 human gate。不要把可修的 PLAN 结构问题直接写成 BLOCKED。
 
 如果当前 task 位于 `AWAIT_HUMAN_DECISION`、`human_gate_reason=PASS`，且用户明确 `REJECT` 当前 artifact，使用机械 human decision 事务而不是写新的 Reviewer decision：用户反馈只要求按现有冻结 Plan 修复时，路由到 `REVISE`；用户反馈证明冻结 Plan 本身需要一次最小修订时，路由到 `NEEDS_GPT_PLANNER`。保留原 `REVIEW_<n>.md`、`last_review_decision=PASS`、`review_round` 和 `plan_revision` 历史；不得重置预算、不得自动生成第三轮 review、不得把 human rejection 冒充为 Reviewer `REVISE`。如果对应 review 或 plan revision budget 已用尽，保持 human gate / review-limit contract，不得无限重开。
 
@@ -43,7 +43,7 @@ Local CLI 仍用于 Codex watcher、本地调试、deterministic validation 和�
 
 读取 REQUEST、当前 PLAN、RESULT/Reviewer finding 和当前 task branch 的真实 repository 状态。只允许一次最小 Plan revision，只解决 Executor 无法从原 Plan 安全推导的实质歧义。不要因为想到更好的架构而扩大 scope。修改 `PLAN.md` 后，先按当前 PLAN 模板自检 frontmatter 和 required sections；自检通过后，才在最后的 `CURRENT.json` transaction 中设置 `plan_revision += 1`、`state=PLAN_FROZEN` 和正确 `next_action`。若已达到 planner revision limit，或需要用户改变产品/科学语义，先写 `FINAL_REPORT.md` 解释需要用户决定的具体问题与已完成工作，再在最后的 `CURRENT.json` transaction 中设置 `human_gate_reason=PLANNER_DECISION`、`state=AWAIT_HUMAN_DECISION`。不要把“需要用户决定”伪装成 BLOCKED。
 
-Plan revision 也必须重新做 semantic red-team：当前文字是否允许一个更弱、更便宜、但没有完成用户真实目标的实现 PASS？如果会，先修 `## Positive completion`、`## Non-substitutable semantics` 或 evidence/claim scope，再冻结。
+Plan revision 也必须重新做 semantic red-team：当前文字是否允许一个更弱、更便宜、但没有完成用户真实目标的实现 PASS？如果会，先修 `## Positive completion`、`## Non-substitutable semantics` 或 evidence/claim scope，再用 `AI_BRIDGE_REVIEWED_PLAN_V2` 冻结。
 
 ## WAITING_FOR_CI
 
@@ -81,6 +81,8 @@ Reviewer 必须独立读取：
 `base_commit..implementation_commit` 可能同时包含 Review 自己的 PLAN/CURRENT/RESULT 等 bookkeeping commits，因为 `base_commit` 是任务初始化时记录的 locator。不要因为这些合法 workflow 文件本身存在于 diff 就把它们当作产品实现或 regression。实现审核应聚焦冻结 Plan 定义的项目代码、配置、文档和 user-facing artifacts。相反，如果真实 diff 显示 Executor 修改了 `REQUEST.md`、`PLAN.md`、既有 `REVIEW_<n>.md`、`FINAL_REPORT.md` 或 review/plan limit 等 Planner/Reviewer authority，则这是协议违规，应阻断当前 review transaction；优先要求最小 recovery/repair，不要把可恢复 authority error 自动升级成 terminal BLOCKED。
 
 Review 的唯一目标是判断当前实现是否满足冻结 Plan 且没有造成相关 regression。先问三件事：真实 positive completion 是否被观察到；冻结的 non-substitutable semantics 是否没有被弱化；证据 scope 是否覆盖 FINAL_REPORT / RESULT 中准备声明的 claim scope。禁止仅因为“还可以更优雅”“可以再加一个 abstraction”“理论上更安全”而扩大冻结 scope。
+
+如果冻结 Plan 是合法历史 `AI_BRIDGE_REVIEWED_PLAN_V1`，不要因为缺少 V2 的两个新 H2 就要求重写历史 `PLAN.md`，也不要 retroactively 发明 Plan 没有写下的 requirement。Reviewer 仍应用 Goal Fidelity 的通用审查习惯，但只能从原 `REQUEST.md`、V1 的 `## Frozen decisions`、`## Implementation scope`、`## Acceptance and regression gates` 和 `## Out of scope` 中保守解释 positive completion、不可替代语义和证据范围；如果这些内容无法支持继续判断，使用现有 `REVISE` / `NEEDS_GPT_PLANNER` / human route，而不是 silent PASS。
 
 如果现有 evidence 也可以由 Plan 不允许的更弱实现解释，例如 smoke 代替 formal/production、synthetic 代替真实数据、mechanical validator 代替定性质量、helper 代替 production entry、local artifact 代替 user-facing/hosted output，不能 PASS。测试、CI、validator、package PASS、文件存在和没有命中 blacklist 都只是 evidence，不是语义 authority。
 

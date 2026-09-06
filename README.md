@@ -6,7 +6,7 @@
 
 这个仓库的原则是：**默认保持简单，需要什么再加什么。** 普通项目只需要机器级规则和基础交接；只有确实需要时，才启用独立复核、高风险闭环、邮件通知、Overleaf 同步或视觉复核。
 
-当前版本：`0.7.0`。
+当前版本：`0.7.1`。
 
 ## 三档 workflow
 
@@ -53,6 +53,7 @@ Review 使用 `ai-bridge reviewed-handoff ...`，Control 使用
 - `0.5.4`：更新 Visual Review 默认模型。
 - `0.6.1`：把三档 workflow 的显示名称简化为 Lite / Review / Control，同时加入 Text Review、Text Transform、受控 production plugin replay、Review watcher lifecycle/status、dirty-tree waiting、FINAL_REPORT preflight 和 notifier ownership hardening。
 - `0.7.0`：加入 Goal Fidelity / anti-degradation 约束，要求完成声明必须有原始目标的正向结果、不可替代语义没有被削弱、证据范围覆盖 claim 范围；它不新增 workflow、角色、状态、schema、runner、watcher 或默认 API/Visual/Text 成本。
+- `0.7.1`：修复 Review Plan schema evolution；新 Plan 使用 V2 Goal Fidelity contract，历史 V1 frozen Plan 无需改写即可继续验证/执行，但新的 freeze 必须使用 V2。
 
 ## 一眼看懂：我到底该装什么
 
@@ -238,7 +239,7 @@ ai-bridge reviewed-handoff watcher restart --target /path/to/project --branch <e
 
 监视器不会自行创建分支或 PR。它也不会把 Codex Executor 变成新的决策角色：Executor 只执行冻结方案并提交结果，发布仍由 watcher 在验证后完成。
 
-`PLAN_FROZEN` 只有在当前 `PLAN.md` 结构合法时才会被 watcher 视为可执行；如果 GitHub 上出现临时不合法的 workflow 状态，watcher 会拒绝启动 Executor、记录本机状态并低频重试。Planner 后续修好同一分支后，不需要用户重新启动 watcher。
+`PLAN_FROZEN` 只有在当前 `PLAN.md` 结构合法时才会被 watcher 视为可执行。0.7.1 起，新 freeze / re-freeze 必须使用 `AI_BRIDGE_REVIEWED_PLAN_V2`，历史 `AI_BRIDGE_REVIEWED_PLAN_V1` frozen Plan 按自身旧章节做兼容验证，不追溯要求补写 Goal Fidelity H2；如果 GitHub 上出现临时不合法的 workflow 状态，watcher 会拒绝启动 Executor、记录本机状态并低频重试。Planner 后续修好同一分支后，不需要用户重新启动 watcher。
 
 如果目标仓库已有未知 dirty working tree，watcher 仍会 fail closed：不启动 Executor、不 stash/reset/commit/push、不猜测这些文件属于哪个 task。不同的是 persistent watcher 会记录 `dirty_worktree_wait`、dirty paths，并低频等待；外部合法动作把工作树恢复 clean 后，同一个 watcher 会继续正常路由。
 

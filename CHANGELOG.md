@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+## 0.7.1
+
+- Bump current Review Plan artifacts to `AI_BRIDGE_REVIEWED_PLAN_V2`, the Goal
+  Fidelity Plan contract introduced by the 0.7 series.
+- Keep structurally valid `AI_BRIDGE_REVIEWED_PLAN_V1` frozen Plans compatible
+  for repository-wide validation, watcher continuation, and historical tasks
+  without mutating old task history.
+- Require every new `PLAN_REQUESTED -> PLAN_FROZEN` and
+  `NEEDS_GPT_PLANNER -> PLAN_FROZEN` transition to use V2, so current freeze
+  paths cannot bypass Goal Fidelity by writing a new V1 Plan.
+- Preserve the existing Review workflow schema, CURRENT schema, roles, state
+  graph, review/plan limits, Text Review, Visual Review, watcher publication,
+  Lite, Control, Host Policy, and Project State Bridge boundaries; no migration
+  state, role, watcher, ledger, or consumer rewrite was added.
+
 ## 0.7.0
 
 - Add Goal Fidelity / anti-degradation guidance across Lite, Review, and

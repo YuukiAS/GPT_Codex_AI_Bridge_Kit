@@ -17,6 +17,8 @@ GPT Planner
 
 GPT 异步唤醒使用 ChatGPT「安排任务」定时检查 GitHub 上的 `CURRENT.json`，不需要 OpenAI API。Codex 异步唤醒由机器上的轻量 watcher 完成：它只处理 `PLAN_FROZEN` 和 `REVISE`，同步当前已授权 branch 后启动一次新的 `codex exec`。Reviewer/Planner 和 Executor 仍然通过 GitHub tracked state 通信，不直接调用彼此。
 
+当前新建或重新冻结的 `PLAN.md` 必须使用 `AI_BRIDGE_REVIEWED_PLAN_V2`，也就是包含 Goal Fidelity 章节的 Plan contract。历史 `AI_BRIDGE_REVIEWED_PLAN_V1` frozen Plan 仍按自身旧章节兼容验证和继续执行，不要求回写 `## Positive completion` 或 `## Non-substitutable semantics`；但新的 `PLAN_FROZEN` transition 不能再使用 V1。
+
 机器上长期运行 watcher：
 
 ```bash

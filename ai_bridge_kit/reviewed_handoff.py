@@ -17,6 +17,8 @@ from . import visual_review
 
 SCHEMA_NAME = "AI_BRIDGE_REVIEWED_HANDOFF_SCHEMA_V1"
 CURRENT_SCHEMA = "AI_BRIDGE_REVIEWED_CURRENT_V1"
+CURRENT_PLAN_SCHEMA = "AI_BRIDGE_REVIEWED_PLAN_V2"
+LEGACY_PLAN_SCHEMA = "AI_BRIDGE_REVIEWED_PLAN_V1"
 REVIEW_SCHEMA = "AI_BRIDGE_REVIEWED_REVIEW_V1"
 TASK_KEY_RE = re.compile(r"^\d+_[A-Za-z0-9]+(?:_[A-Za-z0-9]+){0,2}$")
 
@@ -73,6 +75,20 @@ FINAL_REPORT_HEADINGS = [
     "## Example usage",
     "## Regression and remaining limitations",
     "## Technical appendix",
+]
+LEGACY_PLAN_HEADINGS = [
+    "## Frozen decisions",
+    "## Implementation scope",
+    "## Acceptance and regression gates",
+    "## Out of scope",
+]
+CURRENT_PLAN_HEADINGS = [
+    "## Frozen decisions",
+    "## Positive completion",
+    "## Non-substitutable semantics",
+    "## Implementation scope",
+    "## Acceptance and regression gates",
+    "## Out of scope",
 ]
 LEGACY_FINAL_REPORT_SCHEMA = "AI_BRIDGE_REVIEWED_FINAL_REPORT_V1"
 LEGACY_FINAL_REPORT_DECISIONS = {
@@ -329,24 +345,45 @@ def validate_plan_file(path: Path, task_key: str) -> list[str]:
     errors: list[str] = []
     if parse_error:
         return [f"PLAN.md: {parse_error}"]
-    if data.get("schema") != "AI_BRIDGE_REVIEWED_PLAN_V1":
-        errors.append("PLAN.md schema mismatch")
+    schema = data.get("schema")
+    if schema not in {LEGACY_PLAN_SCHEMA, CURRENT_PLAN_SCHEMA}:
+        errors.append(
+            f"PLAN.md schema must be {CURRENT_PLAN_SCHEMA} or legacy {LEGACY_PLAN_SCHEMA}"
+        )
     if data.get("task_key") != task_key:
         errors.append("PLAN.md task_key mismatch")
     if data.get("decision") != "PLAN_FROZEN":
         errors.append("PLAN.md decision must be PLAN_FROZEN")
     text = read_text(path)
-    for heading in [
-        "## Frozen decisions",
-        "## Positive completion",
-        "## Non-substitutable semantics",
-        "## Implementation scope",
-        "## Acceptance and regression gates",
-        "## Out of scope",
-    ]:
+    headings = CURRENT_PLAN_HEADINGS if schema == CURRENT_PLAN_SCHEMA else LEGACY_PLAN_HEADINGS
+    for heading in headings:
         if heading not in text:
             errors.append(f"PLAN.md missing required section: {heading}")
     return errors
+
+
+def validate_current_plan_freeze_file(path: Path, task_key: str) -> list[str]:
+    errors = validate_plan_file(path, task_key)
+    data, parse_error = parse_frontmatter(path)
+    if parse_error:
+        return errors
+    schema = data.get("schema")
+    if schema != CURRENT_PLAN_SCHEMA:
+        errors.append(
+            f"PLAN_FROZEN current freeze requires {CURRENT_PLAN_SCHEMA}; found {schema or 'missing schema'}"
+        )
+    return errors
+
+
+def plan_compatibility_warning(path: Path) -> str | None:
+    if not path.exists():
+        return None
+    data, parse_error = parse_frontmatter(path)
+    if parse_error:
+        return None
+    if data.get("schema") == LEGACY_PLAN_SCHEMA:
+        return "legacy PLAN V1 accepted; Goal Fidelity sections are not retroactively required"
+    return None
 
 
 def validate_result_file(path: Path, task_key: str, current: dict[str, Any]) -> list[str]:
@@ -928,6 +965,9 @@ def validate_reviewed_handoff(target: Path) -> tuple[list[str], int]:
             warning = final_report_compatibility_warning(result_root(target, path.name) / "FINAL_REPORT.md", path.name)
             if warning:
                 warnings.append(f"{path.name}: {warning}")
+            plan_warning = plan_compatibility_warning(path / "PLAN.md")
+            if plan_warning and not validate_plan_file(path / "PLAN.md", path.name):
+                warnings.append(f"{path.name}: {plan_warning}")
     if errors:
         lines.extend(f"ERROR {item}" for item in errors)
         return lines, 1
@@ -1043,7 +1083,7 @@ def apply_transition(
         plan_path = task_root(target, task_key) / "PLAN.md"
         if not plan_path.exists():
             raise ValueError("PLAN_FROZEN requires PLAN.md")
-        plan_errors = validate_plan_file(plan_path, task_key)
+        plan_errors = validate_current_plan_freeze_file(plan_path, task_key)
         if plan_errors:
             raise ValueError("; ".join(plan_errors))
     if expected_state == "NEEDS_GPT_PLANNER" and next_state == "PLAN_FROZEN":
