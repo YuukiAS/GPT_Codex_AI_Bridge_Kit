@@ -1,0 +1,17 @@
+{
+  "name": "ai-bridge-phase0-fixtures",
+  "plugins": [
+    {
+      "name": "visualize",
+      "source": {
+        "source": "local",
+        "path": "./docs/design/fixtures/candidate-plugin-replay/plugins/visualize"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_USE"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

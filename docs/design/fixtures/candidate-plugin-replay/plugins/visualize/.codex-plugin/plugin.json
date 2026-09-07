@@ -1,0 +1,20 @@
+{
+  "name": "visualize",
+  "version": "0.8.0-phase0.1",
+  "description": "Bridge Kit Phase 0 candidate plugin replay probe fixture.",
+  "author": {
+    "name": "AI Bridge Kit"
+  },
+  "license": "UNLICENSED",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Phase 0 Candidate Visualize Fixture",
+    "shortDescription": "Probe candidate plugin runtime selection",
+    "longDescription": "A harmless local fixture used only to prove candidate plugin runtime selection for Bridge Kit Phase 0.",
+    "developerName": "AI Bridge Kit",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Read"
+    ]
+  }
+}
