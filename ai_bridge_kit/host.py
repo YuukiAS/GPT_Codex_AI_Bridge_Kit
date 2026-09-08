@@ -564,9 +564,28 @@ def validate_host_policy(codex_home: Path, cwd: Path | None = None) -> tuple[Hos
         "INPUT.txt",
         "--dry-run",
     ]
+    candidate_replay_command = [
+        "ai-bridge",
+        "candidate-plugin-replay",
+        "--target",
+        str(cwd or Path.cwd()),
+        "--plugin",
+        "sites",
+        "--candidate-commit",
+        "HEAD",
+        "--task",
+        "TASK.md",
+        "--input",
+        "INPUT.txt",
+    ]
     checks: list[tuple[list[str], str, str, bool]] = [
         (replay_command, "allow", "direct", True),
+        (candidate_replay_command, "allow", "direct", True),
         (["codex", "exec", "-C", "/tmp", "-"], "prompt", "effective", False),
+        (["codex", "plugin", "add", "sites@openai-bundled"], "prompt", "effective", False),
+        (["codex", "plugin", "remove", "sites@openai-bundled"], "prompt", "effective", False),
+        (["codex", "plugin", "marketplace", "add", "/tmp/marketplace"], "prompt", "effective", False),
+        (["codex", "plugin", "marketplace", "remove", "test-marketplace"], "prompt", "effective", False),
         (["git", "fetch", "origin", "main"], "allow", "direct", False),
         (["git", "pull", "--ff-only", "origin", "main"], "allow", "direct", False),
         (["git", "pull", "--rebase", "origin", "main"], "prompt", "effective", False),

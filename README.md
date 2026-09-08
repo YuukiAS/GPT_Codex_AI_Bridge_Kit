@@ -39,6 +39,7 @@ Review 使用 `ai-bridge reviewed-handoff ...`，Control 使用
 | Text Review / Text Transform | `0.6.1` | 私有 Markdown/plain-text 的加密复核与转换 transport |
 | Production Plugin Replay | `0.6.1` | 通过 Host Policy 预授权受控的本机真实插件回归入口 |
 | Goal Fidelity | `0.7.0` | Lite / Review / Control 防止把降级替代、窄证据或纯负面检查包装成原始目标完成 |
+| Candidate Plugin Replay | `0.8.0 candidate` | 把目标 Git commit 中的候选插件临时装入当前 Codex identity，并通过 fresh child runtime 做真实消费证明 |
 
 本项目采用 `0.x` 迭代方式。每个 `0.x` 小版本通常代表一项可独立使用的能力进入稳定工作流；后面的补丁版本主要用于安全性、兼容性和默认行为修正。这不是严格的 Semantic Versioning 承诺，而是当前阶段的版本阅读方式。
 
@@ -54,6 +55,7 @@ Review 使用 `ai-bridge reviewed-handoff ...`，Control 使用
 - `0.6.1`：把三档 workflow 的显示名称简化为 Lite / Review / Control，同时加入 Text Review、Text Transform、受控 production plugin replay、Review watcher lifecycle/status、dirty-tree waiting、FINAL_REPORT preflight 和 notifier ownership hardening。
 - `0.7.0`：加入 Goal Fidelity / anti-degradation 约束，要求完成声明必须有原始目标的正向结果、不可替代语义没有被削弱、证据范围覆盖 claim 范围；它不新增 workflow、角色、状态、schema、runner、watcher 或默认 API/Visual/Text 成本。
 - `0.7.1`：修复 Review Plan schema evolution；新 Plan 使用 V2 Goal Fidelity contract，历史 V1 frozen Plan 无需改写即可继续验证/执行，但新的 freeze 必须使用 V2。
+- `0.8.0 candidate`：新增 `ai-bridge candidate-plugin-replay`，用于在发布前把候选插件 commit 通过真实 Codex plugin runtime 做黑盒 replay；当前实现阶段不发布 0.8.0，也不把第一真实 consumer proof 冒充为 Bridge release closure。
 
 ## 一眼看懂：我到底该装什么
 
@@ -118,6 +120,7 @@ $CODEX_HOME/rules/ai-bridge-global.rules
 - 普通局部实现由 Codex 自行判断，真正会改变架构、范围、部署、Git 分支策略或科研语义的歧义才询问用户；
 - 当前 `main` 分支上的安全 `fetch`、快进 `pull`、正常 `add/commit/push origin main` 尽量减少重复授权；
 - 已明确授权的本机 production plugin repair/replay 可走受控入口 `ai-bridge plugin-replay`，让 fresh Codex runtime 在 write-isolated replay workspace 中测试已安装插件；
+- 已明确授权的本机 candidate plugin replay 可走 `ai-bridge candidate-plugin-replay`，从目标 Git commit 的 committed `.agents/plugins/marketplace.json` 解析唯一 local candidate plugin，临时安装 Bridge-owned candidate identity，并证明 fresh child runtime 实际消费了 installed candidate path；
 - `force push`、改 remote、删除分支、`reset --hard`、`git clean` 等危险操作仍然不能因为“自动化”而放开；
 - 如果下一步明确属于外部 GPT Planner/Reviewer/Critic，等待 GPT 不应被误判为任务失败。
 
@@ -136,6 +139,30 @@ replay 网络关闭，且使用当前 Codex identity，不允许通过该入口�
 用户可读文件；wrapper 会如实记录 read-scope diagnostic，但不把它包装成 strict
 read isolation。Host Policy 不会因此放开 raw `codex exec`、裸 shell/python、任意
 私人路径作为 replay input、整个 consumer repo 写入、外部上传、危险 Git、发布或部署。
+
+`ai-bridge candidate-plugin-replay` 是 `plugin-replay` 的 sibling，不是对旧命令扩权。
+它要求 caller 指定 target Git repo、插件名、candidate commit、task file 和显式 input
+file：
+
+```bash
+ai-bridge candidate-plugin-replay \
+  --target /path/to/project \
+  --plugin <plugin-name> \
+  --candidate-commit <sha> \
+  --task <task-file> \
+  --input <explicit-file>
+```
+
+候选插件只能来自该 commit 的 `.agents/plugins/marketplace.json` 中唯一同名 local
+source entry；dirty/untracked working tree 不参与候选内容。wrapper 会在当前
+`CODEX_HOME` 下创建 Bridge-owned staging 和 temporary candidate marketplace identity，
+通过 process-local marketplace config 执行 `codex plugin add`，验证 staged/installed
+tree digest 一致，再用 `codex exec --ignore-user-config` 加 Bridge-owned candidate
+selection config 运行 fresh child。成功证据必须包含 installed candidate path 的真实
+runtime consumption；`plugin add` 成功、`plugin list` enabled 或 argv 看起来正确都不
+单独算 PASS。cleanup 只删除本次 Bridge-owned candidate plugin 和 staging directory，
+不会 persistent register marketplace、不会 snapshot/restore 全局 Codex config、不会
+覆盖或禁用用户已有 production plugin。
 
 ---
 
@@ -717,6 +744,7 @@ ai-bridge host validate
 
 # 本机真实插件回归
 ai-bridge plugin-replay --target /path/to/project --plugin <plugin> --task <task-file> --input <explicit-file>
+ai-bridge candidate-plugin-replay --target /path/to/project --plugin <plugin> --candidate-commit <sha> --task <task-file> --input <explicit-file>
 
 # 普通项目交接
 ai-bridge init --target /path/to/project

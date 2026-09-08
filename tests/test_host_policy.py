@@ -138,6 +138,7 @@ memories = false
             self.assertEqual(rules_path.read_text(encoding="utf-8"), desired_rules_text())
             self.assertIn("host_executable(", rules_path.read_text(encoding="utf-8"))
             self.assertIn('pattern = ["ai-bridge", "plugin-replay"]', rules_path.read_text(encoding="utf-8"))
+            self.assertIn('pattern = ["ai-bridge", "candidate-plugin-replay"]', rules_path.read_text(encoding="utf-8"))
             _, actions = install_host_policy(codex_home)
             self.assertEqual(actions, ["No changes needed; host policy is already configured."])
 
@@ -219,7 +220,12 @@ memories = false
             self.assertEqual(exit_code, 0, "\n".join(lines))
             self.assertTrue(any("Trusted ai-bridge executable:" in line for line in lines))
             self.assertTrue(any("ai-bridge plugin-replay" in line and "=> allow" in line for line in lines))
+            self.assertTrue(any("ai-bridge candidate-plugin-replay" in line and "=> allow" in line for line in lines))
             self.assertTrue(any("codex exec -C /tmp - => prompt" in line for line in lines))
+            self.assertTrue(any("codex plugin add sites@openai-bundled => prompt" in line for line in lines))
+            self.assertTrue(any("codex plugin remove sites@openai-bundled => prompt" in line for line in lines))
+            self.assertTrue(any("codex plugin marketplace add /tmp/marketplace => prompt" in line for line in lines))
+            self.assertTrue(any("codex plugin marketplace remove test-marketplace => prompt" in line for line in lines))
             self.assertTrue(any("git fetch origin main => allow" in line for line in lines))
             self.assertTrue(any("git pull --ff-only origin main => allow" in line for line in lines))
             self.assertTrue(any("git pull --rebase origin main => prompt" in line for line in lines))
@@ -261,7 +267,12 @@ memories = false
             rules_path = codex_home / RULES_RELATIVE_PATH
             expectations = {
                 ("ai-bridge", "plugin-replay", "--target", str(Path.cwd()), "--plugin", "sites", "--task", "TASK.md", "--input", "INPUT.txt", "--dry-run"): "allow",
+                ("ai-bridge", "candidate-plugin-replay", "--target", str(Path.cwd()), "--plugin", "sites", "--candidate-commit", "HEAD", "--task", "TASK.md", "--input", "INPUT.txt"): "allow",
                 ("codex", "exec", "-C", "/tmp", "-"): "prompt",
+                ("codex", "plugin", "add", "sites@openai-bundled"): "prompt",
+                ("codex", "plugin", "remove", "sites@openai-bundled"): "prompt",
+                ("codex", "plugin", "marketplace", "add", "/tmp/marketplace"): "prompt",
+                ("codex", "plugin", "marketplace", "remove", "test-marketplace"): "prompt",
                 ("git", "fetch", "origin", "main"): "allow",
                 ("git", "pull", "--ff-only", "origin", "main"): "allow",
                 ("git", "pull", "--rebase", "origin", "main"): "prompt",
@@ -322,6 +333,14 @@ memories = false
             decision, raw = _execpolicy_decision(
                 rules_path,
                 ["./ai-bridge", "plugin-replay", "--plugin", "sites"],
+                resolve_host_executables=True,
+            )
+
+            self.assertEqual(_effective_execpolicy_decision(decision), "prompt", raw)
+
+            decision, raw = _execpolicy_decision(
+                rules_path,
+                ["./ai-bridge", "candidate-plugin-replay", "--plugin", "sites"],
                 resolve_host_executables=True,
             )
 

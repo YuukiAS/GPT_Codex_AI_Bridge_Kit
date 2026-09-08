@@ -10,6 +10,12 @@ prefix_rule(
 )
 
 prefix_rule(
+    pattern = ["ai-bridge", "candidate-plugin-replay"],
+    decision = "allow",
+    justification = "The user permanently authorizes Bridge Kit's bounded candidate plugin replay wrapper across this CODEX_HOME; the wrapper must source exactly one local candidate plugin from a committed marketplace manifest, install only a Bridge-owned temporary candidate identity, prove installed-path runtime consumption in a fresh child, and clean only Bridge-owned candidate resources without broad raw Codex plugin or exec authorization.",
+)
+
+prefix_rule(
     pattern = ["git", "fetch", "origin", "main"],
     decision = "allow",
     justification = "The user permanently authorizes safe synchronization reads for origin/main; fetch updates local Git metadata but does not change branch topology or working tree contents.",

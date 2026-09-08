@@ -71,6 +71,26 @@ exercise an installed production plugin, use `ai-bridge plugin-replay`.
   branch/remote mutation outside the dedicated Review branch policy,
   release, deployment, or product/scientific scope expansion authority.
 
+When the user or a frozen repository workflow has authorized local candidate
+plugin replay, and the task genuinely requires testing a not-yet-released
+candidate plugin Git commit through the installed Codex runtime, use
+`ai-bridge candidate-plugin-replay`.
+
+- Candidate source must come from a real target-repository commit and exactly
+  one committed `.agents/plugins/marketplace.json` local-source entry selected
+  by `--plugin`; do not pass arbitrary plugin paths or dirty working-tree
+  candidate content.
+- The wrapper may temporarily install a Bridge-owned candidate plugin identity
+  in the current Codex identity, prove installed candidate path/tree digest and
+  actual fresh-child runtime consumption, then remove only that owned candidate
+  identity and staging directory.
+- Candidate replay uses the current Codex identity; it is not authority to
+  select another `CODEX_HOME`, copy auth/config, persistently disable or
+  overwrite the user's production plugin, register persistent marketplaces, or
+  snapshot/restore the whole Codex environment.
+- This authorization does not grant broad raw `codex plugin add/remove`,
+  `codex plugin marketplace add/remove`, or raw `codex exec` authorization.
+
 ## Remote SSH / Production Tunnel Safety
 
 Codex Desktop Remote SSH can generate sustained multi-MB/s transport traffic
