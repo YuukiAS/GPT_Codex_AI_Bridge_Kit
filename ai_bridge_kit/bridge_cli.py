@@ -33,10 +33,6 @@ def main(argv: list[str] | None = None) -> int:
         from . import plugin_replay
 
         return plugin_replay.main(args[1:])
-    if args and args[0] == "candidate-plugin-replay":
-        from . import candidate_plugin_replay
-
-        return candidate_plugin_replay.main(args[1:])
 
     from .cli import main as legacy_main
 

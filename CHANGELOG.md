@@ -2,18 +2,6 @@
 
 ## Unreleased
 
-- Add B0-only `ai-bridge candidate-plugin-replay` as a sibling of
-  `plugin-replay`: it resolves exactly one local candidate plugin from a target
-  commit's committed `.agents/plugins/marketplace.json`, stages a Bridge-owned
-  local marketplace, installs a temporary candidate plugin identity through
-  process-local marketplace config, verifies staged/installed tree digests, runs
-  a fresh `codex exec --ignore-user-config` child, requires installed-path
-  runtime-consumption evidence, and performs owned cleanup.
-- Keep the existing `ai-bridge plugin-replay` public contract unchanged while
-  reusing its explicit file staging and child sandbox/write-isolation helpers.
-- Record the 0.8.0 candidate capability without bumping package version or
-  claiming final 0.8.0 release closure before the first real consumer proof.
-
 ## 0.7.1
 
 - Bump current Review Plan artifacts to `AI_BRIDGE_REVIEWED_PLAN_V2`, the Goal
