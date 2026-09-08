@@ -71,6 +71,25 @@ exercise an installed production plugin, use `ai-bridge plugin-replay`.
   branch/remote mutation outside the dedicated Review branch policy,
   release, deployment, or product/scientific scope expansion authority.
 
+## HPC / Slurm Read-Only Inspection
+
+Host Policy may preauthorize only direct, common Slurm inspection commands:
+`squeue`, `sinfo`, `sacct`, `sstat`, `sprio`, plus `scontrol show ...` and
+`scontrol ping`.
+
+- Treat these as command-shape allow rules for read-only status inspection, not
+  as general HPC trust.
+- Do not assume Slurm resource allocation or mutation is authorized. `sbatch`,
+  `srun`, `salloc`, `scancel`, mutating `scontrol` subcommands, and
+  `sacctmgr modify` / add / delete style operations remain approval-gated.
+- Do not route Slurm work through `bash`, `sh`, `zsh`, `env`, `xargs`, Python,
+  or generic scripts to inherit read-only trust. Shell composition and pipelines
+  remain outside the Slurm inspection allowlist.
+- Dynamic safety conditions such as job ownership, clean worktrees, task-owned
+  paths, or whether a pipeline eventually mutates state cannot be enforced by
+  prefix rules. Use a bounded wrapper with real checks or leave the operation on
+  the approval path.
+
 ## Remote SSH / Production Tunnel Safety
 
 Codex Desktop Remote SSH can generate sustained multi-MB/s transport traffic

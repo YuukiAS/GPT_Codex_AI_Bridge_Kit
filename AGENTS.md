@@ -88,6 +88,14 @@ git push origin main
 
 这些规则用于跳过当前已选 `main` 分支安全同步、task-owned staging、普通 commit 和默认 `origin/main` push 的 manual/auto review。其他长期分支如果也需要低打扰 push，应由项目规则或用户明确授权补充，不得靠泛化 `git push origin ...` 猜测。`git pull --rebase ...`、`git pull ... --autostash`、`git push -u origin ...`、`git push --set-upstream origin ...`、`git push origin <new-branch>`、`git push origin --delete ...`、force push、创建或改变 upstream、创建新远端分支等不是普通同步或普通 push，必须先问用户。它们也不是对危险 Git 行为的授权；危险操作仍受 Host AGENTS 行为规则禁止。
 
+0.7.2 起，Host Policy 还维护一个很窄的 Slurm inspection allowlist：直接
+`squeue`、`sinfo`、`sacct`、`sstat`、`sprio`，以及 `scontrol show ...` /
+`scontrol ping`。这只是 command-shape read-only inspection 授权，不是 HPC
+通用信任。`sbatch`、`srun`、`salloc`、`scancel`、mutating `scontrol`、
+`sacctmgr modify` / add / delete，以及 `bash -lc ...`、`xargs`、Python 或脚本包装
+的 Slurm 命令仍必须走审批路径。不要用 prose 假装 prefix rule 能验证 job ownership、
+pipeline 最终是否 mutation、worktree 是否 clean 或文件是否 task-owned；需要这些动态条件时必须使用 bounded wrapper 或继续 prompt。
+
 ### Production Plugin Replay
 
 Host Policy 可以全局预授权一个受控的真实插件回归入口：

@@ -564,8 +564,35 @@ def validate_host_policy(codex_home: Path, cwd: Path | None = None) -> tuple[Hos
         "INPUT.txt",
         "--dry-run",
     ]
+    slurm_read_only_checks = [
+        ["squeue", "-j", "156911", "-o", "%.18i %.9P %.30j %.8u %.2t %.12M %.12l %.20R %.30b"],
+        ["squeue", "-u", "testuser", "-h"],
+        ["sinfo", "-h"],
+        ["sacct", "-j", "156911"],
+        ["sstat", "-j", "156911.batch"],
+        ["sprio", "-j", "156911"],
+        ["scontrol", "show", "job", "156911"],
+        ["scontrol", "show", "partition"],
+        ["scontrol", "ping"],
+    ]
+    slurm_gated_checks = [
+        ["sbatch", "job.sh"],
+        ["srun", "--pty", "bash"],
+        ["salloc", "-t", "00:10:00"],
+        ["scancel", "156911"],
+        ["scontrol", "update", "JobId=156911", "TimeLimit=30"],
+        ["scontrol", "hold", "156911"],
+        ["scontrol", "release", "156911"],
+        ["scontrol", "requeue", "156911"],
+        ["scontrol", "suspend", "156911"],
+        ["scontrol", "resume", "156911"],
+        ["sacctmgr", "modify", "user", "name=test", "set", "Fairshare=2"],
+        ["bash", "-lc", "squeue -h | xargs scancel"],
+    ]
     checks: list[tuple[list[str], str, str, bool]] = [
         (replay_command, "allow", "direct", True),
+        *[(command, "allow", "direct", False) for command in slurm_read_only_checks],
+        *[(command, "prompt", "effective", False) for command in slurm_gated_checks],
         (["codex", "exec", "-C", "/tmp", "-"], "prompt", "effective", False),
         (["git", "fetch", "origin", "main"], "allow", "direct", False),
         (["git", "pull", "--ff-only", "origin", "main"], "allow", "direct", False),

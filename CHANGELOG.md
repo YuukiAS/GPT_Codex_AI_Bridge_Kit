@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## 0.7.2
+
+- Extend Host Policy execpolicy rules for direct read-only Slurm inspection:
+  `squeue`, `sinfo`, `sacct`, `sstat`, `sprio`, `scontrol show ...`, and
+  `scontrol ping` no longer require repeated approval on configured hosts.
+- Keep Slurm resource allocation, job mutation, scheduler mutation, mutating
+  `scontrol`, `sacctmgr modify`, and shell-composed commands on the effective
+  approval path, without adding broad shell, Python, script, or HPC allowlists.
+- Extend `ai-bridge host validate` and real Codex execpolicy regression tests
+  to prove the new positive and negative Slurm decisions through generated
+  installed rules rather than Starlark text inspection alone.
+
 ## 0.7.1
 
 - Bump current Review Plan artifacts to `AI_BRIDGE_REVIEWED_PLAN_V2`, the Goal

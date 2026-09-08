@@ -10,6 +10,18 @@ prefix_rule(
 )
 
 prefix_rule(
+    pattern = [["squeue", "sinfo", "sacct", "sstat", "sprio"]],
+    decision = "allow",
+    justification = "The user permanently authorizes direct read-only Slurm inspection commands for queue, partition, accounting, step-statistics, and priority status; this does not authorize resource allocation, job mutation, scheduler mutation, shell composition, or generic script execution.",
+)
+
+prefix_rule(
+    pattern = ["scontrol", ["show", "ping"]],
+    decision = "allow",
+    justification = "The user permanently authorizes direct read-only Slurm scontrol inspection and controller reachability checks while leaving mutating scontrol subcommands on the approval path.",
+)
+
+prefix_rule(
     pattern = ["git", "fetch", "origin", "main"],
     decision = "allow",
     justification = "The user permanently authorizes safe synchronization reads for origin/main; fetch updates local Git metadata but does not change branch topology or working tree contents.",

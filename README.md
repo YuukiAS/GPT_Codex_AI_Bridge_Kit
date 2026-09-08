@@ -6,7 +6,7 @@
 
 这个仓库的原则是：**默认保持简单，需要什么再加什么。** 普通项目只需要机器级规则和基础交接；只有确实需要时，才启用独立复核、高风险闭环、邮件通知、Overleaf 同步或视觉复核。
 
-当前版本：`0.7.1`。
+当前版本：`0.7.2`。
 
 ## 三档 workflow
 
@@ -54,6 +54,7 @@ Review 使用 `ai-bridge reviewed-handoff ...`，Control 使用
 - `0.6.1`：把三档 workflow 的显示名称简化为 Lite / Review / Control，同时加入 Text Review、Text Transform、受控 production plugin replay、Review watcher lifecycle/status、dirty-tree waiting、FINAL_REPORT preflight 和 notifier ownership hardening。
 - `0.7.0`：加入 Goal Fidelity / anti-degradation 约束，要求完成声明必须有原始目标的正向结果、不可替代语义没有被削弱、证据范围覆盖 claim 范围；它不新增 workflow、角色、状态、schema、runner、watcher 或默认 API/Visual/Text 成本。
 - `0.7.1`：修复 Review Plan schema evolution；新 Plan 使用 V2 Goal Fidelity contract，历史 V1 frozen Plan 无需改写即可继续验证/执行，但新的 freeze 必须使用 V2。
+- `0.7.2`：修复 Host Policy 对常见 Slurm 只读 inspection 的误拒绝；直接 `squeue`、`sinfo`、`sacct`、`sstat`、`sprio`、`scontrol show ...` 和 `scontrol ping` 可不再重复审批，但 `sbatch`、`srun`、`salloc`、`scancel`、mutating `scontrol`、`sacctmgr modify` 和 shell pipeline 仍走审批路径。
 
 ## 一眼看懂：我到底该装什么
 
@@ -117,8 +118,10 @@ $CODEX_HOME/rules/ai-bridge-global.rules
 - 用户可见的进度、计划、测试结果和完成报告默认使用自然中文；
 - 普通局部实现由 Codex 自行判断，真正会改变架构、范围、部署、Git 分支策略或科研语义的歧义才询问用户；
 - 当前 `main` 分支上的安全 `fetch`、快进 `pull`、正常 `add/commit/push origin main` 尽量减少重复授权；
+- 常见 Slurm 只读查询如 `squeue`、`sinfo`、`sacct`、`sstat`、`sprio`、`scontrol show ...` 和 `scontrol ping` 尽量减少重复授权；
 - 已明确授权的本机 production plugin repair/replay 可走受控入口 `ai-bridge plugin-replay`，让 fresh Codex runtime 在 write-isolated replay workspace 中测试已安装插件；
 - `force push`、改 remote、删除分支、`reset --hard`、`git clean` 等危险操作仍然不能因为“自动化”而放开；
+- Slurm 的资源申请、任务状态修改、调度器修改和 shell 组合命令仍然不能因为包含只读查询而放开；
 - 如果下一步明确属于外部 GPT Planner/Reviewer/Critic，等待 GPT 不应被误判为任务失败。
 
 Host Policy 会尽量非破坏式修改已有配置，并在需要时创建备份。

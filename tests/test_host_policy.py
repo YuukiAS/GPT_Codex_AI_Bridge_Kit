@@ -219,6 +219,27 @@ memories = false
             self.assertEqual(exit_code, 0, "\n".join(lines))
             self.assertTrue(any("Trusted ai-bridge executable:" in line for line in lines))
             self.assertTrue(any("ai-bridge plugin-replay" in line and "=> allow" in line for line in lines))
+            self.assertTrue(any("squeue -j 156911 -o %.18i %.9P %.30j %.8u %.2t %.12M %.12l %.20R %.30b => allow" in line for line in lines))
+            self.assertTrue(any("squeue -u testuser -h => allow" in line for line in lines))
+            self.assertTrue(any("sinfo -h => allow" in line for line in lines))
+            self.assertTrue(any("sacct -j 156911 => allow" in line for line in lines))
+            self.assertTrue(any("sstat -j 156911.batch => allow" in line for line in lines))
+            self.assertTrue(any("sprio -j 156911 => allow" in line for line in lines))
+            self.assertTrue(any("scontrol show job 156911 => allow" in line for line in lines))
+            self.assertTrue(any("scontrol show partition => allow" in line for line in lines))
+            self.assertTrue(any("scontrol ping => allow" in line for line in lines))
+            self.assertTrue(any("sbatch job.sh => prompt" in line for line in lines))
+            self.assertTrue(any("srun --pty bash => prompt" in line for line in lines))
+            self.assertTrue(any("salloc -t 00:10:00 => prompt" in line for line in lines))
+            self.assertTrue(any("scancel 156911 => prompt" in line for line in lines))
+            self.assertTrue(any("scontrol update JobId=156911 TimeLimit=30 => prompt" in line for line in lines))
+            self.assertTrue(any("scontrol hold 156911 => prompt" in line for line in lines))
+            self.assertTrue(any("scontrol release 156911 => prompt" in line for line in lines))
+            self.assertTrue(any("scontrol requeue 156911 => prompt" in line for line in lines))
+            self.assertTrue(any("scontrol suspend 156911 => prompt" in line for line in lines))
+            self.assertTrue(any("scontrol resume 156911 => prompt" in line for line in lines))
+            self.assertTrue(any("sacctmgr modify user name=test set Fairshare=2 => prompt" in line for line in lines))
+            self.assertTrue(any("bash -lc squeue -h | xargs scancel => prompt" in line for line in lines))
             self.assertTrue(any("codex exec -C /tmp - => prompt" in line for line in lines))
             self.assertTrue(any("git fetch origin main => allow" in line for line in lines))
             self.assertTrue(any("git pull --ff-only origin main => allow" in line for line in lines))
@@ -261,6 +282,27 @@ memories = false
             rules_path = codex_home / RULES_RELATIVE_PATH
             expectations = {
                 ("ai-bridge", "plugin-replay", "--target", str(Path.cwd()), "--plugin", "sites", "--task", "TASK.md", "--input", "INPUT.txt", "--dry-run"): "allow",
+                ("squeue", "-j", "156911", "-o", "%.18i %.9P %.30j %.8u %.2t %.12M %.12l %.20R %.30b"): "allow",
+                ("squeue", "-u", "testuser", "-h"): "allow",
+                ("sinfo", "-h"): "allow",
+                ("sacct", "-j", "156911"): "allow",
+                ("sstat", "-j", "156911.batch"): "allow",
+                ("sprio", "-j", "156911"): "allow",
+                ("scontrol", "show", "job", "156911"): "allow",
+                ("scontrol", "show", "partition"): "allow",
+                ("scontrol", "ping"): "allow",
+                ("sbatch", "job.sh"): "prompt",
+                ("srun", "--pty", "bash"): "prompt",
+                ("salloc", "-t", "00:10:00"): "prompt",
+                ("scancel", "156911"): "prompt",
+                ("scontrol", "update", "JobId=156911", "TimeLimit=30"): "prompt",
+                ("scontrol", "hold", "156911"): "prompt",
+                ("scontrol", "release", "156911"): "prompt",
+                ("scontrol", "requeue", "156911"): "prompt",
+                ("scontrol", "suspend", "156911"): "prompt",
+                ("scontrol", "resume", "156911"): "prompt",
+                ("sacctmgr", "modify", "user", "name=test", "set", "Fairshare=2"): "prompt",
+                ("bash", "-lc", "squeue -h | xargs scancel"): "prompt",
                 ("codex", "exec", "-C", "/tmp", "-"): "prompt",
                 ("git", "fetch", "origin", "main"): "allow",
                 ("git", "pull", "--ff-only", "origin", "main"): "allow",
