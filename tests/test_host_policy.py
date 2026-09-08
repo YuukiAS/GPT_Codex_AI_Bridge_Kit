@@ -138,6 +138,9 @@ memories = false
             self.assertEqual(rules_path.read_text(encoding="utf-8"), desired_rules_text())
             self.assertIn("host_executable(", rules_path.read_text(encoding="utf-8"))
             self.assertIn('pattern = ["ai-bridge", "plugin-replay"]', rules_path.read_text(encoding="utf-8"))
+            self.assertIn('pattern = ["ps"]', rules_path.read_text(encoding="utf-8"))
+            self.assertIn('pattern = ["git", "fetch", "--all", "--prune"]', rules_path.read_text(encoding="utf-8"))
+            self.assertIn('pattern = ["tmux", ["ls", "list-sessions", "has-session"]]', rules_path.read_text(encoding="utf-8"))
             _, actions = install_host_policy(codex_home)
             self.assertEqual(actions, ["No changes needed; host policy is already configured."])
 
@@ -240,8 +243,30 @@ memories = false
             self.assertTrue(any("scontrol resume 156911 => prompt" in line for line in lines))
             self.assertTrue(any("sacctmgr modify user name=test set Fairshare=2 => prompt" in line for line in lines))
             self.assertTrue(any("bash -lc squeue -h | xargs scancel => prompt" in line for line in lines))
+            self.assertTrue(any("ps -u testuser -o pid,ppid,stat,etime,cmd => allow" in line for line in lines))
+            self.assertTrue(any("ps -ef => allow" in line for line in lines))
+            self.assertTrue(any("kill 123 => prompt" in line for line in lines))
+            self.assertTrue(any("pkill python => prompt" in line for line in lines))
+            self.assertTrue(any("renice 10 -p 123 => prompt" in line for line in lines))
+            self.assertTrue(any("setsid bash => prompt" in line for line in lines))
+            self.assertTrue(any("python script.py => prompt" in line for line in lines))
+            self.assertTrue(any("bash -lc ps -ef => prompt" in line for line in lines))
+            self.assertTrue(any("sh -c ps -ef => prompt" in line for line in lines))
+            self.assertTrue(any("zsh -c ps -ef => prompt" in line for line in lines))
+            self.assertTrue(any("tmux ls => allow" in line for line in lines))
+            self.assertTrue(any("tmux list-sessions => allow" in line for line in lines))
+            self.assertTrue(any("tmux has-session -t example => allow" in line for line in lines))
+            self.assertTrue(any("tmux new-session -d -s example => prompt" in line for line in lines))
+            self.assertTrue(any("tmux kill-session -t example => prompt" in line for line in lines))
+            self.assertTrue(any("tmux kill-server => prompt" in line for line in lines))
+            self.assertTrue(any("tmux send-keys -t example ls Enter => prompt" in line for line in lines))
+            self.assertTrue(any("tmux attach-session -t example => prompt" in line for line in lines))
+            self.assertTrue(any("tmux detach-client -s example => prompt" in line for line in lines))
             self.assertTrue(any("codex exec -C /tmp - => prompt" in line for line in lines))
             self.assertTrue(any("git fetch origin main => allow" in line for line in lines))
+            self.assertTrue(any("git fetch --all --prune => allow" in line for line in lines))
+            self.assertTrue(any("git fetch https://example.invalid/repo.git main => prompt" in line for line in lines))
+            self.assertTrue(any("git fetch origin feature:feature => prompt" in line for line in lines))
             self.assertTrue(any("git pull --ff-only origin main => allow" in line for line in lines))
             self.assertTrue(any("git pull --rebase origin main => prompt" in line for line in lines))
             self.assertTrue(any("git pull --ff-only --autostash origin main => prompt" in line for line in lines))
@@ -303,8 +328,30 @@ memories = false
                 ("scontrol", "resume", "156911"): "prompt",
                 ("sacctmgr", "modify", "user", "name=test", "set", "Fairshare=2"): "prompt",
                 ("bash", "-lc", "squeue -h | xargs scancel"): "prompt",
+                ("ps", "-u", "testuser", "-o", "pid,ppid,stat,etime,cmd"): "allow",
+                ("ps", "-ef"): "allow",
+                ("kill", "123"): "prompt",
+                ("pkill", "python"): "prompt",
+                ("renice", "10", "-p", "123"): "prompt",
+                ("setsid", "bash"): "prompt",
+                ("python", "script.py"): "prompt",
+                ("bash", "-lc", "ps -ef"): "prompt",
+                ("sh", "-c", "ps -ef"): "prompt",
+                ("zsh", "-c", "ps -ef"): "prompt",
+                ("tmux", "ls"): "allow",
+                ("tmux", "list-sessions"): "allow",
+                ("tmux", "has-session", "-t", "example"): "allow",
+                ("tmux", "new-session", "-d", "-s", "example"): "prompt",
+                ("tmux", "kill-session", "-t", "example"): "prompt",
+                ("tmux", "kill-server"): "prompt",
+                ("tmux", "send-keys", "-t", "example", "ls", "Enter"): "prompt",
+                ("tmux", "attach-session", "-t", "example"): "prompt",
+                ("tmux", "detach-client", "-s", "example"): "prompt",
                 ("codex", "exec", "-C", "/tmp", "-"): "prompt",
                 ("git", "fetch", "origin", "main"): "allow",
+                ("git", "fetch", "--all", "--prune"): "allow",
+                ("git", "fetch", "https://example.invalid/repo.git", "main"): "prompt",
+                ("git", "fetch", "origin", "feature:feature"): "prompt",
                 ("git", "pull", "--ff-only", "origin", "main"): "allow",
                 ("git", "pull", "--rebase", "origin", "main"): "prompt",
                 ("git", "pull", "--ff-only", "--autostash", "origin", "main"): "prompt",

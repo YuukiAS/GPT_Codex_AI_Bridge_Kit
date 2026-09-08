@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+## 0.7.3
+
+- Reduce reproduced Auto-review false positives for read-only process
+  inspection, routine configured-remote Git synchronization, and read-only tmux
+  session inspection.
+- Add Host Policy execpolicy allow rules for direct `ps`,
+  `git fetch --all --prune`, and `tmux ls` / `tmux list-sessions` /
+  `tmux has-session` while preserving the existing 0.7.2 Slurm read-only
+  allowlist.
+- Keep process mutation, resource allocation, Slurm mutation, tmux mutation,
+  arbitrary Git fetch forms, generic shell, generic Python, dangerous Git, and
+  unrelated unattended orchestration on the existing approval path.
+- Extend `ai-bridge host validate` and real Codex execpolicy tests to prove the
+  new positive and negative decisions through generated installed rules.
+
 ## 0.7.2
 
 - Extend Host Policy execpolicy rules for direct read-only Slurm inspection:

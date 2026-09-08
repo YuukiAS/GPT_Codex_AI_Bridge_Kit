@@ -589,12 +589,46 @@ def validate_host_policy(codex_home: Path, cwd: Path | None = None) -> tuple[Hos
         ["sacctmgr", "modify", "user", "name=test", "set", "Fairshare=2"],
         ["bash", "-lc", "squeue -h | xargs scancel"],
     ]
+    process_read_only_checks = [
+        ["ps", "-u", "testuser", "-o", "pid,ppid,stat,etime,cmd"],
+        ["ps", "-ef"],
+    ]
+    process_gated_checks = [
+        ["kill", "123"],
+        ["pkill", "python"],
+        ["renice", "10", "-p", "123"],
+        ["setsid", "bash"],
+        ["python", "script.py"],
+        ["bash", "-lc", "ps -ef"],
+        ["sh", "-c", "ps -ef"],
+        ["zsh", "-c", "ps -ef"],
+    ]
+    tmux_read_only_checks = [
+        ["tmux", "ls"],
+        ["tmux", "list-sessions"],
+        ["tmux", "has-session", "-t", "example"],
+    ]
+    tmux_gated_checks = [
+        ["tmux", "new-session", "-d", "-s", "example"],
+        ["tmux", "kill-session", "-t", "example"],
+        ["tmux", "kill-server"],
+        ["tmux", "send-keys", "-t", "example", "ls", "Enter"],
+        ["tmux", "attach-session", "-t", "example"],
+        ["tmux", "detach-client", "-s", "example"],
+    ]
     checks: list[tuple[list[str], str, str, bool]] = [
         (replay_command, "allow", "direct", True),
         *[(command, "allow", "direct", False) for command in slurm_read_only_checks],
         *[(command, "prompt", "effective", False) for command in slurm_gated_checks],
+        *[(command, "allow", "direct", False) for command in process_read_only_checks],
+        *[(command, "prompt", "effective", False) for command in process_gated_checks],
+        *[(command, "allow", "direct", False) for command in tmux_read_only_checks],
+        *[(command, "prompt", "effective", False) for command in tmux_gated_checks],
         (["codex", "exec", "-C", "/tmp", "-"], "prompt", "effective", False),
         (["git", "fetch", "origin", "main"], "allow", "direct", False),
+        (["git", "fetch", "--all", "--prune"], "allow", "direct", False),
+        (["git", "fetch", "https://example.invalid/repo.git", "main"], "prompt", "effective", False),
+        (["git", "fetch", "origin", "feature:feature"], "prompt", "effective", False),
         (["git", "pull", "--ff-only", "origin", "main"], "allow", "direct", False),
         (["git", "pull", "--rebase", "origin", "main"], "prompt", "effective", False),
         (["git", "pull", "--ff-only", "--autostash", "origin", "main"], "prompt", "effective", False),

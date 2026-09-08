@@ -96,6 +96,16 @@ git push origin main
 的 Slurm 命令仍必须走审批路径。不要用 prose 假装 prefix rule 能验证 job ownership、
 pipeline 最终是否 mutation、worktree 是否 clean 或文件是否 task-owned；需要这些动态条件时必须使用 bounded wrapper 或继续 prompt。
 
+0.7.3 起，Host Policy 只额外修复已复现的低风险 unattended diagnostics false
+positive：直接 `ps`、`git fetch --all --prune`、`tmux ls`、`tmux list-sessions`
+和 `tmux has-session ...` 可以低打扰通过。默认 `ps` 使用
+`ps -u "$USER" -o pid,ppid,stat,etime,cmd`，只把 process listing 当作诊断证据；
+`tmux` 只用于 session existence / listing；`git fetch --all --prune` 只代表已配置
+remote 的常规同步。`kill`、`pkill`、`renice`、`setsid`、`sudo`、generic shell、
+generic Python、tmux mutation/control、arbitrary `git fetch` URL/refspec 和危险
+Git 仍必须保持 gated。不要因为某个 optional diagnostic 不完美，就终止整个
+unattended Goal 或升级成新的 allocation / cancellation / wrapper / state machine。
+
 ### Production Plugin Replay
 
 Host Policy 可以全局预授权一个受控的真实插件回归入口：

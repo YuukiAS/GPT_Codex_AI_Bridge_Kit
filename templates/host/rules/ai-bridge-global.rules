@@ -22,9 +22,27 @@ prefix_rule(
 )
 
 prefix_rule(
+    pattern = ["ps"],
+    decision = "allow",
+    justification = "The user permanently authorizes direct read-only host process inspection for unattended diagnostics; ps reports process state and does not mutate processes, while process mutation commands remain on the approval path.",
+)
+
+prefix_rule(
+    pattern = ["tmux", ["ls", "list-sessions", "has-session"]],
+    decision = "allow",
+    justification = "The user permanently authorizes direct read-only tmux session inspection for unattended diagnostics while leaving tmux creation, attachment, key sending, and session/server mutation on the approval path.",
+)
+
+prefix_rule(
     pattern = ["git", "fetch", "origin", "main"],
     decision = "allow",
     justification = "The user permanently authorizes safe synchronization reads for origin/main; fetch updates local Git metadata but does not change branch topology or working tree contents.",
+)
+
+prefix_rule(
+    pattern = ["git", "fetch", "--all", "--prune"],
+    decision = "allow",
+    justification = "The user permanently authorizes routine synchronization of configured remotes and pruning of stale remote-tracking refs in trusted development repositories.",
 )
 
 prefix_rule(

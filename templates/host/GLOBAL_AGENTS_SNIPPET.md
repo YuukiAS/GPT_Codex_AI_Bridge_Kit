@@ -90,6 +90,31 @@ Host Policy may preauthorize only direct, common Slurm inspection commands:
   prefix rules. Use a bounded wrapper with real checks or leave the operation on
   the approval path.
 
+## Unattended Read-Only Diagnostics
+
+For unattended or overnight work, prefer the explicitly allowed low-risk
+inspection commands before escalating to operations that mutate host, scheduler,
+process, tmux, or repository state.
+
+- Use Slurm inspection such as `squeue` or `scontrol show ...` for scheduler
+  state when it is enough.
+- Use `ps -u "$USER" -o pid,ppid,stat,etime,cmd` as the normal host-process
+  inspection form. Prefer current-user inspection, do not proactively request
+  environment-variable output such as `e` / `environ`, and do not perform
+  cross-user process inventory unless the task explicitly requires it.
+- Use `tmux ls`, `tmux list-sessions`, or `tmux has-session ...` only to inspect
+  persistent session state.
+- Use `git fetch origin main` or `git fetch --all --prune` for routine
+  configured-remote synchronization; do not treat this as authorization for
+  arbitrary `git fetch` URLs or refspecs.
+- Treat `ps` and tmux output as diagnostic evidence. If stronger task state
+  already exists, such as Slurm state, locks, heartbeats, stage-state, or resume
+  metadata, do not terminate an unattended Goal merely because optional process
+  or session diagnostics are imperfect.
+- Do not upgrade a failed diagnostic into `setsid`, `sudo`, a new GPU
+  allocation, `scancel`, generic shell workarounds, or tmux/process mutation.
+  Operations that still require approval remain under Auto-review.
+
 ## Remote SSH / Production Tunnel Safety
 
 Codex Desktop Remote SSH can generate sustained multi-MB/s transport traffic
