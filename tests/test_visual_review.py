@@ -8,6 +8,7 @@ import tempfile
 import unittest
 import urllib.error
 from pathlib import Path
+from unittest import mock
 
 from ai_bridge_kit import bridge_cli
 from ai_bridge_kit import paid_review
@@ -176,7 +177,7 @@ class VisualReviewTests(unittest.TestCase):
                 calls.append((args, kwargs))
                 return FakeResponse({})
 
-            with unittest.mock.patch.dict(
+            with mock.patch.dict(
                 os.environ,
                 {"OPENAI_REVIEW_API_KEY": "sk-text", "OPENAI_API_KEY": "sk-generic"},
                 clear=True,
