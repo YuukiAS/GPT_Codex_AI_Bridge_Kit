@@ -230,6 +230,28 @@ generic Python。需要真实长期启动时，用户必须通过
 `ai-bridge persistent-run prompt kickoff --target <repo> --goal <repo-relative-goal>`
 生成并发送当前用户可见 kickoff 授权；这个命令只打印文本，不启动 tmux。
 
+0.8.1 起，GPT 写任务时必须把 execution lifetime 与 `task_type` / Lite /
+Review / Control workflow 分开判断。overnight、unattended、run until morning、
+multi-hour、leave it running、survive disconnect 或 resume persistent Goal 是
+Persistent Run 触发语义，但不是自动升级 Review / Control 或 controller task 的理由。
+如果目标仓库已安装 `automation/persistent_run/`，GPT 必须读取其中 README 和
+`CONTRACT_TEMPLATE.md`，并在 Goal/task 中写明 `Persistent execution: REQUIRED`、
+`Backend: tmux`、`Goal source`、`Run/session key`、authorized effects、resource
+boundary、forbidden expansion、recovery evidence、heartbeat / stage-state /
+checkpoint / resume semantics 和原始 positive completion criteria。如果仓库未安装
+Persistent Run，且用户没有选择等价的项目原生持久执行合同，不得把 overnight /
+unattended 需求降级成普通 live-session task。
+
+Codex 执行前必须做 upfront authorization preflight：先读取 frozen Goal/task 中
+正面声明的 approval-sensitive effects，例如 Persistent Run kickoff / canonical
+tmux launch、具体 private external transfer、具体 paid/external API call、deployment
+或 resource allocation。仓库内 Goal/Plan/contract 是 frozen scope evidence，不等于
+当前用户可见授权。若当前用户消息已经包含同一个 frozen effect 的 bounded authorization，
+后续到达同一 effect 时不要重复询问；若没有，应在大量前置工作、昂贵执行、长期执行或
+canonical launch 前提出绑定具体 Goal、artifact/hash、recipient/provider、purpose、
+resource boundary、backend 和 scope limit 的授权请求。新的 artifact、recipient/provider、
+resource、purpose、backend 或越界副作用仍需重新授权。
+
 收到 kickoff 后，Codex 应按 Goal/project 指定的 canonical session/run key 检查
 `tmux has-session` / `tmux ls`，并读取 lock / heartbeat / stage-state /
 checkpoint / resume evidence。已有兼容 run 时 resume，不重复启动。optional

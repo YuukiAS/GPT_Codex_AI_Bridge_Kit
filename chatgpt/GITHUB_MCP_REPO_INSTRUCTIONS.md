@@ -7,7 +7,8 @@
 1. 读取仓库根目录 `AGENTS.md`。
 2. 读取 `prompts/CHATGPT_RULES.md`。
 3. 如果要让 Codex 执行，读取 `prompts/AGENT_RULES.md` 和现有 `prompts/tasks/`。
-4. 如果只是参考背景，再读取用户明确指定的 `docs/notes/` 或 `docs/wiki/` 文件。
+4. 如果仓库存在 `automation/persistent_run/`，且用户要求 overnight、unattended、long-running、run until morning、survive disconnect、resume persistent Goal，或等价的持久执行语义，先读取 `automation/persistent_run/README.md` 和 `automation/persistent_run/CONTRACT_TEMPLATE.md`。
+5. 如果只是参考背景，再读取用户明确指定的 `docs/notes/` 或 `docs/wiki/` 文件。
 
 ## 固定写入规则
 
@@ -36,6 +37,10 @@ prompts/tasks/<next_task_key>.md
 ```
 
 这张 task 必须包含 YAML frontmatter，并写清楚允许动作、禁止动作、预期产出、停止条件和人工决策点。若任务会生成文件型产物，预期产出必须包含 `results/<task_key>/`。
+
+任务生成时要把 execution lifetime 和 workflow/task type 分开判断。运行时间长、overnight、unattended 或需要 survive disconnect，并不自动变成 Review / Control / controller task；在已经安装 Persistent Run 的仓库中，它可以仍然是 Lite `task_type: "execution"`，但必须写入明确的 `Persistent Run Contract`，至少包含 `Persistent execution: REQUIRED`、`Backend: tmux`、`Goal source`、`Run/session key`、authorized effects、resource boundary、forbidden expansion、recovery evidence、heartbeat/stage-state/checkpoint/resume semantics 和原始 positive completion criteria。
+
+如果用户要求持久执行，但仓库没有 `automation/persistent_run/`，且用户没有选择等价的项目原生持久执行合同，不要把它降级成普通 live-session task；应报告缺少 Persistent Run capability 或请求用户先安装/选择合同。
 
 如果 task 依赖论文或长期研究结论，应显式引用相关 `docs/wiki/` 页面，而不是要求 Codex 重新从 PDF 猜上下文。
 

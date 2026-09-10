@@ -133,6 +133,13 @@ ai-bridge persistent-run validate --target /path/to/project
 automation/persistent_run/CONTRACT_TEMPLATE.md
 ```
 
+GPT 写这个 Goal/task 时要先判断 execution lifetime。`run overnight`、
+`unattended`、`run until morning`、`leave it running`、`survive disconnect`
+或 `resume persistent Goal` 这类要求意味着需要 Persistent Run contract，但不代表
+必须把 Lite 任务改成 Review / Control 或 `task_type: "controller"`。如果仓库没有
+安装 Persistent Run，也没有用户选择的等价项目原生合同，不要把任务写成普通 live
+Codex session。
+
 真正启动前，由用户生成并发送 kickoff 授权：
 
 ```bash
@@ -142,6 +149,11 @@ ai-bridge persistent-run prompt kickoff \
 ```
 
 这个命令只打印授权文本，不会启动 tmux。Persistent Run 只约束长期执行和恢复：使用 canonical `tmux` session，已有兼容 run 时 resume，不把 session/PID/heartbeat 当作完成，不自动 fallback 到 `setsid`、`nohup`、裸后台 `&`、`screen` 或 `sudo`。Lite / Review / Control 的 workflow 选择和原 Goal 完成标准保持不变。
+
+Codex 收到 task 后会在实质执行前检查是否存在可预见的 approval-sensitive effect。
+仓库里的 Goal/Plan/contract 只证明 frozen scope，不等于当前用户授权；如果当前用户
+消息没有包含同一个 frozen Goal 的 bounded kickoff 授权，Codex 应先显示 kickoff 并
+等待用户发送，而不是先启动 tmux 或做大量前置工作。
 
 ## 9. 可选：同步论文目录到 Overleaf
 

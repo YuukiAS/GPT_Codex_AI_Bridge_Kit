@@ -10,6 +10,23 @@ Persistent Run 不决定任务目标、科学范围、产品范围、训练预�
 
 如果一个 Goal 使用 Persistent Run，应在 Goal 或相邻任务文件中复制或引用 `automation/persistent_run/CONTRACT_TEMPLATE.md`，并填入该 run 的 stable key、资源边界、artifact/state 路径和完成标准。
 
+## GPT 任务写作规则
+
+GPT 写 task 时必须把 execution lifetime 和 Lite / Review / Control workflow 分开判断。overnight、unattended、run until morning、multi-hour、leave it running、survive disconnect 或 resume persistent Goal 是持久执行触发词，但不是自动升级 Review / Control 或 `task_type: "controller"` 的理由。
+
+当用户要求持久执行时，GPT 必须读取本文件和 `automation/persistent_run/CONTRACT_TEMPLATE.md`，并在 task/Goal 中写入 Persistent Run contract。最少要包含：
+
+```text
+Persistent execution: REQUIRED
+Backend: tmux
+Goal source: <repo-relative goal/task path>
+Run/session key: <project-owned stable key>
+```
+
+同时写清 authorized effects、resource boundary、forbidden expansion、recovery evidence、heartbeat / stage-state / checkpoint / resume semantics，以及原始 positive completion criteria。
+
+如果仓库没有安装 Persistent Run，且用户没有选择等价的项目原生持久执行合同，GPT 不得把需求降级成普通 live Codex session；应报告缺少持久执行能力。
+
 ## Kickoff
 
 仓库文件本身不能冒充当前用户授权。真正启动或恢复长期执行前，用户应生成并发送一次 kickoff 授权：

@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+## 0.8.1
+
+- Harden GPT task authoring so overnight, unattended, multi-hour, survive-
+  disconnect, and resume-persistent-Goal requests are classified as execution
+  lifetime requirements, independent of Lite / Review / Control workflow choice.
+- Require GPT-authored persistent Goals in installed Persistent Run repositories
+  to include the concrete contract fields: `Persistent execution: REQUIRED`,
+  `Backend: tmux`, repo-relative Goal source, stable run/session key, authorized
+  effects, resource boundary, forbidden expansion, recovery evidence,
+  heartbeat/stage-state/checkpoint/resume semantics, and original positive
+  completion criteria.
+- Require next-task generation to carry forward existing Persistent Run
+  requirements instead of silently degrading them into ordinary live Codex
+  sessions.
+- Add Codex startup upfront authorization guidance for foreseeable gated effects
+  such as Persistent Run kickoff/canonical tmux launch, private external
+  transfer, paid/external calls, deployment, migration, or resource allocation:
+  repository Goal/Plan/contract text defines frozen scope, while current-user
+  bounded authorization is still required before substantial precursor work.
+- Preserve the 0.8.0 Host Policy boundary: no new global allow rules, no broad
+  `tmux new-session`, no shell/Python/background fallback, and still exactly
+  three workflows: Lite / Review / Control.
+
 ## 0.8.0
 
 - Add Persistent Run as an optional project capability for explicitly authorized

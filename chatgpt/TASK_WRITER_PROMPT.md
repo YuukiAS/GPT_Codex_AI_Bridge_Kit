@@ -24,6 +24,41 @@ For controller tasks, Codex is only the execution controller. It must not invent
 new research/product directions. If failure needs a new direction, the task must
 tell it to return `NEEDS_GPT_PLANNER`.
 
+## Decide Execution Lifetime Separately
+
+Task type and execution lifetime are different decisions. Do not turn a task
+into Review, Control, or `task_type: "controller"` merely because it is long,
+overnight, unattended, multi-stage, or must survive Codex / SSH disconnect.
+
+Treat these user intents as strong persistent-execution triggers:
+
+- overnight, run overnight, run until morning
+- unattended, leave it running
+- long-running, multi-hour, multi-stage execution
+- survive disconnect, continue after Codex/SSH exit
+- resume persistent Goal
+
+If the repository has Persistent Run installed and the task requires
+persistence, read:
+
+```text
+automation/persistent_run/README.md
+automation/persistent_run/CONTRACT_TEMPLATE.md
+```
+
+Then include a `## Persistent Run Contract` section with the installed template's
+fields. At minimum it must state `Persistent execution: REQUIRED`,
+`Backend: tmux`, `Goal source: <repo-relative goal/task path>`,
+`Run/session key: <project-owned stable key>`, authorized effects, resource
+boundary, forbidden expansion, recovery evidence,
+heartbeat/stage-state/checkpoint/resume semantics, and the original positive
+completion criteria.
+
+If the user requires overnight/unattended persistence but the repository lacks
+`automation/persistent_run/` and no user-chosen project-native equivalent
+contract exists, report that persistence capability is missing. Do not silently
+write an ordinary live-session task that would stop when Codex disconnects.
+
 ## Required Frontmatter
 
 Keep legacy fields and add protocol fields:
@@ -100,6 +135,8 @@ language rules win unless they would break machine-readable protocol fields.
 
 ## Claim Scope And Evidence Limit
 
+## Persistent Run Contract
+
 ## Allowed Actions
 
 ## Forbidden Actions
@@ -126,6 +163,8 @@ language rules win unless they would break machine-readable protocol fields.
 ## Writing Rules
 
 - Write small, executable tasks.
+- Decide execution lifetime separately from `task_type`; Persistent Run is an
+  optional project capability, not a fourth workflow.
 - Decide up front what failure escalation is allowed.
 - State whether separate executor/auditor sessions are required.
 - Do not define completion as only "no forbidden substitute was detected";

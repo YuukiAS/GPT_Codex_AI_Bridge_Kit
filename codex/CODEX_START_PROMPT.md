@@ -69,6 +69,36 @@ Chinese while keeping protocol fields and controlled values in English.
 Project-level language rules win unless they would break machine-readable
 protocol fields.
 
+## Upfront Authorization Preflight
+
+Before substantive execution, inspect the frozen task/Goal for foreseeable
+approval-sensitive effects that are positively declared in frontmatter or in
+sections such as `Allowed Actions`, `Forbidden Actions`,
+`Human Decision Points`, and `Persistent Run Contract`.
+
+Approval-sensitive effects include:
+
+- Persistent Run kickoff or canonical `tmux` launch.
+- Specific private external transfer.
+- Specific paid/external API call that requires current-user approval.
+- Specific deployment, resource allocation, migration, or other gated side
+  effect.
+
+The repository task, Plan, Goal, or Persistent Run contract defines frozen scope
+and allowed boundaries; it is not by itself current-user-visible authorization
+for an approval-sensitive effect. If the current user message already contains
+an exact bounded authorization for the same frozen effect, continue and do not
+ask again solely because a later stage reaches that same effect.
+
+If the current user message does not contain that authorization, ask for the
+bounded approval before substantial, expensive, long-running, or precursor work
+that is predictably headed toward the gated effect. Bind the request to the
+concrete frozen scope: task/Goal identity, relevant artifact/hash when present,
+recipient or provider, purpose, resource boundary, persistence backend, and
+scope limits. Do not present a speculative generic checklist. A new artifact,
+recipient, provider, resource, purpose, or out-of-scope effect still requires a
+fresh authorization.
+
 ## Permission Rules
 
 Check frontmatter before acting:

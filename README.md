@@ -6,7 +6,7 @@
 
 这个仓库的原则是：**默认保持简单，需要什么再加什么。** 普通项目只需要机器级规则和基础交接；只有确实需要时，才启用独立复核、高风险闭环、邮件通知、Overleaf 同步或视觉复核。
 
-当前版本：`0.8.0`。
+当前版本：`0.8.1`。
 
 ## 三档 workflow
 
@@ -58,6 +58,7 @@ Review 使用 `ai-bridge reviewed-handoff ...`，Control 使用
 - `0.7.2`：修复 Host Policy 对常见 Slurm 只读 inspection 的误拒绝；直接 `squeue`、`sinfo`、`sacct`、`sstat`、`sprio`、`scontrol show ...` 和 `scontrol ping` 可不再重复审批，但 `sbatch`、`srun`、`salloc`、`scancel`、mutating `scontrol`、`sacctmgr modify` 和 shell pipeline 仍走审批路径。
 - `0.7.3`：减少 unattended / overnight 任务里已复现的低风险诊断误拒绝；直接 `ps`、`git fetch --all --prune`、`tmux ls`、`tmux list-sessions` 和 `tmux has-session` 可不再重复审批，但 process mutation、tmux mutation、arbitrary Git fetch、generic shell/Python 和危险 Git 仍走审批路径。
 - `0.8.0`：新增 Persistent Run 项目能力。它不是第四档 workflow，而是让明确授权的长期 Goal 使用 canonical `tmux` session、项目原生 lock / heartbeat / stage-state / checkpoint / resume evidence 和用户可见 kickoff 文本来启动或恢复；不新增 Host Policy 全局 allow、不自动 fallback 到 `setsid` / `nohup` / 裸后台 `&` / `screen` / `sudo`，也不改变原 Goal 的完成标准。
+- `0.8.1`：加固 GPT task authoring 和 Codex startup preflight。GPT 必须把 overnight / unattended / survive-disconnect 这类 execution lifetime 需求和 Lite / Review / Control workflow 分开判断；已安装 Persistent Run 的仓库必须把合同字段写进 Goal/task，后续 next-task 也必须 carry forward。Codex 则必须在可预见的 Persistent Run kickoff、private external transfer、paid/external call、deployment 或 resource allocation 前提前请求 bounded 当前用户授权；仓库内 Goal/Plan/contract 只证明 frozen scope，不等于当前用户授权。
 
 ## 一眼看懂：我到底该装什么
 
@@ -130,6 +131,16 @@ ai-bridge persistent-run prompt kickoff \
 后，Codex 才能针对同一个 frozen Goal 使用 canonical `tmux` session 启动或恢复。
 已有兼容 run 时应 resume，不重复启动；`tmux` session、Slurm job、PID、
 heartbeat 或 checkpoint 只能证明活动或状态，不能替代原 Goal 的完成标准。
+
+`0.8.1` 起，生成长期 Goal 时也要提前写清 Persistent Run contract。GPT 不能把
+“run overnight”“unattended”“survive disconnect”这类要求降级成普通 live
+Codex session，也不能因为运行时间长就自动改成 Review / Control。已安装 Persistent
+Run 的仓库应在 task/Goal 中写入 `Persistent execution: REQUIRED`、`Backend: tmux`、
+repo-relative `Goal source`、stable `Run/session key`、资源边界、恢复证据和原始
+positive completion criteria。Codex 启动时如果当前用户消息还没有同一个 frozen
+Goal 的 bounded kickoff 授权，应先显示 kickoff prompt 并等待用户发送；同一授权
+已存在时不重复询问，新的资源、recipient/provider、purpose、backend 或越界副作用
+仍然单独 gate。
 
 ---
 

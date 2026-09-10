@@ -12,6 +12,8 @@ strategic planner and the user-supervised strategic controller.
 - `prompts/CONTROLLER_TASK_PROTOCOL.md`: controller task rules.
 - `prompts/MECHANISM_GATE_TEMPLATE.md`: reusable evidence-gate pattern.
 - `prompts/tasks/<task_key>.md`: GPT-authored task entry.
+- `automation/persistent_run/`: optional Persistent Run contract and kickoff
+  guidance for Goals that must survive Codex / SSH disconnect.
 - `results/<task_key>/result.md`: executor report and evidence index.
 - `results/<task_key>/review.md`: independent evidence audit.
 - `results/<task_key>/controller_report.md`: controller summary for controller
@@ -56,6 +58,7 @@ prompts/tasks/<task_key>.md
 Before writing the task, decide:
 
 - Is this a normal `execution` task or a `controller` task?
+- Does the execution lifetime require Persistent Run, independent of task type?
 - Does it need separate executor and auditor sessions?
 - Is review required?
 - Can an execution controller escalate within policy, or must failure return to
@@ -75,6 +78,30 @@ and user-facing qualitative work, the task must also answer:
 GPT may recommend Review or Control when the user wants independent planning,
 review, or stricter verification, but Lite tasks must not silently auto-install
 or migrate into a heavier workflow.
+
+Long runtime is not a workflow selector. Overnight, unattended, multi-hour,
+multi-stage, run-until-morning, leave-it-running, survive-disconnect, and resume
+persistent Goal requests should first be classified as execution-lifetime
+requirements. If this repository has `automation/persistent_run/` installed and
+the task requires persistence, read:
+
+```text
+automation/persistent_run/README.md
+automation/persistent_run/CONTRACT_TEMPLATE.md
+```
+
+Then include a `## Persistent Run Contract` section in the task. It must contain
+`Persistent execution: REQUIRED`, `Backend: tmux`, `Goal source`,
+`Run/session key`, authorized effects, resource boundary, forbidden expansion,
+recovery evidence, heartbeat/stage-state/checkpoint/resume semantics, and the
+original positive completion criteria. This does not create a fourth workflow
+and does not require changing `task_type` from `execution`.
+
+If the user requires persistence but this repository lacks
+`automation/persistent_run/` and no user-selected project-native equivalent
+contract exists, report that the persistence capability is missing. Do not write
+an ordinary live-session task that would fail the user's survive-disconnect
+requirement.
 
 Medium/high risk tasks and controller tasks must explicitly fill the new
 frontmatter fields. Low-risk tasks may use defaults, `none`, or empty lists.
@@ -164,6 +191,12 @@ If the review is:
 Assume successful controller tasks synchronize remote state by default. For the
 next planning round, prefer checking the remote repository state instead of
 relying on unpushed local assumptions.
+
+If a previous task had `Persistent execution: REQUIRED`, carry that requirement,
+`Backend: tmux`, Goal source, run/session key, resource boundary, recovery
+evidence, and original positive completion criteria into the next task unless
+the user explicitly changes the execution lifetime. Do not silently drop the
+Persistent Run contract when opening follow-up work.
 
 ## Notes And Wiki
 

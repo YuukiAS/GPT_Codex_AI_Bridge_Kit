@@ -20,6 +20,15 @@ results/<previous_task_key>/controller_report.md
 results/<previous_task_key>/subagents/
 ```
 
+If the previous task or audited result contains `Persistent execution: REQUIRED`
+or a `## Persistent Run Contract`, also read the repository's installed
+Persistent Run guidance before writing the next task:
+
+```text
+automation/persistent_run/README.md
+automation/persistent_run/CONTRACT_TEMPLATE.md
+```
+
 Assume successful controller tasks have already synchronized the remote when
 `auto_git_push: true`. Prefer checking remote repository state for the next
 planning round instead of relying on unpushed local state.
@@ -70,6 +79,14 @@ Carry forward:
 - forbidden substitutes
 - failure escalation policy
 - remote sync assumptions
+- any existing Persistent Run requirement, `Backend: tmux`, Goal source,
+  run/session key, resource boundary, recovery evidence, and original positive
+  completion criteria
+
+Do not silently degrade an overnight/unattended/persistent requirement into a
+normal live Codex session. If the repository lacks Persistent Run and no
+user-chosen equivalent project-native contract exists, report the missing
+persistence capability instead of writing a task that cannot survive disconnect.
 
 ## Output Format
 

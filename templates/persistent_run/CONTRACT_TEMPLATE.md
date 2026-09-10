@@ -12,6 +12,14 @@ Run/session key: <project-owned stable key>
 - Write the Goal's declared logs, checkpoints, results and state artifacts.
 - Continue after Codex / SSH disconnect.
 
+## Resource Boundary
+
+- Compute resources:
+- Data/model/source boundary:
+- Network/external service boundary:
+- Time/budget boundary:
+- Cleanup boundary:
+
 ## Forbidden Expansion
 
 - Do not change scientific/product scope.
@@ -24,6 +32,14 @@ Run/session key: <project-owned stable key>
 - tmux session identity.
 - Project-native lock / heartbeat / stage-state / checkpoint / resume evidence, or equivalent observable state.
 - Scheduler/process diagnostics may support diagnosis, but do not override stronger project-native state.
+
+## Heartbeat / Stage-State / Checkpoint / Resume Semantics
+
+- Heartbeat path and expected cadence:
+- Stage-state path and state meanings:
+- Checkpoint/output path:
+- Resume rule for an existing compatible run:
+- Stale-run or conflicting-run handling:
 
 ## Completion
 

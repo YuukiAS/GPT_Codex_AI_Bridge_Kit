@@ -173,6 +173,26 @@ equivalence; otherwise report it as degraded, diagnostic, partial, or
 incomplete evidence, limit the claim scope, and use the existing
 `NEEDS_GPT_PLANNER`, `NEEDS_EVIDENCE`, or `STOP` routes.
 
+Before substantive execution, inspect the frozen task/Goal for foreseeable
+approval-sensitive effects that are positively declared in frontmatter,
+`Allowed Actions`, `Forbidden Actions`, `Human Decision Points`, or a
+`Persistent Run Contract`. Typical examples are a Persistent Run kickoff or
+canonical `tmux` launch, a specific private external transfer, a specific
+paid/external API call that requires current-user approval, or a specific
+deployment/resource-allocation/migration side effect. Repository task text,
+Plan text, Goal text, and contract text are frozen scope evidence; they are not
+by themselves current-user-visible authorization.
+
+If the current user message already contains exact bounded authorization for the
+same frozen effect, continue and do not ask again solely because the same later
+stage reaches that effect. If it does not, ask before substantial,
+expensive, long-running, or precursor work that is predictably headed toward the
+gated effect. Bind the request to the concrete frozen scope: task/Goal identity,
+artifact/hash when present, recipient/provider, purpose, resource boundary,
+persistence backend, and scope limits. Do not use a speculative generic
+approval checklist. A new artifact, recipient, provider, resource, purpose, or
+out-of-scope effect still requires fresh authorization.
+
 For long-running goals and repository workflows, **a recoverable question is not
 a terminal blocker**. If a path, artifact identity, credential confirmation,
 branch/integration choice, or other bounded user decision can unblock progress,

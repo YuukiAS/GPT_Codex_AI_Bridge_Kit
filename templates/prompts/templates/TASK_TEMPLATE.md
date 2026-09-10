@@ -74,6 +74,49 @@ completion unless this section explicitly authorizes it as equivalent.
 - Partial or diagnostic claim allowed when:
 - Claims that this task must not make:
 
+## Persistent Run Contract
+
+Use `Persistent execution: NOT_REQUIRED` for ordinary live Codex tasks.
+
+If the user requested overnight, unattended, run-until-morning, multi-hour,
+survive-disconnect, leave-it-running, or resume-persistent-Goal execution, and
+this repository has `automation/persistent_run/` installed, replace this section
+with the installed `automation/persistent_run/CONTRACT_TEMPLATE.md` fields and
+fill every value.
+
+If persistent execution is required but the repository lacks Persistent Run and
+the user has not chosen an equivalent project-native contract, stop and report
+the missing persistence capability instead of weakening the task.
+
+Persistent execution: NOT_REQUIRED
+Backend: none
+Goal source: prompts/tasks/000_short_task.md
+Run/session key: none
+
+### Authorized Effects
+
+- none
+
+### Resource Boundary
+
+- Use only ordinary live Codex resources.
+
+### Forbidden Expansion
+
+- Do not reinterpret a persistence-required user request as this ordinary task.
+
+### Recovery Evidence
+
+- none
+
+### Heartbeat / Stage-State / Checkpoint / Resume Semantics
+
+- none
+
+### Original Positive Completion Criteria
+
+- Same as `## Positive Completion` above.
+
 ## Allowed Actions
 
 - Read files directly related to this task.
