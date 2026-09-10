@@ -210,10 +210,15 @@ def normalize_manifest(target: Path, manifest: dict[str, Any]) -> dict[str, Any]
                 "description": str(item.get("description") or ""),
             }
         )
+    try:
+        paid_review_extension = paid_review.normalize_extension_metadata(manifest)
+    except paid_review.PaidReviewBudgetError as exc:
+        raise VisualReviewError(str(exc)) from exc
     normalized = {
         "schema": VISUAL_INPUT_MANIFEST_SCHEMA,
         "task_key": task_key,
         "paid_review_campaign_id": str(manifest.get("paid_review_campaign_id") or task_key).strip(),
+        "paid_review_extension": paid_review_extension,
         "workflow_type": workflow_type,
         "review_kind": review_kind,
         "prompt_version": str(manifest.get("prompt_version") or DEFAULT_PROMPT_VERSION),
@@ -555,6 +560,7 @@ def run_visual_review(
             model=selected_model,
             request_payload=request_payload,
             input_token_preflight=token_preflight,
+            extension_metadata=manifest.get("paid_review_extension"),
         )
         paid_review.persist_reservation_to_git_if_requested(target, reservation_bundle["state_path"])
     except paid_review.PaidReviewBudgetError as exc:

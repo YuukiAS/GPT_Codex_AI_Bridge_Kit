@@ -64,6 +64,65 @@ class PaidReviewBudgetTests(unittest.TestCase):
             input_token_preflight=self.token_preflight(input_tokens),
         )
 
+    def write_parent_state(
+        self,
+        target: Path,
+        *,
+        campaign: str = "001_paid",
+        reserved: list[str] | None = None,
+        contract: dict | None = None,
+        accounting_status: str = "ACCOUNTING_VERIFIED",
+    ) -> Path:
+        state_path = target / f"results/{campaign}/paid_review_budget.json"
+        state_path.parent.mkdir(parents=True)
+        reservations = [
+            {
+                "reservation_id": f"{campaign}-{index}-fixture",
+                "call_number": index,
+                "review_type": "text_review",
+                "model": paid_review.DEFAULT_MODEL,
+                "worst_case_reserved_cost_usd": amount,
+                "cumulative_reserved_cost_usd": amount,
+                "cumulative_reserved_worst_case_cost_usd": amount,
+                "accounting_status": accounting_status,
+                "actual_cost_status": accounting_status,
+                "actual_model_cost_usd": "0.001000" if accounting_status == "ACCOUNTING_VERIFIED" else None,
+            }
+            for index, amount in enumerate(reserved or ["0.200000", "0.200000"], start=1)
+        ]
+        payload = {
+            "schema": paid_review.BUDGET_SCHEMA,
+            "campaign_identity": campaign,
+            "contract": contract if contract is not None else paid_review.default_contract(),
+            "reservations": reservations,
+            "cumulative_reserved_worst_case_cost_usd": paid_review._money(paid_review._sum_reserved_cost(reservations)),
+            "cumulative_actual_model_cost_usd": paid_review._money(paid_review._sum_actual_cost(reservations)),
+        }
+        state_path.write_text(paid_review.canonical_json(payload, pretty=True), encoding="utf-8")
+        return state_path
+
+    def reserve_extension(
+        self,
+        target: Path,
+        *,
+        parent: str = "001_paid",
+        input_tokens: int = 1000,
+        authorization_receipt: str = "USER_AUTHORIZED_ONE_EXTENSION",
+    ) -> dict:
+        metadata = {
+            "parent_campaign_id": parent,
+            "authorization_receipt": authorization_receipt,
+        }
+        return paid_review.reserve_paid_review_call(
+            target=target,
+            campaign_identity=paid_review.extension_campaign_identity(parent),
+            review_type="text_review",
+            model=paid_review.DEFAULT_MODEL,
+            request_payload=self.request_payload(),
+            input_token_preflight=self.token_preflight(input_tokens),
+            extension_metadata=metadata,
+        )
+
     def test_default_contract_matches_frozen_paid_review_policy(self) -> None:
         contract = paid_review.default_contract()
         self.assertEqual(contract["model"], "gpt-5.6-terra")
@@ -90,6 +149,110 @@ class PaidReviewBudgetTests(unittest.TestCase):
             second = self.reserve(target)
             self.assertEqual(second["reservation"]["call_number"], 2)
             self.assertEqual(len(paid_review.load_budget_state(state_path, campaign_identity="001_paid")["reservations"]), 2)
+
+    def test_extension_after_full_parent_reserves_exactly_once_and_preserves_parent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp)
+            parent_path = self.write_parent_state(target)
+            parent_before = parent_path.read_bytes()
+
+            bundle = self.reserve_extension(target)
+
+            self.assertEqual(parent_path.read_bytes(), parent_before)
+            self.assertEqual(bundle["reservation"]["call_number"], 1)
+            self.assertEqual(bundle["reservation"]["parent_campaign_identity"], "001_paid")
+            self.assertEqual(bundle["reservation"]["extension_campaign_identity"], "001_paid__authorized_extension_1")
+            self.assertEqual(bundle["contract"]["max_paid_calls"], 1)
+            self.assertEqual(bundle["contract"]["automatic_paid_retries"], 0)
+            self.assertEqual(bundle["parent_reserved_worst_case_cost_usd"], "0.400000")
+            self.assertEqual(bundle["aggregate_reserved_worst_case_cost_usd"], "0.451652")
+            child_state = json.loads((target / "results/001_paid__authorized_extension_1/paid_review_budget.json").read_text(encoding="utf-8"))
+            self.assertEqual(len(child_state["reservations"]), 1)
+            self.assertEqual(child_state["contract"]["campaign_type"], paid_review.EXTENSION_CAMPAIGN_TYPE)
+
+    def test_extension_second_reservation_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp)
+            self.write_parent_state(target)
+            self.reserve_extension(target)
+            with self.assertRaisesRegex(paid_review.PaidReviewBudgetError, "extension call limit exhausted"):
+                self.reserve_extension(target)
+
+    def test_extension_aggregate_ceiling_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp)
+            self.write_parent_state(target, reserved=["0.490000"])
+            with self.assertRaisesRegex(paid_review.PaidReviewBudgetError, "aggregate reserved-cost"):
+                self.reserve_extension(target)
+            self.assertFalse((target / "results/001_paid__authorized_extension_1/paid_review_budget.json").exists())
+
+    def test_extension_missing_parent_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaisesRegex(paid_review.PaidReviewBudgetError, "parent budget state missing"):
+                self.reserve_extension(Path(tmp))
+
+    def test_extension_unverified_parent_accounting_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp)
+            self.write_parent_state(target, accounting_status="ACCOUNTING_UNVERIFIED")
+            with self.assertRaisesRegex(paid_review.PaidReviewBudgetError, "parent accounting is unverified"):
+                self.reserve_extension(target)
+
+    def test_extension_requires_explicit_authorization_receipt(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp)
+            self.write_parent_state(target)
+            with self.assertRaisesRegex(paid_review.PaidReviewBudgetError, "authorization receipt"):
+                self.reserve_extension(target, authorization_receipt="")
+
+    def test_normal_manifest_without_extension_stays_backward_compatible(self) -> None:
+        self.assertEqual(paid_review.campaign_identity_from_manifest({"task_key": "001_paid"}), "001_paid")
+
+    def test_051_like_parent_metadata_can_be_inspected_but_not_written_normally(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp)
+            historical_contract = paid_review.default_contract()
+            historical_contract["max_paid_calls"] = 3
+            parent_path = self.write_parent_state(target, contract=historical_contract)
+            parent_before = parent_path.read_bytes()
+
+            inspected = paid_review.inspect_parent_budget_state(parent_path, campaign_identity="001_paid")
+            self.assertEqual(len(inspected["reservations"]), 2)
+            with self.assertRaisesRegex(paid_review.PaidReviewBudgetError, "contract mismatch"):
+                self.reserve(target)
+
+            bundle = self.reserve_extension(target)
+            self.assertEqual(parent_path.read_bytes(), parent_before)
+            self.assertEqual(bundle["parent_reserved_worst_case_cost_usd"], "0.400000")
+
+    def test_extension_receipt_contains_parent_and_aggregate_accounting(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp)
+            self.write_parent_state(target)
+            bundle = self.reserve_extension(target)
+            paid_review.record_actual_usage(
+                target=target,
+                campaign_identity="001_paid__authorized_extension_1",
+                reservation_id=bundle["reservation"]["reservation_id"],
+                response_payload=self.response_payload(),
+            )
+            updated = paid_review.record_actual_usage(
+                target=target,
+                campaign_identity="001_paid__authorized_extension_1",
+                reservation_id=bundle["reservation"]["reservation_id"],
+                response_payload=self.response_payload(),
+            )
+            receipt = paid_review.receipt_from_reservation(
+                campaign_identity="001_paid__authorized_extension_1",
+                review_type="text_review",
+                model=paid_review.DEFAULT_MODEL,
+                reservation_bundle=updated,
+                response_payload=self.response_payload(),
+            )
+            self.assertEqual(receipt["parent_campaign_identity"], "001_paid")
+            self.assertEqual(receipt["extension_campaign_identity"], "001_paid__authorized_extension_1")
+            self.assertEqual(receipt["aggregate_parent_reserved_worst_case_cost_usd"], "0.400000")
+            self.assertEqual(receipt["aggregate_reserved_worst_case_cost_usd"], "0.451652")
 
     def test_max_call_count_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -21,6 +21,24 @@
   no-Lite installation, no `$CODEX_HOME` or `.codex/rules` writes, and top-level
   CLI routing.
 
+## 0.7.4
+
+- Add an authorized one-call paid-review extension campaign for pre-request
+  unsent-call recovery after a parent campaign has already used its normal
+  immutable two-call budget.
+- Keep the parent ledger read-only: extension accounting never mutates the
+  parent contract, deletes parent reservations, resets historical actual cost,
+  or treats a historical non-default parent contract as writable.
+- Store the extension under the deterministic child identity
+  `<parent>__authorized_extension_1`, require a non-secret human authorization
+  receipt, allow exactly one call, disable automatic paid retry, and keep the
+  same reviewed Terra model/pricing/service-tier/tools/cache contract.
+- Fail closed before `/v1/responses` when the parent is missing, has unverified
+  accounting, exceeds aggregate reserved-cost safety, lacks explicit extension
+  authorization, or when the child extension has already reserved its one call.
+- Include parent/extension identities and aggregate reserved-cost accounting in
+  Text Review / Visual Review paid-review receipts.
+
 ## 0.7.3
 
 - Reduce reproduced Auto-review false positives for read-only process

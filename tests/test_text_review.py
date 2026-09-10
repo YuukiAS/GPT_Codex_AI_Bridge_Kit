@@ -132,6 +132,47 @@ class TextReviewTests(unittest.TestCase):
 
         return opener
 
+    def write_parent_budget(
+        self,
+        target: Path,
+        *,
+        campaign: str = "001_text",
+        reserved: list[str] | None = None,
+        contract: dict | None = None,
+    ) -> Path:
+        state_path = target / f"results/{campaign}/paid_review_budget.json"
+        reservations = [
+            {
+                "reservation_id": f"{campaign}-{index}-fixture",
+                "call_number": index,
+                "review_type": "text_review",
+                "model": text_review.DEFAULT_MODEL,
+                "worst_case_reserved_cost_usd": amount,
+                "cumulative_reserved_cost_usd": amount,
+                "cumulative_reserved_worst_case_cost_usd": amount,
+                "accounting_status": "ACCOUNTING_VERIFIED",
+                "actual_cost_status": "ACCOUNTING_VERIFIED",
+                "actual_model_cost_usd": "0.001000",
+            }
+            for index, amount in enumerate(reserved or ["0.200000", "0.200000"], start=1)
+        ]
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        state_path.write_text(
+            paid_review.canonical_json(
+                {
+                    "schema": paid_review.BUDGET_SCHEMA,
+                    "campaign_identity": campaign,
+                    "contract": contract if contract is not None else paid_review.default_contract(),
+                    "reservations": reservations,
+                    "cumulative_reserved_worst_case_cost_usd": paid_review._money(paid_review._sum_reserved_cost(reservations)),
+                    "cumulative_actual_model_cost_usd": paid_review._money(paid_review._sum_actual_cost(reservations)),
+                },
+                pretty=True,
+            ),
+            encoding="utf-8",
+        )
+        return state_path
+
     def test_mock_responses_api_reads_complete_plaintext_and_uses_store_false(self) -> None:
         tmp, target, manifest, plaintext, output = self.make_project()
         with tmp:
@@ -184,6 +225,67 @@ class TextReviewTests(unittest.TestCase):
             self.assertIn("cumulative_actual_model_cost_usd", artifact["paid_review"])
             self.assertEqual(artifact["plaintext_artifact_sha256"], text_review.sha256_bytes(plaintext.read_bytes()))
             self.assertNotIn("这份面向普通读者", json.dumps(artifact, ensure_ascii=False))
+
+    def test_extension_manifest_uses_child_campaign_and_receipt(self) -> None:
+        tmp, target, manifest, plaintext, output = self.make_project()
+        with tmp:
+            historical_contract = paid_review.default_contract()
+            historical_contract["max_paid_calls"] = 3
+            parent_path = self.write_parent_budget(target, contract=historical_contract)
+            parent_before = parent_path.read_bytes()
+            payload = text_review.load_json(manifest)
+            payload["paid_review_extension"] = {
+                "parent_campaign_id": "001_text",
+                "authorization_receipt": "AUTHORIZE_ACCOUNTING_ONLY_FINAL_TEXT_REVIEW_RECOVERY",
+            }
+            text_review.write_json(manifest, payload)
+            captured: dict = {}
+
+            artifact = text_review.run_text_review(
+                target,
+                manifest,
+                plaintext,
+                output,
+                api_key="sk-text-secret",
+                opener=self.opener_for(captured, "PASS"),
+            )
+
+            self.assertEqual(parent_path.read_bytes(), parent_before)
+            self.assertEqual(captured["urls"], [paid_review.INPUT_TOKENS_URL, text_review.API_URL])
+            paid = artifact["paid_review"]
+            self.assertEqual(paid["campaign_identity"], "001_text__authorized_extension_1")
+            self.assertEqual(paid["parent_campaign_identity"], "001_text")
+            self.assertEqual(paid["extension_campaign_identity"], "001_text__authorized_extension_1")
+            self.assertEqual(paid["authorization_receipt"], "AUTHORIZE_ACCOUNTING_ONLY_FINAL_TEXT_REVIEW_RECOVERY")
+            self.assertEqual(paid["aggregate_parent_reserved_worst_case_cost_usd"], "0.400000")
+            self.assertEqual(paid["aggregate_reserved_worst_case_cost_usd"], "0.452237")
+            self.assertTrue((target / "results/001_text__authorized_extension_1/paid_review_budget.json").exists())
+
+    def test_extension_reservation_failure_never_sends_model_request(self) -> None:
+        tmp, target, manifest, plaintext, output = self.make_project()
+        with tmp:
+            self.write_parent_budget(target, reserved=["0.490000"])
+            payload = text_review.load_json(manifest)
+            payload["paid_review_extension"] = {
+                "parent_campaign_id": "001_text",
+                "authorization_receipt": "AUTHORIZE_ACCOUNTING_ONLY_FINAL_TEXT_REVIEW_RECOVERY",
+            }
+            text_review.write_json(manifest, payload)
+            captured: dict = {}
+
+            with self.assertRaisesRegex(text_review.TextReviewError, "aggregate reserved-cost"):
+                text_review.run_text_review(
+                    target,
+                    manifest,
+                    plaintext,
+                    output,
+                    api_key="sk-text-secret",
+                    opener=self.opener_for(captured, "PASS"),
+                )
+
+            self.assertEqual(captured["urls"], [paid_review.INPUT_TOKENS_URL])
+            self.assertFalse((target / output).exists())
+            self.assertFalse((target / "results/001_text__authorized_extension_1/paid_review_budget.json").exists())
 
     def test_default_model_and_unsupported_environment_override_fails_closed(self) -> None:
         tmp, target, manifest, plaintext, output = self.make_project()

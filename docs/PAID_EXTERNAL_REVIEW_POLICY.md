@@ -25,6 +25,43 @@ prompt cache: explicit mode with no cache breakpoints
 
 A retry, workflow rerun, process restart, machine restart or fresh checkout must not reset the campaign budget.
 
+## Authorized one-call extension campaign
+
+When a consumer has already exhausted a normal immutable two-call campaign and
+then records a separate explicit human authorization for exactly one additional
+review of the same artifact/data scope, provider, purpose, credential boundary
+and cost ceiling, Bridge Kit supports a narrow append-safe recovery path:
+
+```text
+paid_review_extension:
+  parent_campaign_id: <base campaign>
+  authorization_receipt: <non-secret receipt>
+```
+
+This creates the deterministic child accounting identity
+`<parent>__authorized_extension_1`. The parent campaign ledger remains
+read-only: Bridge Kit does not modify its contract, delete reservations, reset
+actual costs, or repair historical metadata. The child contract allows exactly
+one paid call, automatic paid retries `0`, per-call worst-case `<= USD 0.25`,
+and the same reviewed Terra model/service-tier/reasoning/tools/cache pricing
+contract as the base campaign.
+
+Before reserving the child call, Bridge Kit performs a read-only aggregate
+inspection of the parent ledger. The parent must have the correct schema and
+campaign identity, list-shaped reservations, parseable money fields, no
+`ACCOUNTING_UNVERIFIED` records, and total existing reservation `<= USD 0.50`.
+The new child reservation is allowed only if:
+
+```text
+parent_reserved_worst_case + child_reserved_worst_case <= USD 0.50
+```
+
+Missing parent ledger, missing authorization receipt, a second reservation for
+the same extension child, unverified parent accounting, or aggregate budget
+overflow must fail closed before `/v1/responses`. A historical parent ledger
+with non-default contract metadata may be inspected read-only for aggregate
+accounting, but it must not be treated as a valid writable normal campaign.
+
 ## Pre-request reservation
 
 Before a paid Responses request is sent:

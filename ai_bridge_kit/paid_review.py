@@ -24,6 +24,8 @@ DEFAULT_AUTOMATIC_PAID_RETRIES = 0
 DEFAULT_MAX_OUTPUT_TOKENS = 4096
 DEFAULT_SERVICE_TIER = "default"
 DEFAULT_REASONING_EFFORT = "low"
+EXTENSION_CAMPAIGN_TYPE = "AUTHORIZED_ONE_CALL_EXTENSION"
+EXTENSION_SUFFIX = "__authorized_extension_1"
 LONG_CONTEXT_INPUT_TOKEN_THRESHOLD = 272_000
 INPUT_TOKEN_COUNT_SUPPORTED_FIELDS = (
     "conversation",
@@ -100,6 +102,51 @@ def default_contract() -> dict[str, Any]:
     }
 
 
+def extension_campaign_identity(parent_campaign_id: str) -> str:
+    parent = str(parent_campaign_id or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9._-]+", parent):
+        raise PaidReviewBudgetError("paid review extension parent_campaign_id must be a safe task/campaign token")
+    return f"{parent}{EXTENSION_SUFFIX}"
+
+
+def extension_contract(*, parent_campaign_id: str, authorization_receipt: str) -> dict[str, Any]:
+    receipt = str(authorization_receipt or "").strip()
+    if not receipt:
+        raise PaidReviewBudgetError("paid review extension requires explicit authorization receipt")
+    return {
+        "model": DEFAULT_MODEL,
+        "campaign_type": EXTENSION_CAMPAIGN_TYPE,
+        "parent_campaign_id": str(parent_campaign_id),
+        "max_paid_calls": 1,
+        "campaign_reserved_cost_hard_ceiling_usd": _money(DEFAULT_PER_CALL_WORST_CASE_CEILING_USD),
+        "aggregate_reserved_cost_hard_ceiling_usd": _money(DEFAULT_CAMPAIGN_RESERVED_COST_HARD_CEILING_USD),
+        "per_call_worst_case_ceiling_usd": _money(DEFAULT_PER_CALL_WORST_CASE_CEILING_USD),
+        "automatic_paid_retries": DEFAULT_AUTOMATIC_PAID_RETRIES,
+        "authorization_receipt": receipt,
+        "pricing": default_contract()["pricing"],
+    }
+
+
+def normalize_extension_metadata(manifest: dict[str, Any]) -> dict[str, Any] | None:
+    raw = manifest.get("paid_review_extension")
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise PaidReviewBudgetError("paid_review_extension must be an object")
+    parent = str(raw.get("parent_campaign_id") or "").strip()
+    if not parent:
+        raise PaidReviewBudgetError("paid_review_extension.parent_campaign_id is required")
+    child = extension_campaign_identity(parent)
+    receipt = str(raw.get("authorization_receipt") or "").strip()
+    if not receipt:
+        raise PaidReviewBudgetError("paid_review_extension.authorization_receipt is required")
+    return {
+        "parent_campaign_id": parent,
+        "extension_campaign_id": child,
+        "authorization_receipt": receipt,
+    }
+
+
 def validate_model_pricing(model: str) -> dict[str, Any]:
     if model != DEFAULT_MODEL:
         raise PaidReviewBudgetError("paid review model/pricing mismatch; only gpt-5.6-terra has reviewed pricing")
@@ -129,6 +176,9 @@ def request_safety_fields() -> dict[str, Any]:
 
 
 def campaign_identity_from_manifest(manifest: dict[str, Any]) -> str:
+    extension = normalize_extension_metadata(manifest)
+    if extension is not None:
+        return extension["extension_campaign_id"]
     raw = manifest.get("paid_review_campaign_id") or manifest.get("campaign_id") or manifest.get("task_key")
     identity = str(raw or "").strip()
     if not identity:
@@ -161,6 +211,54 @@ def _sum_actual_cost(reservations: list[dict[str, Any]]) -> Decimal:
     return total
 
 
+def inspect_parent_budget_state(state_path: Path, *, campaign_identity: str) -> dict[str, Any]:
+    if not state_path.exists():
+        raise PaidReviewBudgetError("paid review extension parent budget state missing")
+    try:
+        payload = json.loads(state_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise PaidReviewBudgetError("paid review extension parent budget state is unreadable") from exc
+    if payload.get("schema") != BUDGET_SCHEMA:
+        raise PaidReviewBudgetError("paid review extension parent budget schema mismatch")
+    if payload.get("campaign_identity") != campaign_identity:
+        raise PaidReviewBudgetError("paid review extension parent campaign identity mismatch")
+    reservations = payload.get("reservations")
+    if not isinstance(reservations, list):
+        raise PaidReviewBudgetError("paid review extension parent reservations must be a list")
+    for item in reservations:
+        if not isinstance(item, dict):
+            raise PaidReviewBudgetError("paid review extension parent reservation must be an object")
+        if item.get("accounting_status") == "ACCOUNTING_UNVERIFIED" or item.get("actual_cost_status") == "ACCOUNTING_UNVERIFIED":
+            raise PaidReviewBudgetError("paid review extension parent accounting is unverified")
+        _decimal_from_json(item.get("worst_case_reserved_cost_usd", "0"))
+        actual = item.get("actual_model_cost_usd")
+        if actual is not None:
+            _decimal_from_json(actual)
+    reserved_total = _sum_reserved_cost(reservations)
+    if reserved_total > DEFAULT_CAMPAIGN_RESERVED_COST_HARD_CEILING_USD:
+        raise PaidReviewBudgetError("paid review extension parent reserved-cost exceeds USD 0.50")
+    payload.setdefault("cumulative_reserved_worst_case_cost_usd", _money(reserved_total))
+    payload.setdefault("cumulative_actual_model_cost_usd", _money(_sum_actual_cost(reservations)))
+    return payload
+
+
+def _is_extension_contract(contract: Any, *, campaign_identity: str) -> bool:
+    if not isinstance(contract, dict):
+        return False
+    parent = contract.get("parent_campaign_id")
+    if not isinstance(parent, str):
+        return False
+    try:
+        child = extension_campaign_identity(parent)
+    except PaidReviewBudgetError:
+        return False
+    expected = extension_contract(
+        parent_campaign_id=parent,
+        authorization_receipt=str(contract.get("authorization_receipt") or ""),
+    )
+    return campaign_identity == child and contract == expected
+
+
 @contextmanager
 def locked_budget(state_path: Path) -> Iterator[None]:
     state_path.parent.mkdir(parents=True, exist_ok=True)
@@ -180,12 +278,13 @@ def locked_budget(state_path: Path) -> Iterator[None]:
             lock_handle.close()
 
 
-def load_budget_state(state_path: Path, *, campaign_identity: str) -> dict[str, Any]:
+def load_budget_state(state_path: Path, *, campaign_identity: str, expected_contract: dict[str, Any] | None = None) -> dict[str, Any]:
+    contract = expected_contract or default_contract()
     if not state_path.exists():
         return {
             "schema": BUDGET_SCHEMA,
             "campaign_identity": campaign_identity,
-            "contract": default_contract(),
+            "contract": contract,
             "reservations": [],
             "cumulative_reserved_worst_case_cost_usd": "0.000000",
             "cumulative_actual_model_cost_usd": "0.000000",
@@ -198,7 +297,7 @@ def load_budget_state(state_path: Path, *, campaign_identity: str) -> dict[str, 
         raise PaidReviewBudgetError("paid review budget state schema mismatch")
     if payload.get("campaign_identity") != campaign_identity:
         raise PaidReviewBudgetError("paid review budget campaign identity mismatch")
-    if payload.get("contract") != default_contract():
+    if payload.get("contract") != contract:
         raise PaidReviewBudgetError("paid review budget contract mismatch")
     reservations = payload.get("reservations")
     if not isinstance(reservations, list):
@@ -206,6 +305,20 @@ def load_budget_state(state_path: Path, *, campaign_identity: str) -> dict[str, 
     payload.setdefault("cumulative_reserved_worst_case_cost_usd", _money(_sum_reserved_cost(reservations)))
     payload.setdefault("cumulative_actual_model_cost_usd", _money(_sum_actual_cost(reservations)))
     return payload
+
+
+def load_budget_state_for_actual_update(state_path: Path, *, campaign_identity: str) -> dict[str, Any]:
+    try:
+        return load_budget_state(state_path, campaign_identity=campaign_identity)
+    except PaidReviewBudgetError:
+        try:
+            payload = json.loads(state_path.read_text(encoding="utf-8"))
+        except Exception:
+            raise
+        contract = payload.get("contract")
+        if not _is_extension_contract(contract, campaign_identity=campaign_identity):
+            raise
+        return load_budget_state(state_path, campaign_identity=campaign_identity, expected_contract=contract)
 
 
 def write_budget_state(state_path: Path, payload: dict[str, Any]) -> None:
@@ -441,6 +554,7 @@ def reserve_paid_review_call(
     model: str,
     request_payload: dict[str, Any],
     input_token_preflight: dict[str, Any],
+    extension_metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     pricing = validate_model_pricing(model)
     max_output_tokens = request_payload.get("max_output_tokens")
@@ -453,6 +567,71 @@ def reserve_paid_review_call(
     if worst_case_cost > DEFAULT_PER_CALL_WORST_CASE_CEILING_USD:
         raise PaidReviewBudgetError("paid review per-call worst-case cost exceeds USD 0.25")
     request_hash = request_sha256(request_payload)
+    if extension_metadata is not None:
+        parent_identity = str(extension_metadata.get("parent_campaign_id") or "")
+        child_identity = extension_campaign_identity(parent_identity)
+        if campaign_identity != child_identity:
+            raise PaidReviewBudgetError("paid review extension campaign identity mismatch")
+        auth_receipt = str(extension_metadata.get("authorization_receipt") or "").strip()
+        contract = extension_contract(parent_campaign_id=parent_identity, authorization_receipt=auth_receipt)
+        parent_state_path = budget_state_path(target, parent_identity)
+        parent_state = inspect_parent_budget_state(parent_state_path, campaign_identity=parent_identity)
+        parent_reserved = _sum_reserved_cost(parent_state["reservations"])
+        state_path = budget_state_path(target, campaign_identity)
+        with locked_budget(state_path):
+            state = load_budget_state(state_path, campaign_identity=campaign_identity, expected_contract=contract)
+            reservations = state["reservations"]
+            if any(item.get("accounting_status") == "ACCOUNTING_UNVERIFIED" or item.get("actual_cost_status") == "ACCOUNTING_UNVERIFIED" for item in reservations):
+                raise PaidReviewBudgetError("paid review extension accounting is unverified; refusing next paid request")
+            if len(reservations) >= 1:
+                raise PaidReviewBudgetError("paid review extension call limit exhausted")
+            current_reserved = _sum_reserved_cost(reservations)
+            extension_cumulative = current_reserved + worst_case_cost
+            aggregate_reserved = parent_reserved + extension_cumulative
+            if extension_cumulative > DEFAULT_PER_CALL_WORST_CASE_CEILING_USD:
+                raise PaidReviewBudgetError("paid review extension reserved-cost hard ceiling exceeds USD 0.25")
+            if aggregate_reserved > DEFAULT_CAMPAIGN_RESERVED_COST_HARD_CEILING_USD:
+                raise PaidReviewBudgetError("paid review aggregate reserved-cost hard ceiling exceeds USD 0.50")
+            reservation = {
+                "reservation_id": f"{campaign_identity}-1-{request_hash[:12]}",
+                "call_number": 1,
+                "review_type": review_type,
+                "reserved_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "model": model,
+                "pricing": pricing,
+                "request_sha256": request_hash,
+                "input_token_preflight": input_token_preflight,
+                "max_output_tokens": max_output_tokens,
+                "worst_case_reserved_cost_usd": _money(worst_case_cost),
+                "cumulative_reserved_cost_usd": _money(extension_cumulative),
+                "cumulative_reserved_worst_case_cost_usd": _money(extension_cumulative),
+                "aggregate_parent_reserved_worst_case_cost_usd": _money(parent_reserved),
+                "aggregate_reserved_worst_case_cost_usd": _money(aggregate_reserved),
+                "parent_campaign_identity": parent_identity,
+                "extension_campaign_identity": campaign_identity,
+                "authorization_receipt": auth_receipt,
+                "service_tier": request_payload.get("service_tier"),
+                "automatic_paid_retries": DEFAULT_AUTOMATIC_PAID_RETRIES,
+            }
+            reservations.append(reservation)
+            state["parent_campaign_identity"] = parent_identity
+            state["authorization_receipt"] = auth_receipt
+            state["cumulative_reserved_worst_case_cost_usd"] = _money(extension_cumulative)
+            state["cumulative_actual_model_cost_usd"] = _money(_sum_actual_cost(reservations))
+            state["aggregate_parent_reserved_worst_case_cost_usd"] = _money(parent_reserved)
+            state["aggregate_reserved_worst_case_cost_usd"] = _money(aggregate_reserved)
+            write_budget_state(state_path, state)
+        return {
+            "state_path": state_path,
+            "reservation": reservation,
+            "reservations": reservations,
+            "contract": contract,
+            "parent_campaign_identity": parent_identity,
+            "parent_state_path": parent_state_path,
+            "parent_reserved_worst_case_cost_usd": _money(parent_reserved),
+            "aggregate_reserved_worst_case_cost_usd": _money(aggregate_reserved),
+            "authorization_receipt": auth_receipt,
+        }
     state_path = budget_state_path(target, campaign_identity)
     with locked_budget(state_path):
         state = load_budget_state(state_path, campaign_identity=campaign_identity)
@@ -517,7 +696,7 @@ def record_actual_usage(
 ) -> dict[str, Any]:
     state_path = budget_state_path(target, campaign_identity)
     with locked_budget(state_path):
-        state = load_budget_state(state_path, campaign_identity=campaign_identity)
+        state = load_budget_state_for_actual_update(state_path, campaign_identity=campaign_identity)
         for item in state["reservations"]:
             if item.get("reservation_id") == reservation_id:
                 try:
@@ -538,12 +717,22 @@ def record_actual_usage(
                 state["cumulative_reserved_worst_case_cost_usd"] = _money(_sum_reserved_cost(state["reservations"]))
                 state["cumulative_actual_model_cost_usd"] = _money(_sum_actual_cost(state["reservations"]))
                 write_budget_state(state_path, state)
-                return {
+                result = {
                     "state_path": state_path,
                     "reservation": item,
                     "reservations": state["reservations"],
-                    "contract": default_contract(),
+                    "contract": state["contract"],
                 }
+                if _is_extension_contract(state.get("contract"), campaign_identity=campaign_identity):
+                    result.update(
+                        {
+                            "parent_campaign_identity": state.get("parent_campaign_identity"),
+                            "parent_reserved_worst_case_cost_usd": state.get("aggregate_parent_reserved_worst_case_cost_usd"),
+                            "aggregate_reserved_worst_case_cost_usd": state.get("aggregate_reserved_worst_case_cost_usd"),
+                            "authorization_receipt": state.get("authorization_receipt"),
+                        }
+                    )
+                return result
     raise PaidReviewBudgetError("paid review reservation id not found for actual usage accounting")
 
 
@@ -559,7 +748,7 @@ def record_zero_billing_failure(
         raise PaidReviewBudgetError("paid review zero-billing failure requires a reviewed billing error code")
     state_path = budget_state_path(target, campaign_identity)
     with locked_budget(state_path):
-        state = load_budget_state(state_path, campaign_identity=campaign_identity)
+        state = load_budget_state_for_actual_update(state_path, campaign_identity=campaign_identity)
         for item in state["reservations"]:
             if item.get("reservation_id") == reservation_id:
                 item["actual_cost_status"] = "ZERO_BILLING_FAILURE"
@@ -625,6 +814,12 @@ def receipt_from_reservation(
         "cumulative_actual_model_cost_usd": _money(_sum_actual_cost(reservation_bundle["reservations"])),
         "accounting_status": reservation.get("accounting_status"),
     }
+    if reservation_bundle.get("parent_campaign_identity"):
+        receipt["parent_campaign_identity"] = reservation_bundle["parent_campaign_identity"]
+        receipt["extension_campaign_identity"] = campaign_identity
+        receipt["authorization_receipt"] = reservation_bundle.get("authorization_receipt")
+        receipt["aggregate_parent_reserved_worst_case_cost_usd"] = reservation_bundle.get("parent_reserved_worst_case_cost_usd")
+        receipt["aggregate_reserved_worst_case_cost_usd"] = reservation_bundle.get("aggregate_reserved_worst_case_cost_usd")
     if reservation.get("accounting_unverified_reason"):
         receipt["accounting_unverified_reason"] = reservation["accounting_unverified_reason"]
     if response_payload and receipt["response_id"] is None and isinstance(response_payload.get("id"), str):
