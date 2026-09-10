@@ -118,7 +118,32 @@ ai-bridge agent-flow install --target /path/to/project
 ai-bridge agent-flow validate --target /path/to/project
 ```
 
-## 8. 可选：同步论文目录到 Overleaf
+## 8. 可选：给长期 Goal 启用 Persistent Run
+
+如果某个已经冻结的 Goal 需要长时间运行，并且希望它在 Codex / SSH 断开后继续执行，可以给仓库安装 Persistent Run：
+
+```bash
+ai-bridge persistent-run install --target /path/to/project
+ai-bridge persistent-run validate --target /path/to/project
+```
+
+然后在具体 Goal 中复制或引用：
+
+```text
+automation/persistent_run/CONTRACT_TEMPLATE.md
+```
+
+真正启动前，由用户生成并发送 kickoff 授权：
+
+```bash
+ai-bridge persistent-run prompt kickoff \
+  --target /path/to/project \
+  --goal prompts/tasks/010_long_run.md
+```
+
+这个命令只打印授权文本，不会启动 tmux。Persistent Run 只约束长期执行和恢复：使用 canonical `tmux` session，已有兼容 run 时 resume，不把 session/PID/heartbeat 当作完成，不自动 fallback 到 `setsid`、`nohup`、裸后台 `&`、`screen` 或 `sudo`。Lite / Review / Control 的 workflow 选择和原 Goal 完成标准保持不变。
+
+## 9. 可选：同步论文目录到 Overleaf
 
 如果项目是科研 monorepo，Codex 仍应在整个 repository 根目录工作；Overleaf 只应接收论文 publication root，例如 `paper/manuscript`。Overleaf 本身不能从一个 GitHub monorepo 中只 Pull 某个子目录，Overleaf Bridge 是在本机把该目录投影到 Overleaf Git project。
 

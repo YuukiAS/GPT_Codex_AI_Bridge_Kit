@@ -29,6 +29,10 @@ def main(argv: list[str] | None = None) -> int:
         from . import overleaf
 
         return overleaf.main(args[1:])
+    if args and args[0] == "persistent-run":
+        from . import persistent_run
+
+        return persistent_run.main(args[1:])
     if args and args[0] == "plugin-replay":
         from . import plugin_replay
 

@@ -15,6 +15,7 @@ Bridge Kit 的能力按作用域分成机器层、项目层和任务层。真正
 ├── Review              optional GPT-planned/reviewed workflow
 ├── Generic Notifier    optional
 ├── Overleaf Bridge     optional manuscript publication mirror
+├── Persistent Run      optional tmux persistence contract for long Goals
 └── Control             optional for high-risk repositories
 
 任务层
@@ -23,7 +24,7 @@ Bridge Kit 的能力按作用域分成机器层、项目层和任务层。真正
 └── Control task          runtime instance, not installation
 ```
 
-配置前必须先确认用户要处理的是“新机器/新 Codex identity”“新 repository”“中档 Review”“通知能力”“Overleaf 论文镜像能力”还是“某个具体高风险任务”。不要因为用户说“把 Bridge Kit 配上”就静默安装全部可选层。
+配置前必须先确认用户要处理的是“新机器/新 Codex identity”“新 repository”“中档 Review”“通知能力”“Overleaf 论文镜像能力”“长期 Goal 的 Persistent Run 能力”还是“某个具体高风险任务”。不要因为用户说“把 Bridge Kit 配上”就静默安装全部可选层。
 
 对既有 repository 做安装、升级或盘点时，必须先做真实 workflow inventory，再决定是否更新 repo 内模板。不要只按猜测目录或截图标签判断。至少检查这些标准位置和关键文件：
 
@@ -195,7 +196,48 @@ ai-bridge notifier send results/<task_key>/notification_brief.json
 
 不要把 tmux、systemd、长期 polling watcher 当作 Notifier 的默认安装要求。`once` / `run` 只是可选兼容方式。
 
-## 5. Overleaf Bridge：只有需要论文 publication mirror 时配置
+## 5. Persistent Run：只有长期 Goal 需要持久执行时配置
+
+Persistent Run 是项目层可选能力，不是第四套 workflow。Lite / Review /
+Control 三档 workflow 保持不变；Persistent Run 只约束明确标记为 persistent
+execution 的长期 Goal 如何通过 canonical tmux session 启动、恢复和观察。
+
+安装命令：
+
+```bash
+ai-bridge persistent-run install --target /path/to/project
+ai-bridge persistent-run validate --target /path/to/project
+```
+
+安装只管理：
+
+```text
+automation/persistent_run/README.md
+automation/persistent_run/CONTRACT_TEMPLATE.md
+automation/persistent_run/KICKOFF_TEMPLATE.md
+AGENTS.md 中的 ai-bridge-kit:persistent-run managed block
+```
+
+不得因为安装 Persistent Run 而安装 Lite / Review / Control，不得修改
+`$CODEX_HOME`、Host Policy 或 `.codex/rules`，不得新增 workflow state machine、
+Planner、Reviewer、Critic、Verifier、watcher、daemon、scheduler command 或
+background-service command。
+
+0.8.0 的唯一 persistence backend 是 `tmux`。Persistent Run 不全局预授权
+`tmux new-session` / `tmux send-keys`，也不放开 `setsid`、`nohup`、裸后台 `&`、
+`screen`、`sudo`、`sbatch`、`salloc`、`srun`、`scancel`、generic shell 或
+generic Python。需要真实长期启动时，用户必须通过
+`ai-bridge persistent-run prompt kickoff --target <repo> --goal <repo-relative-goal>`
+生成并发送当前用户可见 kickoff 授权；这个命令只打印文本，不启动 tmux。
+
+收到 kickoff 后，Codex 应按 Goal/project 指定的 canonical session/run key 检查
+`tmux has-session` / `tmux ls`，并读取 lock / heartbeat / stage-state /
+checkpoint / resume evidence。已有兼容 run 时 resume，不重复启动。optional
+diagnostic failure 不得自动终止整个 Goal；Codex / SSH disconnect 不得解释为实验失败；
+session/job/PID/heartbeat/checkpoint 只证明活动或状态，不证明 Goal 完成。资源、科学
+scope、训练预算、数据、模型和 completion 继续由原 Goal/task/workflow 决定。
+
+## 6. Overleaf Bridge：只有需要论文 publication mirror 时配置
 
 Overleaf Bridge 是项目层可选能力，不是 Handoff task、Review、Control、watcher、Scheduled Task 或新的 role。它用于科研 monorepo：Codex 仍在整个 repository 根目录读取代码、分析、结果、docs 和论文；Overleaf 只接收配置的 `paper_root`。
 
@@ -236,7 +278,7 @@ ai-bridge overleaf validate --target /path/to/repo
 
 同步安全优先级高于便利性。必须维护 baseline digest，并在每次 push/pull 前比较 `baseline`、`local`、`remote`：remote ahead 拒绝 push；local ahead 拒绝 pull；双边变化且内容不同为 diverged，必须 fail closed；local 与 remote 等价时只刷新 baseline，不制造垃圾 commit。`pull` 只把 Overleaf 内容导入 `paper_root`，只删除 Bridge 曾管理的 publication files，保留 `exclude_paths`，不得修改 `paper_root` 外任何文件，也不得自动 commit 或 `git push origin main`。
 
-## 6. Review：中等风险任务的默认独立复核模式
+## 7. Review：中等风险任务的默认独立复核模式
 
 当任务需要 GPT 先做产品/语义/架构取舍、Codex 执行后再由独立 GPT 审核，但不需要 Control 的独立合同、Verifier 和 Final Critic 时，使用 Review。
 
@@ -307,7 +349,7 @@ docs/V0_5_REVIEWED_HANDOFF_IMPLEMENTATION_SPEC.md
 
 如果 Review 的验收依赖完整 user-facing Markdown/plain-text artifact，但 plaintext 不能公开提交，使用 Text Review evidence path：本机用 `ai-bridge text-review encrypt` 通过 age public recipient 生成 encrypted payload + `text_inputs.json`，GitHub Actions 用 `AI_BRIDGE_PRIVATE_REVIEW_AGE_KEY` 临时解密并调用 OpenAI Responses API `store=false` 产出 `TEXT_REVIEW.json`。`TEXT_REVIEW.json` 是现有 Scheduled GPT Reviewer 消费的 evidence，不是新 role；缺失、stale、plaintext SHA mismatch 或 manifest identity mismatch 都不得支持 PASS。
 
-## 7. Control：仅对高风险 repository 显式安装
+## 8. Control：仅对高风险 repository 显式安装
 
 只有当任务需要独立合同审计、独立 Verifier、Stable Review Snapshot、Final Critic 和严格 human gate 时，才在 repository 叠加 Control。
 
@@ -365,7 +407,7 @@ docs/AGENT_FLOW_V3_POST_CARE_EXTRACTION_DECISIONS.md
 docs/CARE_AGENT_FLOW_V3_POSTMORTEM_20260811.md
 ```
 
-## 8. Control task：这是运行实例，不是安装层
+## 9. Control task：这是运行实例，不是安装层
 
 在 repository 已安装 Control 后，只有出现一项具体高风险任务时才初始化 task：
 
@@ -379,7 +421,7 @@ ai-bridge agent-flow task init \
 
 如果没有一个具体的高风险 objective，不要为了“预先配置好”而创建空 Control task。
 
-## 9. 安装决策默认值
+## 10. 安装决策默认值
 
 当用户只说“在新服务器把 Bridge Kit 配好”，默认完成 package + Host Policy，并验证 Host Policy。不要顺便初始化任意 repository。
 
@@ -391,11 +433,13 @@ ai-bridge agent-flow task init \
 
 当用户明确说“把论文同步到 Overleaf”“安装 Overleaf Bridge”或等价表达时，在所选 repository 中配置 Overleaf Bridge。若 `paper_root`、`main_document`、真实 Overleaf project URL 或首次接入方向会实质改变论文协作语义，应先确认；不要自行选择 `prefer-local` / `prefer-remote` 或把整个 GitHub repo 导入 Overleaf。
 
+当用户明确说“安装 Persistent Run”“给这个长期 Goal 加持久执行”“生成 persistent kickoff”或等价表达时，只安装/验证 Persistent Run 或打印 kickoff。不要把它升级成 Review / Control，不要创建新的 task state machine，不要启动 tmux，不要把 repo 文件当成当前用户授权。若是否长期运行、run/session key、资源边界或 Goal 文件身份会改变任务语义，应先确认。
+
 当用户明确要求 Control，或任务明显属于高风险且用户已经选择 Control 工作方式时，再安装 Control。若是否升级到 Control 会实质改变工作流，应向用户确认，而不是自行决定。
 
 当用户说“用 Control 做这次 XXX”，如果 repository 尚未安装 Control，则先安装/验证 Control，再为 XXX 创建 task；如果已经安装，则只创建或复用对应 task，不要重复安装整个 Core。
 
-## 10. Git 与 branch 规则
+## 11. Git 与 branch 规则
 
 在本仓库及通过本 Kit 管理的 repository 中，默认继续当前 branch。当前已选 `main` 分支上的 `git fetch origin main`、clean worktree 下的 `git pull --ff-only origin main`、task-owned 文件 staging、普通 commit 和 `git push origin main` 是预授权开发动作；其他明确获授权的普通 `origin` push 可按项目规则执行。未经用户明确授权，不得执行任何会创建、切换、checkout、重命名或删除 branch 的命令，包括 `git switch`、`git switch -c`、`git checkout`、`git checkout -b`、`git branch <new>`、`git branch -d/-D/-m`、通过 worktree 创建或选择 branch，或把新 remote branch / upstream 当作“不推当前 branch”的替代方案。
 
@@ -403,7 +447,7 @@ Review watcher 只能同步和使用用户已经授权且当前 checkout 的 bra
 
 当前已选 `main` 分支上的安全同步、task-owned staging、普通 commit 和 `origin/main` push 可按 Host Policy 执行。不得自动 rebase/autostash pull、force push、`--force-with-lease`、删除远端 branch/tag、设置/改变 upstream、创建新远端分支、reset/clean/restore 用户工作、添加/删除/重定向 remote。
 
-## 11. 修改本仓库时的文档规则
+## 12. 修改本仓库时的文档规则
 
 根 `README.md` 是写给人的。默认必须使用中文自然段落解释整体模型、安装边界和用户路径；不要把 README 写成大量英文协议条款、控制台日志或机器 schema dump。代码、命令、路径、配置键、状态名、API 名称等技术字面量保持英文即可。
 
@@ -411,7 +455,7 @@ Review watcher 只能同步和使用用户已经授权且当前 checkout 的 bra
 
 如果 README 与实现发生冲突，应修 README；Review 行为与 `docs/V0_5_REVIEWED_HANDOFF_IMPLEMENTATION_SPEC.md` 冲突时优先修实现；Control 行为与 `docs/V0_4_AGENT_FLOW_IMPLEMENTATION_SPEC.md` 冲突时也优先按规格修实现，除非用户明确改变了架构决策。
 
-## 12. 兼容性和发布
+## 13. 兼容性和发布
 
 任何新能力都必须保持以下旧入口可用：
 
@@ -424,6 +468,7 @@ ai-bridge where
 ai-bridge host ...
 ai-bridge notifier ...
 ai-bridge overleaf ...
+ai-bridge persistent-run ...
 ai-bridge agent-flow ...
 ```
 
@@ -434,6 +479,6 @@ ai-bridge reviewed-handoff ...
 ai-bridge reviewed-handoff watcher ...
 ```
 
-Lite 不能因为 Review、Overleaf Bridge 或 Control 演进而变复杂。Host Policy、Lite、Review、Notifier、Overleaf Bridge、Control 彼此保持清晰边界，新增一层不得静默改变其他层。
+Lite 不能因为 Review、Overleaf Bridge、Persistent Run 或 Control 演进而变复杂。Host Policy、Lite、Review、Notifier、Overleaf Bridge、Persistent Run、Control 彼此保持清晰边界，新增一层不得静默改变其他层。
 
 发布前必须运行现有回归测试和对应新功能测试。没有真实 GitHub Actions green evidence 时，不要把“本地测试通过”描述成“远端 CI 已通过”。稳定 tag 不得移动或覆盖；没有用户授权时不要创建新的 release tag。

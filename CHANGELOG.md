@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+## 0.8.0
+
+- Add Persistent Run as an optional project capability for explicitly authorized
+  long-running Goals that need a canonical tmux persistence contract.
+- Add `ai-bridge persistent-run install`, `ai-bridge persistent-run validate`,
+  and `ai-bridge persistent-run prompt kickoff` without adding a fourth
+  workflow, new role, watcher, state machine, daemon, scheduler command, or
+  global Host Policy allow rule.
+- Install only `automation/persistent_run/README.md`,
+  `CONTRACT_TEMPLATE.md`, `KICKOFF_TEMPLATE.md`, and one root `AGENTS.md`
+  managed block while preserving user-owned AGENTS content and remaining
+  independent of Lite / Review / Control.
+- Keep completion authority with the original Goal/task/workflow: tmux session,
+  Slurm job, PID, heartbeat, checkpoint, or lock evidence proves state, not
+  completion.
+- Add unit coverage for install/validate/kickoff path safety, idempotence,
+  no-Lite installation, no `$CODEX_HOME` or `.codex/rules` writes, and top-level
+  CLI routing.
+
 ## 0.7.3
 
 - Reduce reproduced Auto-review false positives for read-only process

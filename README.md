@@ -6,7 +6,7 @@
 
 这个仓库的原则是：**默认保持简单，需要什么再加什么。** 普通项目只需要机器级规则和基础交接；只有确实需要时，才启用独立复核、高风险闭环、邮件通知、Overleaf 同步或视觉复核。
 
-当前版本：`0.7.3`。
+当前版本：`0.8.0`。
 
 ## 三档 workflow
 
@@ -39,6 +39,7 @@ Review 使用 `ai-bridge reviewed-handoff ...`，Control 使用
 | Text Review / Text Transform | `0.6.1` | 私有 Markdown/plain-text 的加密复核与转换 transport |
 | Production Plugin Replay | `0.6.1` | 通过 Host Policy 预授权受控的本机真实插件回归入口 |
 | Goal Fidelity | `0.7.0` | Lite / Review / Control 防止把降级替代、窄证据或纯负面检查包装成原始目标完成 |
+| Persistent Run | `0.8.0` | 长期 Goal 的显式 kickoff、canonical tmux、恢复证据与不中断执行约束 |
 
 本项目采用 `0.x` 迭代方式。每个 `0.x` 小版本通常代表一项可独立使用的能力进入稳定工作流；后面的补丁版本主要用于安全性、兼容性和默认行为修正。这不是严格的 Semantic Versioning 承诺，而是当前阶段的版本阅读方式。
 
@@ -56,6 +57,7 @@ Review 使用 `ai-bridge reviewed-handoff ...`，Control 使用
 - `0.7.1`：修复 Review Plan schema evolution；新 Plan 使用 V2 Goal Fidelity contract，历史 V1 frozen Plan 无需改写即可继续验证/执行，但新的 freeze 必须使用 V2。
 - `0.7.2`：修复 Host Policy 对常见 Slurm 只读 inspection 的误拒绝；直接 `squeue`、`sinfo`、`sacct`、`sstat`、`sprio`、`scontrol show ...` 和 `scontrol ping` 可不再重复审批，但 `sbatch`、`srun`、`salloc`、`scancel`、mutating `scontrol`、`sacctmgr modify` 和 shell pipeline 仍走审批路径。
 - `0.7.3`：减少 unattended / overnight 任务里已复现的低风险诊断误拒绝；直接 `ps`、`git fetch --all --prune`、`tmux ls`、`tmux list-sessions` 和 `tmux has-session` 可不再重复审批，但 process mutation、tmux mutation、arbitrary Git fetch、generic shell/Python 和危险 Git 仍走审批路径。
+- `0.8.0`：新增 Persistent Run 项目能力。它不是第四档 workflow，而是让明确授权的长期 Goal 使用 canonical `tmux` session、项目原生 lock / heartbeat / stage-state / checkpoint / resume evidence 和用户可见 kickoff 文本来启动或恢复；不新增 Host Policy 全局 allow、不自动 fallback 到 `setsid` / `nohup` / 裸后台 `&` / `screen` / `sudo`，也不改变原 Goal 的完成标准。
 
 ## 一眼看懂：我到底该装什么
 
@@ -68,6 +70,7 @@ Review 使用 `ai-bridge reviewed-handoff ...`，Control 使用
 项目层：每个 Git 仓库按需安装
 ├── Lite                 基础 GPT ↔ Codex 交接，默认推荐
 ├── Review               GPT 先规划，Codex 执行，再由 GPT 独立复核
+├── Persistent Run       长期 Goal 的 tmux 持久执行能力
 ├── Generic Notifier     任务结束后发邮件
 ├── Overleaf Bridge      只把论文目录同步到 Overleaf
 ├── Visual Review        对图片、PPT 截图等做独立视觉检查
@@ -89,7 +92,48 @@ Host Policy + Lite
 
 ---
 
-## 1. Host Policy（`0.2.0` 引入）：先配置 Codex 的长期规则
+## 4. Persistent Run（`0.8.0` 引入）：长期 Goal 的持久执行
+
+Persistent Run 是项目层可选能力，不是第四套 workflow。Lite / Review /
+Control 三档 workflow 保持不变；Persistent Run 只解决长期任务在 Codex / SSH
+断开后如何继续运行、如何恢复、以及如何避免临时发明后台机制的问题。
+
+安装到某个 Git 仓库：
+
+```bash
+ai-bridge persistent-run install --target /path/to/project
+ai-bridge persistent-run validate --target /path/to/project
+```
+
+安装后只会写入：
+
+```text
+automation/persistent_run/README.md
+automation/persistent_run/CONTRACT_TEMPLATE.md
+automation/persistent_run/KICKOFF_TEMPLATE.md
+AGENTS.md 中的 ai-bridge-kit:persistent-run managed block
+```
+
+它不会安装 Lite / Review / Control，不会修改 `$CODEX_HOME`，不会创建
+`.codex/rules`，也不会放开全局 `tmux new-session`、`setsid`、`nohup`、
+`sbatch`、`salloc` 或 generic shell/Python。
+
+给某个已经冻结的 Goal 生成 kickoff 授权文本：
+
+```bash
+ai-bridge persistent-run prompt kickoff \
+  --target /path/to/project \
+  --goal prompts/tasks/010_long_run.md
+```
+
+这个命令只打印用户可见授权，不会启动 tmux。用户把这段 kickoff 发给 Codex
+后，Codex 才能针对同一个 frozen Goal 使用 canonical `tmux` session 启动或恢复。
+已有兼容 run 时应 resume，不重复启动；`tmux` session、Slurm job、PID、
+heartbeat 或 checkpoint 只能证明活动或状态，不能替代原 Goal 的完成标准。
+
+---
+
+## 5. Host Policy（`0.2.0` 引入）：先配置 Codex 的长期规则
 
 先安装本仓库：
 
@@ -144,7 +188,7 @@ read isolation。Host Policy 不会因此放开 raw `codex exec`、裸 shell/pyt
 
 ---
 
-## 2. Lite（`0.1.0` 引入）：新项目默认安装
+## 6. Lite（`0.1.0` 引入）：新项目默认安装
 
 进入一个正式 Git 仓库后：
 
@@ -183,7 +227,7 @@ Lite 并不意味着“只能做小任务”。普通功能开发、修 bug、�
 
 ---
 
-## 3. Review（`0.5.0` 引入）：需要 GPT 先定方案、完成后再独立复核
+## 7. Review（`0.5.0` 引入）：需要 GPT 先定方案、完成后再独立复核
 
 如果某项工作不能让 Codex 一边执行一边自己决定产品语义或科研方向，但又没有必要上最重的 Control，可以使用 Review。
 
@@ -268,7 +312,7 @@ docs/V0_5_REVIEWED_HANDOFF_IMPLEMENTATION_SPEC.md
 
 ---
 
-## 4. Overleaf Bridge（`0.6.0` 引入）：一个科研仓库里同时管代码和论文
+## 8. Overleaf Bridge（`0.6.0` 引入）：一个科研仓库里同时管代码和论文
 
 这是 `0.6.0` 引入的能力，已完成真实科研仓库与 Overleaf 的双向端到端验证。
 
@@ -445,7 +489,7 @@ Overleaf Bridge **不会自动实时同步**。它就是一个按需、可检查
 
 ---
 
-## 5. Generic Notifier（`0.3.0` 引入）：按结构化 brief 发邮件
+## 9. Generic Notifier（`0.3.0` 引入）：按结构化 brief 发邮件
 
 Notifier 只负责通知，不负责决定任务是不是完成。
 
@@ -485,7 +529,7 @@ results/<task_key>/notifications/<event>.json
 
 ---
 
-## 6. Visual Review（`0.5.2` 引入）：给图片和视觉产物增加独立检查
+## 10. Visual Review（`0.5.2` 引入）：给图片和视觉产物增加独立检查
 
 Visual Review 用来检查真正需要“看图”才能判断的问题，例如：
 
@@ -531,7 +575,7 @@ Visual Review workflow 只在 `main` / `reviewed/**` 上的 `results/**/visual_r
 
 ---
 
-## 7. Text Review：给私有文本产物增加独立全文检查
+## 11. Text Review：给私有文本产物增加独立全文检查
 
 Text Review 用于 Review 中这类场景：最终验收必须读完整 user-facing Markdown/plain text，但正文不能作为 plaintext 提交到 public task branch。它不是新的 GPT role，而是和 Visual Review 平级的 evidence producer。
 
@@ -610,7 +654,7 @@ Text Review workflow 只在 `main` / `reviewed/**` 上的 `results/**/text_revie
 
 ---
 
-## 8. Control（`0.4.0` 引入）：只有高风险任务才用
+## 12. Control（`0.4.0` 引入）：只有高风险任务才用
 
 Control 面向“错误通过的代价很高”的任务，例如：
 
@@ -659,7 +703,7 @@ docs/V0_4_AGENT_FLOW_IMPLEMENTATION_SPEC.md
 
 ---
 
-## 9. 常见选择
+## 13. 常见选择
 
 ### 普通代码仓库
 
@@ -692,6 +736,14 @@ Host Policy
 Generic Notifier
 ```
 
+### 长期 Goal 需要断线后继续运行
+
+在原有 Lite / Review / Control 组合上再加：
+
+```text
+Persistent Run
+```
+
 ### 图片/PPT/视觉结果必须真正看图审核
 
 按需增加：
@@ -712,7 +764,7 @@ Host Policy
 
 ---
 
-## 10. 常用命令速查
+## 14. 常用命令速查
 
 ```bash
 # 机器级长期规则
@@ -730,6 +782,11 @@ ai-bridge validate --target /path/to/project
 # 独立 GPT 复核
 ai-bridge reviewed-handoff install --target /path/to/project
 ai-bridge reviewed-handoff validate --target /path/to/project
+
+# 长期 Goal 的持久执行 contract
+ai-bridge persistent-run install --target /path/to/project
+ai-bridge persistent-run validate --target /path/to/project
+ai-bridge persistent-run prompt kickoff --target /path/to/project --goal prompts/tasks/010_long_run.md
 
 # Overleaf
 ai-bridge overleaf install --target /path/to/project --paper-root paper/manuscript
@@ -754,7 +811,7 @@ ai-bridge agent-flow validate --target /path/to/project
 
 ---
 
-## 11. 设计原则
+## 15. 设计原则
 
 这套工具长期遵守几条简单原则：
 
@@ -769,7 +826,7 @@ ai-bridge agent-flow validate --target /path/to/project
 
 ---
 
-## 12. 进一步阅读
+## 16. 进一步阅读
 
 快速上手：
 
