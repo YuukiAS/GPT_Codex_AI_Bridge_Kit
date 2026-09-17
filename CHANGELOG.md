@@ -12,6 +12,8 @@
 - Add the Lite fallback versioning contract to `templates/prompts/AGENT_RULES.md`
   so repositories without an explicit local policy default to truthful
   `MAJOR.MINOR.PATCH` semantics and opt-in prerelease labels.
+- Preserve project-owned root `AGENTS.md` bytes outside the managed Bridge block,
+  including CRLF/CR/mixed newlines and intentionally irregular whitespace.
 
 ## 0.8.2
 

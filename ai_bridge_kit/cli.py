@@ -100,32 +100,55 @@ def write_text(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
+def managed_agents_block_bytes() -> bytes:
+    snippet = (kit_root() / "codex" / "AGENTS_SNIPPET.md").read_bytes().strip()
+    return (
+        BEGIN_MARKER.encode("utf-8")
+        + b"\n"
+        + snippet
+        + b"\n"
+        + END_MARKER.encode("utf-8")
+        + b"\n"
+    )
+
+
+def managed_span_end(content: bytes, marker_end: int) -> int:
+    """Return end offset for the managed block, including one owned newline."""
+    end = marker_end + len(END_MARKER.encode("utf-8"))
+    for newline in (b"\r\n", b"\n", b"\r"):
+        if content.startswith(newline, end):
+            return end + len(newline)
+    return end
+
+
 def install_agents_snippet(target: Path, force: bool, actions: list[str]) -> None:
     agents_path = target / "AGENTS.md"
-    snippet = read_text(kit_root() / "codex" / "AGENTS_SNIPPET.md").strip()
-    block = f"{BEGIN_MARKER}\n{snippet}\n{END_MARKER}\n"
+    block = managed_agents_block_bytes()
 
     if not agents_path.exists():
         scaffold_path = kit_root() / "templates" / "repo" / "AGENTS_TEMPLATE.md"
-        scaffold = read_text(scaffold_path).strip()
-        write_text(agents_path, f"{scaffold}\n\n{block}")
+        scaffold = scaffold_path.read_bytes().strip()
+        agents_path.parent.mkdir(parents=True, exist_ok=True)
+        agents_path.write_bytes(scaffold + b"\n\n" + block)
         actions.append(f"CREATE AGENTS.md with project scaffold and handoff protocol: {agents_path}")
         return
 
-    current = read_text(agents_path)
-    if BEGIN_MARKER in current and END_MARKER in current:
+    current = agents_path.read_bytes()
+    begin = BEGIN_MARKER.encode("utf-8")
+    end = END_MARKER.encode("utf-8")
+
+    if begin in current and end in current:
         if not force:
             actions.append(f"SKIP existing handoff block in: {agents_path}")
             return
-        start = current.index(BEGIN_MARKER)
-        end = current.index(END_MARKER) + len(END_MARKER)
-        updated = current[:start].rstrip() + "\n\n" + block + current[end:].lstrip()
-        write_text(agents_path, updated)
+        start = current.index(begin)
+        marker_end = current.index(end, start)
+        span_end = managed_span_end(current, marker_end)
+        agents_path.write_bytes(current[:start] + block + current[span_end:])
         actions.append(f"UPDATE handoff block in: {agents_path}")
         return
 
-    updated = current.rstrip() + "\n\n" + block
-    write_text(agents_path, updated)
+    agents_path.write_bytes(current + b"\n\n" + block)
     actions.append(f"APPEND handoff block to: {agents_path}")
 
 

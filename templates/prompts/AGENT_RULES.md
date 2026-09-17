@@ -194,6 +194,12 @@ but do not replace the formal version when one is required. Release-ready
 version, source, changelog, package metadata, and user-facing identity must be
 truthful and consistent.
 
+Docs, TODO, tests, or helper-only changes that do not alter a user-consumable
+release normally do not require a version bump. Intermediate implementation
+commits may remain unreleased; bump the formal version when forming the next
+actual user-consumable candidate or release according to the repository-local
+contract.
+
 ## Failure Handling
 
 If the task cannot be completed safely:
