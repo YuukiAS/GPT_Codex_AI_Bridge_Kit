@@ -23,7 +23,33 @@ class BridgeCliRouterTests(unittest.TestCase):
                 self.assertEqual(bridge_cli.main(["init", "--target", str(target)]), 0)
             with contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(bridge_cli.main(["validate", "--target", str(target)]), 0)
-            self.assertTrue((target / "AGENTS.md").exists())
+            agents = (target / "AGENTS.md").read_text(encoding="utf-8")
+            self.assertIn("This file is the repository-level instruction surface", agents)
+            self.assertEqual(agents.count("<!-- ai-bridge-kit:start -->"), 1)
+            self.assertIn("prompts/AGENT_RULES.md", agents)
+            self.assertNotIn("MAJOR.MINOR.PATCH", agents)
+            rules = (target / "prompts" / "AGENT_RULES.md").read_text(encoding="utf-8")
+            self.assertIn("## Versioning Default", rules)
+            self.assertIn("MAJOR.MINOR.PATCH", rules)
+
+    def test_init_preserves_existing_project_root_under_normal_and_force(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "project"
+            target.mkdir()
+            existing = "# Project Rules\n\nDo not rewrite this prose.\n"
+            (target / "AGENTS.md").write_text(existing, encoding="utf-8")
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(bridge_cli.main(["init", "--target", str(target)]), 0)
+            first = (target / "AGENTS.md").read_text(encoding="utf-8")
+            self.assertTrue(first.startswith(existing.rstrip()))
+            self.assertNotIn("This file is the repository-level instruction surface", first)
+            self.assertEqual(first.count("<!-- ai-bridge-kit:start -->"), 1)
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(bridge_cli.main(["init", "--force", "--target", str(target)]), 0)
+            forced = (target / "AGENTS.md").read_text(encoding="utf-8")
+            self.assertTrue(forced.startswith(existing.rstrip()))
+            self.assertNotIn("This file is the repository-level instruction surface", forced)
+            self.assertEqual(forced.count("<!-- ai-bridge-kit:start -->"), 1)
 
     def test_agent_flow_still_routes_to_legacy_cli(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## 0.8.3
+
+- Add a fresh-repository `AGENTS.md` scaffold for `ai-bridge init` that keeps
+  root project guidance concise, installs exactly one managed Bridge block, and
+  points to `prompts/AGENT_RULES.md` instead of copying Lite policy into root.
+- Preserve existing project-owned root `AGENTS.md` prose under both normal and
+  `--force` init while still updating the canonical managed Bridge block.
+- Add the Lite fallback versioning contract to `templates/prompts/AGENT_RULES.md`
+  so repositories without an explicit local policy default to truthful
+  `MAJOR.MINOR.PATCH` semantics and opt-in prerelease labels.
+
 ## 0.8.2
 
 - Add an initial paid-review campaign narrowing contract for Text Review

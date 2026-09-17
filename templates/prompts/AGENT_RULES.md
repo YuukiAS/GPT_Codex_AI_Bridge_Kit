@@ -162,6 +162,38 @@ commit or push is skipped, `controller_report.md` must state the reason.
 Plain executors should not commit/push medium/high risk changes that still need
 audit unless the task explicitly authorizes that path.
 
+## Versioning Default
+
+If the current user request, frozen task, or repository-local documentation
+defines an explicit versioning policy, follow that authority. Otherwise use a
+three-part formal version:
+
+```text
+MAJOR.MINOR.PATCH
+```
+
+- `PATCH`: backward-compatible bug fix, polish, reliability/performance
+  correction, or other compatible repair that changes a user-consumable runtime
+  or release candidate without adding a new product capability.
+- `MINOR`: backward-compatible user-visible capability or substantial compatible
+  feature stage.
+- `MAJOR`: incompatible public/product contract change, migration, removed or
+  renamed public entry, or another change that requires existing users or
+  integrations to adapt. A major bump requires explicit Planner or user
+  approval; do not infer it from diff size.
+
+`0.y.z` may be used for initial development. Moving to `1.0.0` is an explicit
+stability/default-use decision.
+
+Do not invent `alpha`, `beta`, `rc`, `preview`, date suffixes, or other
+prerelease labels unless an approved repository lifecycle or the current
+user/frozen task explicitly authorizes that scheme. Do not reuse one formal
+version for two different user-consumable runtime candidates. Commit SHAs,
+branch names, build labels, dates, and diagnostic labels may supplement identity
+but do not replace the formal version when one is required. Release-ready
+version, source, changelog, package metadata, and user-facing identity must be
+truthful and consistent.
+
 ## Failure Handling
 
 If the task cannot be completed safely:

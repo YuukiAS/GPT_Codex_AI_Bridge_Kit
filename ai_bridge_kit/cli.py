@@ -106,8 +106,10 @@ def install_agents_snippet(target: Path, force: bool, actions: list[str]) -> Non
     block = f"{BEGIN_MARKER}\n{snippet}\n{END_MARKER}\n"
 
     if not agents_path.exists():
-        write_text(agents_path, block)
-        actions.append(f"CREATE AGENTS.md with handoff protocol: {agents_path}")
+        scaffold_path = kit_root() / "templates" / "repo" / "AGENTS_TEMPLATE.md"
+        scaffold = read_text(scaffold_path).strip()
+        write_text(agents_path, f"{scaffold}\n\n{block}")
+        actions.append(f"CREATE AGENTS.md with project scaffold and handoff protocol: {agents_path}")
         return
 
     current = read_text(agents_path)
