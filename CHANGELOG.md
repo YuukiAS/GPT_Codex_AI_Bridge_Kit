@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+## 0.8.2
+
+- Add an initial paid-review campaign narrowing contract for Text Review
+  consumers that have an explicitly frozen stricter task budget.
+- Keep the Bridge Kit defaults unchanged at two paid calls, USD 0.50 campaign
+  ceiling, USD 0.25 per-call ceiling, and zero automatic paid retries when no
+  narrowing metadata is present.
+- Fail closed before reservation or request when a consumer attempts to broaden
+  paid-call count, campaign ceiling, per-call ceiling, retries, model, pricing,
+  service tier, reasoning, tools, cache policy, or other request-safety fields.
+- Persist and compare the resolved narrowed contract in the existing
+  `paid_review_budget.json` ledger across reservation, actual usage,
+  zero-billing failure accounting, receipt creation, and existing-ledger reload.
+- Add a zero-paid Text Review contract preflight that resolves the same
+  contract without calling OpenAI, creating a reservation, or consuming a paid
+  call.
+
 ## 0.8.1
 
 - Harden GPT task authoring so overnight, unattended, multi-hour, survive-

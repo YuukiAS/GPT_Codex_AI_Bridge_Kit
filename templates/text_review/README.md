@@ -64,6 +64,29 @@ request so reruns and fresh checkouts cannot reset the campaign budget. Actual
 model cost is calculated from successful response usage and never refunds the
 reservation.
 
+If a consumer workflow has frozen a stricter initial budget, the manifest may
+include:
+
+```json
+"paid_review_initial_contract": {
+  "max_paid_calls": 1,
+  "campaign_reserved_cost_hard_ceiling_usd": "0.25",
+  "per_call_worst_case_ceiling_usd": "0.25",
+  "automatic_paid_retries": 0
+}
+```
+
+Only these four fields may be narrowed, and each value must be equal to or
+stricter than the default. Model, pricing, service tier, reasoning, tools,
+cache policy and request-safety fields remain Bridge Kit defaults. Before a
+paid run, consumers can verify support without a reservation or OpenAI request:
+
+```bash
+ai-bridge text-review contract-preflight \
+  --target /path/to/project \
+  --manifest results/<task_key>/text_review/text_inputs.json
+```
+
 The model default is `gpt-5.6-terra`. `OPENAI_TEXT_REVIEW_MODEL` and CLI
 `--model` remain accepted for interface compatibility, but Bridge Kit currently
 fails closed unless the selected model exactly matches reviewed Terra pricing.

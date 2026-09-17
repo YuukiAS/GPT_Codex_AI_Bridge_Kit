@@ -54,7 +54,22 @@ class PaidReviewBudgetTests(unittest.TestCase):
             },
         }
 
-    def reserve(self, target: Path, *, campaign: str = "001_paid", input_tokens: int = 1000) -> dict:
+    def narrowed_contract(self) -> dict:
+        return {
+            "max_paid_calls": 1,
+            "campaign_reserved_cost_hard_ceiling_usd": "0.25",
+            "per_call_worst_case_ceiling_usd": "0.25",
+            "automatic_paid_retries": 0,
+        }
+
+    def reserve(
+        self,
+        target: Path,
+        *,
+        campaign: str = "001_paid",
+        input_tokens: int = 1000,
+        initial_contract_override: dict | None = None,
+    ) -> dict:
         return paid_review.reserve_paid_review_call(
             target=target,
             campaign_identity=campaign,
@@ -62,6 +77,7 @@ class PaidReviewBudgetTests(unittest.TestCase):
             model=paid_review.DEFAULT_MODEL,
             request_payload=self.request_payload(),
             input_token_preflight=self.token_preflight(input_tokens),
+            initial_contract_override=initial_contract_override,
         )
 
     def write_parent_state(
@@ -137,6 +153,80 @@ class PaidReviewBudgetTests(unittest.TestCase):
         self.assertEqual(contract["pricing"]["output_usd_per_1m_tokens"], "12.000000")
         self.assertEqual(contract["pricing"]["long_context_threshold"], 272_000)
         self.assertTrue(contract["pricing"]["runtime_uses_worst_case_input_price"])
+
+    def test_no_override_resolves_exact_default_contract(self) -> None:
+        self.assertEqual(paid_review.initial_contract(), paid_review.default_contract())
+
+    def test_055_like_initial_contract_resolves_and_persists_to_ledger(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp)
+            bundle = self.reserve(target, initial_contract_override=self.narrowed_contract())
+            expected = paid_review.default_contract()
+            expected.update(
+                {
+                    "max_paid_calls": 1,
+                    "campaign_reserved_cost_hard_ceiling_usd": "0.250000",
+                    "per_call_worst_case_ceiling_usd": "0.250000",
+                    "automatic_paid_retries": 0,
+                }
+            )
+            self.assertEqual(bundle["contract"], expected)
+            state = paid_review.load_budget_state(
+                target / "results/001_paid/paid_review_budget.json",
+                campaign_identity="001_paid",
+                expected_contract=expected,
+            )
+            self.assertEqual(state["contract"], expected)
+            self.assertEqual(state["reservations"][0]["automatic_paid_retries"], 0)
+            with self.assertRaisesRegex(paid_review.PaidReviewBudgetError, "call limit exhausted"):
+                self.reserve(target, initial_contract_override=self.narrowed_contract())
+
+    def test_initial_contract_cannot_broaden_defaults_or_override_safety_fields(self) -> None:
+        invalid = [
+            {"max_paid_calls": 3},
+            {"campaign_reserved_cost_hard_ceiling_usd": "0.51"},
+            {"per_call_worst_case_ceiling_usd": "0.26"},
+            {"automatic_paid_retries": 1},
+            {"max_paid_calls": -1},
+            {"max_paid_calls": "1"},
+            {"model": paid_review.DEFAULT_MODEL},
+            {"pricing": paid_review.default_contract()["pricing"]},
+            {"service_tier": paid_review.DEFAULT_SERVICE_TIER},
+            {"reasoning": {"effort": paid_review.DEFAULT_REASONING_EFFORT}},
+            {"tools": []},
+            {"prompt_cache_options": {"mode": "explicit"}},
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp)
+            for override in invalid:
+                with self.subTest(override=override), self.assertRaises(paid_review.PaidReviewBudgetError):
+                    self.reserve(target, initial_contract_override=override)
+                self.assertFalse((target / "results/001_paid/paid_review_budget.json").exists())
+
+    def test_existing_ledger_contract_mismatch_fails_closed_without_rewrite(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp)
+            state_path = self.write_parent_state(target)
+            before = state_path.read_bytes()
+            with self.assertRaisesRegex(paid_review.PaidReviewBudgetError, "contract mismatch"):
+                self.reserve(target, initial_contract_override=self.narrowed_contract())
+            self.assertEqual(state_path.read_bytes(), before)
+
+    def test_contract_capability_preflight_does_not_create_reservation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp)
+            payload = paid_review.contract_capability_preflight(
+                target=target,
+                campaign_identity="001_paid",
+                initial_contract_override=self.narrowed_contract(),
+            )
+            self.assertEqual(payload["schema"], paid_review.CONTRACT_PREFLIGHT_SCHEMA)
+            self.assertEqual(payload["resolved_contract"]["max_paid_calls"], 1)
+            self.assertEqual(payload["resolved_contract"]["campaign_reserved_cost_hard_ceiling_usd"], "0.250000")
+            self.assertFalse(payload["paid_request_sent"])
+            self.assertFalse(payload["reservation_created"])
+            self.assertEqual(payload["paid_calls_consumed"], 0)
+            self.assertFalse((target / "results/001_paid/paid_review_budget.json").exists())
 
     def test_reservation_persists_across_restart_or_rerun(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -354,6 +444,27 @@ class PaidReviewBudgetTests(unittest.TestCase):
             self.assertEqual(reservation["accounting_status"], "ACCOUNTING_VERIFIED")
             self.assertEqual(reservation["actual_model_cost_usd"], "0.000425")
 
+    def test_actual_usage_and_receipt_preserve_narrowed_initial_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp)
+            first = self.reserve(target, initial_contract_override=self.narrowed_contract())
+            updated = paid_review.record_actual_usage(
+                target=target,
+                campaign_identity="001_paid",
+                reservation_id=first["reservation"]["reservation_id"],
+                response_payload=self.response_payload(),
+            )
+            receipt = paid_review.receipt_from_reservation(
+                campaign_identity="001_paid",
+                review_type="text_review",
+                model=paid_review.DEFAULT_MODEL,
+                reservation_bundle=updated,
+                response_payload=self.response_payload(),
+            )
+            self.assertEqual(updated["contract"]["max_paid_calls"], 1)
+            self.assertEqual(updated["contract"]["campaign_reserved_cost_hard_ceiling_usd"], "0.250000")
+            self.assertEqual(receipt["contract"], updated["contract"])
+
     def test_accounting_unverified_blocks_next_paid_request(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp)
@@ -477,6 +588,28 @@ class PaidReviewBudgetTests(unittest.TestCase):
             self.assertEqual(state["reservations"][0]["actual_cost_status"], "ZERO_BILLING_FAILURE")
             self.assertEqual(state["reservations"][0]["actual_model_cost_usd"], "0.000000")
             self.assertFalse(state["reservations"][0]["failure"]["automatic_paid_retry"])
+
+    def test_zero_billing_failure_with_narrowed_initial_contract_reuses_without_default_reload(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp)
+            first = self.reserve(target, initial_contract_override=self.narrowed_contract())
+            paid_review.record_zero_billing_failure(
+                target=target,
+                campaign_identity="001_paid",
+                reservation_id=first["reservation"]["reservation_id"],
+                error_code="credit_balance_exhausted",
+                http_status=429,
+            )
+
+            retry = self.reserve(target, initial_contract_override=self.narrowed_contract())
+            self.assertTrue(retry["reused_zero_billing_reservation"])
+            self.assertEqual(retry["contract"]["max_paid_calls"], 1)
+            state = paid_review.load_budget_state(
+                target / "results/001_paid/paid_review_budget.json",
+                campaign_identity="001_paid",
+                expected_contract=retry["contract"],
+            )
+            self.assertEqual(len(state["reservations"]), 1)
 
     def test_zero_billing_reuse_requires_same_request_identity(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

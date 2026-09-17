@@ -268,13 +268,19 @@ def normalize_manifest(target: Path, manifest: dict[str, Any]) -> dict[str, Any]
         raise TextReviewError("text input manifest input.mime_type must be UTF-8 Markdown/plain text")
     try:
         paid_review_extension = paid_review.normalize_extension_metadata(manifest)
+        paid_review_initial_contract = paid_review.normalize_initial_contract_override(
+            manifest.get("paid_review_initial_contract")
+        )
     except paid_review.PaidReviewBudgetError as exc:
         raise TextReviewError(str(exc)) from exc
+    if paid_review_extension is not None and manifest.get("paid_review_initial_contract") is not None:
+        raise TextReviewError("paid_review_extension and paid_review_initial_contract are mutually exclusive")
     return {
         "schema": TEXT_INPUT_MANIFEST_SCHEMA,
         "task_key": task_key,
         "paid_review_campaign_id": str(manifest.get("paid_review_campaign_id") or task_key).strip(),
         "paid_review_extension": paid_review_extension,
+        "paid_review_initial_contract": paid_review_initial_contract,
         "workflow_type": workflow_type,
         "review_kind": review_kind,
         "prompt_version": str(manifest.get("prompt_version") or DEFAULT_PROMPT_VERSION),
@@ -622,6 +628,7 @@ def run_text_review(
             request_payload=request_payload,
             input_token_preflight=token_preflight,
             extension_metadata=manifest.get("paid_review_extension"),
+            initial_contract_override=manifest.get("paid_review_initial_contract"),
         )
         paid_review.persist_reservation_to_git_if_requested(target, reservation_bundle["state_path"])
     except paid_review.PaidReviewBudgetError as exc:
@@ -702,6 +709,7 @@ def encrypt_text_payload(
     implementation_commit: str = "",
     privacy_policy: str = PRIVATE_TEXT_POLICY,
     external_upload_authorization: str = "",
+    paid_review_initial_contract: dict[str, Any] | None = None,
     force: bool = False,
 ) -> dict[str, Any]:
     target = target.resolve()
@@ -740,9 +748,70 @@ def encrypt_text_payload(
             "source_basename": input_path.name,
         },
     }
+    if paid_review_initial_contract is not None:
+        try:
+            manifest["paid_review_initial_contract"] = paid_review.normalize_initial_contract_override(paid_review_initial_contract)
+        except paid_review.PaidReviewBudgetError as exc:
+            raise TextReviewError(str(exc)) from exc
     normalized = normalize_manifest(target, manifest)
     write_json(target / manifest_rel, normalized)
     return normalized
+
+
+def _initial_contract_from_args(args: argparse.Namespace) -> dict[str, Any] | None:
+    raw: dict[str, Any] = {}
+    if getattr(args, "max_paid_calls", None) is not None:
+        raw["max_paid_calls"] = args.max_paid_calls
+    if getattr(args, "campaign_reserved_cost_hard_ceiling_usd", None) is not None:
+        raw["campaign_reserved_cost_hard_ceiling_usd"] = args.campaign_reserved_cost_hard_ceiling_usd
+    if getattr(args, "per_call_worst_case_ceiling_usd", None) is not None:
+        raw["per_call_worst_case_ceiling_usd"] = args.per_call_worst_case_ceiling_usd
+    if getattr(args, "automatic_paid_retries", None) is not None:
+        raw["automatic_paid_retries"] = args.automatic_paid_retries
+    if not raw:
+        return None
+    try:
+        return paid_review.normalize_initial_contract_override(raw)
+    except paid_review.PaidReviewBudgetError as exc:
+        raise TextReviewError(str(exc)) from exc
+
+
+def contract_preflight(
+    target: Path,
+    *,
+    manifest_path: Path | None = None,
+    task_key: str = "",
+    campaign_id: str = "",
+    initial_contract_override: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    target = target.resolve()
+    override = initial_contract_override
+    if manifest_path is not None:
+        manifest = load_json(manifest_path)
+        if manifest.get("paid_review_extension") is not None:
+            raise TextReviewError("contract preflight is for initial campaigns, not extension campaigns")
+        if override is not None:
+            raise TextReviewError("contract preflight cannot combine manifest and CLI initial contract overrides")
+        try:
+            override = paid_review.normalize_initial_contract_override(manifest.get("paid_review_initial_contract"))
+            campaign_identity = paid_review.campaign_identity_from_manifest(manifest)
+        except paid_review.PaidReviewBudgetError as exc:
+            raise TextReviewError(str(exc)) from exc
+    else:
+        raw_identity = campaign_id or task_key
+        campaign_identity = str(raw_identity or "").strip()
+        if not campaign_identity:
+            raise TextReviewError("contract preflight requires --manifest or --task-key/--campaign-id")
+        if not re.fullmatch(r"[A-Za-z0-9._-]+", campaign_identity):
+            raise TextReviewError("paid review campaign identity must be a safe task/campaign token")
+    try:
+        return paid_review.contract_capability_preflight(
+            target=target,
+            campaign_identity=campaign_identity,
+            initial_contract_override=override,
+        )
+    except paid_review.PaidReviewBudgetError as exc:
+        raise TextReviewError(str(exc)) from exc
 
 
 def git_current_commit(path: Path) -> str | None:
@@ -980,6 +1049,15 @@ def build_parser() -> argparse.ArgumentParser:
     preflight_cmd = sub.add_parser("preflight")
     preflight_cmd.add_argument("--target", type=Path, default=Path.cwd())
     preflight_cmd.add_argument("--repo")
+    contract_preflight_cmd = sub.add_parser("contract-preflight")
+    contract_preflight_cmd.add_argument("--target", type=Path, default=Path.cwd())
+    contract_preflight_cmd.add_argument("--manifest", type=Path)
+    contract_preflight_cmd.add_argument("--task-key", default="")
+    contract_preflight_cmd.add_argument("--campaign-id", default="")
+    contract_preflight_cmd.add_argument("--max-paid-calls", type=int)
+    contract_preflight_cmd.add_argument("--campaign-reserved-cost-hard-ceiling-usd")
+    contract_preflight_cmd.add_argument("--per-call-worst-case-ceiling-usd")
+    contract_preflight_cmd.add_argument("--automatic-paid-retries", type=int)
     encrypt_cmd = sub.add_parser("encrypt")
     encrypt_cmd.add_argument("--target", type=Path, default=Path.cwd())
     encrypt_cmd.add_argument("--task-key", required=True)
@@ -993,6 +1071,10 @@ def build_parser() -> argparse.ArgumentParser:
     encrypt_cmd.add_argument("--implementation-commit", default="")
     encrypt_cmd.add_argument("--privacy-policy", default=PRIVATE_TEXT_POLICY)
     encrypt_cmd.add_argument("--external-upload-authorization", default="")
+    encrypt_cmd.add_argument("--max-paid-calls", type=int)
+    encrypt_cmd.add_argument("--campaign-reserved-cost-hard-ceiling-usd")
+    encrypt_cmd.add_argument("--per-call-worst-case-ceiling-usd")
+    encrypt_cmd.add_argument("--automatic-paid-retries", type=int)
     encrypt_cmd.add_argument("--force", action="store_true")
     decrypt_cmd = sub.add_parser("decrypt")
     decrypt_cmd.add_argument("--target", type=Path, default=Path.cwd())
@@ -1038,6 +1120,20 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "preflight":
         print(canonical_json(preflight(args.target, repo=args.repo), pretty=True), end="")
         return 0
+    if args.command == "contract-preflight":
+        try:
+            payload = contract_preflight(
+                args.target,
+                manifest_path=args.manifest,
+                task_key=args.task_key,
+                campaign_id=args.campaign_id,
+                initial_contract_override=_initial_contract_from_args(args),
+            )
+        except TextReviewError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 1
+        print(canonical_json(payload, pretty=True), end="")
+        return 0
     if args.command == "encrypt":
         try:
             manifest = encrypt_text_payload(
@@ -1053,6 +1149,7 @@ def main(argv: list[str] | None = None) -> int:
                 implementation_commit=args.implementation_commit,
                 privacy_policy=args.privacy_policy,
                 external_upload_authorization=args.external_upload_authorization,
+                paid_review_initial_contract=_initial_contract_from_args(args),
                 force=args.force,
             )
         except TextReviewError as exc:

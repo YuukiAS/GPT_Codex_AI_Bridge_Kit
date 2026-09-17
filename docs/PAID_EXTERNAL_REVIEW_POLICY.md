@@ -25,6 +25,37 @@ prompt cache: explicit mode with no cache breakpoints
 
 A retry, workflow rerun, process restart, machine restart or fresh checkout must not reset the campaign budget.
 
+## Initial campaign narrowing
+
+Text Review consumers may freeze a stricter initial campaign budget in the
+task-local manifest. The only fields that may be narrowed are:
+
+```text
+max_paid_calls
+campaign_reserved_cost_hard_ceiling_usd
+per_call_worst_case_ceiling_usd
+automatic_paid_retries
+```
+
+If no narrowing metadata is present, Bridge Kit must use the exact default
+contract above. A narrowing contract may only be equal to or stricter than the
+default. Attempts to increase paid-call count, campaign ceiling, per-call
+ceiling, or retry count must fail closed before reservation or request.
+Attempts to override model, pricing, service tier, reasoning, tools, cache
+policy, request safety, or unknown fields must also fail closed.
+
+The resolved narrowed contract is the contract saved and compared in the
+existing `paid_review_budget.json` ledger. Reservation, call-count gate,
+campaign-cost gate, per-call gate, existing-ledger reload, actual usage
+accounting, zero-billing/error accounting, and paid-review receipts must all
+use the same resolved contract. Existing ledgers whose saved contract differs
+from the currently resolved contract fail closed; Bridge Kit does not migrate,
+rewrite, or broaden them automatically.
+
+The `ai-bridge text-review contract-preflight` command resolves this same
+contract without calling OpenAI, creating a reservation, or consuming a paid
+call. It may read an existing ledger only to verify contract compatibility.
+
 ## Authorized one-call extension campaign
 
 When a consumer has already exhausted a normal immutable two-call campaign and

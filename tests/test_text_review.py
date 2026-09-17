@@ -226,6 +226,47 @@ class TextReviewTests(unittest.TestCase):
             self.assertEqual(artifact["plaintext_artifact_sha256"], text_review.sha256_bytes(plaintext.read_bytes()))
             self.assertNotIn("这份面向普通读者", json.dumps(artifact, ensure_ascii=False))
 
+    def test_manifest_initial_contract_narrows_reservation_and_receipt(self) -> None:
+        tmp, target, manifest, plaintext, output = self.make_project()
+        with tmp:
+            payload = text_review.load_json(manifest)
+            payload["paid_review_initial_contract"] = {
+                "max_paid_calls": 1,
+                "campaign_reserved_cost_hard_ceiling_usd": "0.25",
+                "per_call_worst_case_ceiling_usd": "0.25",
+                "automatic_paid_retries": 0,
+            }
+            text_review.write_json(manifest, payload)
+            captured: dict = {}
+
+            artifact = text_review.run_text_review(
+                target,
+                manifest,
+                plaintext,
+                output,
+                api_key="sk-text-secret",
+                opener=self.opener_for(captured, "PASS"),
+            )
+
+            paid = artifact["paid_review"]
+            self.assertEqual(paid["contract"]["max_paid_calls"], 1)
+            self.assertEqual(paid["contract"]["campaign_reserved_cost_hard_ceiling_usd"], "0.250000")
+            self.assertEqual(paid["contract"]["per_call_worst_case_ceiling_usd"], "0.250000")
+            self.assertEqual(paid["contract"]["automatic_paid_retries"], 0)
+            state = text_review.load_json(target / "results/001_text/paid_review_budget.json")
+            self.assertEqual(state["contract"], paid["contract"])
+            self.assertEqual(len(state["reservations"]), 1)
+
+            with self.assertRaisesRegex(text_review.TextReviewError, "call limit exhausted"):
+                text_review.run_text_review(
+                    target,
+                    manifest,
+                    plaintext,
+                    output,
+                    api_key="sk-text-secret",
+                    opener=self.opener_for({}, "PASS"),
+                )
+
     def test_extension_manifest_uses_child_campaign_and_receipt(self) -> None:
         tmp, target, manifest, plaintext, output = self.make_project()
         with tmp:
@@ -479,6 +520,51 @@ class TextReviewTests(unittest.TestCase):
             self.assertNotIn("\n  push:", workflow)
             self.assertIn("group: ai-bridge-paid-review-${{ github.repository }}", workflow)
             self.assertIn('git push origin "HEAD:${GITHUB_REF_NAME}"', workflow)
+
+    def test_cli_contract_preflight_resolves_narrowed_contract_without_reservation_or_secret(self) -> None:
+        tmp, target, manifest, _plaintext, _output = self.make_project()
+        with tmp:
+            payload = text_review.load_json(manifest)
+            payload["paid_review_initial_contract"] = {
+                "max_paid_calls": 1,
+                "campaign_reserved_cost_hard_ceiling_usd": "0.25",
+                "per_call_worst_case_ceiling_usd": "0.25",
+                "automatic_paid_retries": 0,
+            }
+            text_review.write_json(manifest, payload)
+            with contextlib.redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(
+                    bridge_cli.main(["text-review", "contract-preflight", "--target", str(target), "--manifest", str(manifest)]),
+                    0,
+                )
+            result = json.loads(output.getvalue())
+            self.assertEqual(result["schema"], paid_review.CONTRACT_PREFLIGHT_SCHEMA)
+            self.assertEqual(result["resolved_contract"]["max_paid_calls"], 1)
+            self.assertEqual(result["resolved_contract"]["campaign_reserved_cost_hard_ceiling_usd"], "0.250000")
+            self.assertEqual(result["resolved_contract"]["per_call_worst_case_ceiling_usd"], "0.250000")
+            self.assertEqual(result["resolved_contract"]["automatic_paid_retries"], 0)
+            self.assertFalse(result["paid_request_sent"])
+            self.assertFalse(result["reservation_created"])
+            self.assertEqual(result["paid_calls_consumed"], 0)
+            self.assertFalse((target / "results/001_text/paid_review_budget.json").exists())
+
+            with contextlib.redirect_stderr(io.StringIO()) as error_output:
+                self.assertEqual(
+                    bridge_cli.main(
+                        [
+                            "text-review",
+                            "contract-preflight",
+                            "--target",
+                            str(target),
+                            "--task-key",
+                            "001_text",
+                            "--max-paid-calls",
+                            "3",
+                        ]
+                    ),
+                    1,
+                )
+            self.assertIn("cannot be broader than default", error_output.getvalue())
 
     def test_text_evidence_writeback_stages_shared_campaign_budget(self) -> None:
         tmp, target, manifest, plaintext, output = self.make_project()

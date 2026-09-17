@@ -15,6 +15,7 @@ from typing import Any, Callable, Iterator
 
 BUDGET_SCHEMA = "AI_BRIDGE_PAID_REVIEW_BUDGET_V1"
 RECEIPT_SCHEMA = "AI_BRIDGE_PAID_REVIEW_RECEIPT_V1"
+CONTRACT_PREFLIGHT_SCHEMA = "AI_BRIDGE_PAID_REVIEW_CONTRACT_PREFLIGHT_V1"
 INPUT_TOKENS_URL = "https://api.openai.com/v1/responses/input_tokens"
 DEFAULT_MODEL = "gpt-5.6-terra"
 DEFAULT_MAX_PAID_CALLS = 2
@@ -26,6 +27,12 @@ DEFAULT_SERVICE_TIER = "default"
 DEFAULT_REASONING_EFFORT = "low"
 EXTENSION_CAMPAIGN_TYPE = "AUTHORIZED_ONE_CALL_EXTENSION"
 EXTENSION_SUFFIX = "__authorized_extension_1"
+INITIAL_CONTRACT_FIELDS = {
+    "max_paid_calls",
+    "campaign_reserved_cost_hard_ceiling_usd",
+    "per_call_worst_case_ceiling_usd",
+    "automatic_paid_retries",
+}
 LONG_CONTEXT_INPUT_TOKEN_THRESHOLD = 272_000
 INPUT_TOKEN_COUNT_SUPPORTED_FIELDS = (
     "conversation",
@@ -100,6 +107,114 @@ def default_contract() -> dict[str, Any]:
             "runtime_uses_worst_case_input_price": True,
         },
     }
+
+
+def _bounded_int(value: Any, *, key: str, default: int, positive: bool = False) -> int:
+    if type(value) is not int:
+        raise PaidReviewBudgetError(f"paid review initial contract {key} must be an integer")
+    minimum = 1 if positive else 0
+    if value < minimum:
+        raise PaidReviewBudgetError(f"paid review initial contract {key} must be non-negative")
+    if value > default:
+        raise PaidReviewBudgetError(f"paid review initial contract {key} cannot be broader than default")
+    return value
+
+
+def _bounded_money(value: Any, *, key: str, default: Decimal) -> str:
+    if isinstance(value, bool):
+        raise PaidReviewBudgetError(f"paid review initial contract {key} must be a decimal value")
+    amount = _decimal_from_json(value)
+    if not amount.is_finite() or amount <= 0:
+        raise PaidReviewBudgetError(f"paid review initial contract {key} must be positive")
+    if amount > default:
+        raise PaidReviewBudgetError(f"paid review initial contract {key} cannot be broader than default")
+    return _money(amount)
+
+
+def normalize_initial_contract_override(raw: Any) -> dict[str, Any] | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise PaidReviewBudgetError("paid_review_initial_contract must be an object")
+    unknown = sorted(set(raw) - INITIAL_CONTRACT_FIELDS)
+    if unknown:
+        raise PaidReviewBudgetError(f"paid review initial contract contains unsupported fields: {', '.join(unknown)}")
+    normalized: dict[str, Any] = {}
+    if "max_paid_calls" in raw:
+        normalized["max_paid_calls"] = _bounded_int(
+            raw["max_paid_calls"],
+            key="max_paid_calls",
+            default=DEFAULT_MAX_PAID_CALLS,
+            positive=True,
+        )
+    if "campaign_reserved_cost_hard_ceiling_usd" in raw:
+        normalized["campaign_reserved_cost_hard_ceiling_usd"] = _bounded_money(
+            raw["campaign_reserved_cost_hard_ceiling_usd"],
+            key="campaign_reserved_cost_hard_ceiling_usd",
+            default=DEFAULT_CAMPAIGN_RESERVED_COST_HARD_CEILING_USD,
+        )
+    if "per_call_worst_case_ceiling_usd" in raw:
+        normalized["per_call_worst_case_ceiling_usd"] = _bounded_money(
+            raw["per_call_worst_case_ceiling_usd"],
+            key="per_call_worst_case_ceiling_usd",
+            default=DEFAULT_PER_CALL_WORST_CASE_CEILING_USD,
+        )
+    if "automatic_paid_retries" in raw:
+        normalized["automatic_paid_retries"] = _bounded_int(
+            raw["automatic_paid_retries"],
+            key="automatic_paid_retries",
+            default=DEFAULT_AUTOMATIC_PAID_RETRIES,
+        )
+    return normalized
+
+
+def initial_contract(raw: Any = None) -> dict[str, Any]:
+    override = normalize_initial_contract_override(raw)
+    contract = default_contract()
+    if override:
+        contract.update(override)
+    return contract
+
+
+def _is_valid_initial_contract(contract: Any) -> bool:
+    if not isinstance(contract, dict):
+        return False
+    if set(contract) != set(default_contract()):
+        return False
+    if contract.get("model") != DEFAULT_MODEL or contract.get("pricing") != default_contract()["pricing"]:
+        return False
+    try:
+        _bounded_int(
+            contract.get("max_paid_calls"),
+            key="max_paid_calls",
+            default=DEFAULT_MAX_PAID_CALLS,
+            positive=True,
+        )
+        campaign = _bounded_money(
+            contract.get("campaign_reserved_cost_hard_ceiling_usd"),
+            key="campaign_reserved_cost_hard_ceiling_usd",
+            default=DEFAULT_CAMPAIGN_RESERVED_COST_HARD_CEILING_USD,
+        )
+        per_call = _bounded_money(
+            contract.get("per_call_worst_case_ceiling_usd"),
+            key="per_call_worst_case_ceiling_usd",
+            default=DEFAULT_PER_CALL_WORST_CASE_CEILING_USD,
+        )
+        _bounded_int(
+            contract.get("automatic_paid_retries"),
+            key="automatic_paid_retries",
+            default=DEFAULT_AUTOMATIC_PAID_RETRIES,
+        )
+    except PaidReviewBudgetError:
+        return False
+    expected = {
+        **default_contract(),
+        "max_paid_calls": contract["max_paid_calls"],
+        "campaign_reserved_cost_hard_ceiling_usd": campaign,
+        "per_call_worst_case_ceiling_usd": per_call,
+        "automatic_paid_retries": contract["automatic_paid_retries"],
+    }
+    return contract == expected
 
 
 def extension_campaign_identity(parent_campaign_id: str) -> str:
@@ -316,9 +431,33 @@ def load_budget_state_for_actual_update(state_path: Path, *, campaign_identity: 
         except Exception:
             raise
         contract = payload.get("contract")
-        if not _is_extension_contract(contract, campaign_identity=campaign_identity):
+        if not (_is_extension_contract(contract, campaign_identity=campaign_identity) or _is_valid_initial_contract(contract)):
             raise
         return load_budget_state(state_path, campaign_identity=campaign_identity, expected_contract=contract)
+
+
+def contract_capability_preflight(
+    *,
+    target: Path,
+    campaign_identity: str,
+    initial_contract_override: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    contract = initial_contract(initial_contract_override)
+    state_path = budget_state_path(target, campaign_identity)
+    existing_ledger_status = "ABSENT"
+    if state_path.exists():
+        load_budget_state(state_path, campaign_identity=campaign_identity, expected_contract=contract)
+        existing_ledger_status = "COMPATIBLE"
+    return {
+        "schema": CONTRACT_PREFLIGHT_SCHEMA,
+        "campaign_identity": campaign_identity,
+        "state_path": str(state_path),
+        "resolved_contract": contract,
+        "existing_ledger_status": existing_ledger_status,
+        "paid_request_sent": False,
+        "reservation_created": False,
+        "paid_calls_consumed": 0,
+    }
 
 
 def write_budget_state(state_path: Path, payload: dict[str, Any]) -> None:
@@ -555,8 +694,12 @@ def reserve_paid_review_call(
     request_payload: dict[str, Any],
     input_token_preflight: dict[str, Any],
     extension_metadata: dict[str, Any] | None = None,
+    initial_contract_override: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    if extension_metadata is not None and initial_contract_override is not None:
+        raise PaidReviewBudgetError("paid review initial contract and extension contract are mutually exclusive")
     pricing = validate_model_pricing(model)
+    contract = initial_contract(initial_contract_override)
     max_output_tokens = request_payload.get("max_output_tokens")
     if type(max_output_tokens) is not int or max_output_tokens <= 0:
         raise PaidReviewBudgetError("paid review request must include bounded max_output_tokens")
@@ -564,8 +707,9 @@ def reserve_paid_review_call(
     if type(input_tokens) is not int:
         raise PaidReviewBudgetError("paid review input-token preflight input_tokens must be an integer")
     worst_case_cost = calculate_worst_case_cost(input_tokens, max_output_tokens)
-    if worst_case_cost > DEFAULT_PER_CALL_WORST_CASE_CEILING_USD:
-        raise PaidReviewBudgetError("paid review per-call worst-case cost exceeds USD 0.25")
+    per_call_ceiling = _decimal_from_json(contract["per_call_worst_case_ceiling_usd"])
+    if worst_case_cost > per_call_ceiling:
+        raise PaidReviewBudgetError("paid review per-call worst-case cost exceeds resolved contract ceiling")
     request_hash = request_sha256(request_payload)
     if extension_metadata is not None:
         parent_identity = str(extension_metadata.get("parent_campaign_id") or "")
@@ -634,7 +778,7 @@ def reserve_paid_review_call(
         }
     state_path = budget_state_path(target, campaign_identity)
     with locked_budget(state_path):
-        state = load_budget_state(state_path, campaign_identity=campaign_identity)
+        state = load_budget_state(state_path, campaign_identity=campaign_identity, expected_contract=contract)
         reservations = state["reservations"]
         if any(item.get("accounting_status") == "ACCOUNTING_UNVERIFIED" or item.get("actual_cost_status") == "ACCOUNTING_UNVERIFIED" for item in reservations):
             raise PaidReviewBudgetError("paid review accounting is unverified; refusing next paid request")
@@ -649,15 +793,16 @@ def reserve_paid_review_call(
                 "state_path": state_path,
                 "reservation": reusable,
                 "reservations": reservations,
-                "contract": default_contract(),
+                "contract": contract,
                 "reused_zero_billing_reservation": True,
             }
-        if len(reservations) >= DEFAULT_MAX_PAID_CALLS:
+        if len(reservations) >= int(contract["max_paid_calls"]):
             raise PaidReviewBudgetError("paid review campaign call limit exhausted")
         current_reserved = _sum_reserved_cost(reservations)
         cumulative = current_reserved + worst_case_cost
-        if cumulative > DEFAULT_CAMPAIGN_RESERVED_COST_HARD_CEILING_USD:
-            raise PaidReviewBudgetError("paid review campaign reserved-cost hard ceiling exceeds USD 0.50")
+        campaign_ceiling = _decimal_from_json(contract["campaign_reserved_cost_hard_ceiling_usd"])
+        if cumulative > campaign_ceiling:
+            raise PaidReviewBudgetError("paid review campaign reserved-cost hard ceiling exceeds resolved contract ceiling")
         call_number = len(reservations) + 1
         reservation = {
             "reservation_id": f"{campaign_identity}-{call_number}-{request_hash[:12]}",
@@ -673,7 +818,7 @@ def reserve_paid_review_call(
             "cumulative_reserved_cost_usd": _money(cumulative),
             "cumulative_reserved_worst_case_cost_usd": _money(cumulative),
             "service_tier": request_payload.get("service_tier"),
-            "automatic_paid_retries": DEFAULT_AUTOMATIC_PAID_RETRIES,
+            "automatic_paid_retries": int(contract["automatic_paid_retries"]),
         }
         reservations.append(reservation)
         state["cumulative_reserved_worst_case_cost_usd"] = _money(cumulative)
@@ -683,7 +828,7 @@ def reserve_paid_review_call(
         "state_path": state_path,
         "reservation": reservation,
         "reservations": reservations,
-        "contract": default_contract(),
+        "contract": contract,
     }
 
 
