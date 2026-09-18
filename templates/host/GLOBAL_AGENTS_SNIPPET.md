@@ -219,8 +219,10 @@ READY_FOR_USER_REVIEW=NO
 DEPENDENT_EXECUTION_BLOCKED=YES
 ```
 
-Use an existing legal human-required/recovery state; do not invent a new
-`BLOCKED` enum or successor task. A later explicit in-scope answer must reread
+Use an existing legal human-required/recovery state, such as
+`NEEDS_HUMAN_APPROVAL` or Reviewed Handoff `AWAIT_HUMAN_DECISION` with its
+existing `human_gate_reason`; do not invent a new `BLOCKED` enum, transcript
+state machine, or successor task. A later explicit in-scope answer must reread
 the current Goal/resume point/prompt identity and resume the same Goal exactly
 once before post-action closure and acceptance/completion are reconsidered.
 Agent-resolvable dependencies should be solved by Codex; unsupported interfaces

@@ -111,7 +111,10 @@ For `task_type: execution`:
   question, preserve the Goal/resume point/prompt identity, stop dependent
   execution, and at the legal deadline or run boundary report
   `GOAL_BLOCKED=YES`, `GOAL_ACHIEVED=NO`, `COMPLETE=NO`,
-  `READY_FOR_USER_REVIEW=NO` and `DEPENDENT_EXECUTION_BLOCKED=YES`.
+  `READY_FOR_USER_REVIEW=NO` and `DEPENDENT_EXECUTION_BLOCKED=YES`. Use the
+  existing legal human-required/recovery states such as `NEEDS_HUMAN_APPROVAL`
+  or Reviewed Handoff `AWAIT_HUMAN_DECISION`; do not invent another runtime
+  state machine for transcript waiting.
 - **L4 — Faithful validation + evidence surface + final candidate identity:**
   choose checks that match the risk and the actual claim. Unit, mock, helper,
   screenshot, hosted, native, or manual evidence proves only that surface; final
