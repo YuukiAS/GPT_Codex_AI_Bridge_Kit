@@ -69,9 +69,17 @@ approvals_reviewer = "auto_review"
 network_access = true
 
 [features]
-default_mode_request_user_input = true
+default_mode_request_user_input = false
 memories = true
 ```
+
+`default_mode_request_user_input` 期望值是 `false`：Default mode 中真正必需的
+`HUMAN_ONLY` 输入必须使用一条清楚的 plain-text 问题、保留同一 Goal 的恢复点并
+停止依赖执行；到明确 deadline / 当前 run 结束仍无答案时，报告
+`GOAL_BLOCKED=YES`、`GOAL_ACHIEVED=NO`、`COMPLETE=NO`、
+`READY_FOR_USER_REVIEW=NO`。`ai-bridge host validate` 仍应检查 Codex 是否支持
+这个 feature key；key 缺失是 unsupported/incompatible，不能因为期望值为 false
+而静默通过。Plan-mode native blocking 语义保持独立有效。
 
 安装必须非破坏式保留其他 TOML 配置，并在修改已有文件前创建 backup。不要通过 `approval_policy = "never"`、`danger-full-access` 或泛化 shell/python allow 解决审批问题。
 

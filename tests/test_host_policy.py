@@ -42,7 +42,7 @@ class HostPolicyTests(unittest.TestCase):
         self.assertEqual(values[("", "sandbox_mode")], '"workspace-write"')
         self.assertEqual(values[("", "approvals_reviewer")], '"auto_review"')
         self.assertEqual(values[("sandbox_workspace_write", "network_access")], "true")
-        self.assertEqual(values[("features", "default_mode_request_user_input")], "true")
+        self.assertEqual(values[("features", "default_mode_request_user_input")], "false")
         self.assertEqual(values[("features", "memories")], "true")
 
     def test_config_merge_preserves_unrelated_fields(self) -> None:
@@ -66,7 +66,7 @@ memories = false
         self.assertLess(patched.index('approval_policy = "on-request"'), patched.index("[mcp_servers.example]"))
         values = config_values(patched)
         self.assertEqual(values[("features", "memories")], "true")
-        self.assertEqual(values[("features", "default_mode_request_user_input")], "true")
+        self.assertEqual(values[("features", "default_mode_request_user_input")], "false")
 
     def test_existing_features_section_updates_only_target_keys(self) -> None:
         patched = patch_config_text("[features]\nmemories = false\nplugins = true\n")
@@ -74,7 +74,7 @@ memories = false
 
         self.assertEqual(patched.count("[features]"), 1)
         self.assertEqual(values[("features", "memories")], "true")
-        self.assertEqual(values[("features", "default_mode_request_user_input")], "true")
+        self.assertEqual(values[("features", "default_mode_request_user_input")], "false")
         self.assertEqual(values[("features", "plugins")], "true")
 
     def test_existing_sandbox_section_updates_network_access(self) -> None:
@@ -221,6 +221,13 @@ memories = false
             self.assertEqual(status.trusted_ai_bridge_executable, resolve_ai_bridge_executable())
             self.assertEqual(exit_code, 0, "\n".join(lines))
             self.assertTrue(any("Trusted ai-bridge executable:" in line for line in lines))
+            self.assertTrue(
+                any(
+                    "Feature availability: default_mode_request_user_input supported/" in line
+                    and "memories available/enabled" in line
+                    for line in lines
+                )
+            )
             self.assertTrue(any("ai-bridge plugin-replay" in line and "=> allow" in line for line in lines))
             self.assertTrue(any("squeue -j 156911 -o %.18i %.9P %.30j %.8u %.2t %.12M %.12l %.20R %.30b => allow" in line for line in lines))
             self.assertTrue(any("squeue -u testuser -h => allow" in line for line in lines))

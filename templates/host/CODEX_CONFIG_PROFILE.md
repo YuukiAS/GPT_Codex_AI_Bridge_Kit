@@ -15,13 +15,16 @@ The current Bridge Kit host policy manages:
 ```toml
 [features]
 memories = true
-default_mode_request_user_input = true
+default_mode_request_user_input = false
 ```
 
-`default_mode_request_user_input` was verified against Codex CLI feature
-discovery before being kept in the managed host policy. If a future Codex
-installation does not expose it, `ai-bridge host validate` should report the
-host as incompatible rather than silently pretending it works.
+`default_mode_request_user_input` is deliberately managed to `false`.
+Default-mode required human gates use a durable plain-text transcript question
+and same-thread resume point because current native Default-mode cards can
+auto-resolve. `ai-bridge host validate` still checks that Codex exposes the
+feature key, so an upstream removal is reported as unsupported/incompatible
+rather than hidden by the desired disabled state. Plan-mode native blocking
+semantics remain a separate Codex mode behavior.
 
 ## Low-Risk Command Rule Suggestions
 

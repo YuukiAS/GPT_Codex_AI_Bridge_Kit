@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+## 0.8.4
+
+- Manage `features.default_mode_request_user_input = false` in Host Policy so
+  Default-mode required `HUMAN_ONLY` gates fail closed onto durable transcript
+  questions instead of native cards that can auto-resolve.
+- Keep support validation separate from desired state: `ai-bridge host
+  validate` still reports an absent `default_mode_request_user_input` key as
+  incompatible, while a supported disabled key matches the managed candidate.
+- Add a small HUMAN_ONLY transcript gate helper and focused tests for reply,
+  no-reply/recoverable blocked, later exact-once resume, agent-resolvable
+  no-prompt, and unsupported-with-evidence closure.
+- Align Lite rules with the six product-delivery baselines for positive goal
+  preservation, acceptance admission, human gate eligibility, faithful evidence
+  surfaces, no blind reruns, and truthful handoff boundaries.
+
 ## 0.8.3
 
 - Add a fresh-repository `AGENTS.md` scaffold for `ai-bridge init` that keeps

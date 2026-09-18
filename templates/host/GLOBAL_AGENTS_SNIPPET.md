@@ -155,11 +155,15 @@ upstream issue references.
 
 ## User Input Policy
 
-Because host policy enables `default_mode_request_user_input`, ask the user when
-ambiguity would materially change architecture, project scope, destructive
-actions, branch/integration strategy, deployment strategy, externally visible
-behavior, scientifically meaningful substitutions or degradation, or
-irreversible and difficult-to-reverse decisions.
+Host policy deliberately sets `features.default_mode_request_user_input = false`
+for Default mode. Current native Default-mode question cards are optional
+transport and can auto-resolve, so they must not carry required `HUMAN_ONLY`
+gates. Plan-mode native blocking semantics are separate and remain valid.
+
+Ask the user when ambiguity would materially change architecture, project
+scope, destructive actions, branch/integration strategy, deployment strategy,
+externally visible behavior, scientifically meaningful substitutions or
+degradation, or irreversible and difficult-to-reverse decisions.
 
 Routine implementation details, local refactoring choices, and clearly
 reversible small decisions do not require repeated interruption.
@@ -193,13 +197,36 @@ persistence backend, and scope limits. Do not use a speculative generic
 approval checklist. A new artifact, recipient, provider, resource, purpose, or
 out-of-scope effect still requires fresh authorization.
 
-For long-running goals and repository workflows, **a recoverable question is not
-a terminal blocker**. If a path, artifact identity, credential confirmation,
-branch/integration choice, or other bounded user decision can unblock progress,
-use `request_user_input` / ask the user when an interactive channel is available
-and preserve the workflow state. If the issue belongs to a frozen Plan, route it
-to the workflow Planner instead. Do not write `BLOCKED` simply because asking is
-less convenient than terminating the current run.
+For long-running goals and repository workflows, classify the dependency before
+asking:
+
+```text
+HUMAN_ONLY / AGENT_RESOLVABLE / UNSUPPORTED_WITH_EVIDENCE /
+OPTIONAL_NOT_REQUIRED_FOR_CURRENT_CLOSURE / SAFETY_OR_AUTHORITY_BLOCKER
+```
+
+Only genuine `HUMAN_ONLY` dependencies should ask the user. In Default mode,
+use one concise plain-text question, preserve the current Goal/resume point and
+prompt identity, and stop dependent execution immediately. If the explicit
+deadline or the current run boundary arrives without an answer, report the
+recoverable human block truthfully:
+
+```text
+GOAL_BLOCKED=YES
+GOAL_ACHIEVED=NO
+COMPLETE=NO
+READY_FOR_USER_REVIEW=NO
+DEPENDENT_EXECUTION_BLOCKED=YES
+```
+
+Use an existing legal human-required/recovery state; do not invent a new
+`BLOCKED` enum or successor task. A later explicit in-scope answer must reread
+the current Goal/resume point/prompt identity and resume the same Goal exactly
+once before post-action closure and acceptance/completion are reconsidered.
+Agent-resolvable dependencies should be solved by Codex; unsupported interfaces
+should close truthfully with evidence; optional work should not block the frozen
+objective; safety or authority blockers should use the existing Planner/STOP or
+approval route.
 
 ## External Planner / Reviewer Waiting
 

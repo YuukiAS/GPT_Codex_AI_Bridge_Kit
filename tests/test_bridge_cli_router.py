@@ -43,6 +43,10 @@ class BridgeCliRouterTests(unittest.TestCase):
             self.assertIn("MAJOR.MINOR.PATCH", rules)
             self.assertIn("Docs, TODO, tests, or helper-only changes", rules)
             self.assertIn("commits may remain unreleased", rules)
+            self.assertIn("L1 — Positive goal / normal entry / no silent downgrade", rules)
+            self.assertIn("L3 — HUMAN_ONLY eligibility + transcript gate", rules)
+            self.assertIn("GOAL_BLOCKED=YES", rules)
+            self.assertIn("L6 — Truthful handoff / unverified boundary / resume point", rules)
 
     def test_init_preserves_existing_project_root_under_normal_and_force(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

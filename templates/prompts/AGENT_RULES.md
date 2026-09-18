@@ -94,6 +94,37 @@ state machine allows it.
 
 For `task_type: execution`:
 
+- **L1 — Positive goal / normal entry / no silent downgrade:** preserve the
+  frozen objective, normal entry path, candidate identity, and any
+  non-substitutable requirement. A proxy or fallback counts as completion only
+  when the task explicitly accepts it as equivalent and names the evidence.
+- **L2 — Acceptance Review Admission + human action is not acceptance:** do not
+  call a candidate user-ready, release-ready, or complete until applicable local
+  implementation, targeted regression, source/generated parity, target-surface
+  evidence, and final-candidate identity are closed. A login, credential step,
+  OS permission, or other human action is only an execution checkpoint.
+- **L3 — HUMAN_ONLY eligibility + transcript gate:** classify dependencies as
+  `HUMAN_ONLY`, `AGENT_RESOLVABLE`, `UNSUPPORTED_WITH_EVIDENCE`,
+  `OPTIONAL_NOT_REQUIRED_FOR_CURRENT_CLOSURE`, or
+  `SAFETY_OR_AUTHORITY_BLOCKER` before asking. Only genuine `HUMAN_ONLY`
+  dependencies may ask the user. In Default mode use one concise plain-text
+  question, preserve the Goal/resume point/prompt identity, stop dependent
+  execution, and at the legal deadline or run boundary report
+  `GOAL_BLOCKED=YES`, `GOAL_ACHIEVED=NO`, `COMPLETE=NO`,
+  `READY_FOR_USER_REVIEW=NO` and `DEPENDENT_EXECUTION_BLOCKED=YES`.
+- **L4 — Faithful validation + evidence surface + final candidate identity:**
+  choose checks that match the risk and the actual claim. Unit, mock, helper,
+  screenshot, hosted, native, or manual evidence proves only that surface; final
+  acceptance evidence must belong to the same candidate being handed off.
+- **L5 — No blind rerun + protect accepted/adjacent behavior:** when the same
+  failure repeats without new information, re-diagnose the candidate, consumer,
+  fixture, hypothesis, and root cause before spending another broad suite,
+  external review, or human retry. Shared behavior changes must protect accepted
+  and adjacent behavior.
+- **L6 — Truthful handoff / unverified boundary / resume point:** distinguish
+  complete, partial, unsupported, human-blocked, waiting, and unverified states.
+  Record the real recovery point and do not use process success as a substitute
+  for the original product or artifact outcome.
 - Execute only the authorized task scope.
 - Preserve the task's non-substitutable semantics. Do not silently use weaker
   data, method, model/source, budget, execution entry, tool, renderer, artifact,

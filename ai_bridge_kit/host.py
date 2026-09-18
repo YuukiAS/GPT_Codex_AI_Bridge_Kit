@@ -36,7 +36,7 @@ REQUIRED_CONFIG = {
     ("", "sandbox_mode"): '"workspace-write"',
     ("", "approvals_reviewer"): '"auto_review"',
     ("sandbox_workspace_write", "network_access"): "true",
-    ("features", "default_mode_request_user_input"): "true",
+    ("features", "default_mode_request_user_input"): "false",
     ("features", "memories"): "true",
 }
 
@@ -442,11 +442,12 @@ def _feature_availability() -> tuple[dict[str, bool], list[str]]:
         parts = line.split()
         if len(parts) >= 3 and parts[0] in {"default_mode_request_user_input", "memories"}:
             features[parts[0]] = parts[-1].lower() == "true"
-    for feature in ["default_mode_request_user_input", "memories"]:
-        if feature not in features:
-            issues.append(f"missing capability: {feature}")
-        elif not features[feature]:
-            issues.append(f"capability disabled: {feature}")
+    if "default_mode_request_user_input" not in features:
+        issues.append("missing capability: default_mode_request_user_input")
+    if "memories" not in features:
+        issues.append("missing capability: memories")
+    elif not features["memories"]:
+        issues.append("capability disabled: memories")
     return features, issues
 
 
@@ -534,14 +535,18 @@ def validate_host_policy(codex_home: Path, cwd: Path | None = None) -> tuple[Hos
         status = _with_incompatible(status)
         lines.append(f"Incompatible: {version_error}")
 
-    _, feature_issues = _feature_availability()
+    features, feature_issues = _feature_availability()
     if feature_issues:
         exit_code = 1
         status = _with_incompatible(status)
         for issue in feature_issues:
             lines.append(f"Incompatible: {issue}")
     else:
-        lines.append("Feature availability: default_mode_request_user_input and memories available/enabled")
+        default_state = "enabled" if features.get("default_mode_request_user_input") else "disabled"
+        lines.append(
+            "Feature availability: default_mode_request_user_input supported/"
+            f"{default_state}; memories available/enabled"
+        )
 
     rules_path = codex_home / RULES_RELATIVE_PATH
     trusted_executable = resolve_ai_bridge_executable()
