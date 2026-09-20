@@ -33,7 +33,7 @@ ai-bridge init --target /path/to/project --force
 如果 ChatGPT 没有自动读取仓库规则，只需要在该 ChatGPT Project 的长期 instructions 里放一次：
 
 ```text
-使用 GitHub MCP 处理仓库时，先读取 AGENTS.md 和 prompts/CHATGPT_RULES.md；需要 Codex 执行时写 prompts/tasks/<task_key>.md。task_key 采用 <id>_<short_slug>，short_slug 控制在 1-3 个词内。
+使用 GitHub MCP 处理仓库时，先读取 AGENTS.md 和 prompts/CHATGPT_RULES.md；需要 Codex 执行时写 prompts/tasks/<task_key>.md。新 task_key 采用 `<scope-token>--<goal-token>`，两个部分都用 lowercase kebab-case；历史 `<id>_<short_slug>` 任务仍可读取和验证。
 ```
 
 以后日常不需要再记完整提示词。
@@ -43,19 +43,19 @@ ai-bridge init --target /path/to/project --force
 给 ChatGPT：
 
 ```text
-读取 AGENTS.md 和 prompts/CHATGPT_RULES.md，根据当前项目状态生成新的 prompts/tasks/002_fix_ci.md。
+读取 AGENTS.md 和 prompts/CHATGPT_RULES.md，根据当前项目状态生成新的 prompts/tasks/repo--fix-ci.md。
 ```
 
 给 Codex：
 
 ```text
-读取 AGENTS.md、prompts/AGENT_RULES.md 和 prompts/tasks/002_fix_ci.md，按任务单授权执行，完成后写 results/002_fix_ci/result.md；如有文件型产物，写到 results/002_fix_ci/，并写 results/002_fix_ci/MANIFEST.md。
+读取 AGENTS.md、prompts/AGENT_RULES.md 和 prompts/tasks/repo--fix-ci.md，按任务单授权执行，完成后写 results/repo--fix-ci/result.md；如有文件型产物，写到 results/repo--fix-ci/，并写 results/repo--fix-ci/MANIFEST.md。
 ```
 
 再给 ChatGPT：
 
 ```text
-读取 prompts/tasks/002_fix_ci.md、results/002_fix_ci/result.md、results/002_fix_ci/MANIFEST.md 和必要产物，写 results/002_fix_ci/review.md，并判断下一步是 GO、STOP、NEEDS_EVIDENCE、NEEDS_HUMAN_APPROVAL 还是 OPEN_NEXT_TASK。
+读取 prompts/tasks/repo--fix-ci.md、results/repo--fix-ci/result.md、results/repo--fix-ci/MANIFEST.md 和必要产物，写 results/repo--fix-ci/review.md，并判断下一步是 GO、STOP、NEEDS_EVIDENCE、NEEDS_HUMAN_APPROVAL 还是 OPEN_NEXT_TASK。
 ```
 
 ## 3. 研究笔记不要变成任务
@@ -89,7 +89,7 @@ ai-bridge init --target /path/to/project --force
 常见两步循环：
 
 ```text
-先让 Codex 总结指定 report 并写 results/010_summarize_report/result.md；再让 ChatGPT 读取 prompts/tasks/010_summarize_report.md、result、MANIFEST 和 docs/wiki/index.md，写 review，必要时沉淀到 docs/wiki/，然后生成下一张 task。
+先让 Codex 总结指定 report 并写 results/repo--summarize-report/result.md；再让 ChatGPT 读取 prompts/tasks/repo--summarize-report.md、result、MANIFEST 和 docs/wiki/index.md，写 review，必要时沉淀到 docs/wiki/，然后生成下一张 task。
 ```
 
 ## 6. 验证项目
@@ -145,7 +145,7 @@ Codex session。
 ```bash
 ai-bridge persistent-run prompt kickoff \
   --target /path/to/project \
-  --goal prompts/tasks/010_long_run.md
+  --goal prompts/tasks/repo--long-run.md
 ```
 
 这个命令只打印授权文本，不会启动 tmux。Persistent Run 只约束长期执行和恢复：使用 canonical `tmux` session，已有兼容 run 时 resume，不把 session/PID/heartbeat 当作完成，不自动 fallback 到 `setsid`、`nohup`、裸后台 `&`、`screen` 或 `sudo`。Lite / Review / Control 的 workflow 选择和原 Goal 完成标准保持不变。

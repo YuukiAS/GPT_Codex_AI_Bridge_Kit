@@ -96,10 +96,10 @@ Encrypt a private artifact from the user machine:
 ```bash
 ai-bridge text-review encrypt \
   --target /path/to/project \
-  --task-key 044_example \
+  --task-key repo--text-review \
   --input /private/path/final.md \
-  --output results/044_example/text_review/payload.age \
-  --manifest results/044_example/text_review/text_inputs.json \
+  --output results/repo--text-review/text_review/payload.age \
+  --manifest results/repo--text-review/text_review/text_inputs.json \
   --implementation-commit <commit> \
   --rubric "Read the complete artifact and decide whether it satisfies the frozen user-facing prose requirements." \
   --external-upload-authorization "User authorized private text review through OpenAI Responses API with store=false for this task."

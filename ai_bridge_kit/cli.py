@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import argparse
-import re
 import shutil
 import sys
 from pathlib import Path
+
+from . import task_keys
 
 
 BEGIN_MARKER = "<!-- ai-bridge-kit:start -->"
@@ -40,7 +41,6 @@ REQUIRED_FIELDS = [
 ]
 
 LEGACY_REQUIRED_FIELDS = ["task_id", *REQUIRED_FIELDS[1:]]
-TASK_KEY_RE = re.compile(r"^\d+_[A-Za-z0-9]+(?:_[A-Za-z0-9]+){0,2}$")
 SKILL_REQUIRED_FIELDS = ["name", "description"]
 CONTROLLED_STATES = {
     "READY",
@@ -273,7 +273,7 @@ def init_workspace(
     print("- ChatGPT/GitHub MCP should read AGENTS.md and prompts/CHATGPT_RULES.md.")
     print("- Codex should read AGENTS.md, prompts/AGENT_RULES.md, and the selected task.")
     print("- Put executable work in prompts/tasks/<task_key>.md.")
-    print("- Use <id>_<short_slug>; keep the slug to 1-3 words.")
+    print("- Use semantic <scope-token>--<goal-token> task keys for new tasks.")
     print("- Put execution reports and artifacts in results/<task_key>/.")
     print("- Put reusable research knowledge in docs/wiki/; reference it from tasks when needed.")
     try:
@@ -415,10 +415,10 @@ def validate_workspace(target: Path, strict: bool = False) -> int:
             for path in tasks_dir.glob("*.md")
             if not path.name.endswith(("_task.md", "_result.md", "_review.md"))
         )
-        task_keys = {path.stem for path in task_files}
+        task_file_keys = {path.stem for path in task_files}
         task_data_by_key: dict[str, dict[str, str]] = {}
         legacy_task_ids = {path.name.removesuffix("_task.md") for path in legacy_task_files}
-        all_task_keys = task_keys | legacy_task_ids
+        all_task_keys = task_file_keys | legacy_task_ids
         if not task_files:
             warnings.append("WARN no new-style task files found in prompts/tasks/")
 
@@ -427,9 +427,9 @@ def validate_workspace(target: Path, strict: bool = False) -> int:
             if parse_error:
                 errors.append(f"ERROR {task_file}: {parse_error}")
                 continue
-            if not TASK_KEY_RE.fullmatch(task_file.stem):
+            if error := task_keys.existing_task_key_error(task_file.stem):
                 errors.append(
-                    f"ERROR {task_file}: filename must be <id>_<short_slug>.md with a 1-3 word slug"
+                    f"ERROR {task_file}: filename {error}"
                 )
             missing = [field for field in REQUIRED_FIELDS if field not in data]
             if missing:
@@ -509,7 +509,7 @@ def validate_workspace(target: Path, strict: bool = False) -> int:
 
         if results_dir.exists():
             for artifact_dir in sorted(path for path in results_dir.iterdir() if path.is_dir()):
-                if not TASK_KEY_RE.fullmatch(artifact_dir.name):
+                if task_keys.existing_task_key_error(artifact_dir.name):
                     continue
                 if artifact_dir.name in all_task_keys:
                     oks.append(f"OK   {artifact_dir.relative_to(target)}/ matches a task")

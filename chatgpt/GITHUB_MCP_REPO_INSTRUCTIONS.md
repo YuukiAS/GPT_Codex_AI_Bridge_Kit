@@ -12,7 +12,7 @@
 
 ## 固定写入规则
 
-- 可执行任务写到 `prompts/tasks/<task_key>.md`，`task_key` 使用 `<id>_<short_slug>`，short slug 控制在 1-3 个词内。
+- 可执行任务写到 `prompts/tasks/<task_key>.md`，新的 `task_key` 使用 `<scope-token>--<goal-token>`，两个部分都用 lowercase kebab-case；历史 `<id>_<short_slug>` 任务仍可读取和验证。
 - Codex 执行报告和证据索引预期写到 `results/<task_key>/result.md`。
 - 复盘写到 `results/<task_key>/review.md`。
 - 研究笔记、方案分析、会议记录和实验复盘写到 `docs/notes/<date>_<topic>.md`。

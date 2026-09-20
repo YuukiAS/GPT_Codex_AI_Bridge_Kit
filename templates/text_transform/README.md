@@ -34,7 +34,7 @@ Create the local-only output receiver:
 ```bash
 ai-bridge text-transform create-output-receiver \
   --target /path/to/project \
-  --task-key 048_example
+  --task-key repo--text-transform
 ```
 
 The private identity stays under `${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}` unless
@@ -45,11 +45,11 @@ Encrypt a private source artifact from the user machine:
 ```bash
 ai-bridge text-transform encrypt \
   --target /path/to/project \
-  --task-key 048_example \
+  --task-key repo--text-transform \
   --input /private/path/source.md \
-  --output results/048_example/text_transform/input.age \
-  --manifest results/048_example/text_transform/text_transform_inputs.json \
-  --output-recipient-file results/048_example/text_transform/output.age.pub \
+  --output results/repo--text-transform/text_transform/input.age \
+  --manifest results/repo--text-transform/text_transform/text_transform_inputs.json \
+  --output-recipient-file results/repo--text-transform/text_transform/output.age.pub \
   --instruction-file plugins/codex/plugins/writing-style/skills/scientific-rewrite/SKILL.md \
   --goal "Rewrite the complete source according to the bound public instructions." \
   --implementation-commit <commit> \
@@ -61,7 +61,7 @@ After GitHub Actions writes back encrypted output, decrypt locally:
 ```bash
 ai-bridge text-transform decrypt \
   --target /path/to/project \
-  --result results/048_example/text_transform/TEXT_TRANSFORM.json \
+  --result results/repo--text-transform/text_transform/TEXT_TRANSFORM.json \
   --identity-file ~/.ai-bridge/text-transform/<repo>/<task>/output_identity.txt \
   --output /private/path/rewritten_report.md
 ```

@@ -10,7 +10,11 @@ Default path:
 prompts/tasks/<task_key>.md
 ```
 
-`task_key` uses `<id>_<short_slug>` with a 1-3 word slug. Do not add `_task`.
+New `task_key` values use semantic `<scope-token>--<goal-token>` form, for
+example `repo--fix-ci` or `plugin-writing-style--release-convergence`. Both
+components use lowercase kebab-case. Existing legacy numbered tasks remain
+valid for reading and review, but do not create new numbered keys or add
+`_task`.
 
 ## Decide The Task Type
 
@@ -65,7 +69,7 @@ Keep legacy fields and add protocol fields:
 
 ```yaml
 ---
-task_key: "002_fix_ci"
+task_key: "repo--fix-ci"
 project: "project-name"
 status: "READY"
 task_type: "execution"

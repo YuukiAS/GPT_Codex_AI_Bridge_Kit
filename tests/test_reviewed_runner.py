@@ -27,10 +27,10 @@ class ReviewedRunnerTests(unittest.TestCase):
         subprocess.check_call(["git", "config", "user.name", "Test User"], cwd=target)
         status, _ = rh.install_reviewed_handoff(target)
         self.assertTrue(status.installed)
-        rh.init_task(target, "001_feature", objective="runner test")
+        rh.init_task(target, "repo--feature", objective="runner test")
         plan_template = rh.read_text(rh.reviewed_root(target) / "templates" / "PLAN.md")
-        rh.write_text(rh.task_root(target, "001_feature") / "PLAN.md", plan_template.replace("<TASK_KEY>", "001_feature"))
-        rh.apply_transition(target, "001_feature", expected_state="PLAN_REQUESTED", next_state="PLAN_FROZEN")
+        rh.write_text(rh.task_root(target, "repo--feature") / "PLAN.md", plan_template.replace("<TASK_KEY>", "repo--feature"))
+        rh.apply_transition(target, "repo--feature", expected_state="PLAN_REQUESTED", next_state="PLAN_FROZEN")
         subprocess.check_call(["git", "add", "."], cwd=target)
         subprocess.check_call(["git", "commit", "-m", "freeze plan"], cwd=target, stdout=subprocess.DEVNULL)
         return tmp, target, state_home
@@ -44,7 +44,7 @@ class ReviewedRunnerTests(unittest.TestCase):
         return remote
 
     def set_waiting_for_planner(self, target: Path) -> None:
-        current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+        current_path = rh.task_root(target, "repo--feature") / "CURRENT.json"
         current = rh.load_json(current_path)
         current["state"] = "NEEDS_GPT_PLANNER"
         current["next_action"] = "RUN_GPT_PLANNER"
@@ -57,7 +57,7 @@ class ReviewedRunnerTests(unittest.TestCase):
         text = (
             "---\n"
             f"schema: {rh.LEGACY_PLAN_SCHEMA}\n"
-            "task_key: 001_feature\n"
+            "task_key: repo--feature\n"
             "decision: PLAN_FROZEN\n"
             "---\n\n"
             "# Review Plan\n\n"
@@ -70,7 +70,7 @@ class ReviewedRunnerTests(unittest.TestCase):
             "## Out of scope\n\n"
             "Do not expand the legacy task.\n"
         )
-        plan_path = rh.task_root(target, "001_feature") / "PLAN.md"
+        plan_path = rh.task_root(target, "repo--feature") / "PLAN.md"
         rh.write_text(plan_path, text)
         subprocess.check_call(["git", "add", str(plan_path.relative_to(target))], cwd=target)
         subprocess.check_call(["git", "commit", "-m", "legacy v1 plan"], cwd=target, stdout=subprocess.DEVNULL)
@@ -80,13 +80,13 @@ class ReviewedRunnerTests(unittest.TestCase):
         subprocess.check_call(["git", "add", "src.py"], cwd=target)
         subprocess.check_call(["git", "commit", "-m", "executor implementation"], cwd=target, stdout=subprocess.DEVNULL)
         implementation_commit = runner.git_output(target, ["rev-parse", "HEAD"])
-        result_path = rh.result_root(target, "001_feature") / "RESULT.md"
+        result_path = rh.result_root(target, "repo--feature") / "RESULT.md"
         result_template = rh.read_text(rh.reviewed_root(target) / "templates" / "RESULT.md")
         rh.write_text(
             result_path,
-            result_template.replace("<TASK_KEY>", "001_feature").replace("<COMMIT>", implementation_commit),
+            result_template.replace("<TASK_KEY>", "repo--feature").replace("<COMMIT>", implementation_commit),
         )
-        current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+        current_path = rh.task_root(target, "repo--feature") / "CURRENT.json"
         current = rh.load_json(current_path)
         current["state"] = "READY_FOR_GPT_REVIEW"
         current["implementation_commit"] = implementation_commit
@@ -99,13 +99,13 @@ class ReviewedRunnerTests(unittest.TestCase):
 
     def commit_text_review_handoff(self, target: Path) -> str:
         implementation_commit = self.commit_valid_executor_handoff(target)
-        current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+        current_path = rh.task_root(target, "repo--feature") / "CURRENT.json"
         current = rh.load_json(current_path)
         current["text_review_required"] = True
-        current["text_review_manifest_path"] = "results/001_feature/text_review/text_inputs.json"
-        current["text_review_evidence_path"] = "results/001_feature/text_review/TEXT_REVIEW.json"
+        current["text_review_manifest_path"] = "results/repo--feature/text_review/text_inputs.json"
+        current["text_review_evidence_path"] = "results/repo--feature/text_review/TEXT_REVIEW.json"
         rh.write_json(current_path, current)
-        text_dir = rh.result_root(target, "001_feature") / "text_review"
+        text_dir = rh.result_root(target, "repo--feature") / "text_review"
         text_dir.mkdir(parents=True, exist_ok=True)
         payload = text_dir / "payload.age"
         payload.write_bytes(b"synthetic encrypted private text")
@@ -113,7 +113,7 @@ class ReviewedRunnerTests(unittest.TestCase):
             text_dir / "text_inputs.json",
             {
                 "schema": text_review.TEXT_INPUT_MANIFEST_SCHEMA,
-                "task_key": "001_feature",
+                "task_key": "repo--feature",
                 "workflow_type": "reviewed_handoff",
                 "review_kind": "user-facing-text",
                 "privacy_policy": text_review.PRIVATE_TEXT_POLICY,
@@ -122,7 +122,7 @@ class ReviewedRunnerTests(unittest.TestCase):
                 "identity_bindings": {"implementation_commit": implementation_commit},
                 "input": {
                     "logical_id": "primary_text",
-                    "encrypted_payload_path": "results/001_feature/text_review/payload.age",
+                    "encrypted_payload_path": "results/repo--feature/text_review/payload.age",
                     "ciphertext_sha256": text_review.file_sha256(payload),
                     "plaintext_sha256": "a" * 64,
                     "plaintext_size_bytes": 123,
@@ -145,7 +145,7 @@ class ReviewedRunnerTests(unittest.TestCase):
         return implementation_commit
 
     def remove_out_of_scope_from_plan(self, target: Path) -> None:
-        plan_path = rh.task_root(target, "001_feature") / "PLAN.md"
+        plan_path = rh.task_root(target, "repo--feature") / "PLAN.md"
         text = plan_path.read_text(encoding="utf-8")
         plan_path.write_text(
             text.replace("\n## Out of scope\n\nList tempting adjacent improvements that Reviewer must not turn into blocking scope.\n", "\n"),
@@ -177,10 +177,10 @@ class ReviewedRunnerTests(unittest.TestCase):
         with tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(state_home)}):
             result = runner.watcher_once(target, branch="main", sync=False, dry_run=True)
             self.assertEqual(result["status"], "dry_run")
-            self.assertEqual(result["task_key"], "001_feature")
+            self.assertEqual(result["task_key"], "repo--feature")
             self.assertIn("codex", result["command"][0])
             self.assertIn("PLAN_FROZEN", result["prompt"])
-            current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+            current_path = rh.task_root(target, "repo--feature") / "CURRENT.json"
             current = rh.load_json(current_path)
             current["state"] = "NEEDS_GPT_PLANNER"
             rh.write_json(current_path, current)
@@ -198,7 +198,7 @@ class ReviewedRunnerTests(unittest.TestCase):
             result = runner.watcher_once(target, branch="main", sync=False, dry_run=True)
 
             self.assertEqual(result["status"], "dry_run")
-            self.assertEqual(result["task_key"], "001_feature")
+            self.assertEqual(result["task_key"], "repo--feature")
             self.assertNotEqual(result["status"], "invalid_workflow")
 
     def test_watcher_reports_external_wait_without_consuming_executor_attempts(self) -> None:
@@ -208,13 +208,13 @@ class ReviewedRunnerTests(unittest.TestCase):
             subprocess.check_call(["git", "add", "src.py"], cwd=target)
             subprocess.check_call(["git", "commit", "-m", "implementation"], cwd=target, stdout=subprocess.DEVNULL)
             implementation_commit = runner.git_output(target, ["rev-parse", "HEAD"])
-            result_path = rh.result_root(target, "001_feature") / "RESULT.md"
+            result_path = rh.result_root(target, "repo--feature") / "RESULT.md"
             result_template = rh.read_text(rh.reviewed_root(target) / "templates" / "RESULT.md")
             rh.write_text(
                 result_path,
-                result_template.replace("<TASK_KEY>", "001_feature").replace("<COMMIT>", implementation_commit),
+                result_template.replace("<TASK_KEY>", "repo--feature").replace("<COMMIT>", implementation_commit),
             )
-            current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+            current_path = rh.task_root(target, "repo--feature") / "CURRENT.json"
             current = rh.load_json(current_path)
             current["state"] = "READY_FOR_GPT_REVIEW"
             current["implementation_commit"] = implementation_commit
@@ -253,7 +253,7 @@ class ReviewedRunnerTests(unittest.TestCase):
                 result = runner.watcher_once(target, branch="main", sync=False)
             self.assertEqual(result["status"], "codex_no_progress")
             local = runner.load_local_state(target)
-            event = runner.event_identity("001_feature", rh.load_json(rh.task_root(target, "001_feature") / "CURRENT.json"))
+            event = runner.event_identity("repo--feature", rh.load_json(rh.task_root(target, "repo--feature") / "CURRENT.json"))
             self.assertFalse(local["events"][event]["completed"])
             self.assertEqual(local["events"][event]["attempts"], 1)
 
@@ -269,7 +269,7 @@ class ReviewedRunnerTests(unittest.TestCase):
             self.assertEqual(status["schema"], "AI_BRIDGE_REVIEWED_WATCHER_STATUS_V1")
             self.assertEqual(status["branch"], "main")
             task = status["tasks"][0]
-            self.assertEqual(task["task"], "001_feature")
+            self.assertEqual(task["task"], "repo--feature")
             self.assertEqual(task["state"], "PLAN_FROZEN")
             self.assertEqual(task["phase"], "initial_implementation")
             self.assertEqual(task["runtime_type"], "codex_exec")
@@ -294,12 +294,12 @@ class ReviewedRunnerTests(unittest.TestCase):
             payload = json.loads(output.getvalue())
             self.assertEqual(code, 0)
             self.assertEqual(payload["schema"], "AI_BRIDGE_REVIEWED_WATCHER_STATUS_V1")
-            self.assertEqual(payload["tasks"][0]["task"], "001_feature")
+            self.assertEqual(payload["tasks"][0]["task"], "repo--feature")
 
     def test_state_progress_requires_committed_clean_state(self) -> None:
         tmp, target, state_home = self.make_project()
         with tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(state_home)}):
-            current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+            current_path = rh.task_root(target, "repo--feature") / "CURRENT.json"
 
             def progress():
                 current = rh.load_json(current_path)
@@ -332,7 +332,7 @@ class ReviewedRunnerTests(unittest.TestCase):
             blocker.assert_called_once()
             self.assertTrue((target / "partial.py").exists())
             local = runner.load_local_state(target)
-            event = runner.event_identity("001_feature", rh.load_json(rh.task_root(target, "001_feature") / "CURRENT.json"))
+            event = runner.event_identity("repo--feature", rh.load_json(rh.task_root(target, "repo--feature") / "CURRENT.json"))
             self.assertTrue(local["events"][event]["completed"])
 
     def test_watcher_refuses_preexisting_dirty_tree_before_launch(self) -> None:
@@ -348,7 +348,7 @@ class ReviewedRunnerTests(unittest.TestCase):
             self.attach_origin(target, Path(tmp.name))
             dirty = target / "dirty.txt"
             dirty.write_text("external in-progress edit\n", encoding="utf-8")
-            current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+            current_path = rh.task_root(target, "repo--feature") / "CURRENT.json"
             launches = []
 
             def executor_progress(*args, **kwargs):
@@ -362,8 +362,8 @@ class ReviewedRunnerTests(unittest.TestCase):
                 subprocess.check_call(["git", "commit", "-m", "executor asks planner"], cwd=target, stdout=subprocess.DEVNULL)
                 post_head = runner.git_output(target, ["rev-parse", "HEAD"])
                 return {
-                    "task_key": "001_feature",
-                    "event": "001_feature|PLAN_FROZEN|0|0|",
+                    "task_key": "repo--feature",
+                    "event": "repo--feature|PLAN_FROZEN|0|0|",
                     "launched": True,
                     "exit_code": 0,
                     "progressed": True,
@@ -403,7 +403,7 @@ class ReviewedRunnerTests(unittest.TestCase):
         with tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(state_home)}):
             remote = self.attach_origin(target, Path(tmp.name))
             self.remove_out_of_scope_from_plan(target)
-            subprocess.check_call(["git", "add", str((rh.task_root(target, "001_feature") / "PLAN.md").relative_to(target))], cwd=target)
+            subprocess.check_call(["git", "add", str((rh.task_root(target, "repo--feature") / "PLAN.md").relative_to(target))], cwd=target)
             subprocess.check_call(["git", "commit", "-m", "invalid planner freeze"], cwd=target, stdout=subprocess.DEVNULL)
             subprocess.check_call(["git", "push", "origin", "main"], cwd=target, stdout=subprocess.DEVNULL)
             planner = Path(tmp.name) / "planner"
@@ -414,13 +414,13 @@ class ReviewedRunnerTests(unittest.TestCase):
             def remote_fix_after_invalid_sleep(seconds: int) -> None:
                 self.assertGreaterEqual(seconds, 600)
                 plan_template = rh.read_text(rh.reviewed_root(planner) / "templates" / "PLAN.md")
-                rh.write_text(rh.task_root(planner, "001_feature") / "PLAN.md", plan_template.replace("<TASK_KEY>", "001_feature"))
-                subprocess.check_call(["git", "add", str((rh.task_root(planner, "001_feature") / "PLAN.md").relative_to(planner))], cwd=planner)
+                rh.write_text(rh.task_root(planner, "repo--feature") / "PLAN.md", plan_template.replace("<TASK_KEY>", "repo--feature"))
+                subprocess.check_call(["git", "add", str((rh.task_root(planner, "repo--feature") / "PLAN.md").relative_to(planner))], cwd=planner)
                 subprocess.check_call(["git", "commit", "-m", "repair frozen plan"], cwd=planner, stdout=subprocess.DEVNULL)
                 subprocess.check_call(["git", "push", "origin", "main"], cwd=planner, stdout=subprocess.DEVNULL)
 
             launches = []
-            current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+            current_path = rh.task_root(target, "repo--feature") / "CURRENT.json"
 
             def executor_progress(*args, **kwargs):
                 launches.append(args)
@@ -433,8 +433,8 @@ class ReviewedRunnerTests(unittest.TestCase):
                 subprocess.check_call(["git", "commit", "-m", "executor requests planner"], cwd=target, stdout=subprocess.DEVNULL)
                 post_head = runner.git_output(target, ["rev-parse", "HEAD"])
                 return {
-                    "task_key": "001_feature",
-                    "event": runner.event_identity("001_feature", {"state": "PLAN_FROZEN", "review_round": 0, "plan_revision": 0, "implementation_commit": None}),
+                    "task_key": "repo--feature",
+                    "event": runner.event_identity("repo--feature", {"state": "PLAN_FROZEN", "review_round": 0, "plan_revision": 0, "implementation_commit": None}),
                     "launched": True,
                     "exit_code": 0,
                     "progressed": True,
@@ -592,11 +592,11 @@ class ReviewedRunnerTests(unittest.TestCase):
 
     def test_watcher_event_identity_is_plain_operational_locator(self) -> None:
         current = {"state": "REVISE", "review_round": 1, "plan_revision": 0, "implementation_commit": "abc123"}
-        event = runner.event_identity("001_feature", current)
-        self.assertEqual(event, "001_feature|REVISE|1|0|abc123")
+        event = runner.event_identity("repo--feature", current)
+        self.assertEqual(event, "repo--feature|REVISE|1|0|abc123")
         self.assertNotIn("sha256", event.lower())
         local_runtime = {"thread_id": "01a03788-3c07-7862-b643-88877d5b3088", "runtime_type": "codex_app"}
-        self.assertEqual(runner.event_identity("001_feature", current), event)
+        self.assertEqual(runner.event_identity("repo--feature", current), event)
         self.assertNotIn(str(local_runtime["thread_id"]), event)
 
     def test_executor_direct_push_is_blocked_by_process_guard(self) -> None:
@@ -622,17 +622,17 @@ class ReviewedRunnerTests(unittest.TestCase):
         tmp, target, state_home = self.make_project()
         with tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(state_home)}):
             pre_head = runner.git_output(target, ["rev-parse", "HEAD"])
-            current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+            current_path = rh.task_root(target, "repo--feature") / "CURRENT.json"
             pre_current = rh.load_json(current_path)
-            rh.write_text(rh.task_root(target, "001_feature") / "REQUEST.md", "# changed\n")
-            rh.write_text(rh.result_root(target, "001_feature") / "REVIEW_1.md", "# changed\n")
+            rh.write_text(rh.task_root(target, "repo--feature") / "REQUEST.md", "# changed\n")
+            rh.write_text(rh.result_root(target, "repo--feature") / "REVIEW_1.md", "# changed\n")
             post_current = dict(pre_current)
             post_current["review_round"] = 1
             rh.write_json(current_path, post_current)
             subprocess.check_call(["git", "add", "."], cwd=target)
             subprocess.check_call(["git", "commit", "-m", "executor authority violation"], cwd=target, stdout=subprocess.DEVNULL)
             post_head = runner.git_output(target, ["rev-parse", "HEAD"])
-            errors = runner.executor_authority_errors(target, "001_feature", pre_current, post_current, pre_head, post_head)
+            errors = runner.executor_authority_errors(target, "repo--feature", pre_current, post_current, pre_head, post_head)
             text = "\n".join(errors)
             self.assertIn("review_round", text)
             self.assertIn("REQUEST.md", text)
@@ -684,10 +684,10 @@ class ReviewedRunnerTests(unittest.TestCase):
 
             launched.assert_not_called()
             self.assertEqual(result["status"], "recovered_unpublished_progress")
-            self.assertEqual(result["task_key"], "001_feature")
+            self.assertEqual(result["task_key"], "repo--feature")
             self.assertEqual(result["post_state"], "READY_FOR_GPT_REVIEW")
             self.assertEqual(runner.branch_heads(target, "main")[0], runner.branch_heads(target, "main")[1])
-            remote_current = runner.current_at_ref(target, "origin/main", "001_feature")
+            remote_current = runner.current_at_ref(target, "origin/main", "repo--feature")
             self.assertIsNotNone(remote_current)
             self.assertEqual(remote_current["implementation_commit"], implementation_commit)
             local = runner.load_local_state(target)
@@ -732,14 +732,14 @@ class ReviewedRunnerTests(unittest.TestCase):
         tmp, target, state_home = self.make_project()
         with tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(state_home)}):
             self.attach_origin(target, Path(tmp.name))
-            current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+            current_path = rh.task_root(target, "repo--feature") / "CURRENT.json"
             current = rh.load_json(current_path)
             current["review_round"] = 1
             current["state"] = "READY_FOR_GPT_REVIEW"
             current["implementation_commit"] = runner.git_output(target, ["rev-parse", "HEAD"])
             current["ci_status"] = "NOT_REQUIRED"
             rh.write_json(current_path, current)
-            rh.write_text(rh.result_root(target, "001_feature") / "REVIEW_1.md", "# unauthorized\n")
+            rh.write_text(rh.result_root(target, "repo--feature") / "REVIEW_1.md", "# unauthorized\n")
             subprocess.check_call(["git", "add", "."], cwd=target)
             subprocess.check_call(["git", "commit", "-m", "unauthorized executor handoff"], cwd=target, stdout=subprocess.DEVNULL)
 
