@@ -8,6 +8,10 @@ import re
 import sys
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 from ai_bridge_kit import task_keys
 
 
@@ -114,10 +118,10 @@ def validate(target: Path) -> int:
         if not task_files:
             warnings.append("WARN no new-style task files found in prompts/tasks/")
 
-        task_keys = set()
+        task_file_keys = set()
         for task_file in task_files:
             task_key = task_file.stem
-            task_keys.add(task_key)
+            task_file_keys.add(task_key)
             if error := task_keys.existing_task_key_error(task_key):
                 errors.append(
                     f"ERROR {task_file}: filename {error}"
@@ -161,7 +165,7 @@ def validate(target: Path) -> int:
             else:
                 warnings.append(f"WARN legacy task naming: {task_file.relative_to(target)}")
 
-        all_task_keys = task_keys | legacy_task_ids
+        all_task_keys = task_file_keys | legacy_task_ids
 
         for result_file in result_files:
             result_id = result_file.name.removesuffix("_result.md")
