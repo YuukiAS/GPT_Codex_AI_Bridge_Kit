@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from . import external_wait
+from . import task_keys
 from . import text_review
 from . import visual_review
 
@@ -20,7 +21,6 @@ CURRENT_SCHEMA = "AI_BRIDGE_REVIEWED_CURRENT_V1"
 CURRENT_PLAN_SCHEMA = "AI_BRIDGE_REVIEWED_PLAN_V2"
 LEGACY_PLAN_SCHEMA = "AI_BRIDGE_REVIEWED_PLAN_V1"
 REVIEW_SCHEMA = "AI_BRIDGE_REVIEWED_REVIEW_V1"
-TASK_KEY_RE = re.compile(r"^\d+_[A-Za-z0-9]+(?:_[A-Za-z0-9]+){0,2}$")
 
 TASK_STATES = {
     "PLAN_REQUESTED",
@@ -291,8 +291,8 @@ def init_task(
     text_review_manifest_path: str = "",
 ) -> list[str]:
     target = target.resolve()
-    if not TASK_KEY_RE.fullmatch(task_key):
-        raise ValueError("task_key must look like <id>_<1-3-word_slug>, for example 001_skill_intake")
+    if error := task_keys.new_task_key_error(task_key):
+        raise ValueError(error)
     if max_review_rounds not in {1, 2}:
         raise ValueError("Review allows max_review_rounds of 1 or 2")
     status = inspect_reviewed_handoff(target)
@@ -958,6 +958,9 @@ def validate_reviewed_handoff(target: Path) -> tuple[list[str], int]:
     tasks_dir = reviewed_root(target) / "tasks"
     if tasks_dir.exists():
         for path in sorted(p for p in tasks_dir.iterdir() if p.is_dir()):
+            if error := task_keys.existing_task_key_error(path.name):
+                errors.append(f"{path.name}: {error}")
+                continue
             errors.extend(f"{path.name}: {item}" for item in validate_task(target, path.name))
     warnings: list[str] = []
     if tasks_dir.exists():
@@ -1378,48 +1381,51 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(sys.argv[1:] if argv is None else argv)
-    if args.command == "install":
-        status, actions = install_reviewed_handoff(args.target, force=args.force)
-        for action in actions:
-            print(action)
-        print()
-        print(format_status(status))
-        return 0 if status.installed else 1
-    if args.command == "status":
-        print(format_status(inspect_reviewed_handoff(args.target)))
-        return 0
-    if args.command == "validate":
-        lines, code = validate_reviewed_handoff(args.target)
-        for line in lines:
-            print(line)
-        return code
-    if args.command == "task" and args.task_command == "init":
-        for action in init_task(
-            args.target,
-            args.task_key,
-            objective=args.objective,
-            max_review_rounds=args.max_review_rounds,
-            ci_required=args.ci_required,
-            visual_review_required=args.visual_review_required,
-            visual_review_manifest_path=args.visual_review_manifest_path,
-            text_review_required=args.text_review_required,
-            text_review_manifest_path=args.text_review_manifest_path,
-        ):
-            print(action)
-        return 0
-    if args.command == "transition" and args.transition_command == "plan":
-        print(json.dumps(plan_transition(args.target, args.task_key), ensure_ascii=False, indent=2, sort_keys=True))
-        return 0
-    if args.command == "transition" and args.transition_command == "apply":
-        result = apply_transition(
-            args.target,
-            args.task_key,
-            expected_state=args.expected_state,
-            next_state=args.next_state,
-            next_action=args.next_action,
-        )
-        print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
-        return 0
+    try:
+        if args.command == "install":
+            status, actions = install_reviewed_handoff(args.target, force=args.force)
+            for action in actions:
+                print(action)
+            print()
+            print(format_status(status))
+            return 0 if status.installed else 1
+        if args.command == "status":
+            print(format_status(inspect_reviewed_handoff(args.target)))
+            return 0
+        if args.command == "validate":
+            lines, code = validate_reviewed_handoff(args.target)
+            for line in lines:
+                print(line)
+            return code
+        if args.command == "task" and args.task_command == "init":
+            for action in init_task(
+                args.target,
+                args.task_key,
+                objective=args.objective,
+                max_review_rounds=args.max_review_rounds,
+                ci_required=args.ci_required,
+                visual_review_required=args.visual_review_required,
+                visual_review_manifest_path=args.visual_review_manifest_path,
+                text_review_required=args.text_review_required,
+                text_review_manifest_path=args.text_review_manifest_path,
+            ):
+                print(action)
+            return 0
+        if args.command == "transition" and args.transition_command == "plan":
+            print(json.dumps(plan_transition(args.target, args.task_key), ensure_ascii=False, indent=2, sort_keys=True))
+            return 0
+        if args.command == "transition" and args.transition_command == "apply":
+            result = apply_transition(
+                args.target,
+                args.task_key,
+                expected_state=args.expected_state,
+                next_state=args.next_state,
+                next_action=args.next_action,
+            )
+            print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
+            return 0
+    except ValueError as exc:
+        parser.error(str(exc))
     if args.command == "review" and args.review_command == "record":
         result = record_review(
             args.target,

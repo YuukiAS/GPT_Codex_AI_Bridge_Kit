@@ -111,7 +111,7 @@ frontmatter fields. Low-risk tasks may use defaults, `none`, or empty lists.
 Existing fields remain valid:
 
 ```yaml
-task_key: "002_fix_ci"
+task_key: "repo--fix-ci"
 project: "project-name"
 status: "READY"
 executor: "Codex executor session"

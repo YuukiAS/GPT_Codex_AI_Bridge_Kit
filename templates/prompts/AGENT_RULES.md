@@ -12,8 +12,9 @@ Codex default task entry:
 prompts/tasks/<task_key>.md
 ```
 
-`task_key` uses `<id>_<short_slug>` with a 1-3 word slug. New tasks do not add a
-`_task` suffix because they already live in `prompts/tasks/`.
+New `task_key` values use semantic `<scope-token>--<goal-token>` form with
+lowercase kebab-case components. Existing legacy `<id>_<short_slug>` tasks still
+validate, but new tasks do not use numbered keys or add a `_task` suffix.
 
 Long-lived rules:
 

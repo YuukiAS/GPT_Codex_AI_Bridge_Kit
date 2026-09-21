@@ -12,7 +12,9 @@ results/<task_key>/controller_report.md   # controller tasks
 results/<task_key>/MANIFEST.md
 ```
 
-`task_key` should be `<id>_<short_slug>`, with `short_slug` limited to 1-3 words joined by underscores.
+New `task_key` values should use semantic `<scope-token>--<goal-token>` form
+with lowercase kebab-case components. Historical numbered task keys remain valid
+for existing results.
 
 `results/<task_key>/result.md` is the execution report and evidence index. Keep large logs, CSV/JSON files, figures, archives, long reports, and intermediate outputs under `results/<task_key>/`, then list them in `results/<task_key>/MANIFEST.md` and the result report.
 

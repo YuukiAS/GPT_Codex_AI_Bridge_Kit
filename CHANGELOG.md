@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-## 0.8.4
+## 0.8.5
 
 - Manage `features.default_mode_request_user_input = false` in Host Policy so
   Default-mode required `HUMAN_ONLY` gates fail closed onto durable transcript
@@ -17,6 +17,14 @@
 - Align Lite rules with the six product-delivery baselines for positive goal
   preservation, acceptance admission, human gate eligibility, faithful evidence
   surfaces, no blind reruns, and truthful handoff boundaries.
+
+## 0.8.4
+
+- Require new Reviewed Handoff task creation to use semantic
+  `<scope-token>--<goal-token>` task keys while continuing to validate existing
+  legacy `<id>_<short_slug>` task and result directories.
+- Update normal authoring docs and task templates so new examples teach
+  semantic task keys instead of numeric task IDs.
 
 ## 0.8.3
 

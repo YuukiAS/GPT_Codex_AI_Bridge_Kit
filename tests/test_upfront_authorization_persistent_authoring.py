@@ -119,23 +119,23 @@ class UpfrontAuthorizationPersistentAuthoringTests(unittest.TestCase):
             ],
         )
 
-        authored = replace_first(template, 'task_key: "000_short_task"', 'task_key: "099_overnight_smoke"')
-        authored = replace_first(authored, "# Task 000 Short Task", "# Task 099 Overnight Smoke")
+        authored = replace_first(template, 'task_key: "repo--short-task"', 'task_key: "repo--overnight-smoke"')
+        authored = replace_first(authored, "# Task Repo Short Task", "# Task Repo Overnight Smoke")
         authored = authored.replace(
             "Persistent execution: NOT_REQUIRED\n"
             "Backend: none\n"
-            "Goal source: prompts/tasks/000_short_task.md\n"
+            "Goal source: prompts/tasks/repo--short-task.md\n"
             "Run/session key: none",
             "Persistent execution: REQUIRED\n"
             "Backend: tmux\n"
-            "Goal source: prompts/tasks/099_overnight_smoke.md\n"
-            "Run/session key: ai_bridge_099_overnight_smoke",
+            "Goal source: prompts/tasks/repo--overnight-smoke.md\n"
+            "Run/session key: ai_bridge_repo--overnight-smoke",
             1,
         )
         self.assertNotIn(
             "Persistent execution: NOT_REQUIRED\n"
             "Backend: none\n"
-            "Goal source: prompts/tasks/000_short_task.md\n"
+            "Goal source: prompts/tasks/repo--short-task.md\n"
             "Run/session key: none",
             authored,
         )
@@ -153,8 +153,8 @@ class UpfrontAuthorizationPersistentAuthoringTests(unittest.TestCase):
                 'task_type: "execution"',
                 "Persistent execution: REQUIRED",
                 "Backend: tmux",
-                "Goal source: prompts/tasks/099_overnight_smoke.md",
-                "Run/session key: ai_bridge_099_overnight_smoke",
+                "Goal source: prompts/tasks/repo--overnight-smoke.md",
+                "Run/session key: ai_bridge_repo--overnight-smoke",
                 "Use CPU-only local smoke resources.",
             ],
         )
@@ -281,20 +281,20 @@ class UpfrontAuthorizationPersistentAuthoringTests(unittest.TestCase):
             repo.mkdir()
             subprocess.check_call(["git", "init"], cwd=repo, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             install_persistent_run(repo)
-            task_path = repo / "prompts" / "tasks" / "099_overnight_smoke.md"
+            task_path = repo / "prompts" / "tasks" / "repo--overnight-smoke.md"
             task_path.parent.mkdir(parents=True)
             template = read_repo_text("templates/prompts/templates/TASK_TEMPLATE.md")
-            task = replace_first(template, 'task_key: "000_short_task"', 'task_key: "099_overnight_smoke"')
-            task = replace_first(task, "# Task 000 Short Task", "# Task 099 Overnight Smoke")
+            task = replace_first(template, 'task_key: "repo--short-task"', 'task_key: "repo--overnight-smoke"')
+            task = replace_first(task, "# Task Repo Short Task", "# Task Repo Overnight Smoke")
             task = task.replace(
                 "Persistent execution: NOT_REQUIRED\n"
                 "Backend: none\n"
-                "Goal source: prompts/tasks/000_short_task.md\n"
+                "Goal source: prompts/tasks/repo--short-task.md\n"
                 "Run/session key: none",
                 "Persistent execution: REQUIRED\n"
                 "Backend: tmux\n"
-                "Goal source: prompts/tasks/099_overnight_smoke.md\n"
-                "Run/session key: ai_bridge_099_overnight_smoke",
+                "Goal source: prompts/tasks/repo--overnight-smoke.md\n"
+                "Run/session key: ai_bridge_repo--overnight-smoke",
                 1,
             )
             task = replace_first(
@@ -312,8 +312,8 @@ class UpfrontAuthorizationPersistentAuthoringTests(unittest.TestCase):
                     'task_type: "execution"',
                     "Persistent execution: REQUIRED",
                     "Backend: tmux",
-                    "Goal source: prompts/tasks/099_overnight_smoke.md",
-                    "Run/session key: ai_bridge_099_overnight_smoke",
+                    "Goal source: prompts/tasks/repo--overnight-smoke.md",
+                    "Run/session key: ai_bridge_repo--overnight-smoke",
                     "Use local CPU-only smoke resources.",
                 ],
             )

@@ -6,7 +6,7 @@
 
 这个仓库的原则是：**默认保持简单，需要什么再加什么。** 普通项目只需要机器级规则和基础交接；只有确实需要时，才启用独立复核、高风险闭环、邮件通知、Overleaf 同步或视觉复核。
 
-当前候选版本：`0.8.4`（056 task branch candidate；这不是 GitHub release/tag
+当前候选版本：`0.8.5`（056 task branch candidate；这不是 GitHub release/tag
 或 main merge 声明）。
 
 ## 三档 workflow
@@ -61,8 +61,9 @@ Review 使用 `ai-bridge reviewed-handoff ...`，Control 使用
 - `0.8.0`：新增 Persistent Run 项目能力。它不是第四档 workflow，而是让明确授权的长期 Goal 使用 canonical `tmux` session、项目原生 lock / heartbeat / stage-state / checkpoint / resume evidence 和用户可见 kickoff 文本来启动或恢复；不新增 Host Policy 全局 allow、不自动 fallback 到 `setsid` / `nohup` / 裸后台 `&` / `screen` / `sudo`，也不改变原 Goal 的完成标准。
 - `0.8.1`：加固 GPT task authoring 和 Codex startup preflight。GPT 必须把 overnight / unattended / survive-disconnect 这类 execution lifetime 需求和 Lite / Review / Control workflow 分开判断；已安装 Persistent Run 的仓库必须把合同字段写进 Goal/task，后续 next-task 也必须 carry forward。Codex 则必须在可预见的 Persistent Run kickoff、private external transfer、paid/external call、deployment 或 resource allocation 前提前请求 bounded 当前用户授权；仓库内 Goal/Plan/contract 只证明 frozen scope，不等于当前用户授权。
 - `0.8.2`：收窄 Text Review 付费复核 contract，允许 consumer workflow 在已有默认预算内冻结更严格的 call count、campaign ceiling、per-call ceiling、retry、model/pricing/service-tier/tools/cache policy，并在 reservation / receipt / ledger reload 前 fail closed。
-- `0.8.3`：候选修复 Lite fresh-repo root `AGENTS.md` scaffold、existing-root managed block raw-byte preservation，以及 Lite fallback versioning 默认规则；现阶段仍需 057 independent implementation review，不代表已经 release。
-- `0.8.4`：候选修复 Default-mode required human gate transport：Host Policy 期望
+- `0.8.3`：完善 Lite fresh-repo root `AGENTS.md` scaffold、existing-root managed block raw-byte preservation，以及 Lite fallback versioning 默认规则。
+- `0.8.4`：要求新建 Review 任务默认使用 `<scope-token>--<goal-token>` 语义 task key，同时继续兼容历史 `<id>_<short_slug>` 任务和结果目录；普通 authoring 文档与任务模板同步改用语义 task key 示例。
+- `0.8.5`：候选修复 Default-mode required human gate transport：Host Policy 期望
   `default_mode_request_user_input=false`，Lite/Host 使用 durable transcript
   wait/resume 语义，`host validate` 区分 feature key 是否受支持与期望启用状态；现阶段不代表已经 release、tag 或真实 Host install。
 
@@ -130,7 +131,7 @@ AGENTS.md 中的 ai-bridge-kit:persistent-run managed block
 ```bash
 ai-bridge persistent-run prompt kickoff \
   --target /path/to/project \
-  --goal prompts/tasks/010_long_run.md
+  --goal prompts/tasks/repo--long-run.md
 ```
 
 这个命令只打印用户可见授权，不会启动 tmux。用户把这段 kickoff 发给 Codex
@@ -277,9 +278,12 @@ ai-bridge reviewed-handoff validate --target /path/to/project
 ```bash
 ai-bridge reviewed-handoff task init \
   --target /path/to/project \
-  --task-key 001_example \
+  --task-key repo--example \
   --objective "这里写任务目标"
 ```
+
+新的 Reviewed Handoff task 默认使用 semantic key：`<scope-token>--<goal-token>`，
+例如 `repo--example`。历史 numbered task 继续可验证，不需要迁移。
 
 这套流程默认最多两轮 GPT 复核。第一轮如果返回 `REVISE`，允许 Codex 自动返修一次；第二轮仍未通过，就进入人工决策，不继续无限循环。
 
@@ -654,10 +658,10 @@ OPENAI_VISUAL_REVIEW_API_KEY
 ```bash
 ai-bridge text-review encrypt \
   --target /path/to/project \
-  --task-key 044_example \
+  --task-key repo--text-review \
   --input /private/path/final.md \
-  --output results/044_example/text_review/payload.age \
-  --manifest results/044_example/text_review/text_inputs.json \
+  --output results/repo--text-review/text_review/payload.age \
+  --manifest results/repo--text-review/text_review/text_inputs.json \
   --implementation-commit <commit> \
   --rubric "Read the complete artifact and decide whether it satisfies the frozen user-facing prose requirements." \
   --external-upload-authorization "User authorized private text review through OpenAI Responses API with store=false for this task."
@@ -709,7 +713,7 @@ Control 比 Review 更重，因为它会显式保存冻结要求、验证依据�
 ```bash
 ai-bridge agent-flow task init \
   --target /path/to/project \
-  --task-key 001_example
+  --task-key repo--example
 ```
 
 详细设计见：
@@ -803,7 +807,7 @@ ai-bridge reviewed-handoff validate --target /path/to/project
 # 长期 Goal 的持久执行 contract
 ai-bridge persistent-run install --target /path/to/project
 ai-bridge persistent-run validate --target /path/to/project
-ai-bridge persistent-run prompt kickoff --target /path/to/project --goal prompts/tasks/010_long_run.md
+ai-bridge persistent-run prompt kickoff --target /path/to/project --goal prompts/tasks/repo--long-run.md
 
 # Overleaf
 ai-bridge overleaf install --target /path/to/project --paper-root paper/manuscript

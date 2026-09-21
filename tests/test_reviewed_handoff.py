@@ -10,6 +10,7 @@ from pathlib import Path
 
 from ai_bridge_kit import bridge_cli
 from ai_bridge_kit import reviewed_handoff as rh
+from ai_bridge_kit import task_keys
 from ai_bridge_kit import text_review
 from ai_bridge_kit import visual_review
 
@@ -29,14 +30,43 @@ class ReviewedHandoffTests(unittest.TestCase):
             subprocess.check_call(["git", "commit", "-m", "initial"], cwd=target, stdout=subprocess.DEVNULL)
         status, _ = rh.install_reviewed_handoff(target)
         self.assertTrue(status.installed)
-        rh.init_task(target, "001_feature", objective="Add a reviewed feature")
+        rh.init_task(target, "repo--feature", objective="Add a reviewed feature")
         return tmp, target
 
-    def write_plan(self, target: Path, task_key: str = "001_feature") -> None:
+    def seed_legacy_task(self, target: Path, task_key: str, objective: str = "Legacy task") -> None:
+        root = rh.task_root(target, task_key)
+        root.mkdir(parents=True)
+        rh.result_root(target, task_key).mkdir(parents=True, exist_ok=True)
+        request_template = rh.read_text(rh.reviewed_root(target) / "templates" / "REQUEST.md")
+        rh.write_text(
+            root / "REQUEST.md",
+            request_template.replace("<TASK_KEY>", task_key).replace("<OBJECTIVE>", objective),
+        )
+        rh.write_json(
+            root / "CURRENT.json",
+            {
+                "schema": rh.CURRENT_SCHEMA,
+                "task_key": task_key,
+                "state": "PLAN_REQUESTED",
+                "review_round": 0,
+                "max_review_rounds": 2,
+                "plan_revision": 0,
+                "max_plan_revisions": 1,
+                "base_commit": rh.current_commit(target),
+                "base_branch": rh.current_branch(target),
+                "implementation_commit": None,
+                "ci_required": False,
+                "ci_status": "NOT_REQUIRED",
+                "last_review_decision": None,
+                "next_action": "RUN_GPT_PLANNER",
+            },
+        )
+
+    def write_plan(self, target: Path, task_key: str = "repo--feature") -> None:
         template = rh.read_text(rh.reviewed_root(target) / "templates" / "PLAN.md")
         rh.write_text(rh.task_root(target, task_key) / "PLAN.md", template.replace("<TASK_KEY>", task_key))
 
-    def write_legacy_plan(self, target: Path, task_key: str = "001_feature", *, omit_heading: str | None = None) -> None:
+    def write_legacy_plan(self, target: Path, task_key: str = "repo--feature", *, omit_heading: str | None = None) -> None:
         sections = [
             ("Frozen decisions", "Freeze the legacy implementation decision.\n"),
             ("Implementation scope", "Implement only the legacy scope.\n"),
@@ -61,13 +91,13 @@ class ReviewedHandoffTests(unittest.TestCase):
 
     def write_final_report(self, target: Path) -> None:
         template = rh.read_text(rh.reviewed_root(target) / "templates" / "FINAL_REPORT.md")
-        rh.write_text(rh.result_root(target, "001_feature") / "FINAL_REPORT.md", template)
+        rh.write_text(rh.result_root(target, "repo--feature") / "FINAL_REPORT.md", template)
 
     def write_legacy_final_report(self, target: Path, *, body: str | None = None) -> None:
         text = body or (
             "---\n"
             "schema: AI_BRIDGE_REVIEWED_FINAL_REPORT_V1\n"
-            "task_key: 001_feature\n"
+            "task_key: repo--feature\n"
             "final_decision: AWAIT_HUMAN_DECISION\n"
             "---\n\n"
             "# Final Report\n\n"
@@ -80,11 +110,11 @@ class ReviewedHandoffTests(unittest.TestCase):
             "## User-checkable artifacts\n\n"
             "The user can inspect the result directory, review artifacts, and implementation notes without reconstructing the task from logs.\n"
         )
-        rh.write_text(rh.result_root(target, "001_feature") / "FINAL_REPORT.md", text)
+        rh.write_text(rh.result_root(target, "repo--feature") / "FINAL_REPORT.md", text)
 
     def remote_write_review_transaction(self, target: Path, *, decision: str, body: str = "Remote GPT review.") -> dict:
-        root = rh.task_root(target, "001_feature")
-        result_dir = rh.result_root(target, "001_feature")
+        root = rh.task_root(target, "repo--feature")
+        result_dir = rh.result_root(target, "repo--feature")
         current = rh.load_json(root / "CURRENT.json")
         next_round = int(current.get("review_round", 0)) + 1
         commit = str(current.get("implementation_commit") or "")
@@ -92,7 +122,7 @@ class ReviewedHandoffTests(unittest.TestCase):
         header = (
             "---\n"
             f"schema: {rh.REVIEW_SCHEMA}\n"
-            "task_key: 001_feature\n"
+            "task_key: repo--feature\n"
             f"review_round: {next_round}\n"
             f"decision: {decision}\n"
             f"implementation_commit: {commit}\n"
@@ -125,7 +155,7 @@ class ReviewedHandoffTests(unittest.TestCase):
         return current
 
     def remote_write_planner_transaction(self, target: Path, *, needs_user: bool = False) -> dict:
-        root = rh.task_root(target, "001_feature")
+        root = rh.task_root(target, "repo--feature")
         current = rh.load_json(root / "CURRENT.json")
         if needs_user:
             self.write_final_report(target)
@@ -142,47 +172,47 @@ class ReviewedHandoffTests(unittest.TestCase):
 
     def freeze_and_start(self, target: Path) -> None:
         self.write_plan(target)
-        rh.apply_transition(target, "001_feature", expected_state="PLAN_REQUESTED", next_state="PLAN_FROZEN")
-        rh.apply_transition(target, "001_feature", expected_state="PLAN_FROZEN", next_state="EXECUTING")
+        rh.apply_transition(target, "repo--feature", expected_state="PLAN_REQUESTED", next_state="PLAN_FROZEN")
+        rh.apply_transition(target, "repo--feature", expected_state="PLAN_FROZEN", next_state="EXECUTING")
 
     def write_result(self, target: Path, commit: str = "impl-1", ci_status: str = "NOT_REQUIRED") -> None:
-        current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+        current_path = rh.task_root(target, "repo--feature") / "CURRENT.json"
         current = rh.load_json(current_path)
         current["implementation_commit"] = commit
         current["ci_status"] = ci_status
         rh.write_json(current_path, current)
         template = rh.read_text(rh.reviewed_root(target) / "templates" / "RESULT.md")
         text = (
-            template.replace("<TASK_KEY>", "001_feature")
+            template.replace("<TASK_KEY>", "repo--feature")
             .replace("<COMMIT>", commit)
         )
-        rh.write_text(rh.result_root(target, "001_feature") / "RESULT.md", text)
+        rh.write_text(rh.result_root(target, "repo--feature") / "RESULT.md", text)
 
     def require_visual_review(self, target: Path) -> None:
-        current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+        current_path = rh.task_root(target, "repo--feature") / "CURRENT.json"
         current = rh.load_json(current_path)
         current["visual_review_required"] = True
-        current["visual_review_manifest_path"] = "results/001_feature/visual_review/visual_inputs.json"
-        current["visual_review_evidence_path"] = "results/001_feature/visual_review/VISUAL_REVIEW.json"
+        current["visual_review_manifest_path"] = "results/repo--feature/visual_review/visual_inputs.json"
+        current["visual_review_evidence_path"] = "results/repo--feature/visual_review/VISUAL_REVIEW.json"
         rh.write_json(current_path, current)
 
     def require_text_review(self, target: Path) -> None:
-        current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+        current_path = rh.task_root(target, "repo--feature") / "CURRENT.json"
         current = rh.load_json(current_path)
         current["text_review_required"] = True
-        current["text_review_manifest_path"] = "results/001_feature/text_review/text_inputs.json"
-        current["text_review_evidence_path"] = "results/001_feature/text_review/TEXT_REVIEW.json"
+        current["text_review_manifest_path"] = "results/repo--feature/text_review/text_inputs.json"
+        current["text_review_evidence_path"] = "results/repo--feature/text_review/TEXT_REVIEW.json"
         rh.write_json(current_path, current)
 
     def require_ci(self, target: Path) -> None:
-        current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+        current_path = rh.task_root(target, "repo--feature") / "CURRENT.json"
         current = rh.load_json(current_path)
         current["ci_required"] = True
         current["ci_status"] = "PENDING"
         rh.write_json(current_path, current)
 
     def write_visual_input_manifest(self, target: Path, implementation_commit: str) -> None:
-        visual_dir = rh.result_root(target, "001_feature") / "visual_review"
+        visual_dir = rh.result_root(target, "repo--feature") / "visual_review"
         image = visual_dir / "primary.png"
         image.parent.mkdir(parents=True, exist_ok=True)
         image.write_bytes(
@@ -192,19 +222,19 @@ class ReviewedHandoffTests(unittest.TestCase):
         )
         manifest = {
             "schema": visual_review.VISUAL_INPUT_MANIFEST_SCHEMA,
-            "task_key": "001_feature",
+            "task_key": "repo--feature",
             "workflow_type": "reviewed_handoff",
             "review_kind": "synthetic",
             "privacy_policy": "PUBLIC_SAFE_ONLY",
             "rubric": {"instructions": "Synthetic visual fixture must pass."},
             "identity_bindings": {"implementation_commit": implementation_commit},
-            "inputs": [{"logical_id": "primary", "path": "results/001_feature/visual_review/primary.png"}],
+            "inputs": [{"logical_id": "primary", "path": "results/repo--feature/visual_review/primary.png"}],
         }
         visual_review.write_json(visual_dir / "visual_inputs.json", manifest)
 
     def write_visual_review(self, target: Path, implementation_commit: str, decision: str = "PASS") -> None:
         self.write_visual_input_manifest(target, implementation_commit)
-        visual_dir = rh.result_root(target, "001_feature") / "visual_review"
+        visual_dir = rh.result_root(target, "repo--feature") / "visual_review"
         manifest = rh.load_json(visual_dir / "visual_inputs.json")
         normalized = visual_review.normalize_manifest(target, manifest)
         artifact = visual_review.assemble_visual_review(
@@ -220,13 +250,13 @@ class ReviewedHandoffTests(unittest.TestCase):
         visual_review.write_json(visual_dir / "VISUAL_REVIEW.json", artifact)
 
     def write_text_input_manifest(self, target: Path, implementation_commit: str, plaintext_sha: str | None = None) -> None:
-        text_dir = rh.result_root(target, "001_feature") / "text_review"
+        text_dir = rh.result_root(target, "repo--feature") / "text_review"
         text_dir.mkdir(parents=True, exist_ok=True)
         payload = text_dir / "payload.age"
         payload.write_bytes(b"synthetic encrypted private text")
         manifest = {
             "schema": text_review.TEXT_INPUT_MANIFEST_SCHEMA,
-            "task_key": "001_feature",
+            "task_key": "repo--feature",
             "workflow_type": "reviewed_handoff",
             "review_kind": "user-facing-text",
             "privacy_policy": text_review.PRIVATE_TEXT_POLICY,
@@ -235,7 +265,7 @@ class ReviewedHandoffTests(unittest.TestCase):
             "identity_bindings": {"implementation_commit": implementation_commit},
             "input": {
                 "logical_id": "primary_text",
-                "encrypted_payload_path": "results/001_feature/text_review/payload.age",
+                "encrypted_payload_path": "results/repo--feature/text_review/payload.age",
                 "ciphertext_sha256": text_review.file_sha256(payload),
                 "plaintext_sha256": plaintext_sha or ("a" * 64),
                 "plaintext_size_bytes": 123,
@@ -247,7 +277,7 @@ class ReviewedHandoffTests(unittest.TestCase):
 
     def write_text_review(self, target: Path, implementation_commit: str, decision: str = "PASS") -> None:
         self.write_text_input_manifest(target, implementation_commit)
-        text_dir = rh.result_root(target, "001_feature") / "text_review"
+        text_dir = rh.result_root(target, "repo--feature") / "text_review"
         manifest = text_review.normalize_manifest(target, rh.load_json(text_dir / "text_inputs.json"))
         artifact = text_review.assemble_text_review(
             manifest=manifest,
@@ -282,7 +312,7 @@ class ReviewedHandoffTests(unittest.TestCase):
     def test_install_and_task_init_are_additive_and_branch_free(self) -> None:
         tmp, target = self.make_project(git=True)
         with tmp:
-            current = rh.load_json(rh.task_root(target, "001_feature") / "CURRENT.json")
+            current = rh.load_json(rh.task_root(target, "repo--feature") / "CURRENT.json")
             self.assertEqual(current["state"], "PLAN_REQUESTED")
             self.assertEqual(current["max_review_rounds"], 2)
             self.assertEqual(current["max_plan_revisions"], 1)
@@ -296,11 +326,42 @@ class ReviewedHandoffTests(unittest.TestCase):
             target.mkdir()
             status, _ = rh.install_reviewed_handoff(target)
             self.assertTrue(status.installed)
-            rh.init_task(target, "001_feature", objective="Review private text", text_review_required=True)
-            current = rh.load_json(rh.task_root(target, "001_feature") / "CURRENT.json")
+            rh.init_task(target, "repo--feature", objective="Review private text", text_review_required=True)
+            current = rh.load_json(rh.task_root(target, "repo--feature") / "CURRENT.json")
             self.assertTrue(current["text_review_required"])
-            self.assertEqual(current["text_review_manifest_path"], "results/001_feature/text_review/text_inputs.json")
-            self.assertEqual(current["text_review_evidence_path"], "results/001_feature/text_review/TEXT_REVIEW.json")
+            self.assertEqual(current["text_review_manifest_path"], "results/repo--feature/text_review/text_inputs.json")
+            self.assertEqual(current["text_review_evidence_path"], "results/repo--feature/text_review/TEXT_REVIEW.json")
+
+    def test_task_key_lexical_contract_separates_new_and_existing_keys(self) -> None:
+        self.assertTrue(task_keys.is_semantic_task_key("cross-repo--workflow-identity-gate-lifecycle"))
+        self.assertTrue(task_keys.is_semantic_task_key("plugin-writing-style--release-convergence"))
+        self.assertTrue(task_keys.is_legacy_task_key("044_writing_style_deep"))
+        for bad in [
+            "Cross-Repo--workflow",
+            "cross_repo--workflow",
+            "cross-repo---workflow",
+            "cross-repo--",
+            "--workflow",
+            "cross/repo--workflow",
+            "cross-repo--workflow_identity",
+        ]:
+            self.assertFalse(task_keys.is_semantic_task_key(bad), bad)
+
+    def test_canonical_task_init_accepts_semantic_and_rejects_numeric_or_collision(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "project"
+            target.mkdir()
+            status, _ = rh.install_reviewed_handoff(target)
+            self.assertTrue(status.installed)
+            rh.init_task(target, "repo--feature", objective="Semantic task")
+            self.assertTrue((rh.task_root(target, "repo--feature") / "CURRENT.json").exists())
+            self.assertTrue((rh.result_root(target, "repo--feature")).is_dir())
+            with self.assertRaisesRegex(ValueError, "already exists"):
+                rh.init_task(target, "repo--feature", objective="Duplicate")
+            with self.assertRaisesRegex(ValueError, "semantic, not legacy numeric"):
+                rh.init_task(target, "001_feature", objective="Legacy numeric should fail")
+            with self.assertRaisesRegex(ValueError, "exactly one '--'"):
+                rh.init_task(target, "repo---feature", objective="Malformed")
 
     def test_install_is_idempotent_without_force(self) -> None:
         tmp, target = self.make_project()
@@ -317,31 +378,31 @@ class ReviewedHandoffTests(unittest.TestCase):
         tmp, target = self.make_project()
         with tmp:
             with self.assertRaisesRegex(ValueError, "PLAN_FROZEN requires PLAN.md"):
-                rh.apply_transition(target, "001_feature", expected_state="PLAN_REQUESTED", next_state="PLAN_FROZEN")
-            rh.write_text(rh.task_root(target, "001_feature") / "PLAN.md", "# not frozen\n")
+                rh.apply_transition(target, "repo--feature", expected_state="PLAN_REQUESTED", next_state="PLAN_FROZEN")
+            rh.write_text(rh.task_root(target, "repo--feature") / "PLAN.md", "# not frozen\n")
             with self.assertRaisesRegex(ValueError, "frontmatter"):
-                rh.apply_transition(target, "001_feature", expected_state="PLAN_REQUESTED", next_state="PLAN_FROZEN")
+                rh.apply_transition(target, "repo--feature", expected_state="PLAN_REQUESTED", next_state="PLAN_FROZEN")
             self.write_plan(target)
-            current = rh.apply_transition(target, "001_feature", expected_state="PLAN_REQUESTED", next_state="PLAN_FROZEN")
+            current = rh.apply_transition(target, "repo--feature", expected_state="PLAN_REQUESTED", next_state="PLAN_FROZEN")
             self.assertEqual(current["state"], "PLAN_FROZEN")
 
     def test_current_0_7_1_plan_template_is_v2_and_valid_for_freeze(self) -> None:
         tmp, target = self.make_project()
         with tmp:
             self.write_plan(target)
-            plan_path = rh.task_root(target, "001_feature") / "PLAN.md"
+            plan_path = rh.task_root(target, "repo--feature") / "PLAN.md"
             data, parse_error = rh.parse_frontmatter(plan_path)
             self.assertIsNone(parse_error)
             self.assertEqual(data["schema"], rh.CURRENT_PLAN_SCHEMA)
-            self.assertEqual(rh.validate_plan_file(plan_path, "001_feature"), [])
-            current = rh.apply_transition(target, "001_feature", expected_state="PLAN_REQUESTED", next_state="PLAN_FROZEN")
+            self.assertEqual(rh.validate_plan_file(plan_path, "repo--feature"), [])
+            current = rh.apply_transition(target, "repo--feature", expected_state="PLAN_REQUESTED", next_state="PLAN_FROZEN")
             self.assertEqual(current["state"], "PLAN_FROZEN")
 
     def test_plan_freeze_rejects_missing_positive_completion_section(self) -> None:
         tmp, target = self.make_project()
         with tmp:
             self.write_plan(target)
-            plan_path = rh.task_root(target, "001_feature") / "PLAN.md"
+            plan_path = rh.task_root(target, "repo--feature") / "PLAN.md"
             plan_text = plan_path.read_text(encoding="utf-8")
             section = (
                 "\n## Positive completion\n\n"
@@ -354,13 +415,13 @@ class ReviewedHandoffTests(unittest.TestCase):
             plan_path.write_text(plan_text.replace(section, "\n"), encoding="utf-8")
 
             with self.assertRaisesRegex(ValueError, "PLAN.md missing required section: ## Positive completion"):
-                rh.apply_transition(target, "001_feature", expected_state="PLAN_REQUESTED", next_state="PLAN_FROZEN")
+                rh.apply_transition(target, "repo--feature", expected_state="PLAN_REQUESTED", next_state="PLAN_FROZEN")
 
     def test_plan_freeze_rejects_missing_non_substitutable_semantics_section(self) -> None:
         tmp, target = self.make_project()
         with tmp:
             self.write_plan(target)
-            plan_path = rh.task_root(target, "001_feature") / "PLAN.md"
+            plan_path = rh.task_root(target, "repo--feature") / "PLAN.md"
             plan_text = plan_path.read_text(encoding="utf-8")
             section = (
                 "\n## Non-substitutable semantics\n\n"
@@ -372,46 +433,46 @@ class ReviewedHandoffTests(unittest.TestCase):
             plan_path.write_text(plan_text.replace(section, "\n"), encoding="utf-8")
 
             with self.assertRaisesRegex(ValueError, "PLAN.md missing required section: ## Non-substitutable semantics"):
-                rh.apply_transition(target, "001_feature", expected_state="PLAN_REQUESTED", next_state="PLAN_FROZEN")
+                rh.apply_transition(target, "repo--feature", expected_state="PLAN_REQUESTED", next_state="PLAN_FROZEN")
 
     def test_plan_freeze_rejects_missing_out_of_scope_section(self) -> None:
         tmp, target = self.make_project()
         with tmp:
             self.write_plan(target)
-            plan_path = rh.task_root(target, "001_feature") / "PLAN.md"
+            plan_path = rh.task_root(target, "repo--feature") / "PLAN.md"
             plan_text = plan_path.read_text(encoding="utf-8")
             plan_path.write_text(plan_text.replace("\n## Out of scope\n\nList tempting adjacent improvements that Reviewer must not turn into blocking scope.\n", "\n"), encoding="utf-8")
 
             with self.assertRaisesRegex(ValueError, "PLAN.md missing required section: ## Out of scope"):
-                rh.apply_transition(target, "001_feature", expected_state="PLAN_REQUESTED", next_state="PLAN_FROZEN")
+                rh.apply_transition(target, "repo--feature", expected_state="PLAN_REQUESTED", next_state="PLAN_FROZEN")
 
     def test_valid_legacy_v1_plan_passes_compatible_validation_without_goal_fidelity_sections(self) -> None:
         tmp, target = self.make_project()
         with tmp:
             self.write_legacy_plan(target)
-            plan_path = rh.task_root(target, "001_feature") / "PLAN.md"
-            self.assertEqual(rh.validate_plan_file(plan_path, "001_feature"), [])
+            plan_path = rh.task_root(target, "repo--feature") / "PLAN.md"
+            self.assertEqual(rh.validate_plan_file(plan_path, "repo--feature"), [])
 
     def test_malformed_legacy_v1_plan_still_fails_compatible_validation(self) -> None:
         tmp, target = self.make_project()
         with tmp:
             self.write_legacy_plan(target, omit_heading="Implementation scope")
-            plan_path = rh.task_root(target, "001_feature") / "PLAN.md"
-            errors = rh.validate_plan_file(plan_path, "001_feature")
+            plan_path = rh.task_root(target, "repo--feature") / "PLAN.md"
+            errors = rh.validate_plan_file(plan_path, "repo--feature")
             self.assertIn("PLAN.md missing required section: ## Implementation scope", errors)
 
     def test_legacy_v1_plan_frontmatter_mismatches_still_fail(self) -> None:
         tmp, target = self.make_project()
         with tmp:
             self.write_legacy_plan(target)
-            plan_path = rh.task_root(target, "001_feature") / "PLAN.md"
+            plan_path = rh.task_root(target, "repo--feature") / "PLAN.md"
 
             wrong_task = plan_path.read_text(encoding="utf-8").replace(
-                "task_key: 001_feature",
+                "task_key: repo--feature",
                 "task_key: 999_other",
             )
             plan_path.write_text(wrong_task, encoding="utf-8")
-            self.assertIn("PLAN.md task_key mismatch", rh.validate_plan_file(plan_path, "001_feature"))
+            self.assertIn("PLAN.md task_key mismatch", rh.validate_plan_file(plan_path, "repo--feature"))
 
             self.write_legacy_plan(target)
             wrong_decision = plan_path.read_text(encoding="utf-8").replace(
@@ -419,19 +480,19 @@ class ReviewedHandoffTests(unittest.TestCase):
                 "decision: DRAFT",
             )
             plan_path.write_text(wrong_decision, encoding="utf-8")
-            self.assertIn("PLAN.md decision must be PLAN_FROZEN", rh.validate_plan_file(plan_path, "001_feature"))
+            self.assertIn("PLAN.md decision must be PLAN_FROZEN", rh.validate_plan_file(plan_path, "repo--feature"))
 
     def test_unknown_plan_schema_fails_compatible_validation(self) -> None:
         tmp, target = self.make_project()
         with tmp:
             self.write_plan(target)
-            plan_path = rh.task_root(target, "001_feature") / "PLAN.md"
+            plan_path = rh.task_root(target, "repo--feature") / "PLAN.md"
             text = plan_path.read_text(encoding="utf-8").replace(
                 rh.CURRENT_PLAN_SCHEMA,
                 "AI_BRIDGE_REVIEWED_PLAN_V999",
             )
             plan_path.write_text(text, encoding="utf-8")
-            errors = rh.validate_plan_file(plan_path, "001_feature")
+            errors = rh.validate_plan_file(plan_path, "repo--feature")
             self.assertTrue(any("PLAN.md schema must be" in error for error in errors), errors)
 
     def test_new_freeze_rejects_structurally_valid_legacy_v1_plan(self) -> None:
@@ -439,14 +500,14 @@ class ReviewedHandoffTests(unittest.TestCase):
         with tmp:
             self.write_legacy_plan(target)
             with self.assertRaisesRegex(ValueError, "current freeze requires AI_BRIDGE_REVIEWED_PLAN_V2"):
-                rh.apply_transition(target, "001_feature", expected_state="PLAN_REQUESTED", next_state="PLAN_FROZEN")
+                rh.apply_transition(target, "repo--feature", expected_state="PLAN_REQUESTED", next_state="PLAN_FROZEN")
 
     def test_planner_refreeze_rejects_legacy_v1_and_accepts_v2(self) -> None:
         tmp, target = self.make_project()
         with tmp:
             self.write_plan(target)
-            rh.apply_transition(target, "001_feature", expected_state="PLAN_REQUESTED", next_state="PLAN_FROZEN")
-            current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+            rh.apply_transition(target, "repo--feature", expected_state="PLAN_REQUESTED", next_state="PLAN_FROZEN")
+            current_path = rh.task_root(target, "repo--feature") / "CURRENT.json"
             current = rh.load_json(current_path)
             current["state"] = "NEEDS_GPT_PLANNER"
             current["next_action"] = "RUN_GPT_PLANNER"
@@ -454,10 +515,10 @@ class ReviewedHandoffTests(unittest.TestCase):
 
             self.write_legacy_plan(target)
             with self.assertRaisesRegex(ValueError, "current freeze requires AI_BRIDGE_REVIEWED_PLAN_V2"):
-                rh.apply_transition(target, "001_feature", expected_state="NEEDS_GPT_PLANNER", next_state="PLAN_FROZEN")
+                rh.apply_transition(target, "repo--feature", expected_state="NEEDS_GPT_PLANNER", next_state="PLAN_FROZEN")
 
             self.write_plan(target)
-            current = rh.apply_transition(target, "001_feature", expected_state="NEEDS_GPT_PLANNER", next_state="PLAN_FROZEN")
+            current = rh.apply_transition(target, "repo--feature", expected_state="NEEDS_GPT_PLANNER", next_state="PLAN_FROZEN")
             self.assertEqual(current["state"], "PLAN_FROZEN")
             self.assertEqual(current["plan_revision"], 1)
 
@@ -465,7 +526,7 @@ class ReviewedHandoffTests(unittest.TestCase):
         tmp, target = self.make_project()
         with tmp:
             self.write_legacy_plan(target)
-            current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+            current_path = rh.task_root(target, "repo--feature") / "CURRENT.json"
             current = rh.load_json(current_path)
             current["state"] = "PLAN_FROZEN"
             current["next_action"] = "RUN_CODEX_EXECUTOR"
@@ -479,14 +540,14 @@ class ReviewedHandoffTests(unittest.TestCase):
     def test_synthetic_legacy_consumer_with_multiple_v1_tasks_validates(self) -> None:
         tmp, target = self.make_project()
         with tmp:
-            rh.init_task(target, "002_active", objective="Legacy active task")
-            rh.init_task(target, "003_revise", objective="Legacy revise task")
+            self.seed_legacy_task(target, "002_active", objective="Legacy active task")
+            self.seed_legacy_task(target, "003_revise", objective="Legacy revise task")
 
-            self.write_legacy_plan(target, "001_feature")
+            self.write_legacy_plan(target, "repo--feature")
             self.write_legacy_plan(target, "002_active")
             self.write_legacy_plan(target, "003_revise")
 
-            terminal_current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+            terminal_current_path = rh.task_root(target, "repo--feature") / "CURRENT.json"
             terminal_current = rh.load_json(terminal_current_path)
             terminal_current["state"] = "AWAIT_HUMAN_DECISION"
             terminal_current["human_gate_reason"] = "PLANNER_DECISION"
@@ -546,7 +607,7 @@ class ReviewedHandoffTests(unittest.TestCase):
         tmp, target = self.make_project()
         with tmp:
             self.write_plan(target)
-            current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+            current_path = rh.task_root(target, "repo--feature") / "CURRENT.json"
             current = rh.load_json(current_path)
             current["state"] = "AWAIT_HUMAN_DECISION"
             current["human_gate_reason"] = "PLANNER_DECISION"
@@ -563,7 +624,7 @@ class ReviewedHandoffTests(unittest.TestCase):
         tmp, target = self.make_project()
         with tmp:
             self.write_plan(target)
-            current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+            current_path = rh.task_root(target, "repo--feature") / "CURRENT.json"
             current = rh.load_json(current_path)
             current["state"] = "AWAIT_HUMAN_DECISION"
             current["human_gate_reason"] = "PLANNER_DECISION"
@@ -574,7 +635,7 @@ class ReviewedHandoffTests(unittest.TestCase):
                 body=(
                     "---\n"
                     "schema: AI_BRIDGE_REVIEWED_FINAL_REPORT_V1\n"
-                    "task_key: 001_feature\n"
+                    "task_key: repo--feature\n"
                     "final_decision: AWAIT_HUMAN_DECISION\n"
                     "---\n\n"
                     "# Final Report\n\n"
@@ -592,13 +653,13 @@ class ReviewedHandoffTests(unittest.TestCase):
         with tmp:
             self.write_plan(target)
             self.write_result(target, commit="impl-old", ci_status="PASS")
-            review_path = rh.result_root(target, "001_feature") / "REVIEW_1.md"
+            review_path = rh.result_root(target, "repo--feature") / "REVIEW_1.md"
             rh.write_text(
                 review_path,
                 (
                     "---\n"
                     f"schema: {rh.REVIEW_SCHEMA}\n"
-                    "task_key: 001_feature\n"
+                    "task_key: repo--feature\n"
                     "review_round: 1\n"
                     "decision: REVISE\n"
                     "implementation_commit: impl-old\n"
@@ -607,7 +668,7 @@ class ReviewedHandoffTests(unittest.TestCase):
                 ),
             )
             self.write_result(target, commit="impl-new", ci_status="PASS")
-            current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+            current_path = rh.task_root(target, "repo--feature") / "CURRENT.json"
             current = rh.load_json(current_path)
             current["state"] = "AWAIT_HUMAN_DECISION"
             current["human_gate_reason"] = "PLANNER_DECISION"
@@ -628,13 +689,13 @@ class ReviewedHandoffTests(unittest.TestCase):
         with tmp:
             self.write_plan(target)
             self.write_result(target, commit="impl-old", ci_status="PASS")
-            review_path = rh.result_root(target, "001_feature") / "REVIEW_1.md"
+            review_path = rh.result_root(target, "repo--feature") / "REVIEW_1.md"
             rh.write_text(
                 review_path,
                 (
                     "---\n"
                     f"schema: {rh.REVIEW_SCHEMA}\n"
-                    "task_key: 001_feature\n"
+                    "task_key: repo--feature\n"
                     "review_round: 1\n"
                     "decision: REVISE\n"
                     "implementation_commit: impl-old\n"
@@ -643,7 +704,7 @@ class ReviewedHandoffTests(unittest.TestCase):
                 ),
             )
             self.write_result(target, commit="impl-new", ci_status="PASS")
-            current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+            current_path = rh.task_root(target, "repo--feature") / "CURRENT.json"
             current = rh.load_json(current_path)
             current["state"] = "AWAIT_HUMAN_DECISION"
             current["human_gate_reason"] = "REVIEW_LIMIT"
@@ -657,7 +718,7 @@ class ReviewedHandoffTests(unittest.TestCase):
             rh.write_json(current_path, current)
             self.write_final_report(target)
 
-            errors = rh.validate_task(target, "001_feature")
+            errors = rh.validate_task(target, "repo--feature")
 
             self.assertIn("latest review must be bound to CURRENT implementation_commit", errors)
 
@@ -665,7 +726,7 @@ class ReviewedHandoffTests(unittest.TestCase):
         tmp, target = self.make_project()
         with tmp:
             self.write_plan(target)
-            current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+            current_path = rh.task_root(target, "repo--feature") / "CURRENT.json"
             current = rh.load_json(current_path)
             current["state"] = "NEEDS_GPT_PLANNER"
             current["next_action"] = "RUN_GPT_PLANNER"
@@ -675,7 +736,7 @@ class ReviewedHandoffTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "What this task solved"):
                 rh.apply_transition(
                     target,
-                    "001_feature",
+                    "repo--feature",
                     expected_state="NEEDS_GPT_PLANNER",
                     next_state="AWAIT_HUMAN_DECISION",
                 )
@@ -685,18 +746,18 @@ class ReviewedHandoffTests(unittest.TestCase):
         with tmp:
             self.write_plan(target)
             with self.assertRaisesRegex(ValueError, "illegal transition edge"):
-                rh.apply_transition(target, "001_feature", expected_state="PLAN_REQUESTED", next_state="READY_FOR_GPT_REVIEW")
+                rh.apply_transition(target, "repo--feature", expected_state="PLAN_REQUESTED", next_state="READY_FOR_GPT_REVIEW")
 
     def test_ready_for_review_requires_result_locator_and_ci_when_required(self) -> None:
         tmp, target = self.make_project()
         with tmp:
             self.freeze_and_start(target)
             with self.assertRaisesRegex(ValueError, "RESULT.md"):
-                rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+                rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
 
         tmp, target = self.make_project()
         with tmp:
-            root = rh.task_root(target, "001_feature")
+            root = rh.task_root(target, "repo--feature")
             current = rh.load_json(root / "CURRENT.json")
             current["ci_required"] = True
             current["ci_status"] = "PENDING"
@@ -704,11 +765,11 @@ class ReviewedHandoffTests(unittest.TestCase):
             self.freeze_and_start(target)
             self.write_result(target, commit="impl-ci", ci_status="PENDING")
             with self.assertRaisesRegex(ValueError, "WAITING_FOR_CI"):
-                rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
-            waiting = rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="WAITING_FOR_CI")
+                rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            waiting = rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="WAITING_FOR_CI")
             self.assertEqual(waiting["state"], "WAITING_FOR_CI")
             self.assertEqual(waiting["ci_status"], "PENDING")
-            advanced = rh.apply_transition(target, "001_feature", expected_state="WAITING_FOR_CI", next_state="READY_FOR_GPT_REVIEW")
+            advanced = rh.apply_transition(target, "repo--feature", expected_state="WAITING_FOR_CI", next_state="READY_FOR_GPT_REVIEW")
             self.assertEqual(advanced["state"], "READY_FOR_GPT_REVIEW")
             self.assertEqual(advanced["ci_status"], "PASS")
 
@@ -719,16 +780,16 @@ class ReviewedHandoffTests(unittest.TestCase):
             self.freeze_and_start(target)
             self.write_result(target, commit="impl-visual")
             self.write_visual_input_manifest(target, implementation_commit="impl-visual")
-            ready = rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            ready = rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
             self.assertEqual(ready["state"], "READY_FOR_GPT_REVIEW")
-            plan = rh.plan_transition(target, "001_feature")
+            plan = rh.plan_transition(target, "repo--feature")
             self.assertEqual(plan["next_action"], "WAIT_FOR_VISUAL_REVIEW_EVIDENCE")
-            wait = rh.reviewed_external_wait_status(target, "001_feature")
+            wait = rh.reviewed_external_wait_status(target, "repo--feature")
             self.assertEqual(wait["operational_status"], "waiting_visual_review_evidence")
             self.assertEqual(wait["wait_owner"], "Visual Review")
             with self.assertRaisesRegex(ValueError, "visual review evidence pending"):
-                rh.record_review(target, "001_feature", decision="PASS", body="Looks good.")
-            current = rh.load_json(rh.task_root(target, "001_feature") / "CURRENT.json")
+                rh.record_review(target, "repo--feature", decision="PASS", body="Looks good.")
+            current = rh.load_json(rh.task_root(target, "repo--feature") / "CURRENT.json")
             self.assertEqual(current["review_round"], 0)
 
     def test_text_review_pending_does_not_consume_review_round(self) -> None:
@@ -738,16 +799,16 @@ class ReviewedHandoffTests(unittest.TestCase):
             self.freeze_and_start(target)
             self.write_result(target, commit="impl-text")
             self.write_text_input_manifest(target, implementation_commit="impl-text")
-            ready = rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            ready = rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
             self.assertEqual(ready["state"], "READY_FOR_GPT_REVIEW")
-            plan = rh.plan_transition(target, "001_feature")
+            plan = rh.plan_transition(target, "repo--feature")
             self.assertEqual(plan["next_action"], "WAIT_FOR_TEXT_REVIEW_EVIDENCE")
-            wait = rh.reviewed_external_wait_status(target, "001_feature")
+            wait = rh.reviewed_external_wait_status(target, "repo--feature")
             self.assertEqual(wait["operational_status"], "waiting_text_review_evidence")
             self.assertEqual(wait["wait_owner"], "Text Review")
             with self.assertRaisesRegex(ValueError, "text review evidence pending"):
-                rh.record_review(target, "001_feature", decision="PASS", body="Looks good.")
-            current = rh.load_json(rh.task_root(target, "001_feature") / "CURRENT.json")
+                rh.record_review(target, "repo--feature", decision="PASS", body="Looks good.")
+            current = rh.load_json(rh.task_root(target, "repo--feature") / "CURRENT.json")
             self.assertEqual(current["review_round"], 0)
 
     def test_visual_input_manifest_can_be_published_before_github_visual_review(self) -> None:
@@ -762,15 +823,15 @@ class ReviewedHandoffTests(unittest.TestCase):
             self.write_result(target, commit=implementation_commit)
             self.write_visual_input_manifest(target, implementation_commit=implementation_commit)
 
-            current = rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            current = rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
 
             self.assertEqual(current["state"], "READY_FOR_GPT_REVIEW")
-            self.assertEqual(rh.validate_task(target, "001_feature"), [])
-            self.assertFalse((rh.result_root(target, "001_feature") / "visual_review" / "VISUAL_REVIEW.json").exists())
-            wait = rh.reviewed_external_wait_status(target, "001_feature")
+            self.assertEqual(rh.validate_task(target, "repo--feature"), [])
+            self.assertFalse((rh.result_root(target, "repo--feature") / "visual_review" / "VISUAL_REVIEW.json").exists())
+            wait = rh.reviewed_external_wait_status(target, "repo--feature")
             self.assertEqual(wait["operational_status"], "waiting_visual_review_evidence")
             self.assertFalse(wait["may_block"])
-            self.assertEqual(rh.load_json(rh.task_root(target, "001_feature") / "CURRENT.json")["review_round"], 0)
+            self.assertEqual(rh.load_json(rh.task_root(target, "repo--feature") / "CURRENT.json")["review_round"], 0)
 
     def test_ci_required_visual_task_waits_for_ci_before_visual_review(self) -> None:
         tmp, target = self.make_project()
@@ -781,15 +842,15 @@ class ReviewedHandoffTests(unittest.TestCase):
             self.write_result(target, commit="impl-ci-visual", ci_status="PENDING")
             self.write_visual_input_manifest(target, implementation_commit="impl-ci-visual")
 
-            current = rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="WAITING_FOR_CI")
+            current = rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="WAITING_FOR_CI")
 
             self.assertEqual(current["state"], "WAITING_FOR_CI")
             self.assertEqual(current["ci_status"], "PENDING")
-            self.assertEqual(rh.validate_task(target, "001_feature"), [])
-            wait = rh.reviewed_external_wait_status(target, "001_feature")
+            self.assertEqual(rh.validate_task(target, "repo--feature"), [])
+            wait = rh.reviewed_external_wait_status(target, "repo--feature")
             self.assertEqual(wait["operational_status"], "waiting_for_ci")
             self.assertEqual(wait["wait_owner"], "CI")
-            self.assertEqual(rh.load_json(rh.task_root(target, "001_feature") / "CURRENT.json")["review_round"], 0)
+            self.assertEqual(rh.load_json(rh.task_root(target, "repo--feature") / "CURRENT.json")["review_round"], 0)
 
     def test_ci_pass_then_visual_task_waits_for_visual_evidence(self) -> None:
         tmp, target = self.make_project()
@@ -799,19 +860,19 @@ class ReviewedHandoffTests(unittest.TestCase):
             self.freeze_and_start(target)
             self.write_result(target, commit="impl-ci-visual", ci_status="PENDING")
             self.write_visual_input_manifest(target, implementation_commit="impl-ci-visual")
-            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="WAITING_FOR_CI")
+            rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="WAITING_FOR_CI")
 
-            current = rh.apply_transition(target, "001_feature", expected_state="WAITING_FOR_CI", next_state="READY_FOR_GPT_REVIEW")
+            current = rh.apply_transition(target, "repo--feature", expected_state="WAITING_FOR_CI", next_state="READY_FOR_GPT_REVIEW")
 
             self.assertEqual(current["state"], "READY_FOR_GPT_REVIEW")
             self.assertEqual(current["ci_status"], "PASS")
-            self.assertEqual(rh.validate_task(target, "001_feature"), [])
-            wait = rh.reviewed_external_wait_status(target, "001_feature")
+            self.assertEqual(rh.validate_task(target, "repo--feature"), [])
+            wait = rh.reviewed_external_wait_status(target, "repo--feature")
             self.assertEqual(wait["operational_status"], "waiting_visual_review_evidence")
             self.assertEqual(wait["wait_owner"], "Visual Review")
             with self.assertRaisesRegex(ValueError, "visual review evidence pending"):
-                rh.record_review(target, "001_feature", decision="PASS", body="Must wait for visual evidence.")
-            self.assertEqual(rh.load_json(rh.task_root(target, "001_feature") / "CURRENT.json")["review_round"], 0)
+                rh.record_review(target, "repo--feature", decision="PASS", body="Must wait for visual evidence.")
+            self.assertEqual(rh.load_json(rh.task_root(target, "repo--feature") / "CURRENT.json")["review_round"], 0)
 
     def test_visual_review_pending_requires_published_input_manifest(self) -> None:
         tmp, target = self.make_project()
@@ -820,7 +881,7 @@ class ReviewedHandoffTests(unittest.TestCase):
             self.freeze_and_start(target)
             self.write_result(target, commit="impl-visual")
             with self.assertRaisesRegex(ValueError, "visual review input manifest missing"):
-                rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+                rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
 
     def test_current_visual_review_can_be_consumed_by_reviewer(self) -> None:
         tmp, target = self.make_project()
@@ -829,9 +890,9 @@ class ReviewedHandoffTests(unittest.TestCase):
             self.freeze_and_start(target)
             self.write_result(target, commit="impl-visual")
             self.write_visual_input_manifest(target, implementation_commit="impl-visual")
-            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
             self.write_visual_review(target, implementation_commit="impl-visual")
-            current = rh.record_review(target, "001_feature", decision="PASS", body="Plan and visual evidence satisfied.")
+            current = rh.record_review(target, "repo--feature", decision="PASS", body="Plan and visual evidence satisfied.")
             self.assertEqual(current["state"], "PASS")
             self.assertEqual(current["review_round"], 1)
 
@@ -842,9 +903,9 @@ class ReviewedHandoffTests(unittest.TestCase):
             self.freeze_and_start(target)
             self.write_result(target, commit="impl-text")
             self.write_text_input_manifest(target, implementation_commit="impl-text")
-            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
             self.write_text_review(target, implementation_commit="impl-text")
-            current = rh.record_review(target, "001_feature", decision="PASS", body="Plan and text evidence satisfied.")
+            current = rh.record_review(target, "repo--feature", decision="PASS", body="Plan and text evidence satisfied.")
             self.assertEqual(current["state"], "PASS")
             self.assertEqual(current["review_round"], 1)
 
@@ -855,11 +916,11 @@ class ReviewedHandoffTests(unittest.TestCase):
             self.freeze_and_start(target)
             self.write_result(target, commit="impl-text")
             self.write_text_input_manifest(target, implementation_commit="impl-text")
-            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
             self.write_text_review(target, implementation_commit="impl-text", decision="REVISE")
             with self.assertRaisesRegex(ValueError, "GPT review PASS requires text review PASS evidence, found REVISE"):
-                rh.record_review(target, "001_feature", decision="PASS", body="Cannot pass over text failure.")
-            current = rh.record_review(target, "001_feature", decision="REVISE", body="Text Review found a blocker.")
+                rh.record_review(target, "repo--feature", decision="PASS", body="Cannot pass over text failure.")
+            current = rh.record_review(target, "repo--feature", decision="REVISE", body="Text Review found a blocker.")
             self.assertEqual(current["state"], "REVISE")
             self.assertEqual(current["review_round"], 1)
 
@@ -870,10 +931,10 @@ class ReviewedHandoffTests(unittest.TestCase):
             self.freeze_and_start(target)
             self.write_result(target, commit="impl-current")
             self.write_visual_input_manifest(target, implementation_commit="impl-current")
-            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
             self.write_visual_review(target, implementation_commit="impl-old")
             with self.assertRaisesRegex(ValueError, "identity binding mismatch"):
-                rh.record_review(target, "001_feature", decision="PASS", body="Cannot use stale visual evidence.")
+                rh.record_review(target, "repo--feature", decision="PASS", body="Cannot use stale visual evidence.")
 
     def test_stale_text_review_is_rejected(self) -> None:
         tmp, target = self.make_project()
@@ -882,10 +943,10 @@ class ReviewedHandoffTests(unittest.TestCase):
             self.freeze_and_start(target)
             self.write_result(target, commit="impl-current")
             self.write_text_input_manifest(target, implementation_commit="impl-current")
-            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
             self.write_text_review(target, implementation_commit="impl-old")
             with self.assertRaisesRegex(ValueError, "text review input manifest implementation_commit must match CURRENT|identity binding mismatch"):
-                rh.record_review(target, "001_feature", decision="PASS", body="Cannot use stale text evidence.")
+                rh.record_review(target, "repo--feature", decision="PASS", body="Cannot use stale text evidence.")
 
         tmp, target = self.make_project()
         with tmp:
@@ -893,14 +954,14 @@ class ReviewedHandoffTests(unittest.TestCase):
             self.freeze_and_start(target)
             self.write_result(target, commit="impl-current")
             self.write_text_input_manifest(target, implementation_commit="impl-current", plaintext_sha="b" * 64)
-            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
             self.write_text_review(target, implementation_commit="impl-current")
-            manifest_path = rh.result_root(target, "001_feature") / "text_review" / "text_inputs.json"
+            manifest_path = rh.result_root(target, "repo--feature") / "text_review" / "text_inputs.json"
             manifest = rh.load_json(manifest_path)
             manifest["input"]["plaintext_sha256"] = "c" * 64
             rh.write_json(manifest_path, manifest)
             with self.assertRaisesRegex(ValueError, "reviewed_input_identity is stale|plaintext_artifact_sha256 mismatch"):
-                rh.record_review(target, "001_feature", decision="PASS", body="Cannot use old plaintext evidence.")
+                rh.record_review(target, "repo--feature", decision="PASS", body="Cannot use old plaintext evidence.")
 
     def test_visual_pass_states_require_current_pass_evidence(self) -> None:
         tmp, target = self.make_project()
@@ -909,15 +970,15 @@ class ReviewedHandoffTests(unittest.TestCase):
             self.freeze_and_start(target)
             self.write_result(target, commit="impl-visual")
             self.write_visual_input_manifest(target, implementation_commit="impl-visual")
-            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
             self.remote_write_review_transaction(target, decision="PASS", body="Claimed pass without visual evidence.")
-            current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+            current_path = rh.task_root(target, "repo--feature") / "CURRENT.json"
             current = rh.load_json(current_path)
             current["state"] = "PASS"
             current["next_action"] = "PRESENT_FINAL_REPORT"
             rh.write_json(current_path, current)
 
-            errors = rh.validate_task(target, "001_feature")
+            errors = rh.validate_task(target, "repo--feature")
             self.assertTrue(any("PASS requires visual review PASS evidence" in error for error in errors), errors)
 
         tmp, target = self.make_project()
@@ -926,16 +987,16 @@ class ReviewedHandoffTests(unittest.TestCase):
             self.freeze_and_start(target)
             self.write_result(target, commit="impl-current")
             self.write_visual_input_manifest(target, implementation_commit="impl-current")
-            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
             self.write_visual_review(target, implementation_commit="impl-old")
             self.remote_write_review_transaction(target, decision="PASS", body="Claimed pass with stale visual evidence.")
-            current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+            current_path = rh.task_root(target, "repo--feature") / "CURRENT.json"
             current = rh.load_json(current_path)
             current["state"] = "PASS"
             current["next_action"] = "PRESENT_FINAL_REPORT"
             rh.write_json(current_path, current)
 
-            errors = rh.validate_task(target, "001_feature")
+            errors = rh.validate_task(target, "repo--feature")
             self.assertTrue(any("identity binding mismatch" in error for error in errors), errors)
 
         tmp, target = self.make_project()
@@ -944,10 +1005,10 @@ class ReviewedHandoffTests(unittest.TestCase):
             self.freeze_and_start(target)
             self.write_result(target, commit="impl-current")
             self.write_visual_review(target, implementation_commit="impl-current")
-            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
-            current = rh.record_review(target, "001_feature", decision="PASS", body="Fresh visual evidence satisfied.")
+            rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            current = rh.record_review(target, "repo--feature", decision="PASS", body="Fresh visual evidence satisfied.")
             self.assertEqual(current["state"], "PASS")
-            self.assertEqual(rh.validate_task(target, "001_feature"), [])
+            self.assertEqual(rh.validate_task(target, "repo--feature"), [])
 
     def test_text_pass_states_require_current_pass_evidence(self) -> None:
         tmp, target = self.make_project()
@@ -956,15 +1017,15 @@ class ReviewedHandoffTests(unittest.TestCase):
             self.freeze_and_start(target)
             self.write_result(target, commit="impl-text")
             self.write_text_input_manifest(target, implementation_commit="impl-text")
-            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
             self.remote_write_review_transaction(target, decision="PASS", body="Claimed pass without text evidence.")
-            current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+            current_path = rh.task_root(target, "repo--feature") / "CURRENT.json"
             current = rh.load_json(current_path)
             current["state"] = "PASS"
             current["next_action"] = "PRESENT_FINAL_REPORT"
             rh.write_json(current_path, current)
 
-            errors = rh.validate_task(target, "001_feature")
+            errors = rh.validate_task(target, "repo--feature")
             self.assertTrue(any("PASS requires text review PASS evidence" in error for error in errors), errors)
 
     def test_pass_human_gate_requires_current_visual_pass_evidence(self) -> None:
@@ -974,11 +1035,11 @@ class ReviewedHandoffTests(unittest.TestCase):
             self.freeze_and_start(target)
             self.write_result(target, commit="impl-visual")
             self.write_visual_input_manifest(target, implementation_commit="impl-visual")
-            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
             current = self.remote_write_review_transaction(target, decision="PASS", body="Claimed pass without visual evidence.")
             self.assertEqual(current["state"], "AWAIT_HUMAN_DECISION")
 
-            errors = rh.validate_task(target, "001_feature")
+            errors = rh.validate_task(target, "repo--feature")
             self.assertTrue(any("PASS human gate requires visual review PASS evidence" in error for error in errors), errors)
 
     def test_visual_pending_is_allowed_for_ci_failures_and_non_pass_terminal_states(self) -> None:
@@ -989,23 +1050,23 @@ class ReviewedHandoffTests(unittest.TestCase):
             self.freeze_and_start(target)
             self.write_result(target, commit="impl-ci-visual-1", ci_status="PENDING")
             self.write_visual_input_manifest(target, implementation_commit="impl-ci-visual-1")
-            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="WAITING_FOR_CI")
+            rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="WAITING_FOR_CI")
 
-            current = rh.record_review(target, "001_feature", decision="REVISE", body="CI failed before Terra evidence existed.")
+            current = rh.record_review(target, "repo--feature", decision="REVISE", body="CI failed before Terra evidence existed.")
             self.assertEqual(current["state"], "REVISE")
             self.assertEqual(current["review_round"], 1)
-            self.assertEqual(rh.validate_task(target, "001_feature"), [])
+            self.assertEqual(rh.validate_task(target, "repo--feature"), [])
 
-            rh.apply_transition(target, "001_feature", expected_state="REVISE", next_state="EXECUTING")
+            rh.apply_transition(target, "repo--feature", expected_state="REVISE", next_state="EXECUTING")
             self.write_result(target, commit="impl-ci-visual-2", ci_status="PENDING")
             self.write_visual_input_manifest(target, implementation_commit="impl-ci-visual-2")
-            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="WAITING_FOR_CI")
+            rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="WAITING_FOR_CI")
             self.write_final_report(target)
-            current = rh.record_review(target, "001_feature", decision="REVISE", body="CI failed again before Terra evidence existed.")
+            current = rh.record_review(target, "repo--feature", decision="REVISE", body="CI failed again before Terra evidence existed.")
             self.assertEqual(current["state"], "AWAIT_HUMAN_DECISION")
             self.assertEqual(current["human_gate_reason"], "REVIEW_LIMIT")
             self.assertEqual(current["review_round"], 2)
-            self.assertEqual(rh.validate_task(target, "001_feature"), [])
+            self.assertEqual(rh.validate_task(target, "repo--feature"), [])
 
         tmp, target = self.make_project()
         with tmp:
@@ -1013,11 +1074,11 @@ class ReviewedHandoffTests(unittest.TestCase):
             self.freeze_and_start(target)
             self.write_result(target, commit="impl-blocked")
             self.write_visual_input_manifest(target, implementation_commit="impl-blocked")
-            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
             self.write_final_report(target)
-            current = rh.record_review(target, "001_feature", decision="BLOCKED", body="External service failed.")
+            current = rh.record_review(target, "repo--feature", decision="BLOCKED", body="External service failed.")
             self.assertEqual(current["state"], "BLOCKED")
-            self.assertEqual(rh.validate_task(target, "001_feature"), [])
+            self.assertEqual(rh.validate_task(target, "repo--feature"), [])
 
     def test_invalid_visual_manifest_and_evidence_still_fail_closed(self) -> None:
         for state in ["WAITING_FOR_CI", "READY_FOR_GPT_REVIEW", "REVISE", "BLOCKED", "AWAIT_HUMAN_DECISION"]:
@@ -1028,7 +1089,7 @@ class ReviewedHandoffTests(unittest.TestCase):
                 self.freeze_and_start(target)
                 self.write_result(target, commit="impl-bad-visual", ci_status="PENDING")
                 self.write_visual_input_manifest(target, implementation_commit="wrong-impl")
-                current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+                current_path = rh.task_root(target, "repo--feature") / "CURRENT.json"
                 current = rh.load_json(current_path)
                 current["state"] = state
                 current["implementation_commit"] = "impl-bad-visual"
@@ -1046,7 +1107,7 @@ class ReviewedHandoffTests(unittest.TestCase):
                     self.write_final_report(target)
                 rh.write_json(current_path, current)
 
-                errors = rh.validate_task(target, "001_feature")
+                errors = rh.validate_task(target, "repo--feature")
                 self.assertTrue(any("visual review input manifest implementation_commit must match CURRENT" in error for error in errors), errors)
 
         tmp, target = self.make_project()
@@ -1055,35 +1116,35 @@ class ReviewedHandoffTests(unittest.TestCase):
             self.freeze_and_start(target)
             self.write_result(target, commit="impl-current")
             self.write_visual_input_manifest(target, implementation_commit="impl-current")
-            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
-            visual_dir = rh.result_root(target, "001_feature") / "visual_review"
+            rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            visual_dir = rh.result_root(target, "repo--feature") / "visual_review"
             rh.write_json(visual_dir / "VISUAL_REVIEW.json", {"schema": "broken"})
-            errors = rh.validate_task(target, "001_feature")
+            errors = rh.validate_task(target, "repo--feature")
             self.assertTrue(any("missing required field" in error or "schema" in error for error in errors), errors)
 
     def test_ci_failure_uses_normal_review_round_budget(self) -> None:
         tmp, target = self.make_project()
         with tmp:
-            root = rh.task_root(target, "001_feature")
+            root = rh.task_root(target, "repo--feature")
             current = rh.load_json(root / "CURRENT.json")
             current["ci_required"] = True
             current["ci_status"] = "PENDING"
             rh.write_json(root / "CURRENT.json", current)
             self.freeze_and_start(target)
             self.write_result(target, commit="impl-ci-1", ci_status="PENDING")
-            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="WAITING_FOR_CI")
-            current = rh.record_review(target, "001_feature", decision="REVISE", body="CI failed: unit job failed.")
+            rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="WAITING_FOR_CI")
+            current = rh.record_review(target, "repo--feature", decision="REVISE", body="CI failed: unit job failed.")
             self.assertEqual(current["state"], "REVISE")
             self.assertEqual(current["ci_status"], "FAIL")
             self.assertEqual(current["review_round"], 1)
 
-            rh.apply_transition(target, "001_feature", expected_state="REVISE", next_state="EXECUTING")
+            rh.apply_transition(target, "repo--feature", expected_state="REVISE", next_state="EXECUTING")
             self.write_result(target, commit="impl-ci-2", ci_status="PENDING")
-            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="WAITING_FOR_CI")
+            rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="WAITING_FOR_CI")
             with self.assertRaisesRegex(ValueError, "FINAL_REPORT"):
-                rh.record_review(target, "001_feature", decision="REVISE", body="CI still failed.")
+                rh.record_review(target, "repo--feature", decision="REVISE", body="CI still failed.")
             self.write_final_report(target)
-            current = rh.record_review(target, "001_feature", decision="REVISE", body="CI still failed.")
+            current = rh.record_review(target, "repo--feature", decision="REVISE", body="CI still failed.")
             self.assertEqual(current["state"], "AWAIT_HUMAN_DECISION")
             self.assertTrue(current["review_limit_reached"])
             self.assertEqual(current["review_round"], 2)
@@ -1091,16 +1152,16 @@ class ReviewedHandoffTests(unittest.TestCase):
     def test_waiting_for_ci_pending_has_no_side_effect_plan(self) -> None:
         tmp, target = self.make_project()
         with tmp:
-            root = rh.task_root(target, "001_feature")
+            root = rh.task_root(target, "repo--feature")
             current = rh.load_json(root / "CURRENT.json")
             current["ci_required"] = True
             current["ci_status"] = "PENDING"
             rh.write_json(root / "CURRENT.json", current)
             self.freeze_and_start(target)
             self.write_result(target, commit="impl-ci", ci_status="PENDING")
-            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="WAITING_FOR_CI")
+            rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="WAITING_FOR_CI")
             before = rh.load_json(root / "CURRENT.json")
-            plan = rh.plan_transition(target, "001_feature")
+            plan = rh.plan_transition(target, "repo--feature")
             after = rh.load_json(root / "CURRENT.json")
             self.assertEqual(plan["next_action"], "WAIT_FOR_CI")
             self.assertNotIn("next_state", plan)
@@ -1231,7 +1292,7 @@ class ReviewedHandoffTests(unittest.TestCase):
 
             current = rh.record_human_decision(
                 target,
-                "001_feature",
+                "repo--feature",
                 decision="REJECT",
                 route="REVISE",
                 body="The current artifact violates the frozen requirement.",
@@ -1243,21 +1304,21 @@ class ReviewedHandoffTests(unittest.TestCase):
             self.assertEqual(current["max_review_rounds"], 2)
             self.assertEqual(current["last_review_decision"], "PASS")
             self.assertEqual(current["human_rejection"]["route"], "REVISE")
-            latest, _path, errors = rh.latest_review_metadata(target, "001_feature")
+            latest, _path, errors = rh.latest_review_metadata(target, "repo--feature")
             self.assertEqual(errors, [])
             self.assertEqual((latest or {}).get("decision"), "PASS")
-            self.assertEqual(rh.validate_task(target, "001_feature"), [])
+            self.assertEqual(rh.validate_task(target, "repo--feature"), [])
 
-            executing = rh.apply_transition(target, "001_feature", expected_state="REVISE", next_state="EXECUTING")
+            executing = rh.apply_transition(target, "repo--feature", expected_state="REVISE", next_state="EXECUTING")
             self.assertEqual(executing["state"], "EXECUTING")
             self.assertEqual(executing["review_round"], 1)
-            self.assertEqual(rh.validate_task(target, "001_feature"), [])
+            self.assertEqual(rh.validate_task(target, "repo--feature"), [])
 
-            ready = rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            ready = rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
             self.assertEqual(ready["state"], "READY_FOR_GPT_REVIEW")
-            second_review = rh.record_review(target, "001_feature", decision="PASS", body="Human rejection repair satisfied.")
+            second_review = rh.record_review(target, "repo--feature", decision="PASS", body="Human rejection repair satisfied.")
             self.assertEqual(second_review["review_round"], 2)
-            self.assertTrue((rh.result_root(target, "001_feature") / "REVIEW_2.md").exists())
+            self.assertTrue((rh.result_root(target, "repo--feature") / "REVIEW_2.md").exists())
 
     def test_human_reject_after_pass_can_route_to_planner_without_resetting_budgets(self) -> None:
         tmp, target = self.make_project()
@@ -1268,7 +1329,7 @@ class ReviewedHandoffTests(unittest.TestCase):
 
             current = rh.record_human_decision(
                 target,
-                "001_feature",
+                "repo--feature",
                 decision="REJECT",
                 route="NEEDS_GPT_PLANNER",
                 body="The frozen Plan omitted the actual user-facing acceptance condition.",
@@ -1280,27 +1341,27 @@ class ReviewedHandoffTests(unittest.TestCase):
             self.assertEqual(current["plan_revision"], 0)
             self.assertEqual(current["last_review_decision"], "PASS")
             self.assertEqual(current["human_rejection"]["route"], "NEEDS_GPT_PLANNER")
-            self.assertEqual(rh.validate_task(target, "001_feature"), [])
+            self.assertEqual(rh.validate_task(target, "repo--feature"), [])
 
     def test_human_reject_budget_exhaustion_cannot_reopen(self) -> None:
         tmp, target = self.make_project()
         with tmp:
             self.write_plan(target)
             self.write_result(target, commit="impl-pass", ci_status="PASS")
-            current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+            current_path = rh.task_root(target, "repo--feature") / "CURRENT.json"
             current = rh.load_json(current_path)
             current["max_review_rounds"] = 1
             rh.write_json(current_path, current)
             self.remote_write_review_transaction(target, decision="PASS", body="Pass at final review budget.")
 
             with self.assertRaisesRegex(ValueError, "review budget exhausted"):
-                rh.record_human_decision(target, "001_feature", decision="REJECT", route="REVISE", body="Reject.")
+                rh.record_human_decision(target, "repo--feature", decision="REJECT", route="REVISE", body="Reject.")
 
         tmp, target = self.make_project()
         with tmp:
             self.write_plan(target)
             self.write_result(target, commit="impl-pass", ci_status="PASS")
-            current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+            current_path = rh.task_root(target, "repo--feature") / "CURRENT.json"
             current = rh.load_json(current_path)
             current["plan_revision"] = 1
             rh.write_json(current_path, current)
@@ -1309,7 +1370,7 @@ class ReviewedHandoffTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "plan revision budget exhausted"):
                 rh.record_human_decision(
                     target,
-                    "001_feature",
+                    "repo--feature",
                     decision="REJECT",
                     route="NEEDS_GPT_PLANNER",
                     body="Reject.",
@@ -1323,14 +1384,14 @@ class ReviewedHandoffTests(unittest.TestCase):
             self.remote_write_review_transaction(target, decision="PASS", body="Reviewer pass history.")
 
             with self.assertRaisesRegex(ValueError, "reviewed-handoff human record"):
-                rh.apply_transition(target, "001_feature", expected_state="AWAIT_HUMAN_DECISION", next_state="REVISE")
+                rh.apply_transition(target, "repo--feature", expected_state="AWAIT_HUMAN_DECISION", next_state="REVISE")
 
-            current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+            current_path = rh.task_root(target, "repo--feature") / "CURRENT.json"
             current = rh.load_json(current_path)
             current["human_gate_reason"] = "REVIEW_LIMIT"
             rh.write_json(current_path, current)
             with self.assertRaisesRegex(ValueError, "only valid after a PASS human gate"):
-                rh.record_human_decision(target, "001_feature", decision="REJECT", route="REVISE", body="Reject.")
+                rh.record_human_decision(target, "repo--feature", decision="REJECT", route="REVISE", body="Reject.")
 
     def test_bridge_cli_routes_human_decision_record(self) -> None:
         tmp, target = self.make_project()
@@ -1349,7 +1410,7 @@ class ReviewedHandoffTests(unittest.TestCase):
                             "--target",
                             str(target),
                             "--task-key",
-                            "001_feature",
+                            "repo--feature",
                             "--decision",
                             "REJECT",
                             "--route",
@@ -1361,42 +1422,42 @@ class ReviewedHandoffTests(unittest.TestCase):
                     0,
                 )
 
-            current = rh.load_json(rh.task_root(target, "001_feature") / "CURRENT.json")
+            current = rh.load_json(rh.task_root(target, "repo--feature") / "CURRENT.json")
             self.assertEqual(current["state"], "REVISE")
             self.assertEqual(current["review_round"], 1)
 
     def test_remote_ci_pass_transaction_matches_valid_ready_state(self) -> None:
         tmp, target = self.make_project()
         with tmp:
-            root = rh.task_root(target, "001_feature")
+            root = rh.task_root(target, "repo--feature")
             current = rh.load_json(root / "CURRENT.json")
             current["ci_required"] = True
             current["ci_status"] = "PENDING"
             rh.write_json(root / "CURRENT.json", current)
             self.freeze_and_start(target)
             self.write_result(target, commit="impl-ci", ci_status="PENDING")
-            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="WAITING_FOR_CI")
+            rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="WAITING_FOR_CI")
             current = rh.load_json(root / "CURRENT.json")
             current["ci_status"] = "PASS"
             current["state"] = "READY_FOR_GPT_REVIEW"
             current["next_action"] = "WAIT_SCHEDULED_GPT_REVIEW"
             rh.write_json(root / "CURRENT.json", current)
-            self.assertEqual(rh.validate_task(target, "001_feature"), [])
+            self.assertEqual(rh.validate_task(target, "repo--feature"), [])
 
     def test_external_review_silence_under_and_over_two_hours_is_waiting_not_blocked(self) -> None:
         tmp, target = self.make_project()
         with tmp:
             self.freeze_and_start(target)
             self.write_result(target, commit="2c54c52f287be94c5919bc5886fb52804f94fc49")
-            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
-            current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+            rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            current_path = rh.task_root(target, "repo--feature") / "CURRENT.json"
             current = rh.load_json(current_path)
             started = datetime(2026, 8, 18, 10, 0, tzinfo=timezone.utc)
             current["external_wait_started_at"] = started.isoformat()
             rh.write_json(current_path, current)
 
-            early = rh.reviewed_external_wait_status(target, "001_feature", now=started + timedelta(minutes=119))
-            late = rh.reviewed_external_wait_status(target, "001_feature", now=started + timedelta(minutes=121))
+            early = rh.reviewed_external_wait_status(target, "repo--feature", now=started + timedelta(minutes=119))
+            late = rh.reviewed_external_wait_status(target, "repo--feature", now=started + timedelta(minutes=121))
 
             self.assertEqual(early["operational_status"], "waiting_external_review")
             self.assertEqual(early["external_owner"], "Reviewer")
@@ -1415,26 +1476,26 @@ class ReviewedHandoffTests(unittest.TestCase):
             new_commit = "2c54c52f287be94c5919bc5886fb52804f94fc49"
             old_commit = "846e3d96c2037e3efc1bb9e325f61ea8097ae32d"
             self.write_result(target, commit=new_commit)
-            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
             rh.write_text(
-                rh.result_root(target, "001_feature") / "REVIEW_1.md",
+                rh.result_root(target, "repo--feature") / "REVIEW_1.md",
                 "---\n"
                 f"schema: {rh.REVIEW_SCHEMA}\n"
-                "task_key: 001_feature\n"
+                "task_key: repo--feature\n"
                 "review_round: 1\n"
                 "decision: REVISE\n"
                 f"implementation_commit: {old_commit}\n"
                 "---\n\n"
                 "Old Planner/Reviewer decision for an earlier implementation.\n",
             )
-            current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+            current_path = rh.task_root(target, "repo--feature") / "CURRENT.json"
             current = rh.load_json(current_path)
             current["review_round"] = 1
             current["last_review_decision"] = "REVISE"
             rh.write_json(current_path, current)
 
-            status = rh.reviewed_external_wait_status(target, "001_feature")
-            plan = rh.plan_transition(target, "001_feature")
+            status = rh.reviewed_external_wait_status(target, "repo--feature")
+            plan = rh.plan_transition(target, "repo--feature")
 
             self.assertEqual(status["operational_status"], "waiting_external_review")
             self.assertTrue(status["stale_decision"])
@@ -1452,10 +1513,10 @@ class ReviewedHandoffTests(unittest.TestCase):
             self.freeze_and_start(target)
             current_commit = "2c54c52f287be94c5919bc5886fb52804f94fc49"
             self.write_result(target, commit=current_commit)
-            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
 
-            current = rh.record_review(target, "001_feature", decision="REVISE", body="Fresh review for current implementation.")
-            plan = rh.plan_transition(target, "001_feature")
+            current = rh.record_review(target, "repo--feature", decision="REVISE", body="Fresh review for current implementation.")
+            plan = rh.plan_transition(target, "repo--feature")
 
             self.assertEqual(current["review_round"], 1)
             self.assertEqual(current["state"], "REVISE")
@@ -1465,41 +1526,41 @@ class ReviewedHandoffTests(unittest.TestCase):
     def test_remote_ci_fail_transactions_use_review_budget(self) -> None:
         tmp, target = self.make_project()
         with tmp:
-            root = rh.task_root(target, "001_feature")
+            root = rh.task_root(target, "repo--feature")
             current = rh.load_json(root / "CURRENT.json")
             current["ci_required"] = True
             current["ci_status"] = "PENDING"
             rh.write_json(root / "CURRENT.json", current)
             self.freeze_and_start(target)
             self.write_result(target, commit="impl-ci-1", ci_status="PENDING")
-            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="WAITING_FOR_CI")
+            rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="WAITING_FOR_CI")
             current = self.remote_write_review_transaction(target, decision="REVISE", body="CI failed.")
             self.assertEqual(current["state"], "REVISE")
             self.assertEqual(current["ci_status"], "FAIL")
             self.assertEqual(current["review_round"], 1)
-            self.assertEqual(rh.validate_task(target, "001_feature"), [])
+            self.assertEqual(rh.validate_task(target, "repo--feature"), [])
 
-            rh.apply_transition(target, "001_feature", expected_state="REVISE", next_state="EXECUTING")
+            rh.apply_transition(target, "repo--feature", expected_state="REVISE", next_state="EXECUTING")
             self.write_result(target, commit="impl-ci-2", ci_status="PENDING")
-            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="WAITING_FOR_CI")
+            rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="WAITING_FOR_CI")
             current = self.remote_write_review_transaction(target, decision="REVISE", body="CI failed again.")
             self.assertEqual(current["state"], "AWAIT_HUMAN_DECISION")
             self.assertEqual(current["review_round"], 2)
             self.assertTrue(current["review_limit_reached"])
             self.assertEqual(current["human_gate_reason"], "REVIEW_LIMIT")
-            self.assertEqual(rh.validate_task(target, "001_feature"), [])
+            self.assertEqual(rh.validate_task(target, "repo--feature"), [])
 
     def test_remote_ci_unavailable_routes_blocked_with_final_report(self) -> None:
         tmp, target = self.make_project()
         with tmp:
-            root = rh.task_root(target, "001_feature")
+            root = rh.task_root(target, "repo--feature")
             current = rh.load_json(root / "CURRENT.json")
             current["ci_required"] = True
             current["ci_status"] = "PENDING"
             rh.write_json(root / "CURRENT.json", current)
             self.freeze_and_start(target)
             self.write_result(target, commit="impl-ci", ci_status="PENDING")
-            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="WAITING_FOR_CI")
+            rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="WAITING_FOR_CI")
             before = rh.load_json(root / "CURRENT.json")
             self.write_final_report(target)
             current = dict(before)
@@ -1507,7 +1568,7 @@ class ReviewedHandoffTests(unittest.TestCase):
             current["next_action"] = "PRESENT_FINAL_REPORT"
             current["runner_failure"] = {"source": "github_checks", "reason": "status_unavailable"}
             rh.write_json(root / "CURRENT.json", current)
-            self.assertEqual(rh.validate_task(target, "001_feature"), [])
+            self.assertEqual(rh.validate_task(target, "repo--feature"), [])
             self.assertEqual(rh.load_json(root / "CURRENT.json")["ci_status"], "PENDING")
 
     def test_remote_reviewer_pass_and_revise_transactions_validate(self) -> None:
@@ -1515,47 +1576,47 @@ class ReviewedHandoffTests(unittest.TestCase):
         with tmp:
             self.freeze_and_start(target)
             self.write_result(target, commit="impl-pass")
-            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
             current = self.remote_write_review_transaction(target, decision="PASS", body="Plan satisfied.")
             self.assertEqual(current["state"], "AWAIT_HUMAN_DECISION")
             self.assertEqual(current["human_gate_reason"], "PASS")
-            self.assertEqual(rh.validate_task(target, "001_feature"), [])
+            self.assertEqual(rh.validate_task(target, "repo--feature"), [])
 
         tmp, target = self.make_project()
         with tmp:
             self.freeze_and_start(target)
             self.write_result(target, commit="impl-revise")
-            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
             current = self.remote_write_review_transaction(target, decision="REVISE", body="Needs minimal repair.")
             self.assertEqual(current["state"], "REVISE")
             self.assertEqual(current["review_round"], 1)
-            self.assertEqual(rh.validate_task(target, "001_feature"), [])
+            self.assertEqual(rh.validate_task(target, "repo--feature"), [])
 
-            rh.apply_transition(target, "001_feature", expected_state="REVISE", next_state="EXECUTING")
+            rh.apply_transition(target, "repo--feature", expected_state="REVISE", next_state="EXECUTING")
             self.write_result(target, commit="impl-revise-2")
-            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
             current = self.remote_write_review_transaction(target, decision="REVISE", body="Still not closed.")
             self.assertEqual(current["state"], "AWAIT_HUMAN_DECISION")
             self.assertTrue(current["review_limit_reached"])
             self.assertEqual(current["human_gate_reason"], "REVIEW_LIMIT")
-            self.assertEqual(rh.validate_task(target, "001_feature"), [])
+            self.assertEqual(rh.validate_task(target, "repo--feature"), [])
 
     def test_remote_planner_transactions_validate_revision_and_human_gate(self) -> None:
         tmp, target = self.make_project()
         with tmp:
             self.freeze_and_start(target)
-            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="NEEDS_GPT_PLANNER")
+            rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="NEEDS_GPT_PLANNER")
             current = self.remote_write_planner_transaction(target)
             self.assertEqual(current["state"], "PLAN_FROZEN")
             self.assertEqual(current["plan_revision"], 1)
-            self.assertEqual(rh.validate_task(target, "001_feature"), [])
+            self.assertEqual(rh.validate_task(target, "repo--feature"), [])
 
-            rh.apply_transition(target, "001_feature", expected_state="PLAN_FROZEN", next_state="EXECUTING")
-            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="NEEDS_GPT_PLANNER")
+            rh.apply_transition(target, "repo--feature", expected_state="PLAN_FROZEN", next_state="EXECUTING")
+            rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="NEEDS_GPT_PLANNER")
             current = self.remote_write_planner_transaction(target, needs_user=True)
             self.assertEqual(current["state"], "AWAIT_HUMAN_DECISION")
             self.assertEqual(current["human_gate_reason"], "PLANNER_DECISION")
-            self.assertEqual(rh.validate_task(target, "001_feature"), [])
+            self.assertEqual(rh.validate_task(target, "repo--feature"), [])
 
     def test_generic_reviewed_handoff_prompts_do_not_contain_ai_skills_policy(self) -> None:
         checked = [
@@ -1579,18 +1640,18 @@ class ReviewedHandoffTests(unittest.TestCase):
     def test_result_frontmatter_cannot_override_current_ci_truth(self) -> None:
         tmp, target = self.make_project()
         with tmp:
-            root = rh.task_root(target, "001_feature")
+            root = rh.task_root(target, "repo--feature")
             current = rh.load_json(root / "CURRENT.json")
             current["ci_required"] = True
             current["ci_status"] = "PENDING"
             rh.write_json(root / "CURRENT.json", current)
             self.freeze_and_start(target)
             self.write_result(target, commit="impl-ci", ci_status="PENDING")
-            result_path = rh.result_root(target, "001_feature") / "RESULT.md"
+            result_path = rh.result_root(target, "repo--feature") / "RESULT.md"
             text = result_path.read_text(encoding="utf-8")
             result_path.write_text(text.replace("implementation_commit: impl-ci", "implementation_commit: impl-ci\nci_status: PASS"), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "WAITING_FOR_CI"):
-                rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+                rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
             current = rh.load_json(root / "CURRENT.json")
             self.assertEqual(current["ci_status"], "PENDING")
 
@@ -1599,89 +1660,89 @@ class ReviewedHandoffTests(unittest.TestCase):
         with tmp:
             self.freeze_and_start(target)
             self.write_result(target, commit="impl-1")
-            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
-            current = rh.record_review(target, "001_feature", decision="REVISE", body="Fix regression.")
+            rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            current = rh.record_review(target, "repo--feature", decision="REVISE", body="Fix regression.")
             self.assertEqual(current["state"], "REVISE")
             self.assertEqual(current["review_round"], 1)
-            rh.apply_transition(target, "001_feature", expected_state="REVISE", next_state="EXECUTING")
+            rh.apply_transition(target, "repo--feature", expected_state="REVISE", next_state="EXECUTING")
             self.write_result(target, commit="impl-2")
-            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
             with self.assertRaisesRegex(ValueError, "FINAL_REPORT"):
-                rh.record_review(target, "001_feature", decision="REVISE", body="Still broken.")
+                rh.record_review(target, "repo--feature", decision="REVISE", body="Still broken.")
             self.write_final_report(target)
-            current = rh.record_review(target, "001_feature", decision="REVISE", body="Still broken.")
+            current = rh.record_review(target, "repo--feature", decision="REVISE", body="Still broken.")
             self.assertEqual(current["state"], "AWAIT_HUMAN_DECISION")
             self.assertTrue(current["review_limit_reached"])
             self.assertEqual(current["review_round"], 2)
             with self.assertRaisesRegex(ValueError, "READY_FOR_GPT_REVIEW"):
-                rh.record_review(target, "001_feature", decision="REVISE", body="third")
-            self.assertEqual(rh.validate_task(target, "001_feature"), [])
+                rh.record_review(target, "repo--feature", decision="REVISE", body="third")
+            self.assertEqual(rh.validate_task(target, "repo--feature"), [])
 
     def test_blocked_review_requires_final_report(self) -> None:
         tmp, target = self.make_project()
         with tmp:
             self.freeze_and_start(target)
             self.write_result(target)
-            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
             with self.assertRaisesRegex(ValueError, "FINAL_REPORT"):
-                rh.record_review(target, "001_feature", decision="BLOCKED", body="External dependency unavailable.")
+                rh.record_review(target, "repo--feature", decision="BLOCKED", body="External dependency unavailable.")
             self.write_final_report(target)
-            current = rh.record_review(target, "001_feature", decision="BLOCKED", body="External dependency unavailable.")
+            current = rh.record_review(target, "repo--feature", decision="BLOCKED", body="External dependency unavailable.")
             self.assertEqual(current["state"], "BLOCKED")
-            self.assertEqual(rh.validate_task(target, "001_feature"), [])
+            self.assertEqual(rh.validate_task(target, "repo--feature"), [])
 
     def test_manual_pass_transition_cannot_bypass_review_record(self) -> None:
         tmp, target = self.make_project()
         with tmp:
             self.freeze_and_start(target)
             self.write_result(target)
-            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
             with self.assertRaisesRegex(ValueError, "review record"):
-                rh.apply_transition(target, "001_feature", expected_state="READY_FOR_GPT_REVIEW", next_state="PASS")
+                rh.apply_transition(target, "repo--feature", expected_state="READY_FOR_GPT_REVIEW", next_state="PASS")
 
     def test_pass_requires_final_report_before_human_gate(self) -> None:
         tmp, target = self.make_project()
         with tmp:
             self.freeze_and_start(target)
             self.write_result(target)
-            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
-            current = rh.record_review(target, "001_feature", decision="PASS", body="Plan satisfied.")
+            rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            current = rh.record_review(target, "repo--feature", decision="PASS", body="Plan satisfied.")
             self.assertEqual(current["state"], "PASS")
             with self.assertRaisesRegex(ValueError, "FINAL_REPORT"):
-                rh.apply_transition(target, "001_feature", expected_state="PASS", next_state="AWAIT_HUMAN_DECISION")
+                rh.apply_transition(target, "repo--feature", expected_state="PASS", next_state="AWAIT_HUMAN_DECISION")
             self.write_final_report(target)
-            current = rh.apply_transition(target, "001_feature", expected_state="PASS", next_state="AWAIT_HUMAN_DECISION")
+            current = rh.apply_transition(target, "repo--feature", expected_state="PASS", next_state="AWAIT_HUMAN_DECISION")
             self.assertEqual(current["state"], "AWAIT_HUMAN_DECISION")
-            self.assertEqual(rh.validate_task(target, "001_feature"), [])
+            self.assertEqual(rh.validate_task(target, "repo--feature"), [])
 
     def test_all_terminal_states_require_final_report(self) -> None:
         tmp, target = self.make_project()
         with tmp:
-            root = rh.task_root(target, "001_feature")
+            root = rh.task_root(target, "repo--feature")
             self.freeze_and_start(target)
             current_path = root / "CURRENT.json"
             current = rh.load_json(current_path)
             current["state"] = "BLOCKED"
             current["runner_failure"] = {"event": "test"}
             rh.write_json(current_path, current)
-            self.assertTrue(any("FINAL_REPORT" in error for error in rh.validate_task(target, "001_feature")))
+            self.assertTrue(any("FINAL_REPORT" in error for error in rh.validate_task(target, "repo--feature")))
             self.write_final_report(target)
-            self.assertEqual(rh.validate_task(target, "001_feature"), [])
+            self.assertEqual(rh.validate_task(target, "repo--feature"), [])
 
     def test_only_one_scheduled_plan_revision_is_allowed(self) -> None:
         tmp, target = self.make_project()
         with tmp:
             self.freeze_and_start(target)
-            current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
-            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="NEEDS_GPT_PLANNER")
-            current = rh.apply_transition(target, "001_feature", expected_state="NEEDS_GPT_PLANNER", next_state="PLAN_FROZEN")
+            current_path = rh.task_root(target, "repo--feature") / "CURRENT.json"
+            rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="NEEDS_GPT_PLANNER")
+            current = rh.apply_transition(target, "repo--feature", expected_state="NEEDS_GPT_PLANNER", next_state="PLAN_FROZEN")
             self.assertEqual(current["plan_revision"], 1)
-            rh.apply_transition(target, "001_feature", expected_state="PLAN_FROZEN", next_state="EXECUTING")
-            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="NEEDS_GPT_PLANNER")
-            plan = rh.plan_transition(target, "001_feature")
+            rh.apply_transition(target, "repo--feature", expected_state="PLAN_FROZEN", next_state="EXECUTING")
+            rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="NEEDS_GPT_PLANNER")
+            plan = rh.plan_transition(target, "repo--feature")
             self.assertEqual(plan["next_state"], "AWAIT_HUMAN_DECISION")
             self.write_final_report(target)
-            current = rh.apply_transition(target, "001_feature", expected_state="NEEDS_GPT_PLANNER", next_state="AWAIT_HUMAN_DECISION")
+            current = rh.apply_transition(target, "repo--feature", expected_state="NEEDS_GPT_PLANNER", next_state="AWAIT_HUMAN_DECISION")
             self.assertEqual(current["state"], "AWAIT_HUMAN_DECISION")
 
     def test_reviewed_handoff_contains_no_agent_flow_provenance_machinery(self) -> None:
@@ -1693,7 +1754,7 @@ class ReviewedHandoffTests(unittest.TestCase):
             self.assertFalse(flags["requirement_ledger"])
             self.assertFalse(flags["role_receipt_graph"])
             self.assertFalse(flags["stable_review_snapshot"])
-            current = rh.load_json(rh.task_root(target, "001_feature") / "CURRENT.json")
+            current = rh.load_json(rh.task_root(target, "repo--feature") / "CURRENT.json")
             forbidden = {
                 "review_target_id",
                 "request_nonce",
@@ -1711,30 +1772,30 @@ class ReviewedHandoffTests(unittest.TestCase):
         tmp, target = self.make_project()
         with tmp:
             self.write_plan(target)
-            rh.apply_transition(target, "001_feature", expected_state="PLAN_REQUESTED", next_state="PLAN_FROZEN")
-            rh.apply_transition(target, "001_feature", expected_state="PLAN_FROZEN", next_state="EXECUTING")
+            rh.apply_transition(target, "repo--feature", expected_state="PLAN_REQUESTED", next_state="PLAN_FROZEN")
+            rh.apply_transition(target, "repo--feature", expected_state="PLAN_FROZEN", next_state="EXECUTING")
             self.write_result(target, commit="impl-1")
-            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
-            rh.record_review(target, "001_feature", decision="REVISE", body="Plan item not complete.")
-            rh.apply_transition(target, "001_feature", expected_state="REVISE", next_state="EXECUTING")
+            rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            rh.record_review(target, "repo--feature", decision="REVISE", body="Plan item not complete.")
+            rh.apply_transition(target, "repo--feature", expected_state="REVISE", next_state="EXECUTING")
             self.write_result(target, commit="impl-2")
-            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
-            rh.record_review(target, "001_feature", decision="PASS", body="Plan satisfied.")
+            rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            rh.record_review(target, "repo--feature", decision="PASS", body="Plan satisfied.")
             self.write_final_report(target)
-            final = rh.apply_transition(target, "001_feature", expected_state="PASS", next_state="AWAIT_HUMAN_DECISION")
+            final = rh.apply_transition(target, "repo--feature", expected_state="PASS", next_state="AWAIT_HUMAN_DECISION")
             self.assertEqual(final["state"], "AWAIT_HUMAN_DECISION")
-            self.assertEqual(rh.validate_task(target, "001_feature"), [])
+            self.assertEqual(rh.validate_task(target, "repo--feature"), [])
 
     def test_material_planner_question_replans_once_then_resumes(self) -> None:
         tmp, target = self.make_project()
         with tmp:
             self.write_plan(target)
-            rh.apply_transition(target, "001_feature", expected_state="PLAN_REQUESTED", next_state="PLAN_FROZEN")
-            rh.apply_transition(target, "001_feature", expected_state="PLAN_FROZEN", next_state="EXECUTING")
-            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="NEEDS_GPT_PLANNER")
-            current = rh.apply_transition(target, "001_feature", expected_state="NEEDS_GPT_PLANNER", next_state="PLAN_FROZEN")
+            rh.apply_transition(target, "repo--feature", expected_state="PLAN_REQUESTED", next_state="PLAN_FROZEN")
+            rh.apply_transition(target, "repo--feature", expected_state="PLAN_FROZEN", next_state="EXECUTING")
+            rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="NEEDS_GPT_PLANNER")
+            current = rh.apply_transition(target, "repo--feature", expected_state="NEEDS_GPT_PLANNER", next_state="PLAN_FROZEN")
             self.assertEqual(current["plan_revision"], 1)
-            resumed = rh.apply_transition(target, "001_feature", expected_state="PLAN_FROZEN", next_state="EXECUTING")
+            resumed = rh.apply_transition(target, "repo--feature", expected_state="PLAN_FROZEN", next_state="EXECUTING")
             self.assertEqual(resumed["state"], "EXECUTING")
 
     def test_core_validate_detects_review_round_drift(self) -> None:
@@ -1742,9 +1803,9 @@ class ReviewedHandoffTests(unittest.TestCase):
         with tmp:
             self.freeze_and_start(target)
             self.write_result(target)
-            rh.apply_transition(target, "001_feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
-            rh.record_review(target, "001_feature", decision="REVISE", body="repair")
-            current_path = rh.task_root(target, "001_feature") / "CURRENT.json"
+            rh.apply_transition(target, "repo--feature", expected_state="EXECUTING", next_state="READY_FOR_GPT_REVIEW")
+            rh.record_review(target, "repo--feature", decision="REVISE", body="repair")
+            current_path = rh.task_root(target, "repo--feature") / "CURRENT.json"
             current = rh.load_json(current_path)
             current["review_round"] = 0
             rh.write_json(current_path, current)
