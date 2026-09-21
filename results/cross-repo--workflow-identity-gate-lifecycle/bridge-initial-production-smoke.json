@@ -1,0 +1,190 @@
+{
+  "schema": "BRIDGE_PHASE3_PRODUCTION_IDENTITY_SMOKE_V1",
+  "created_at": "2026-09-21T01:31:30.975654+00:00",
+  "source": "YuukiAS/GPT_Codex_AI_Bridge_Kit main",
+  "head": "62b7116e273ef96a312e7911a01c9733568c9c9d",
+  "expected_commit": "62b7116e273ef96a312e7911a01c9733568c9c9d",
+  "expected_version": "0.8.4",
+  "version_payload": {
+    "metadata_version": "0.8.4",
+    "module_version": "0.8.3"
+  },
+  "project_paths": {
+    "main_smoke_project": "/tmp/phase3-production-identity-smoke-2026-09-21/bridge-smoke-project",
+    "legacy_project": "/tmp/phase3-production-identity-smoke-2026-09-21/bridge-legacy-project",
+    "malformed_project": "/tmp/phase3-production-identity-smoke-2026-09-21/bridge-malformed-project"
+  },
+  "commands": [
+    {
+      "label": "import-version",
+      "args": [
+        "/tmp/phase3-production-identity-smoke-2026-09-21/bridge-venv/bin/python",
+        "-c",
+        "import importlib.metadata as m, ai_bridge_kit, json; print(json.dumps({'metadata_version': m.version('gpt-codex-ai-bridge-kit'), 'module_version': ai_bridge_kit.__version__}))"
+      ],
+      "returncode": 0,
+      "output_tail": "{\"metadata_version\": \"0.8.4\", \"module_version\": \"0.8.3\"}"
+    },
+    {
+      "label": "ai-bridge init",
+      "args": [
+        "/tmp/phase3-production-identity-smoke-2026-09-21/bridge-venv/bin/ai-bridge",
+        "init",
+        "--target",
+        "/tmp/phase3-production-identity-smoke-2026-09-21/bridge-smoke-project"
+      ],
+      "returncode": 0,
+      "output_tail": "COPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-smoke-project/prompts/templates/REVIEW_TEMPLATE.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-smoke-project/results/README.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-smoke-project/results/ARTIFACT_MANIFEST_TEMPLATE.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-smoke-project/docs/notes/NOTE_TEMPLATE.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-smoke-project/docs/wiki/README.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-smoke-project/docs/wiki/index.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-smoke-project/docs/wiki/log.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-smoke-project/docs/wiki/papers/PAPER_TEMPLATE.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-smoke-project/docs/wiki/concepts/CONCEPT_TEMPLATE.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-smoke-project/docs/wiki/synthesis/DISCUSSION_TEMPLATE.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-smoke-project/docs/wiki/gaps/HYPOTHESES.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-smoke-project/docs/wiki/gaps/QUESTIONS.md\nCREATE AGENTS.md with project scaffold and handoff protocol: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-smoke-project/AGENTS.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-smoke-project/.agents/skills/agent-task-executor/SKILL.md\n\nNext:\n- ChatGPT/GitHub MCP should read AGENTS.md and prompts/CHATGPT_RULES.md.\n- Codex should read AGENTS.md, prompts/AGENT_RULES.md, and the selected task.\n- Put executable work in prompts/tasks/<task_key>.md.\n- Use semantic <scope-token>--<goal-token> task keys for new tasks.\n- Put execution reports and artifacts in results/<task_key>/.\n- Put reusable research knowledge in docs/wiki/; reference it from tasks when needed.\n\nHost policy:\nCodex Home: /overflow/htzhu/mingcheng_new/.codex-homes/Longleaf_Connection_Bridge\nconfig.toml exists: true\napproval_policy: \"on-request\" (configured)\nsandbox_mode: \"workspace-write\" (configured)\napprovals_reviewer: \"auto_review\" (configured)\nsandbox_workspace_write.network_access: true (configured)\nfeatures.default_mode_request_user_input: true (configured)\nfeatures.memories: true (configured)\nglobal AGENTS managed block: drifted\nnarrative_language: zh-CN (configured)\nartifact_language_policy: repository/task controlled\nai-bridge-global.rules: drifted\ntrusted ai-bridge executable: /overflow/htzhu/mingcheng_new/.local/bin/ai-bridge\nproject override awareness: none found in current repository\noverall state: drifted\nRun: ai-bridge host validate"
+    },
+    {
+      "label": "ai-bridge validate",
+      "args": [
+        "/tmp/phase3-production-identity-smoke-2026-09-21/bridge-venv/bin/ai-bridge",
+        "validate",
+        "--target",
+        "/tmp/phase3-production-identity-smoke-2026-09-21/bridge-smoke-project"
+      ],
+      "returncode": 0,
+      "output_tail": "Validating handoff workspace: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-smoke-project\nStrict mode: False\n\nOK   AGENTS.md exists\nOK   prompts/AGENT_RULES.md exists\nOK   prompts/CHATGPT_RULES.md exists\nOK   prompts/tasks/ exists\nOK   docs/notes/ exists\nOK   results/ exists\nOK   docs/wiki/ exists\nOK   docs/wiki/index.md exists\nOK   .agents/skills/agent-task-executor/SKILL.md frontmatter fields present\nOK   prompts/HANDOFF_ROLES.md exists\nOK   prompts/HANDOFF_STATE_MACHINE.md exists\nOK   prompts/CONTROLLER_TASK_PROTOCOL.md exists\nOK   prompts/MECHANISM_GATE_TEMPLATE.md exists\nWARN no new-style task files found in prompts/tasks/\n\nPASSED: 0 errors, 1 warning(s)"
+    },
+    {
+      "label": "reviewed-handoff task init repo--example",
+      "args": [
+        "/tmp/phase3-production-identity-smoke-2026-09-21/bridge-venv/bin/ai-bridge",
+        "reviewed-handoff",
+        "task",
+        "init",
+        "--target",
+        "/tmp/phase3-production-identity-smoke-2026-09-21/bridge-smoke-project",
+        "--task-key",
+        "repo--example",
+        "--objective",
+        "Smoke semantic task key creation"
+      ],
+      "returncode": 2,
+      "output_tail": "usage: ai-bridge reviewed-handoff [-h]\n                                  {install,status,validate,task,transition,review,human,prompt} ...\nai-bridge reviewed-handoff: error: Review is not installed; run reviewed-handoff install first"
+    },
+    {
+      "label": "ai-bridge validate after reviewed task init",
+      "args": [
+        "/tmp/phase3-production-identity-smoke-2026-09-21/bridge-venv/bin/ai-bridge",
+        "validate",
+        "--target",
+        "/tmp/phase3-production-identity-smoke-2026-09-21/bridge-smoke-project"
+      ],
+      "returncode": 0,
+      "output_tail": "Validating handoff workspace: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-smoke-project\nStrict mode: False\n\nOK   AGENTS.md exists\nOK   prompts/AGENT_RULES.md exists\nOK   prompts/CHATGPT_RULES.md exists\nOK   prompts/tasks/ exists\nOK   docs/notes/ exists\nOK   results/ exists\nOK   docs/wiki/ exists\nOK   docs/wiki/index.md exists\nOK   .agents/skills/agent-task-executor/SKILL.md frontmatter fields present\nOK   prompts/HANDOFF_ROLES.md exists\nOK   prompts/HANDOFF_STATE_MACHINE.md exists\nOK   prompts/CONTROLLER_TASK_PROTOCOL.md exists\nOK   prompts/MECHANISM_GATE_TEMPLATE.md exists\nWARN no new-style task files found in prompts/tasks/\n\nPASSED: 0 errors, 1 warning(s)"
+    },
+    {
+      "label": "legacy init",
+      "args": [
+        "/tmp/phase3-production-identity-smoke-2026-09-21/bridge-venv/bin/ai-bridge",
+        "init",
+        "--target",
+        "/tmp/phase3-production-identity-smoke-2026-09-21/bridge-legacy-project"
+      ],
+      "returncode": 0,
+      "output_tail": "COPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-legacy-project/prompts/templates/REVIEW_TEMPLATE.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-legacy-project/results/README.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-legacy-project/results/ARTIFACT_MANIFEST_TEMPLATE.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-legacy-project/docs/notes/NOTE_TEMPLATE.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-legacy-project/docs/wiki/README.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-legacy-project/docs/wiki/index.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-legacy-project/docs/wiki/log.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-legacy-project/docs/wiki/papers/PAPER_TEMPLATE.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-legacy-project/docs/wiki/concepts/CONCEPT_TEMPLATE.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-legacy-project/docs/wiki/synthesis/DISCUSSION_TEMPLATE.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-legacy-project/docs/wiki/gaps/HYPOTHESES.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-legacy-project/docs/wiki/gaps/QUESTIONS.md\nCREATE AGENTS.md with project scaffold and handoff protocol: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-legacy-project/AGENTS.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-legacy-project/.agents/skills/agent-task-executor/SKILL.md\n\nNext:\n- ChatGPT/GitHub MCP should read AGENTS.md and prompts/CHATGPT_RULES.md.\n- Codex should read AGENTS.md, prompts/AGENT_RULES.md, and the selected task.\n- Put executable work in prompts/tasks/<task_key>.md.\n- Use semantic <scope-token>--<goal-token> task keys for new tasks.\n- Put execution reports and artifacts in results/<task_key>/.\n- Put reusable research knowledge in docs/wiki/; reference it from tasks when needed.\n\nHost policy:\nCodex Home: /overflow/htzhu/mingcheng_new/.codex-homes/Longleaf_Connection_Bridge\nconfig.toml exists: true\napproval_policy: \"on-request\" (configured)\nsandbox_mode: \"workspace-write\" (configured)\napprovals_reviewer: \"auto_review\" (configured)\nsandbox_workspace_write.network_access: true (configured)\nfeatures.default_mode_request_user_input: true (configured)\nfeatures.memories: true (configured)\nglobal AGENTS managed block: drifted\nnarrative_language: zh-CN (configured)\nartifact_language_policy: repository/task controlled\nai-bridge-global.rules: drifted\ntrusted ai-bridge executable: /overflow/htzhu/mingcheng_new/.local/bin/ai-bridge\nproject override awareness: none found in current repository\noverall state: drifted\nRun: ai-bridge host validate"
+    },
+    {
+      "label": "legacy validate",
+      "args": [
+        "/tmp/phase3-production-identity-smoke-2026-09-21/bridge-venv/bin/ai-bridge",
+        "validate",
+        "--target",
+        "/tmp/phase3-production-identity-smoke-2026-09-21/bridge-legacy-project"
+      ],
+      "returncode": 0,
+      "output_tail": "Validating handoff workspace: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-legacy-project\nStrict mode: False\n\nOK   AGENTS.md exists\nOK   prompts/AGENT_RULES.md exists\nOK   prompts/CHATGPT_RULES.md exists\nOK   prompts/tasks/ exists\nOK   docs/notes/ exists\nOK   results/ exists\nOK   docs/wiki/ exists\nOK   docs/wiki/index.md exists\nOK   .agents/skills/agent-task-executor/SKILL.md frontmatter fields present\nOK   prompts/HANDOFF_ROLES.md exists\nOK   prompts/HANDOFF_STATE_MACHINE.md exists\nOK   prompts/CONTROLLER_TASK_PROTOCOL.md exists\nOK   prompts/MECHANISM_GATE_TEMPLATE.md exists\nOK   prompts/tasks/001_legacy.md frontmatter fields present\n\nPASSED: 0 errors, 0 warning(s)"
+    },
+    {
+      "label": "malformed init",
+      "args": [
+        "/tmp/phase3-production-identity-smoke-2026-09-21/bridge-venv/bin/ai-bridge",
+        "init",
+        "--target",
+        "/tmp/phase3-production-identity-smoke-2026-09-21/bridge-malformed-project"
+      ],
+      "returncode": 0,
+      "output_tail": "COPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-malformed-project/prompts/templates/REVIEW_TEMPLATE.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-malformed-project/results/README.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-malformed-project/results/ARTIFACT_MANIFEST_TEMPLATE.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-malformed-project/docs/notes/NOTE_TEMPLATE.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-malformed-project/docs/wiki/README.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-malformed-project/docs/wiki/index.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-malformed-project/docs/wiki/log.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-malformed-project/docs/wiki/papers/PAPER_TEMPLATE.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-malformed-project/docs/wiki/concepts/CONCEPT_TEMPLATE.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-malformed-project/docs/wiki/synthesis/DISCUSSION_TEMPLATE.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-malformed-project/docs/wiki/gaps/HYPOTHESES.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-malformed-project/docs/wiki/gaps/QUESTIONS.md\nCREATE AGENTS.md with project scaffold and handoff protocol: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-malformed-project/AGENTS.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-malformed-project/.agents/skills/agent-task-executor/SKILL.md\n\nNext:\n- ChatGPT/GitHub MCP should read AGENTS.md and prompts/CHATGPT_RULES.md.\n- Codex should read AGENTS.md, prompts/AGENT_RULES.md, and the selected task.\n- Put executable work in prompts/tasks/<task_key>.md.\n- Use semantic <scope-token>--<goal-token> task keys for new tasks.\n- Put execution reports and artifacts in results/<task_key>/.\n- Put reusable research knowledge in docs/wiki/; reference it from tasks when needed.\n\nHost policy:\nCodex Home: /overflow/htzhu/mingcheng_new/.codex-homes/Longleaf_Connection_Bridge\nconfig.toml exists: true\napproval_policy: \"on-request\" (configured)\nsandbox_mode: \"workspace-write\" (configured)\napprovals_reviewer: \"auto_review\" (configured)\nsandbox_workspace_write.network_access: true (configured)\nfeatures.default_mode_request_user_input: true (configured)\nfeatures.memories: true (configured)\nglobal AGENTS managed block: drifted\nnarrative_language: zh-CN (configured)\nartifact_language_policy: repository/task controlled\nai-bridge-global.rules: drifted\ntrusted ai-bridge executable: /overflow/htzhu/mingcheng_new/.local/bin/ai-bridge\nproject override awareness: none found in current repository\noverall state: drifted\nRun: ai-bridge host validate"
+    },
+    {
+      "label": "malformed validate",
+      "args": [
+        "/tmp/phase3-production-identity-smoke-2026-09-21/bridge-venv/bin/ai-bridge",
+        "validate",
+        "--target",
+        "/tmp/phase3-production-identity-smoke-2026-09-21/bridge-malformed-project"
+      ],
+      "returncode": 1,
+      "output_tail": "Validating handoff workspace: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-malformed-project\nStrict mode: False\n\nOK   AGENTS.md exists\nOK   prompts/AGENT_RULES.md exists\nOK   prompts/CHATGPT_RULES.md exists\nOK   prompts/tasks/ exists\nOK   docs/notes/ exists\nOK   results/ exists\nOK   docs/wiki/ exists\nOK   docs/wiki/index.md exists\nOK   .agents/skills/agent-task-executor/SKILL.md frontmatter fields present\nOK   prompts/HANDOFF_ROLES.md exists\nOK   prompts/HANDOFF_STATE_MACHINE.md exists\nOK   prompts/CONTROLLER_TASK_PROTOCOL.md exists\nOK   prompts/MECHANISM_GATE_TEMPLATE.md exists\nOK   prompts/tasks/repo---bad.md frontmatter fields present\nERROR /tmp/phase3-production-identity-smoke-2026-09-21/bridge-malformed-project/prompts/tasks/repo---bad.md: filename task_key must be either legacy <id>_<1-3-word_slug> or semantic <scope-token>--<goal-token>\n\nFAILED: 1 error(s), 0 warning(s)"
+    },
+    {
+      "label": "review project ai-bridge init",
+      "args": [
+        "/tmp/phase3-production-identity-smoke-2026-09-21/bridge-venv/bin/ai-bridge",
+        "init",
+        "--target",
+        "/tmp/phase3-production-identity-smoke-2026-09-21/bridge-review-project"
+      ],
+      "returncode": 0,
+      "output_tail": "COPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-review-project/prompts/templates/REVIEW_TEMPLATE.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-review-project/results/README.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-review-project/results/ARTIFACT_MANIFEST_TEMPLATE.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-review-project/docs/notes/NOTE_TEMPLATE.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-review-project/docs/wiki/README.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-review-project/docs/wiki/index.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-review-project/docs/wiki/log.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-review-project/docs/wiki/papers/PAPER_TEMPLATE.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-review-project/docs/wiki/concepts/CONCEPT_TEMPLATE.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-review-project/docs/wiki/synthesis/DISCUSSION_TEMPLATE.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-review-project/docs/wiki/gaps/HYPOTHESES.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-review-project/docs/wiki/gaps/QUESTIONS.md\nCREATE AGENTS.md with project scaffold and handoff protocol: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-review-project/AGENTS.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-review-project/.agents/skills/agent-task-executor/SKILL.md\n\nNext:\n- ChatGPT/GitHub MCP should read AGENTS.md and prompts/CHATGPT_RULES.md.\n- Codex should read AGENTS.md, prompts/AGENT_RULES.md, and the selected task.\n- Put executable work in prompts/tasks/<task_key>.md.\n- Use semantic <scope-token>--<goal-token> task keys for new tasks.\n- Put execution reports and artifacts in results/<task_key>/.\n- Put reusable research knowledge in docs/wiki/; reference it from tasks when needed.\n\nHost policy:\nCodex Home: /overflow/htzhu/mingcheng_new/.codex-homes/Longleaf_Connection_Bridge\nconfig.toml exists: true\napproval_policy: \"on-request\" (configured)\nsandbox_mode: \"workspace-write\" (configured)\napprovals_reviewer: \"auto_review\" (configured)\nsandbox_workspace_write.network_access: true (configured)\nfeatures.default_mode_request_user_input: true (configured)\nfeatures.memories: true (configured)\nglobal AGENTS managed block: drifted\nnarrative_language: zh-CN (configured)\nartifact_language_policy: repository/task controlled\nai-bridge-global.rules: drifted\ntrusted ai-bridge executable: /overflow/htzhu/mingcheng_new/.local/bin/ai-bridge\nproject override awareness: none found in current repository\noverall state: drifted\nRun: ai-bridge host validate"
+    },
+    {
+      "label": "reviewed-handoff install prerequisite",
+      "args": [
+        "/tmp/phase3-production-identity-smoke-2026-09-21/bridge-venv/bin/ai-bridge",
+        "reviewed-handoff",
+        "install",
+        "--target",
+        "/tmp/phase3-production-identity-smoke-2026-09-21/bridge-review-project"
+      ],
+      "returncode": 0,
+      "output_tail": "COPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-review-project/automation/reviewed_handoff/README.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-review-project/automation/reviewed_handoff/schema.json\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-review-project/automation/reviewed_handoff/prompts/PLANNER.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-review-project/automation/reviewed_handoff/prompts/REVIEWER_SCHEDULED_TASK.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-review-project/automation/reviewed_handoff/prompts/CODEX_EXECUTOR.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-review-project/automation/reviewed_handoff/templates/REQUEST.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-review-project/automation/reviewed_handoff/templates/PLAN.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-review-project/automation/reviewed_handoff/templates/RESULT.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-review-project/automation/reviewed_handoff/templates/REVIEW.md\nCOPY create: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-review-project/automation/reviewed_handoff/templates/FINAL_REPORT.md\n\nReview: configured\nTarget: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-review-project\nTasks: 0"
+    },
+    {
+      "label": "reviewed-handoff task init repo--example after install",
+      "args": [
+        "/tmp/phase3-production-identity-smoke-2026-09-21/bridge-venv/bin/ai-bridge",
+        "reviewed-handoff",
+        "task",
+        "init",
+        "--target",
+        "/tmp/phase3-production-identity-smoke-2026-09-21/bridge-review-project",
+        "--task-key",
+        "repo--example",
+        "--objective",
+        "Smoke semantic task key creation"
+      ],
+      "returncode": 0,
+      "output_tail": "CREATE /tmp/phase3-production-identity-smoke-2026-09-21/bridge-review-project/automation/reviewed_handoff/tasks/repo--example/REQUEST.md\nCREATE /tmp/phase3-production-identity-smoke-2026-09-21/bridge-review-project/automation/reviewed_handoff/tasks/repo--example/CURRENT.json\nDIR /tmp/phase3-production-identity-smoke-2026-09-21/bridge-review-project/results/repo--example"
+    },
+    {
+      "label": "reviewed-handoff validate after task init",
+      "args": [
+        "/tmp/phase3-production-identity-smoke-2026-09-21/bridge-venv/bin/ai-bridge",
+        "reviewed-handoff",
+        "validate",
+        "--target",
+        "/tmp/phase3-production-identity-smoke-2026-09-21/bridge-review-project"
+      ],
+      "returncode": 0,
+      "output_tail": "Review: configured\nTarget: /tmp/phase3-production-identity-smoke-2026-09-21/bridge-review-project\nTasks: 1\nReview validation passed."
+    }
+  ],
+  "errors": [
+    "module __version__ 0.8.3 != 0.8.4"
+  ],
+  "status": "FAIL",
+  "diagnostics": {
+    "review_install_then_task_init": {
+      "project": "/tmp/phase3-production-identity-smoke-2026-09-21/bridge-review-project",
+      "init_returncode": 0,
+      "install_returncode": 0,
+      "task_init_returncode": 0,
+      "validate_returncode": 0
+    },
+    "direct_task_init_without_review_install": "Prerequisite failure: Review is not installed after Lite-only ai-bridge init."
+  },
+  "updated_at": "2026-09-21T01:32:12.562567+00:00"
+}
