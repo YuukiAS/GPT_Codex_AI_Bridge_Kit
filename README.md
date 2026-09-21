@@ -6,8 +6,8 @@
 
 这个仓库的原则是：**默认保持简单，需要什么再加什么。** 普通项目只需要机器级规则和基础交接；只有确实需要时，才启用独立复核、高风险闭环、邮件通知、Overleaf 同步或视觉复核。
 
-当前候选版本：`0.8.3`（057 task branch candidate；这不是 GitHub release/tag
-或 main merge 声明）。
+当前集成候选版本：`0.8.4`（workflow identity task branch candidate；这不是
+GitHub release/tag 或 main merge 声明）。
 
 ## 三档 workflow
 
@@ -61,7 +61,8 @@ Review 使用 `ai-bridge reviewed-handoff ...`，Control 使用
 - `0.8.0`：新增 Persistent Run 项目能力。它不是第四档 workflow，而是让明确授权的长期 Goal 使用 canonical `tmux` session、项目原生 lock / heartbeat / stage-state / checkpoint / resume evidence 和用户可见 kickoff 文本来启动或恢复；不新增 Host Policy 全局 allow、不自动 fallback 到 `setsid` / `nohup` / 裸后台 `&` / `screen` / `sudo`，也不改变原 Goal 的完成标准。
 - `0.8.1`：加固 GPT task authoring 和 Codex startup preflight。GPT 必须把 overnight / unattended / survive-disconnect 这类 execution lifetime 需求和 Lite / Review / Control workflow 分开判断；已安装 Persistent Run 的仓库必须把合同字段写进 Goal/task，后续 next-task 也必须 carry forward。Codex 则必须在可预见的 Persistent Run kickoff、private external transfer、paid/external call、deployment 或 resource allocation 前提前请求 bounded 当前用户授权；仓库内 Goal/Plan/contract 只证明 frozen scope，不等于当前用户授权。
 - `0.8.2`：收窄 Text Review 付费复核 contract，允许 consumer workflow 在已有默认预算内冻结更严格的 call count、campaign ceiling、per-call ceiling、retry、model/pricing/service-tier/tools/cache policy，并在 reservation / receipt / ledger reload 前 fail closed。
-- `0.8.3`：候选修复 Lite fresh-repo root `AGENTS.md` scaffold、existing-root managed block raw-byte preservation，以及 Lite fallback versioning 默认规则；现阶段仍需 057 independent implementation review，不代表已经 release。
+- `0.8.3`：完善 Lite fresh-repo root `AGENTS.md` scaffold、existing-root managed block raw-byte preservation，以及 Lite fallback versioning 默认规则。
+- `0.8.4`：要求新建 Review 任务默认使用 `<scope-token>--<goal-token>` 语义 task key，同时继续兼容历史 `<id>_<short_slug>` 任务和结果目录；普通 authoring 文档与任务模板同步改用语义 task key 示例。
 
 ## 一眼看懂：我到底该装什么
 
