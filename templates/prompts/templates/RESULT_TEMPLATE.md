@@ -1,4 +1,4 @@
-# Result 000 Short Task
+# Result Repo Short Task
 
 status: EXECUTED_UNAUDITED
 self_assessed_status: completed
@@ -58,9 +58,9 @@ mechanism.
 
 ## Artifact Paths
 
-- `results/000_short_task/MANIFEST.md`: artifact index linking task, result,
+- `results/repo--short-task/MANIFEST.md`: artifact index linking task, result,
   review, and generated files.
-- `results/000_short_task/path/to/artifact`: purpose and generation method.
+- `results/repo--short-task/path/to/artifact`: purpose and generation method.
 
 If no additional file artifacts were generated, write `none`.
 

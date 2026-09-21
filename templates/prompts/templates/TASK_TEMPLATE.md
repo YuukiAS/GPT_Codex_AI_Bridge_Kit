@@ -1,5 +1,5 @@
 ---
-task_key: "000_short_task"
+task_key: "repo--short-task"
 project: "project-name"
 status: "READY"
 task_type: "execution"
@@ -26,7 +26,7 @@ allow_external_upload: false
 requires_human_approval: false
 ---
 
-# Task 000 Short Task
+# Task Repo Short Task
 
 This is the normal execution-task template. For controller tasks, use
 `CONTROLLER_TASK_TEMPLATE.md` or set `task_type: "controller"` and fill the
@@ -90,7 +90,7 @@ the missing persistence capability instead of weakening the task.
 
 Persistent execution: NOT_REQUIRED
 Backend: none
-Goal source: prompts/tasks/000_short_task.md
+Goal source: prompts/tasks/repo--short-task.md
 Run/session key: none
 
 ### Authorized Effects
@@ -122,9 +122,9 @@ Run/session key: none
 - Read files directly related to this task.
 - Run authorized low-risk shell commands.
 - Modify files only when `allow_code_change: true`.
-- Write `results/000_short_task/result.md`.
-- Write `results/000_short_task/MANIFEST.md` when creating or updating
-  `results/000_short_task/`.
+- Write `results/repo--short-task/result.md`.
+- Write `results/repo--short-task/MANIFEST.md` when creating or updating
+  `results/repo--short-task/`.
 
 ## Forbidden Actions
 
@@ -159,7 +159,7 @@ make it explicit before execution starts.
 
 - `review_required`:
 - Auditor:
-- Review path: `results/000_short_task/review.md`
+- Review path: `results/repo--short-task/review.md`
 - Audit decision enum, if required:
   `AUDITED_GO`, `NEEDS_EVIDENCE`, `NEEDS_REVISION`,
   `NEEDS_HUMAN_APPROVAL`, `NEEDS_GPT_PLANNER`, `STOP`
@@ -176,16 +176,16 @@ or launch separate executor and auditor sessions. If the runtime cannot launch
 subagents automatically, require prompt files under:
 
 ```text
-results/000_short_task/subagents/
+results/repo--short-task/subagents/
 ```
 
 and set state to `NEEDS_SUBAGENT_LAUNCH` or `NEEDS_HUMAN_APPROVAL`.
 
 ## Expected Output
 
-- `results/000_short_task/result.md`
-- `results/000_short_task/MANIFEST.md`
-- Any generated artifacts under `results/000_short_task/`
+- `results/repo--short-task/result.md`
+- `results/repo--short-task/MANIFEST.md`
+- Any generated artifacts under `results/repo--short-task/`
 - If code changed, a concise diff summary.
 - If commands ran, command, purpose, result, and exit status.
 - Claim lines in result using `claim.<name>: <description>`.

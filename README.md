@@ -127,7 +127,7 @@ AGENTS.md 中的 ai-bridge-kit:persistent-run managed block
 ```bash
 ai-bridge persistent-run prompt kickoff \
   --target /path/to/project \
-  --goal prompts/tasks/010_long_run.md
+  --goal prompts/tasks/repo--long-run.md
 ```
 
 这个命令只打印用户可见授权，不会启动 tmux。用户把这段 kickoff 发给 Codex
@@ -274,9 +274,12 @@ ai-bridge reviewed-handoff validate --target /path/to/project
 ```bash
 ai-bridge reviewed-handoff task init \
   --target /path/to/project \
-  --task-key 001_example \
+  --task-key repo--example \
   --objective "这里写任务目标"
 ```
+
+新的 Reviewed Handoff task 默认使用 semantic key：`<scope-token>--<goal-token>`，
+例如 `repo--example`。历史 numbered task 继续可验证，不需要迁移。
 
 这套流程默认最多两轮 GPT 复核。第一轮如果返回 `REVISE`，允许 Codex 自动返修一次；第二轮仍未通过，就进入人工决策，不继续无限循环。
 
@@ -651,10 +654,10 @@ OPENAI_VISUAL_REVIEW_API_KEY
 ```bash
 ai-bridge text-review encrypt \
   --target /path/to/project \
-  --task-key 044_example \
+  --task-key repo--text-review \
   --input /private/path/final.md \
-  --output results/044_example/text_review/payload.age \
-  --manifest results/044_example/text_review/text_inputs.json \
+  --output results/repo--text-review/text_review/payload.age \
+  --manifest results/repo--text-review/text_review/text_inputs.json \
   --implementation-commit <commit> \
   --rubric "Read the complete artifact and decide whether it satisfies the frozen user-facing prose requirements." \
   --external-upload-authorization "User authorized private text review through OpenAI Responses API with store=false for this task."
@@ -706,7 +709,7 @@ Control 比 Review 更重，因为它会显式保存冻结要求、验证依据�
 ```bash
 ai-bridge agent-flow task init \
   --target /path/to/project \
-  --task-key 001_example
+  --task-key repo--example
 ```
 
 详细设计见：
@@ -800,7 +803,7 @@ ai-bridge reviewed-handoff validate --target /path/to/project
 # 长期 Goal 的持久执行 contract
 ai-bridge persistent-run install --target /path/to/project
 ai-bridge persistent-run validate --target /path/to/project
-ai-bridge persistent-run prompt kickoff --target /path/to/project --goal prompts/tasks/010_long_run.md
+ai-bridge persistent-run prompt kickoff --target /path/to/project --goal prompts/tasks/repo--long-run.md
 
 # Overleaf
 ai-bridge overleaf install --target /path/to/project --paper-root paper/manuscript

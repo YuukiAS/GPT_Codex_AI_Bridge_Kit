@@ -8,6 +8,12 @@ import re
 import sys
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from ai_bridge_kit import task_keys
+
 
 REQUIRED_FIELDS = [
     "task_key",
@@ -23,7 +29,6 @@ REQUIRED_FIELDS = [
 ]
 
 LEGACY_REQUIRED_FIELDS = ["task_id", *REQUIRED_FIELDS[1:]]
-TASK_KEY_RE = re.compile(r"^\d+_[A-Za-z0-9]+(?:_[A-Za-z0-9]+){0,2}$")
 SKILL_REQUIRED_FIELDS = ["name", "description"]
 
 
@@ -113,13 +118,13 @@ def validate(target: Path) -> int:
         if not task_files:
             warnings.append("WARN no new-style task files found in prompts/tasks/")
 
-        task_keys = set()
+        task_file_keys = set()
         for task_file in task_files:
             task_key = task_file.stem
-            task_keys.add(task_key)
-            if not TASK_KEY_RE.fullmatch(task_key):
+            task_file_keys.add(task_key)
+            if error := task_keys.existing_task_key_error(task_key):
                 errors.append(
-                    f"ERROR {task_file}: filename must be <id>_<short_slug>.md with a 1-3 word slug"
+                    f"ERROR {task_file}: filename {error}"
                 )
 
             data, parse_error = parse_frontmatter(task_file)
@@ -160,7 +165,7 @@ def validate(target: Path) -> int:
             else:
                 warnings.append(f"WARN legacy task naming: {task_file.relative_to(target)}")
 
-        all_task_keys = task_keys | legacy_task_ids
+        all_task_keys = task_file_keys | legacy_task_ids
 
         for result_file in result_files:
             result_id = result_file.name.removesuffix("_result.md")
@@ -182,7 +187,7 @@ def validate(target: Path) -> int:
 
         if results_dir.exists():
             for artifact_dir in sorted(path for path in results_dir.iterdir() if path.is_dir()):
-                if not TASK_KEY_RE.fullmatch(artifact_dir.name):
+                if task_keys.existing_task_key_error(artifact_dir.name):
                     continue
                 if artifact_dir.name in all_task_keys:
                     oks.append(f"OK   {artifact_dir.relative_to(target)}/ matches a task")

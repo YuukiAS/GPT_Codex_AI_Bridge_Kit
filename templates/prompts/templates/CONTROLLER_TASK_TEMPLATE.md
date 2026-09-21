@@ -1,5 +1,5 @@
 ---
-task_key: "000_controller_task"
+task_key: "repo--controller-task"
 project: "project-name"
 status: "READY"
 task_type: "controller"
@@ -23,10 +23,10 @@ allow_shell_command: true
 allow_network: false
 allow_external_upload: false
 requires_human_approval: false
-controller_report: "results/000_controller_task/controller_report.md"
+controller_report: "results/repo--controller-task/controller_report.md"
 ---
 
-# Controller Task 000
+# Controller Task
 
 ## Goal
 
@@ -75,11 +75,11 @@ scope. It must not search for a new direction or replace the task goal.
 
 ## Required Evidence
 
-- Executor result at `results/000_controller_task/subagents/executor_result.md`
+- Executor result at `results/repo--controller-task/subagents/executor_result.md`
   or another path listed in the controller report.
-- Auditor review at `results/000_controller_task/subagents/auditor_review.md`
+- Auditor review at `results/repo--controller-task/subagents/auditor_review.md`
   or another path listed in the controller report.
-- Controller report at `results/000_controller_task/controller_report.md`.
+- Controller report at `results/repo--controller-task/controller_report.md`.
 - Direct positive-completion evidence and claim-scope limit.
 - Command/test evidence with exit status.
 - Diff and artifact evidence where relevant.
@@ -96,8 +96,8 @@ scope. It must not search for a new direction or replace the task goal.
 If new Codex sessions/subagents cannot be launched automatically, write:
 
 ```text
-results/000_controller_task/subagents/executor_prompt.md
-results/000_controller_task/subagents/auditor_prompt.md
+results/repo--controller-task/subagents/executor_prompt.md
+results/repo--controller-task/subagents/auditor_prompt.md
 ```
 
 Then set state to `NEEDS_SUBAGENT_LAUNCH` or `NEEDS_HUMAN_APPROVAL`.
@@ -120,7 +120,7 @@ If commit or push is skipped, the controller report must state the reason.
 
 ## Required Output
 
-- `results/000_controller_task/controller_report.md`
+- `results/repo--controller-task/controller_report.md`
 - executor prompt/result paths
 - auditor prompt/review paths
-- `results/000_controller_task/MANIFEST.md`
+- `results/repo--controller-task/MANIFEST.md`

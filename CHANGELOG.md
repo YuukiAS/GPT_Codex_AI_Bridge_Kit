@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.8.4
+
+- Require new Reviewed Handoff task creation to use semantic
+  `<scope-token>--<goal-token>` task keys while continuing to validate existing
+  legacy `<id>_<short_slug>` task and result directories.
+- Update normal authoring docs and task templates so new examples teach
+  semantic task keys instead of numeric task IDs.
+
 ## 0.8.3
 
 - Add a fresh-repository `AGENTS.md` scaffold for `ai-bridge init` that keeps
