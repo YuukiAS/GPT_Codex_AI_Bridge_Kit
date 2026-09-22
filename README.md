@@ -6,8 +6,7 @@
 
 这个仓库的原则是：**默认保持简单，需要什么再加什么。** 普通项目只需要机器级规则和基础交接；只有确实需要时，才启用独立复核、高风险闭环、邮件通知、Overleaf 同步或视觉复核。
 
-当前候选版本：`0.8.5`（056 task branch candidate；这不是 GitHub release/tag
-或 main merge 声明）。
+当前集成版本：`0.8.5`（056 release main；这不是 GitHub release/tag 声明）。
 
 ## 三档 workflow
 
@@ -63,7 +62,7 @@ Review 使用 `ai-bridge reviewed-handoff ...`，Control 使用
 - `0.8.2`：收窄 Text Review 付费复核 contract，允许 consumer workflow 在已有默认预算内冻结更严格的 call count、campaign ceiling、per-call ceiling、retry、model/pricing/service-tier/tools/cache policy，并在 reservation / receipt / ledger reload 前 fail closed。
 - `0.8.3`：完善 Lite fresh-repo root `AGENTS.md` scaffold、existing-root managed block raw-byte preservation，以及 Lite fallback versioning 默认规则。
 - `0.8.4`：要求新建 Review 任务默认使用 `<scope-token>--<goal-token>` 语义 task key，同时继续兼容历史 `<id>_<short_slug>` 任务和结果目录；普通 authoring 文档与任务模板同步改用语义 task key 示例。
-- `0.8.5`：候选修复 Default-mode required human gate transport：Host Policy 期望
+- `0.8.5`：修复 Default-mode required human gate transport：Host Policy 期望
   `default_mode_request_user_input=false`，Lite/Host 使用 durable transcript
   wait/resume 语义，`host validate` 区分 feature key 是否受支持与期望启用状态；现阶段不代表已经 release、tag 或真实 Host install。
 

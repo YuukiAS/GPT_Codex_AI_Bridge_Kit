@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-## 0.8.5
+## 0.8.5 - 2026-09-22
 
 - Manage `features.default_mode_request_user_input = false` in Host Policy so
   Default-mode required `HUMAN_ONLY` gates fail closed onto durable transcript
