@@ -224,3 +224,21 @@ not sufficient by itself to prevent repeated user interruption.
 
 The next Bridge refinement should therefore promote this TODO through the normal
 Planner/Critic architecture review rather than waiting for another occurrence.
+## Wrapper-minimization prerequisite
+
+Before implementing a new `ai-bridge` helper for this mutation, follow
+`docs/TODO_HOST_POLICY_READ_ONLY_INSPECTION_AND_WRAPPER_MINIMIZATION.md`:
+
+1. first test whether the current Host Policy / execpolicy plus exact
+   current-user authorization can legally perform the frozen branch/worktree
+   effect directly;
+2. do not add a helper merely because Auto-review produced friction;
+3. retain a bounded helper only if the real safety condition depends on dynamic
+   repo/task/branch/path identity that a narrow native rule cannot express;
+4. document why direct native Git remains insufficient before production
+   implementation begins.
+
+This worktree case is materially different from read-only Git/GitHub inspection:
+read-only inspection should be solved by direct allow rules, not by another
+wrapper.
+
