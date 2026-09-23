@@ -2,7 +2,7 @@
 
 ## Status
 
-`5bf6f401d5fcf98277a031d94abf55ac6ad77da1` is the current recovery code candidate. It includes the B1-B3 repairs from `47cea1edb5bcb0d8038c4c6bd925f2f1ccd5c90c` plus a CI environment guard for hosted runners without `codex`, but this is **not** a full final PASS / release-closure claim.
+`37a773cd83971d64f194a7d82c55a24889bd8164` is the current recovery code candidate. It includes the B1-B3 repairs from `47cea1edb5bcb0d8038c4c6bd925f2f1ccd5c90c`, a CI environment guard for hosted runners without `codex`, and a Python 3.14 test cleanup stability fix, but this is **not** a full final PASS / release-closure claim.
 
 The previous implementation candidate `88fa67c44e6e491ed548f033ce0d3c33f63525c4` was the pre-final Critic recovery baseline. Its old complete wording is superseded by this report.
 
@@ -16,9 +16,9 @@ The previous implementation candidate `88fa67c44e6e491ed548f033ce0d3c33f63525c4`
 
 - Local focused recovery tests pass: `Ran 121 tests ... OK`.
 - Local full suite passes: `Ran 394 tests ... OK`.
-- GitHub Actions run `35895226965` passed on Python 3.9 and Python 3.x.
+- GitHub Actions run `35895831666` passed on Python 3.9 and Python 3.x.
 - Live `/home/yuukias/.codex` Machine Policy validates.
-- Bounded publisher published recovery code candidate `5bf6f40` to `origin/main`; fetch verified it before later evidence-only reporting updates.
+- Bounded publisher published recovery code candidate `37a773c` to `origin/main`; fetch verified it before later evidence-only reporting updates.
 - Publisher canary negatives did not execute canaries and did not mutate remote refs.
 - Reviewed materializer normal-entry sibling bootstrap and `/tmp` rematerialization passed.
 - Persistent Run reporter normal-entry multi-event and UNKNOWN/stall cases passed.

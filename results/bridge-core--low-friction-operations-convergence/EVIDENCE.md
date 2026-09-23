@@ -11,9 +11,10 @@ Critic and is not final PASS evidence.
 
 ## Candidate Identity
 
-- Recovery code candidate: `5bf6f401d5fcf98277a031d94abf55ac6ad77da1`
+- Recovery code candidate: `37a773cd83971d64f194a7d82c55a24889bd8164`
 - B1-B3 implementation commit: `47cea1edb5bcb0d8038c4c6bd925f2f1ccd5c90c`
 - CI environment gate commit: `5bf6f401d5fcf98277a031d94abf55ac6ad77da1`
+- CI cleanup stability commit: `37a773cd83971d64f194a7d82c55a24889bd8164`
 - Branch: `main`
 - Canonical worktree: `/home/yuukias/GPT_Codex_AI_Bridge_Kit`
 - Remote: `origin -> https://github.com/YuukiAS/GPT_Codex_AI_Bridge_Kit.git`
@@ -48,6 +49,7 @@ CI environment follow-up:
 - `tests.test_upfront_authorization_persistent_authoring.UpfrontAuthorizationPersistentAuthoringTests.test_execpolicy_still_prompts_tmux_mutation_and_fallbacks` now skips only when `codex` CLI is absent.
 - On the target machine, where `codex` is installed, the execpolicy probe still ran and passed.
 - On hosted GitHub Actions, the skip prevents an infrastructure-only failure from replacing the live Machine Policy validation gate.
+- Reviewed runner tests now use Python-supported temporary-directory cleanup tolerance for Git object cleanup races observed only on hosted Python 3.14.
 
 Diff hygiene:
 
@@ -91,8 +93,8 @@ G1/G2:
 
 G3:
 
-- `ai-bridge host publish-current-branch --expected-repo YuukiAS/GPT_Codex_AI_Bridge_Kit --expected-branch main` published `47cea1edb5bcb0d8038c4c6bd925f2f1ccd5c90c` and later `5bf6f401d5fcf98277a031d94abf55ac6ad77da1` to `origin/main`.
-- Follow-up `git fetch origin main` verified the code candidate at `HEAD == origin/main == 5bf6f401d5fcf98277a031d94abf55ac6ad77da1` before later evidence-only reporting updates.
+- `ai-bridge host publish-current-branch --expected-repo YuukiAS/GPT_Codex_AI_Bridge_Kit --expected-branch main` published `47cea1edb5bcb0d8038c4c6bd925f2f1ccd5c90c`, `5bf6f401d5fcf98277a031d94abf55ac6ad77da1`, and later `37a773cd83971d64f194a7d82c55a24889bd8164` to `origin/main`.
+- Follow-up `git fetch origin main` verified the code candidate at `HEAD == origin/main == 37a773cd83971d64f194a7d82c55a24889bd8164` before later evidence-only reporting updates.
 - The push again emitted a local tracking-ref lock warning after the remote accepted the update; the independent fetch verified the remote state.
 
 G4:
@@ -146,7 +148,7 @@ G13:
 
 G14:
 
-- Recovery code candidate, live Machine Policy validation, local full tests and normal-entry probes above all bind to code candidate `5bf6f401d5fcf98277a031d94abf55ac6ad77da1`.
+- Recovery code candidate, live Machine Policy validation, local full tests and normal-entry probes above all bind to code candidate `37a773cd83971d64f194a7d82c55a24889bd8164`.
 - This evidence file is a later evidence artifact and does not change the source candidate code. It records that full release closure is not claimable because G4 SSH positive and Notifications delivery remain unavailable.
 
 G15:
@@ -156,14 +158,14 @@ G15:
 
 ## External CI
 
-GitHub Actions run `35895226965` for `5bf6f401d5fcf98277a031d94abf55ac6ad77da1` passed.
+GitHub Actions run `35895831666` for `37a773cd83971d64f194a7d82c55a24889bd8164` passed.
 
 ```text
 Python 3.9: passed
 Python 3.x: passed
 ```
 
-The earlier hosted failure for `47cea1e` was an infrastructure-only `codex executable not found` failure in the CI environment. The current source candidate keeps the live target-machine execpolicy probe and lets hosted CI skip that single probe only when `codex` is absent.
+The earlier hosted failure for `47cea1e` was an infrastructure-only `codex executable not found` failure in the CI environment. A later evidence-only commit also exposed a hosted Python 3.14 temporary Git object cleanup race. The current source candidate keeps the live target-machine execpolicy probe, lets hosted CI skip that single probe only when `codex` is absent, and tolerates the Python 3.14 cleanup race in reviewed-runner tests.
 
 ## Remaining Non-Closure Items
 
