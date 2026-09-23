@@ -17,7 +17,10 @@ from ai_bridge_kit import text_review
 
 class ReviewedRunnerTests(unittest.TestCase):
     def make_project(self) -> tuple[tempfile.TemporaryDirectory[str], Path, Path]:
-        tmp = tempfile.TemporaryDirectory()
+        try:
+            tmp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
+        except TypeError:
+            tmp = tempfile.TemporaryDirectory()
         base = Path(tmp.name)
         state_home = base / "state-home"
         target = base / "project"
