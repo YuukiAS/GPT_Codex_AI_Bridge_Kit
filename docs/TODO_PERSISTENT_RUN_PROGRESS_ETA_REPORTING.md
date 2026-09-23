@@ -1,12 +1,26 @@
 # TODO — Persistent Run Progress & ETA Reporting
 
-Status: **TODO / requirement captured; implementation not designed yet**
+Status: **TODO / HIGH PRIORITY / short-term design requested; implementation not designed yet**
+
+## User-confirmed urgency
+
+On 2026-09-23 the user explicitly reconfirmed that this should be handled in the
+next Bridge workflow if practical. Persistent work must not leave the user
+waiting for hours without knowing whether real progress is being made or how
+much time is plausibly left.
+
+The required experience is not merely an on-demand status command. During a
+real long-running/persistent run, the system should surface periodic progress
+updates at a reasonable cadence when an already-authorized delivery surface is
+available, while avoiding minute-by-minute spam.
 
 ## Problem
 
 Current Persistent Run focuses on making long-running work survive Codex / SSH disconnects and remain recoverable. For real overnight or multi-hour jobs, "the process is still alive" is not enough for the user to decide whether to leave it running, inspect it, or intervene.
 
 The missing capability is regular, user-visible progress reporting with a useful estimate of remaining time.
+
+A long run that is healthy but silent for hours is not an acceptable normal user experience merely because tmux/session/heartbeat evidence exists.
 
 ## Required user capability
 
