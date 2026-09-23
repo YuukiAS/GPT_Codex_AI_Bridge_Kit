@@ -1,0 +1,17 @@
+{
+  "schema": "ai-bridge.notification_brief.v2",
+  "project": "GPT-Codex AI Bridge Kit",
+  "task_key": "bridge-core--low-friction-operations-convergence",
+  "event_type": "operational_progress",
+  "status": "RECOVERY_IMPLEMENTED_PARTIAL_FINAL_GATES ssh_positive_unavailable",
+  "decision_authority": "Controller",
+  "key_conclusion": "Bridge Kit 0.9.0 recovery implementation and CI gates are repaired, and Notifications delivery is now proven, but standard SSH positive publication remains unavailable.",
+  "next_step": "Do not treat this as release PASS unless standard GitHub SSH agent/config publication becomes available and is verified.",
+  "action_required": false,
+  "evidence_paths": [
+    "results/bridge-core--low-friction-operations-convergence/EVIDENCE.md",
+    "results/bridge-core--low-friction-operations-convergence/FINAL_REPORT.md",
+    "GitHub Actions run 35896082675"
+  ],
+  "details": "This is an operational-progress transport test only. It does not claim semantic PASS, READY, COMPLETE, or release completion."
+}

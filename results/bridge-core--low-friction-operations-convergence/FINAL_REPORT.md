@@ -23,11 +23,11 @@ The previous implementation candidate `88fa67c44e6e491ed548f033ce0d3c33f63525c4`
 - Reviewed materializer normal-entry sibling bootstrap and `/tmp` rematerialization passed.
 - Persistent Run reporter normal-entry multi-event and UNKNOWN/stall cases passed.
 - Official Codex plugin reinstall path succeeded for `workflow-core@yuukias-ai-skills`.
+- Notifications delivery is now proven through existing configuration: `send-test` and a structured `operational_progress` brief both sent successfully.
 
 ## Not Closed
 
 - Standard SSH positive publication could not be proven: GitHub SSH returned `Permission denied (publickey)` and could not write `known_hosts`.
-- Notifications delivery could not be tested because no existing provider/recipient is configured.
 
 ## Evidence
 
@@ -35,4 +35,4 @@ See `results/bridge-core--low-friction-operations-convergence/EVIDENCE.md`.
 
 ## Current Conclusion
 
-Implementation repair is substantially complete, but final release closure remains blocked by environment/evidence gaps rather than source changes. Do not treat this as a completed 0.9.0 release PASS.
+Implementation repair is substantially complete, but final release closure remains blocked by the missing standard GitHub SSH positive path. Do not treat this as a completed 0.9.0 release PASS.

@@ -103,6 +103,7 @@ G4:
 - CLI canary negatives passed for `GIT_SSH_COMMAND`, `GIT_SSH`, `GIT_ASKPASS`, `SSH_ASKPASS`, `GIT_CONFIG_GLOBAL`, `GIT_CONFIG_SYSTEM`, `GIT_CONFIG_NOSYSTEM`, `GIT_CONFIG_COUNT`, local `core.sshCommand`, local `credential.helper`, local `core.askPass`, worktree `core.sshCommand`, and worktree `credential.helper`.
 - In every canary case the expected rejection occurred, the canary marker remained absent, and the remote ref did not change.
 - Required positive standard SSH agent/config publication was not proven: `ssh -T -o BatchMode=yes -o StrictHostKeyChecking=accept-new git@github.com` returned `Permission denied (publickey)` and could not write `known_hosts` in the current environment.
+- Current recheck still does not prove the SSH positive path: strict standard SSH failed with `Host key verification failed`, a temporary known-hosts authentication probe failed with `Permission denied (publickey)`, and `ssh-add -l` returned `Error connecting to agent: No such file or directory`.
 
 G5/G6/G7:
 
@@ -138,8 +139,11 @@ G10/G11:
 G12:
 
 - `ai-bridge notifier send` rejected an invalid `operational_progress` brief with `status=PASS` before delivery.
-- Existing Notifications provider/recipient is not configured: `ai-bridge notifier status` returned `sent_count: 0`, `baseline_initialized: false`, `last_success: null`.
-- No test notification was sent and no provider/recipient was created.
+- Existing Notifications provider/recipient is now proven available: `ai-bridge notifier send-test` returned `sent: sent`.
+- A valid one-shot `operational_progress` brief was sent through the existing Notifications configuration:
+  `results/bridge-core--low-friction-operations-convergence/notifications/recovery_operational_progress_20260924.json`.
+- `ai-bridge notifier status` after the operational-progress send reported `sent_count: 1`, `last_success.brief_path` equal to that notification brief, and `last_failure: null`.
+- No provider, recipient, account, or credential was changed or created.
 
 G13:
 
@@ -149,7 +153,7 @@ G13:
 G14:
 
 - Recovery code candidate, live Machine Policy validation, local full tests and normal-entry probes above all bind to code candidate `37a773cd83971d64f194a7d82c55a24889bd8164`.
-- This evidence file is a later evidence artifact and does not change the source candidate code. It records that full release closure is not claimable because G4 SSH positive and Notifications delivery remain unavailable.
+- This evidence file is a later evidence artifact and does not change the source candidate code. It records that full release closure is not claimable because G4 SSH positive remains unavailable.
 
 G15:
 
@@ -170,6 +174,5 @@ The earlier hosted failure for `47cea1e` was an infrastructure-only `codex execu
 ## Remaining Non-Closure Items
 
 - G4 standard SSH agent/config positive publication is not proven on this machine because GitHub SSH authentication is unavailable.
-- Notifications delivery is unavailable because no existing provider/recipient is configured; no new provider/credential/recipient was authorized.
 
 Therefore this recovery cannot honestly be marked final release PASS in the current environment.
