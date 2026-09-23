@@ -1,48 +1,38 @@
-# Bridge Kit 0.9.0 Low-Friction Operations Convergence
+# Bridge Kit 0.9.0 Low-Friction Operations Convergence Recovery
 
-## What this task solved
+## Status
 
-This 0.9.0 candidate moves low-friction operations away from broad raw Git trust and into bounded Machine Policy operations. Routine safe reads are quieter, existing-branch publication has one exact-effect helper, Reviewed Mode can rematerialize frozen task worktrees, and Persistent Run progress can be reported without fake percentages or fake ETAs.
+`47cea1edb5bcb0d8038c4c6bd925f2f1ccd5c90c` repairs B1-B3 from the recovery goal, but this is **not** a full final PASS / release-closure claim.
+
+The previous implementation candidate `88fa67c44e6e491ed548f033ce0d3c33f63525c4` was the pre-final Critic recovery baseline. Its old complete wording is superseded by this report.
 
 ## What changed
 
-- Added `ai-bridge host publish-current-branch`.
-- Added `ai-bridge reviewed-handoff materialize-worktree`.
-- Added Persistent Run progress normalization.
-- Extended Notifications with operational-progress briefs that cannot claim semantic PASS/READY/release completion.
-- Updated Machine Policy rules, README, QUICKSTART, AGENTS guidance, CHANGELOG, and version metadata to `0.9.0`.
+- Publisher preflight now rejects transport/config/credential/askpass injection before any remote/network Git preflight.
+- Persistent Run now has an event-driven reporter with local latest/history and reconnect query.
+- Reviewed materializer now uses stable frozen worktree identity, checks bootstrap base lineage, and rolls back only invocation-created local state when safe.
 
-## New capabilities / behavior
+## Verified
 
-- Current-repository GitHub diagnostics such as `gh pr list --` and `gh run list --` can be allowed directly while `--repo`, token display, arbitrary `gh api`, and positional view forms remain gated.
-- Raw `git push origin main` is no longer the low-friction publication path; use `ai-bridge host publish-current-branch --expected-repo <owner/repo> --expected-branch <branch>`.
-- Reviewed Mode worktree materialization reads the frozen worktree locator from `REQUEST.md` and base identity from `CURRENT.json`; caller arguments only assert equality.
-- Persistent Run reports `ETA=UNKNOWN` unless the producer supplied a defensible basis.
+- Local focused recovery tests pass: `Ran 121 tests ... OK`.
+- Local full suite passes: `Ran 394 tests ... OK`.
+- Live `/home/yuukias/.codex` Machine Policy validates.
+- Bounded publisher published `47cea1e` to `origin/main`; fetch verified `HEAD == origin/main`.
+- Publisher canary negatives did not execute canaries and did not mutate remote refs.
+- Reviewed materializer normal-entry sibling bootstrap and `/tmp` rematerialization passed.
+- Persistent Run reporter normal-entry multi-event and UNKNOWN/stall cases passed.
+- Official Codex plugin reinstall path succeeded for `workflow-core@yuukias-ai-skills`.
 
-## Example usage
+## Not Closed
 
-```bash
-ai-bridge host publish-current-branch \
-  --expected-repo YuukiAS/GPT_Codex_AI_Bridge_Kit \
-  --expected-branch main
+- Standard SSH positive publication could not be proven: GitHub SSH returned `Permission denied (publickey)` and could not write `known_hosts`.
+- Notifications delivery could not be tested because no existing provider/recipient is configured.
+- GitHub Actions is red because hosted CI lacks `codex` for execpolicy tests.
 
-ai-bridge reviewed-handoff materialize-worktree \
-  --target /path/to/project \
-  --task-key repo--feature \
-  --expected-repo YuukiAS/project \
-  --expected-worktree /absolute/frozen/worktree \
-  --expected-base-ref origin/main \
-  --mode resume
+## Evidence
 
-ai-bridge persistent-run progress \
-  --evidence /path/to/project-native-progress.json \
-  --stalled-after-seconds 3600
-```
+See `results/bridge-core--low-friction-operations-convergence/EVIDENCE.md`.
 
-## Regression and remaining limitations
+## Current Conclusion
 
-Local focused tests and the full repository suite pass on the candidate. The live Machine Policy install and `origin/main` publication are post-commit closure steps and are recorded in the operator final response, because recording those exact post-commit effects inside this committed artifact would change the artifact's own commit identity.
-
-## Technical appendix
-
-See `results/bridge-core--low-friction-operations-convergence/EVIDENCE.md` for gate evidence and command results.
+Implementation repair is substantially complete, but final release closure remains blocked by environment/evidence gaps rather than source changes. Do not treat this as a completed 0.9.0 release PASS.
