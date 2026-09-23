@@ -298,3 +298,57 @@ development/testing.
 Because changing Host Policy allow rules or retiring `plugin-replay` changes
 production behavior, implementation must go through the normal Planner/Critic
 review. This TODO is evidence and scope, not implementation authorization.
+
+## Additional failure — ordinary push to an already-authorized task branch was blocked
+
+A second Auto-review usability failure was observed on 2026-09-23 in a normal
+task branch workflow.
+
+Observed state:
+
+- local branch: `review/01047-clear-writing`;
+- local branch was already selected and ahead of its existing remote by one
+  ordinary task-owned commit;
+- the only remaining publication action was:
+  `git push origin review/01047-clear-writing`;
+- Codex reported that Auto-review blocked the push and required another explicit
+  user authorization before it could publish the already-created commit.
+
+Current Host Policy deliberately allows `git push origin main` but keeps
+`git push origin <other-branch>` on the prompt path. That policy is now too
+coarse for repositories that already have an explicitly authorized, selected,
+existing task/review branch.
+
+The product requirement for the next design round is:
+
+> Once a branch has already been explicitly selected/authorized for the current
+> task and the matching remote branch already exists, an ordinary non-force push
+> of task-owned commits to that same `origin/<branch>` should not repeatedly
+> interrupt the user.
+
+This must **not** silently authorize:
+
+- creation of an arbitrary new remote branch;
+- changing or setting upstream;
+- pushing to a different branch than the frozen/current task branch;
+- force / force-with-lease;
+- deletion of remote refs/tags;
+- remote remapping;
+- bypassing repository-owned publication/reviewer authority.
+
+Planner/Critic must determine the smallest native Host Policy / project-policy
+mechanism. Do not pre-commit to a wrapper. In particular, first test whether
+current Codex execpolicy and repository-level exact branch rules can represent
+"ordinary push to the already-authorized existing task branch" without broadly
+allowing `git push origin <anything>`.
+
+Acceptance must include at least:
+
+1. `git push origin main` remains low-friction where already allowed;
+2. an ordinary push to an explicitly authorized existing non-main task branch
+   succeeds without another user approval;
+3. pushing a different/unapproved branch remains gated;
+4. creating a new remote branch or changing upstream remains gated;
+5. force/deletion/remote mutation remains gated;
+6. a rejected push probe alone does not cause a false terminal `BLOCKED`.
+
