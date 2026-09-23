@@ -2,6 +2,14 @@
 
 本文件是 Codex 在维护本仓库、以及使用本仓库去配置其他机器或 repository 时的操作入口。面向人的总体说明以 `README.md` 为准；实现细节、状态机和 workflow 约束以 `docs/` 中对应规格为准。
 
+## 0. Bridge 正式分发 owner locator
+
+Bridge runtime、Host、Lite、Review、Control、Persistent Run 的实现 authority 仍然属于本仓库 GPT-Codex AI Bridge Kit。
+
+Bridge 的正式 distribution / version closure，包括移动的 `release` ref，由 AI Skills Maintainer（`ai-skills-core` 内部 `bridge-kit-maintainer`）负责。一次 Bridge formal release 在交给该 owner 完成正式分发闭环前，不得称为 distribution-complete。
+
+完整 fast-forward-only producer contract 单一保存在 `YuukiAS/AI_Skills_Collection` 的 AI Skills Maintainer source/reference layer；本仓库只保留这个 locator，不复制第二套 release engine、policy、watcher、state machine 或 ref 管理实现。
+
 ## 1. 先判断作用域，不要把所有能力混成一次安装
 
 Bridge Kit 的能力按作用域分成机器层、项目层和任务层。真正的安装对象只有机器层和项目层；Review task 与 Control task 都是运行实例，不是新的安装层。
