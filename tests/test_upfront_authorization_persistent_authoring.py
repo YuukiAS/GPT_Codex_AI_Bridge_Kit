@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -257,6 +258,8 @@ class UpfrontAuthorizationPersistentAuthoringTests(unittest.TestCase):
         self.assertIn('pattern = ["tmux", ["ls", "list-sessions", "has-session"]]', rules)
 
     def test_execpolicy_still_prompts_tmux_mutation_and_fallbacks(self) -> None:
+        if shutil.which("codex") is None:
+            self.skipTest("codex CLI is not installed")
         expectations = {
             ("tmux", "ls"): "allow",
             ("tmux", "has-session", "-t", "example"): "allow",
