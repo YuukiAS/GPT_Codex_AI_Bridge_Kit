@@ -11,7 +11,9 @@ Critic and is not final PASS evidence.
 
 ## Candidate Identity
 
-- Recovery source candidate: `47cea1edb5bcb0d8038c4c6bd925f2f1ccd5c90c`
+- Recovery code candidate: `5bf6f401d5fcf98277a031d94abf55ac6ad77da1`
+- B1-B3 implementation commit: `47cea1edb5bcb0d8038c4c6bd925f2f1ccd5c90c`
+- CI environment gate commit: `5bf6f401d5fcf98277a031d94abf55ac6ad77da1`
 - Branch: `main`
 - Canonical worktree: `/home/yuukias/GPT_Codex_AI_Bridge_Kit`
 - Remote: `origin -> https://github.com/YuukiAS/GPT_Codex_AI_Bridge_Kit.git`
@@ -40,6 +42,12 @@ python -m unittest discover -s tests -p 'test_*.py'
 ```
 
 Result: `Ran 394 tests ... OK`
+
+CI environment follow-up:
+
+- `tests.test_upfront_authorization_persistent_authoring.UpfrontAuthorizationPersistentAuthoringTests.test_execpolicy_still_prompts_tmux_mutation_and_fallbacks` now skips only when `codex` CLI is absent.
+- On the target machine, where `codex` is installed, the execpolicy probe still ran and passed.
+- On hosted GitHub Actions, the skip prevents an infrastructure-only failure from replacing the live Machine Policy validation gate.
 
 Diff hygiene:
 
@@ -83,8 +91,8 @@ G1/G2:
 
 G3:
 
-- `ai-bridge host publish-current-branch --expected-repo YuukiAS/GPT_Codex_AI_Bridge_Kit --expected-branch main` published `47cea1edb5bcb0d8038c4c6bd925f2f1ccd5c90c` to `origin/main`.
-- Follow-up `git fetch origin main` verified `HEAD == origin/main == 47cea1edb5bcb0d8038c4c6bd925f2f1ccd5c90c`.
+- `ai-bridge host publish-current-branch --expected-repo YuukiAS/GPT_Codex_AI_Bridge_Kit --expected-branch main` published `47cea1edb5bcb0d8038c4c6bd925f2f1ccd5c90c` and later `5bf6f401d5fcf98277a031d94abf55ac6ad77da1` to `origin/main`.
+- Follow-up `git fetch origin main` verified the code candidate at `HEAD == origin/main == 5bf6f401d5fcf98277a031d94abf55ac6ad77da1` before later evidence-only reporting updates.
 - The push again emitted a local tracking-ref lock warning after the remote accepted the update; the independent fetch verified the remote state.
 
 G4:
@@ -138,7 +146,7 @@ G13:
 
 G14:
 
-- Source candidate, live Machine Policy validation, local full tests and normal-entry probes above all bind to source candidate `47cea1edb5bcb0d8038c4c6bd925f2f1ccd5c90c`.
+- Recovery code candidate, live Machine Policy validation, local full tests and normal-entry probes above all bind to code candidate `5bf6f401d5fcf98277a031d94abf55ac6ad77da1`.
 - This evidence file is a later evidence artifact and does not change the source candidate code. It records that full release closure is not claimable because G4 SSH positive and Notifications delivery remain unavailable.
 
 G15:
@@ -148,19 +156,18 @@ G15:
 
 ## External CI
 
-GitHub Actions run `35893846050` for `47cea1e` failed. Failure source:
+GitHub Actions run `35895226965` for `5bf6f401d5fcf98277a031d94abf55ac6ad77da1` passed.
 
 ```text
-tests.test_upfront_authorization_persistent_authoring...
-AssertionError: None != 'allow' : codex executable not found
+Python 3.9: passed
+Python 3.x: passed
 ```
 
-The failure is in the hosted Actions environment where `codex` is unavailable. Local same-candidate full tests and live Codex execpolicy validation passed on the target machine, but remote CI is not green.
+The earlier hosted failure for `47cea1e` was an infrastructure-only `codex executable not found` failure in the CI environment. The current source candidate keeps the live target-machine execpolicy probe and lets hosted CI skip that single probe only when `codex` is absent.
 
 ## Remaining Non-Closure Items
 
 - G4 standard SSH agent/config positive publication is not proven on this machine because GitHub SSH authentication is unavailable.
 - Notifications delivery is unavailable because no existing provider/recipient is configured; no new provider/credential/recipient was authorized.
-- GitHub Actions remains red due hosted `codex executable not found`.
 
 Therefore this recovery cannot honestly be marked final release PASS in the current environment.
