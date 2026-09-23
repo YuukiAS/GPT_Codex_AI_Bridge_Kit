@@ -1,14 +1,18 @@
 from __future__ import annotations
 
+import os
 import shutil
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 
+from ai_bridge_kit import bridge_cli
 from ai_bridge_kit.host import (
     EXTERNAL_WAIT_POLICY_MARKERS,
     HOST_BEGIN_MARKER,
     HOST_END_MARKER,
+    HostPublishError,
     NARRATIVE_POLICY_MARKERS,
     RULES_RELATIVE_PATH,
     _effective_execpolicy_decision,
@@ -21,6 +25,7 @@ from ai_bridge_kit.host import (
     install_host_policy,
     install_managed_block,
     patch_config_text,
+    publish_current_branch,
     resolve_ai_bridge_executable,
     resolve_codex_home,
     validate_host_policy,
@@ -28,6 +33,24 @@ from ai_bridge_kit.host import (
 
 
 class HostPolicyTests(unittest.TestCase):
+    def make_publish_repo(self, tmp: str) -> tuple[Path, str]:
+        root = Path(tmp)
+        remote = root / "remote.git"
+        repo = root / "repo"
+        subprocess.check_call(["git", "init", "--bare", "--initial-branch", "main", str(remote)], stdout=subprocess.DEVNULL)
+        subprocess.check_call(["git", "init", "--initial-branch", "main", str(repo)], stdout=subprocess.DEVNULL)
+        subprocess.check_call(["git", "config", "user.email", "test@example.org"], cwd=repo)
+        subprocess.check_call(["git", "config", "user.name", "Test User"], cwd=repo)
+        (repo / "README.md").write_text("initial\n", encoding="utf-8")
+        subprocess.check_call(["git", "add", "README.md"], cwd=repo)
+        subprocess.check_call(["git", "commit", "-m", "initial"], cwd=repo, stdout=subprocess.DEVNULL)
+        subprocess.check_call(["git", "remote", "add", "origin", str(remote)], cwd=repo)
+        subprocess.check_call(["git", "push", "-u", "origin", "main"], cwd=repo, stdout=subprocess.DEVNULL)
+        (repo / "README.md").write_text("initial\nchange\n", encoding="utf-8")
+        subprocess.check_call(["git", "add", "README.md"], cwd=repo)
+        subprocess.check_call(["git", "commit", "-m", "change"], cwd=repo, stdout=subprocess.DEVNULL)
+        return repo, "local:" + remote.resolve().as_posix()
+
     def test_codex_home_resolution_priority(self) -> None:
         explicit = Path("/tmp/explicit-codex-home")
         env = {"CODEX_HOME": "/tmp/env-codex-home"}
@@ -138,6 +161,9 @@ memories = false
             self.assertEqual(rules_path.read_text(encoding="utf-8"), desired_rules_text())
             self.assertIn("host_executable(", rules_path.read_text(encoding="utf-8"))
             self.assertIn('pattern = ["ai-bridge", "plugin-replay"]', rules_path.read_text(encoding="utf-8"))
+            self.assertIn('pattern = ["ai-bridge", "host", "publish-current-branch"]', rules_path.read_text(encoding="utf-8"))
+            self.assertIn('pattern = ["ai-bridge", "reviewed-handoff", "materialize-worktree"]', rules_path.read_text(encoding="utf-8"))
+            self.assertIn('pattern = ["gh", "pr", "list", "--"]', rules_path.read_text(encoding="utf-8"))
             self.assertIn('pattern = ["ps"]', rules_path.read_text(encoding="utf-8"))
             self.assertIn('pattern = ["git", "fetch", "--all", "--prune"]', rules_path.read_text(encoding="utf-8"))
             self.assertIn('pattern = ["tmux", ["ls", "list-sessions", "has-session"]]', rules_path.read_text(encoding="utf-8"))
@@ -229,6 +255,18 @@ memories = false
                 )
             )
             self.assertTrue(any("ai-bridge plugin-replay" in line and "=> allow" in line for line in lines))
+            self.assertTrue(any("ai-bridge host publish-current-branch" in line and "=> allow" in line for line in lines))
+            self.assertTrue(any("ai-bridge reviewed-handoff materialize-worktree" in line and "=> allow" in line for line in lines))
+            self.assertTrue(any("gh auth status -- => allow" in line for line in lines))
+            self.assertTrue(any("gh pr list -- => allow" in line for line in lines))
+            self.assertTrue(any("gh pr status -- => allow" in line for line in lines))
+            self.assertTrue(any("gh issue list -- => allow" in line for line in lines))
+            self.assertTrue(any("gh issue status -- => allow" in line for line in lines))
+            self.assertTrue(any("gh run list -- => allow" in line for line in lines))
+            self.assertTrue(any("gh auth status --show-token => prompt" in line for line in lines))
+            self.assertTrue(any("gh pr view 1 => prompt" in line for line in lines))
+            self.assertTrue(any("gh pr list --repo private/repo => prompt" in line for line in lines))
+            self.assertTrue(any("gh api /user => prompt" in line for line in lines))
             self.assertTrue(any("squeue -j 156911 -o %.18i %.9P %.30j %.8u %.2t %.12M %.12l %.20R %.30b => allow" in line for line in lines))
             self.assertTrue(any("squeue -u testuser -h => allow" in line for line in lines))
             self.assertTrue(any("sinfo -h => allow" in line for line in lines))
@@ -281,7 +319,7 @@ memories = false
             self.assertTrue(any("git add README.md => allow" in line for line in lines))
             self.assertTrue(any("git commit -m test => allow" in line for line in lines))
             self.assertTrue(any("git commit --amend --no-edit => allow" in line for line in lines))
-            self.assertTrue(any("git push origin main => allow" in line for line in lines))
+            self.assertTrue(any("git push origin main => prompt" in line for line in lines))
             self.assertTrue(any("git push origin test-branch => prompt" in line for line in lines))
             self.assertTrue(any("git push upstream main => no_match" in line for line in lines))
             self.assertTrue(any("git switch main => prompt" in line for line in lines))
@@ -314,6 +352,18 @@ memories = false
             rules_path = codex_home / RULES_RELATIVE_PATH
             expectations = {
                 ("ai-bridge", "plugin-replay", "--target", str(Path.cwd()), "--plugin", "sites", "--task", "TASK.md", "--input", "INPUT.txt", "--dry-run"): "allow",
+                ("ai-bridge", "host", "publish-current-branch", "--expected-repo", "YuukiAS/GPT_Codex_AI_Bridge_Kit", "--expected-branch", "main"): "allow",
+                ("ai-bridge", "reviewed-handoff", "materialize-worktree", "--target", str(Path.cwd()), "--task-key", "repo--feature", "--expected-repo", "YuukiAS/GPT_Codex_AI_Bridge_Kit", "--expected-worktree", "/tmp/repo--feature", "--expected-base-ref", "origin/main", "--mode", "bootstrap"): "allow",
+                ("gh", "auth", "status", "--"): "allow",
+                ("gh", "pr", "list", "--"): "allow",
+                ("gh", "pr", "status", "--"): "allow",
+                ("gh", "issue", "list", "--"): "allow",
+                ("gh", "issue", "status", "--"): "allow",
+                ("gh", "run", "list", "--"): "allow",
+                ("gh", "auth", "status", "--show-token"): "prompt",
+                ("gh", "pr", "view", "1"): "prompt",
+                ("gh", "pr", "list", "--repo", "private/repo"): "prompt",
+                ("gh", "api", "/user"): "prompt",
                 ("squeue", "-j", "156911", "-o", "%.18i %.9P %.30j %.8u %.2t %.12M %.12l %.20R %.30b"): "allow",
                 ("squeue", "-u", "testuser", "-h"): "allow",
                 ("sinfo", "-h"): "allow",
@@ -366,7 +416,7 @@ memories = false
                 ("git", "add", "README.md"): "allow",
                 ("git", "commit", "-m", "test"): "allow",
                 ("git", "commit", "--amend", "--no-edit"): "allow",
-                ("git", "push", "origin", "main"): "allow",
+                ("git", "push", "origin", "main"): "prompt",
                 ("git", "push", "origin", "test-branch"): "prompt",
                 ("git", "push", "upstream", "main"): "no_match",
                 ("git", "switch", "main"): "prompt",
@@ -422,6 +472,127 @@ memories = false
             )
 
             self.assertEqual(_effective_execpolicy_decision(decision), "prompt", raw)
+
+    def test_publish_current_branch_pushes_existing_same_name_branch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo, identity = self.make_publish_repo(tmp)
+            head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+
+            result = publish_current_branch(
+                repo,
+                expected_repo=identity,
+                expected_branch="main",
+                env={"PATH": os.environ["PATH"]},
+            )
+
+            remote_head = subprocess.check_output(
+                ["git", "rev-parse", "refs/heads/main"],
+                cwd=Path(tmp) / "remote.git",
+                text=True,
+            ).strip()
+            self.assertEqual(result.status, "published")
+            self.assertEqual(result.pushed_oid, head)
+            self.assertEqual(remote_head, head)
+
+    def test_publish_current_branch_cli_entrypoint(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo, identity = self.make_publish_repo(tmp)
+            old_cwd = Path.cwd()
+            try:
+                os.chdir(repo)
+                code = bridge_cli.main(
+                    [
+                        "host",
+                        "publish-current-branch",
+                        "--expected-repo",
+                        identity,
+                        "--expected-branch",
+                        "main",
+                    ]
+                )
+            finally:
+                os.chdir(old_cwd)
+
+            self.assertEqual(code, 0)
+
+    def test_publish_current_branch_rejects_wrong_repo_branch_and_remote_ahead(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo, identity = self.make_publish_repo(tmp)
+            with self.assertRaisesRegex(HostPublishError, "REMOTE_IDENTITY_MISMATCH"):
+                publish_current_branch(repo, expected_repo="YuukiAS/GPT_Codex_AI_Bridge_Kit", expected_branch="main", env={"PATH": os.environ["PATH"]})
+            with self.assertRaisesRegex(HostPublishError, "BRANCH_ASSERTION_FAILED"):
+                publish_current_branch(repo, expected_repo=identity, expected_branch="develop", env={"PATH": os.environ["PATH"]})
+
+            other = Path(tmp) / "other"
+            subprocess.check_call(["git", "clone", str(Path(tmp) / "remote.git"), str(other)], stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "config", "user.email", "test@example.org"], cwd=other)
+            subprocess.check_call(["git", "config", "user.name", "Test User"], cwd=other)
+            (other / "remote.txt").write_text("remote\n", encoding="utf-8")
+            subprocess.check_call(["git", "add", "remote.txt"], cwd=other)
+            subprocess.check_call(["git", "commit", "-m", "remote"], cwd=other, stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "push", "origin", "main"], cwd=other, stdout=subprocess.DEVNULL)
+
+            with self.assertRaisesRegex(HostPublishError, "REMOTE_AHEAD_REQUIRES_PULL"):
+                publish_current_branch(repo, expected_repo=identity, expected_branch="main", env={"PATH": os.environ["PATH"]})
+
+    def test_publish_current_branch_transport_fence_negatives(self) -> None:
+        cases = [
+            ({"GIT_SSH_COMMAND": "ssh -i /tmp/key"}, "CUSTOM_SSH_TRANSPORT_REQUIRES_APPROVAL"),
+            ({"GIT_SSH": "/tmp/ssh"}, "CUSTOM_SSH_TRANSPORT_REQUIRES_APPROVAL"),
+            ({"GIT_ASKPASS": "/tmp/askpass"}, "ASKPASS_REQUIRES_APPROVAL"),
+            ({"SSH_ASKPASS": "/tmp/askpass"}, "ASKPASS_REQUIRES_APPROVAL"),
+            ({"GIT_CONFIG_GLOBAL": "/tmp/gitconfig"}, "CUSTOM_GIT_CONFIG_REQUIRES_APPROVAL"),
+            ({"GIT_CONFIG_SYSTEM": "/tmp/gitconfig"}, "CUSTOM_GIT_CONFIG_REQUIRES_APPROVAL"),
+            ({"GIT_CONFIG_NOSYSTEM": "1"}, "CUSTOM_GIT_CONFIG_REQUIRES_APPROVAL"),
+            (
+                {"GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "credential.helper", "GIT_CONFIG_VALUE_0": "!echo bad"},
+                "CUSTOM_GIT_CONFIG_REQUIRES_APPROVAL",
+            ),
+        ]
+        for extra_env, message in cases:
+            with self.subTest(extra_env=extra_env):
+                with tempfile.TemporaryDirectory() as tmp:
+                    repo, identity = self.make_publish_repo(tmp)
+                    env = {"PATH": os.environ["PATH"], **extra_env}
+                    with self.assertRaisesRegex(HostPublishError, message):
+                        publish_current_branch(repo, expected_repo=identity, expected_branch="main", env=env)
+
+    def test_publish_current_branch_rejects_repo_config_injection_and_hook(self) -> None:
+        config_cases = [
+            ("core.sshCommand", "ssh -i /tmp/key", "CUSTOM_SSH_TRANSPORT_REQUIRES_APPROVAL"),
+            ("credential.helper", "!echo bad", "REPO_CREDENTIAL_HELPER_REQUIRES_APPROVAL"),
+            ("core.askPass", "/tmp/askpass", "ASKPASS_REQUIRES_APPROVAL"),
+            ("push.followTags", "true", "FOLLOW_TAGS_REQUIRES_APPROVAL"),
+            ("push.recurseSubmodules", "on-demand", "RECURSIVE_SUBMODULE_PUSH_REQUIRES_APPROVAL"),
+            ("push.pushOption", "ci.skip", "PUSH_OPTIONS_REQUIRE_APPROVAL"),
+            ("push.gpgSign", "true", "SIGNED_PUSH_REQUIRES_APPROVAL"),
+        ]
+        for key, value, message in config_cases:
+            with self.subTest(key=key):
+                with tempfile.TemporaryDirectory() as tmp:
+                    repo, identity = self.make_publish_repo(tmp)
+                    subprocess.check_call(["git", "config", "--local", key, value], cwd=repo)
+                    with self.assertRaisesRegex(HostPublishError, message):
+                        publish_current_branch(repo, expected_repo=identity, expected_branch="main", env={"PATH": os.environ["PATH"]})
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repo, identity = self.make_publish_repo(tmp)
+            hook = repo / ".git" / "hooks" / "pre-push"
+            hook.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            hook.chmod(0o700)
+            with self.assertRaisesRegex(HostPublishError, "PRE_PUSH_HOOK_REQUIRES_APPROVAL"):
+                publish_current_branch(repo, expected_repo=identity, expected_branch="main", env={"PATH": os.environ["PATH"]})
+
+    def test_publish_current_branch_rejects_review_executor_guard(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo, identity = self.make_publish_repo(tmp)
+            with self.assertRaisesRegex(HostPublishError, "REVIEW_EXECUTOR_GUARD"):
+                publish_current_branch(
+                    repo,
+                    expected_repo=identity,
+                    expected_branch="main",
+                    env={"PATH": os.environ["PATH"], "AI_BRIDGE_REVIEWED_RUNNER_PUSH_GUARD": "1"},
+                )
 
 
 if __name__ == "__main__":

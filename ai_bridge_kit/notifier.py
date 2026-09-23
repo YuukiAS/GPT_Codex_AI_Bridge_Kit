@@ -18,7 +18,7 @@ VALID_TERMINAL_STATUSES = {"complete", "blocked", "awaiting_human"}
 LEGACY_BRIEF_SCHEMA = "ai-bridge.notification_brief.v1"
 STRUCTURED_BRIEF_SCHEMA = "ai-bridge.notification_brief.v2"
 VALID_BRIEF_SCHEMAS = {LEGACY_BRIEF_SCHEMA, STRUCTURED_BRIEF_SCHEMA}
-VALID_EVENT_TYPES = {"terminal", "awaiting_human", "operational_blocked", "milestone"}
+VALID_EVENT_TYPES = {"terminal", "awaiting_human", "operational_blocked", "operational_progress", "milestone"}
 SEMANTIC_DECISION_AUTHORITIES = {"Planner", "Reviewer", "Critic", "Final Critic"}
 OPERATIONAL_DECISION_AUTHORITIES = {"Controller", "Watcher"}
 COMMON_BRIEF_FIELDS = {
@@ -42,6 +42,7 @@ EVENT_TYPE_LABELS = {
     "terminal": "终态",
     "awaiting_human": "等待人工确认",
     "operational_blocked": "运行阻塞",
+    "operational_progress": "运行进展",
     "milestone": "里程碑",
 }
 OPTIONAL_LABELS = {
@@ -147,9 +148,12 @@ def validate_brief(brief: dict[str, Any]) -> list[str]:
         if not status:
             errors.append("status must be a non-empty string")
         authority = str(brief.get("decision_authority", "")).strip()
-        if event_type == "operational_blocked":
+        if event_type in {"operational_blocked", "operational_progress"}:
             if authority not in OPERATIONAL_DECISION_AUTHORITIES:
-                errors.append("operational_blocked decision_authority must be Controller or Watcher")
+                errors.append(f"{event_type} decision_authority must be Controller or Watcher")
+            status_upper = str(brief.get("status", "")).strip().upper()
+            if status_upper in {"PASS", "READY", "RELEASE_READY", "COMPLETE"}:
+                errors.append(f"{event_type} status must not claim semantic PASS/READY/release completion")
         elif event_type in VALID_EVENT_TYPES and authority not in SEMANTIC_DECISION_AUTHORITIES:
             errors.append("semantic notification decision_authority must be Planner, Reviewer, Critic, or Final Critic")
     else:

@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from . import external_wait
+from .host import _canonical_repo_identity
 from . import task_keys
 from . import text_review
 from . import visual_review
@@ -113,6 +114,10 @@ REQUIRED_CORE_FILES = [
 ]
 
 
+class WorktreeMaterializeError(ValueError):
+    pass
+
+
 @dataclass
 class ReviewedStatus:
     target: Path
@@ -162,6 +167,20 @@ def git_output(target: Path, args: list[str]) -> str:
     return subprocess.check_output(["git", *args], cwd=target, text=True, stderr=subprocess.DEVNULL).strip()
 
 
+def git_run(target: Path, args: list[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
+    result = subprocess.run(
+        ["git", *args],
+        cwd=target,
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    if check and result.returncode != 0:
+        raise WorktreeMaterializeError((result.stderr or result.stdout or "git command failed").strip())
+    return result
+
+
 def current_commit(target: Path) -> str:
     try:
         return git_output(target, ["rev-parse", "HEAD"])
@@ -196,6 +215,165 @@ def git_commit_exists(target: Path, commit: str) -> bool:
         return True
     except Exception:
         return False
+
+
+def _origin_repo_identity(target: Path) -> str:
+    urls = [
+        line.strip()
+        for line in git_run(target, ["remote", "get-url", "--all", "origin"]).stdout.splitlines()
+        if line.strip()
+    ]
+    if len(urls) != 1:
+        raise WorktreeMaterializeError("REMOTE_URL_AMBIGUOUS")
+    return _canonical_repo_identity(urls[0])
+
+
+def _frozen_worktree_locator(request_path: Path) -> Path:
+    text = read_text(request_path)
+    matches = re.findall(r"^- Reviewed worktree locator:\s*(\S.*?)\s*$", text, flags=re.MULTILINE)
+    if len(matches) != 1:
+        raise WorktreeMaterializeError("REQUEST_REVIEWED_WORKTREE_LOCATOR_REQUIRED")
+    path = Path(matches[0]).expanduser()
+    if not path.is_absolute():
+        raise WorktreeMaterializeError("REQUEST_REVIEWED_WORKTREE_LOCATOR_MUST_BE_ABSOLUTE")
+    return path.resolve()
+
+
+def _worktree_entries(target: Path) -> list[dict[str, str]]:
+    result = git_run(target, ["worktree", "list", "--porcelain"])
+    entries: list[dict[str, str]] = []
+    current: dict[str, str] = {}
+    for raw in result.stdout.splitlines():
+        if not raw.strip():
+            if current:
+                entries.append(current)
+                current = {}
+            continue
+        key, _, value = raw.partition(" ")
+        current[key] = value
+    if current:
+        entries.append(current)
+    return entries
+
+
+def _branch_worktree_path(target: Path, branch_ref: str) -> Path | None:
+    for entry in _worktree_entries(target):
+        if entry.get("branch") == branch_ref and entry.get("worktree"):
+            return Path(entry["worktree"]).resolve()
+    return None
+
+
+def _path_registered_worktree(target: Path, worktree: Path) -> dict[str, str] | None:
+    for entry in _worktree_entries(target):
+        if entry.get("worktree") and Path(entry["worktree"]).resolve() == worktree:
+            return entry
+    return None
+
+
+def _ensure_available_worktree_path(target: Path, worktree: Path, branch_ref: str) -> str | None:
+    target_root = target.resolve()
+    if worktree == target_root:
+        raise WorktreeMaterializeError("WORKTREE_PATH_IS_CANONICAL_CHECKOUT")
+    registered = _path_registered_worktree(target, worktree)
+    if registered:
+        if registered.get("branch") == branch_ref:
+            return "already_materialized"
+        raise WorktreeMaterializeError("WORKTREE_PATH_REGISTERED_TO_OTHER_BRANCH")
+    if worktree.exists() and any(worktree.iterdir()):
+        raise WorktreeMaterializeError("WORKTREE_PATH_OCCUPIED")
+    owner = _branch_worktree_path(target, branch_ref)
+    if owner and owner != worktree:
+        raise WorktreeMaterializeError("TASK_BRANCH_ALREADY_HAS_OTHER_WORKTREE")
+    return None
+
+
+def _branch_oid(target: Path, ref: str) -> str | None:
+    result = git_run(target, ["rev-parse", "--verify", "--quiet", ref], check=False)
+    return result.stdout.strip() if result.returncode == 0 else None
+
+
+def _remote_task_current(target: Path, remote_ref: str, task_key: str) -> dict[str, Any]:
+    path = f"automation/reviewed_handoff/tasks/{task_key}/CURRENT.json"
+    result = git_run(target, ["show", f"{remote_ref}:{path}"], check=False)
+    if result.returncode != 0:
+        raise WorktreeMaterializeError("REMOTE_TASK_METADATA_MISSING")
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise WorktreeMaterializeError("REMOTE_TASK_METADATA_INVALID") from exc
+    return payload
+
+
+def materialize_worktree(
+    target: Path,
+    task_key: str,
+    *,
+    expected_repo: str,
+    expected_worktree: Path,
+    expected_base_ref: str,
+    mode: str,
+) -> list[str]:
+    target = target.resolve()
+    if mode not in {"bootstrap", "resume"}:
+        raise WorktreeMaterializeError("mode must be bootstrap or resume")
+    if task_keys.existing_task_key_error(task_key):
+        raise WorktreeMaterializeError("invalid task_key")
+    if _origin_repo_identity(target) != expected_repo:
+        raise WorktreeMaterializeError("REPO_ASSERTION_FAILED")
+    root = task_root(target, task_key)
+    current = load_json(root / "CURRENT.json")
+    base_branch = str(current.get("base_branch") or "")
+    base_commit = str(current.get("base_commit") or "")
+    if current.get("task_key") != task_key:
+        raise WorktreeMaterializeError("CURRENT_TASK_KEY_MISMATCH")
+    allowed_base_refs = {base_branch, f"origin/{base_branch}", base_commit}
+    if expected_base_ref not in allowed_base_refs:
+        raise WorktreeMaterializeError("BASE_REF_ASSERTION_FAILED")
+    if not git_commit_exists(target, base_commit):
+        raise WorktreeMaterializeError("BASE_COMMIT_MISSING")
+    frozen_worktree = _frozen_worktree_locator(root / "REQUEST.md")
+    asserted_worktree = expected_worktree.expanduser().resolve()
+    if asserted_worktree != frozen_worktree:
+        raise WorktreeMaterializeError("WORKTREE_ASSERTION_FAILED")
+    branch = f"reviewed/{task_key}"
+    branch_ref = f"refs/heads/{branch}"
+    availability = _ensure_available_worktree_path(target, frozen_worktree, branch_ref)
+    if availability == "already_materialized":
+        return [f"OK already materialized: {frozen_worktree}"]
+
+    actions: list[str] = []
+    if mode == "bootstrap":
+        if _branch_oid(target, branch_ref):
+            raise WorktreeMaterializeError("LOCAL_TASK_BRANCH_ALREADY_EXISTS")
+        if _branch_oid(target, f"refs/remotes/origin/{branch}"):
+            raise WorktreeMaterializeError("REMOTE_TASK_BRANCH_ALREADY_EXISTS")
+        git_run(target, ["worktree", "add", "-b", branch, str(frozen_worktree), base_commit])
+        actions.append(f"CREATE worktree {frozen_worktree} at {branch}")
+        return actions
+
+    fetch = git_run(target, ["fetch", "origin", f"{branch}:refs/remotes/origin/{branch}"], check=False)
+    if fetch.returncode != 0:
+        raise WorktreeMaterializeError("REMOTE_TASK_BRANCH_REQUIRED")
+    remote_ref = f"refs/remotes/origin/{branch}"
+    remote_oid = _branch_oid(target, remote_ref)
+    if not remote_oid:
+        raise WorktreeMaterializeError("REMOTE_TASK_BRANCH_REQUIRED")
+    remote_current = _remote_task_current(target, remote_ref, task_key)
+    if remote_current.get("task_key") != task_key:
+        raise WorktreeMaterializeError("REMOTE_TASK_METADATA_MISMATCH")
+    if remote_current.get("base_branch") != base_branch or remote_current.get("base_commit") != base_commit:
+        raise WorktreeMaterializeError("REMOTE_TASK_BASE_MISMATCH")
+    if git_run(target, ["merge-base", "--is-ancestor", base_commit, remote_oid], check=False).returncode != 0:
+        raise WorktreeMaterializeError("REMOTE_TASK_LINEAGE_MISMATCH")
+    local_oid = _branch_oid(target, branch_ref)
+    if local_oid and local_oid != remote_oid:
+        raise WorktreeMaterializeError("LOCAL_REMOTE_BRANCH_AMBIGUITY")
+    if not local_oid:
+        git_run(target, ["branch", branch, remote_oid])
+        actions.append(f"CREATE branch {branch} at {remote_oid}")
+    git_run(target, ["worktree", "add", str(frozen_worktree), branch])
+    actions.append(f"CREATE worktree {frozen_worktree} at {branch}")
+    return actions
 
 
 def git_is_ancestor(target: Path, base_commit: str, implementation_commit: str) -> bool:
@@ -1372,6 +1550,14 @@ def build_parser() -> argparse.ArgumentParser:
     human_record.add_argument("--route", choices=sorted(HUMAN_REJECT_ROUTES))
     human_record.add_argument("--body", default="")
 
+    materialize = sub.add_parser("materialize-worktree")
+    materialize.add_argument("--target", type=Path, default=Path.cwd())
+    materialize.add_argument("--task-key", required=True)
+    materialize.add_argument("--expected-repo", required=True)
+    materialize.add_argument("--expected-worktree", type=Path, required=True)
+    materialize.add_argument("--expected-base-ref", required=True)
+    materialize.add_argument("--mode", choices=["bootstrap", "resume"], required=True)
+
     prompt = sub.add_parser("prompt")
     prompt.add_argument("--target", type=Path, default=Path.cwd())
     prompt.add_argument("name", choices=["planner", "reviewer-scheduled-task", "codex"])
@@ -1423,6 +1609,17 @@ def main(argv: list[str] | None = None) -> int:
                 next_action=args.next_action,
             )
             print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
+            return 0
+        if args.command == "materialize-worktree":
+            for action in materialize_worktree(
+                args.target,
+                args.task_key,
+                expected_repo=args.expected_repo,
+                expected_worktree=args.expected_worktree,
+                expected_base_ref=args.expected_base_ref,
+                mode=args.mode,
+            ):
+                print(action)
             return 0
     except ValueError as exc:
         parser.error(str(exc))

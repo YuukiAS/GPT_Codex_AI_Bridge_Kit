@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import shutil
 import sys
 from pathlib import Path
@@ -666,6 +667,12 @@ def build_parser() -> argparse.ArgumentParser:
             default=None,
             help="Explicit Codex Home. Defaults to $CODEX_HOME, then ~/.codex.",
         )
+    publish_parser = host_subparsers.add_parser(
+        "publish-current-branch",
+        help="Publish the current branch through the bounded Machine Policy publisher.",
+    )
+    publish_parser.add_argument("--expected-repo", required=True)
+    publish_parser.add_argument("--expected-branch", required=True)
 
     notifier_parser = subparsers.add_parser("notifier", help="Send Generic Notifier terminal emails.")
     notifier_parser.add_argument("notifier_args", nargs=argparse.REMAINDER)
@@ -709,9 +716,11 @@ def main(argv: list[str] | None = None) -> int:
         return validate_workspace(args.target.resolve(), strict=args.strict)
     if args.command == "host":
         from .host import (
+            HostPublishError,
             format_status,
             inspect_host_policy,
             install_host_policy,
+            publish_current_branch,
             resolve_codex_home,
             validate_host_policy,
         )
@@ -719,8 +728,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.host_command is None:
             parser.parse_args(["host", "--help"])
             return 0
-        codex_home = resolve_codex_home(args.codex_home)
         if args.host_command == "install":
+            codex_home = resolve_codex_home(args.codex_home)
             status, actions = install_host_policy(codex_home)
             for action in actions:
                 print(action)
@@ -728,15 +737,43 @@ def main(argv: list[str] | None = None) -> int:
             print(format_status(status))
             return 0 if status.overall_state == "configured" else 1
         if args.host_command == "status":
+            codex_home = resolve_codex_home(args.codex_home)
             print(format_status(inspect_host_policy(codex_home)))
             return 0
         if args.host_command == "validate":
+            codex_home = resolve_codex_home(args.codex_home)
             status, lines, exit_code = validate_host_policy(codex_home)
             print(format_status(status))
             print()
             for line in lines:
                 print(line)
             return exit_code
+        if args.host_command == "publish-current-branch":
+            try:
+                result = publish_current_branch(
+                    Path.cwd(),
+                    expected_repo=args.expected_repo,
+                    expected_branch=args.expected_branch,
+                )
+            except HostPublishError as exc:
+                print(f"ERROR: {exc}", file=sys.stderr)
+                return 1
+            print(
+                json.dumps(
+                    {
+                        "status": result.status,
+                        "repo": result.repo,
+                        "branch": result.branch,
+                        "pushed_oid": result.pushed_oid,
+                        "destination": result.destination,
+                    },
+                    indent=2,
+                    sort_keys=True,
+                )
+            )
+            if result.output:
+                print(result.output)
+            return 0
     if args.command == "notifier":
         from . import notifier
 

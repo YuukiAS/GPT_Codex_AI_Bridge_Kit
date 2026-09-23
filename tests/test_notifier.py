@@ -294,6 +294,24 @@ class NotifierTests(unittest.TestCase):
             self.assertEqual(result.status, "sent")
             self.assertIn("运行阻塞", notifier.render_plain(brief))
 
+    def test_operational_progress_is_transport_only(self) -> None:
+        brief = structured_brief(event_type="operational_progress", authority="Watcher", task_key="001_progress")
+        brief["status"] = "stage=fit-model eta=UNKNOWN"
+        brief["key_conclusion"] = "Persistent Run observed a real checkpoint and no defensible ETA."
+
+        self.assertEqual(notifier.validate_brief(brief), [])
+        self.assertIn("运行进展", notifier.render_plain(brief))
+
+        forged = dict(brief)
+        forged["status"] = "RELEASE_READY"
+        errors = notifier.validate_brief(forged)
+        self.assertTrue(any("must not claim semantic PASS/READY/release completion" in error for error in errors))
+
+        wrong_authority = dict(brief)
+        wrong_authority["decision_authority"] = "Reviewer"
+        errors = notifier.validate_brief(wrong_authority)
+        self.assertTrue(any("operational_progress decision_authority" in error for error in errors))
+
     def test_executor_cannot_forge_semantic_pass_notification(self) -> None:
         brief = structured_brief(event_type="milestone", authority="Executor")
         brief["status"] = "Stage PASS"

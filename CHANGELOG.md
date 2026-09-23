@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+## 0.9.0 - 2026-09-24
+
+- Rename current user-facing taxonomy to Machine Policy, Reviewed Mode,
+  Controlled Mode, and Notifications while preserving compatibility
+  identifiers such as `ai-bridge host`, `reviewed-handoff`, `agent-flow`,
+  `notifier`, schemas, state names, and automation paths.
+- Add Machine Policy direct-read rules for current-repository GitHub diagnosis
+  and keep cross-repo selectors, token display, arbitrary `gh api`, positional
+  view forms, custom Git remotes/helpers, ext-diff/textconv, shell composition,
+  and dangerous neighbors gated.
+- Add the single bounded `ai-bridge host publish-current-branch` operation for
+  existing same-name branch publication with exact-effect checks, remote
+  identity assertions, behind/ancestry checks, no force/tag/submodule/push
+  option expansion, pre-push hook rejection, Review executor guard rejection,
+  and transport/config/credential/askpass fences.
+- Add the bounded `ai-bridge reviewed-handoff materialize-worktree` operation
+  so Reviewed Mode can bootstrap or rematerialize the exact frozen task
+  worktree from existing `REQUEST.md` and `CURRENT.json` artifacts without
+  adding a new workflow, schema family, or authorization store.
+- Add Persistent Run progress normalization for truthful stage/fraction,
+  defensible ETA or `UNKNOWN`, stalled detection from real no-progress
+  evidence, and no semantic completion claim from runtime state alone.
+- Extend Notifications with operational-progress briefs while preserving
+  transport-only authority: Controller/watcher may report progress or
+  operational blockage, but progress notifications cannot claim semantic PASS,
+  READY, release readiness, or final completion.
+
 ## 0.8.5 - 2026-09-22
 
 - Manage `features.default_mode_request_user_input = false` in Host Policy so

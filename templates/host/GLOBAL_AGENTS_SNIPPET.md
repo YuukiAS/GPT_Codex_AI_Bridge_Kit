@@ -1,4 +1,4 @@
-# AI Bridge Kit Host Policy
+# AI Bridge Kit Machine Policy
 
 ## Git Branch Policy
 
@@ -8,9 +8,12 @@ is a project decision controlled by the user.
 - Continue working on the currently checked-out branch by default.
 - Normal development on the currently checked-out branch is preauthorized:
   fetch `origin/main`, fast-forward pull the already selected `main` branch when
-  the working tree is clean, stage task-owned files, create ordinary commits,
-  and push to the explicitly allowed `origin/main` target without repeatedly
-  asking the user.
+  the working tree is clean, stage task-owned files, create ordinary commits.
+  Existing same-name branch publication is low-friction only through the
+  bounded `ai-bridge host publish-current-branch --expected-repo ...
+  --expected-branch ...` helper, which must prove the exact repo, branch,
+  destination, ref update, and transport boundary before mutation. Raw
+  `git push origin main` remains on the approval path.
 - Check the working tree before synchronization. If it is dirty, determine
   ownership first. Do not default to `git pull --ff-only --autostash ...`,
   `git stash`, `git reset --hard`, or `git restore ...`.
@@ -18,8 +21,8 @@ is a project decision controlled by the user.
   so unrelated files, generated noise, or secrets are not included.
 - Do not create, switch, checkout, rename, delete, or otherwise change arbitrary
   Git branches without explicit user authorization for that branch strategy.
-- **Review exception:** when a repository has multiple independent
-  Review workflows, the user has authorized one task-owned branch per
+- **Reviewed Mode exception:** when a repository has multiple independent
+  Reviewed Mode workflows, the user has authorized one task-owned branch per
   workflow using the deterministic name `reviewed/<task_key>`. Creating,
   selecting and continuing on that exact task branch is part of the authorized
   workflow strategy; do not repeatedly ask whether independent tasks may be
@@ -27,11 +30,12 @@ is a project decision controlled by the user.
 - A `reviewed/<task_key>` branch is not authority to create unrelated branches,
   change remotes, create PRs, force-push, rewrite history, or choose a different
   integration strategy. If the requested branch does not correspond to the
-  current Review task, ask the user.
-- Until Bridge Kit provides a first-class bounded task-branch helper, Git
-  execpolicy may still surface an approval/user-input interaction for branch
-  creation or first push. Treat that as a recoverable authorization interaction,
-  not a reason to mark the workflow `BLOCKED`.
+  current Reviewed Mode task, ask the user.
+- Bridge Kit provides bounded Reviewed Mode worktree materialization only for
+  an exact frozen `reviewed/<task_key>` branch/worktree effect. Other branch
+  creation or first-push choices remain branch-topology decisions and may still
+  surface an approval/user-input interaction. Treat that as a recoverable
+  authorization interaction, not a reason to mark the workflow `BLOCKED`.
 - Large scope, many files, incomplete implementation, perceived PR safety, or a
   clean `main` baseline are not independent authorization to invent a branch.
 - If the user explicitly selected an existing branch, continue on that branch
@@ -73,7 +77,7 @@ exercise an installed production plugin, use `ai-bridge plugin-replay`.
 
 ## HPC / Slurm Read-Only Inspection
 
-Host Policy may preauthorize only direct, common Slurm inspection commands:
+Machine Policy may preauthorize only direct, common Slurm inspection commands:
 `squeue`, `sinfo`, `sacct`, `sstat`, `sprio`, plus `scontrol show ...` and
 `scontrol ping`.
 
@@ -155,7 +159,7 @@ upstream issue references.
 
 ## User Input Policy
 
-Host policy deliberately sets `features.default_mode_request_user_input = false`
+Machine Policy deliberately sets `features.default_mode_request_user_input = false`
 for Default mode. Current native Default-mode question cards are optional
 transport and can auto-resolve, so they must not carry required `HUMAN_ONLY`
 gates. Plan-mode native blocking semantics are separate and remain valid.
@@ -269,7 +273,7 @@ failure.
   unchanged. Do not write terminal `FINAL_REPORT.md`, do not change the workflow
   state to `BLOCKED`, and do not ask the user to reset the task.
 - `BLOCKED` is a last-resort state. Use it only when observed evidence shows
-  that normal waiting, Planner re-entry, user input, Host Policy-authorized
+  that normal waiting, Planner re-entry, user input, Machine Policy-authorized
   operation, or bounded recovery cannot resolve the condition. Disabled/deleted
   external automation, repeated connector/authentication failure, invalid
   repository state with no safe migration, inaccessible required artifacts with

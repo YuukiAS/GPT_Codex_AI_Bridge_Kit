@@ -302,12 +302,107 @@ class ReviewedHandoffTests(unittest.TestCase):
         )
         text_review.write_json(text_dir / "TEXT_REVIEW.json", artifact)
 
+    def make_remote_review_project(self, tmp: str, *, worktree: Path) -> tuple[Path, str]:
+        root = Path(tmp)
+        remote = root / "remote.git"
+        target = root / "project"
+        subprocess.check_call(["git", "init", "--bare", "--initial-branch", "main", str(remote)], stdout=subprocess.DEVNULL)
+        subprocess.check_call(["git", "init", "--initial-branch", "main", str(target)], stdout=subprocess.DEVNULL)
+        subprocess.check_call(["git", "config", "user.email", "test@example.org"], cwd=target)
+        subprocess.check_call(["git", "config", "user.name", "Test User"], cwd=target)
+        (target / "src").mkdir()
+        (target / "src" / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
+        subprocess.check_call(["git", "add", "."], cwd=target)
+        subprocess.check_call(["git", "commit", "-m", "initial"], cwd=target, stdout=subprocess.DEVNULL)
+        subprocess.check_call(["git", "remote", "add", "origin", str(remote)], cwd=target)
+        subprocess.check_call(["git", "push", "-u", "origin", "main"], cwd=target, stdout=subprocess.DEVNULL)
+        status, _ = rh.install_reviewed_handoff(target)
+        self.assertTrue(status.installed)
+        rh.init_task(target, "repo--feature", objective="Add a reviewed feature")
+        request_path = rh.task_root(target, "repo--feature") / "REQUEST.md"
+        request_path.write_text(
+            request_path.read_text(encoding="utf-8").replace(
+                "<absolute path selected by the current-user kickoff when bounded worktree materialization is required>",
+                str(worktree),
+            ),
+            encoding="utf-8",
+        )
+        return target, "local:" + remote.resolve().as_posix()
+
     def test_bridge_cli_routes_reviewed_handoff_without_touching_legacy_cli(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "project"
             target.mkdir()
             self.assertEqual(bridge_cli.main(["reviewed-handoff", "install", "--target", str(target)]), 0)
             self.assertTrue(rh.inspect_reviewed_handoff(target).installed)
+
+    def test_materialize_worktree_bootstrap_uses_frozen_locator(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            frozen = Path(tmp) / "project-reviewed"
+            target, identity = self.make_remote_review_project(tmp, worktree=frozen)
+
+            actions = rh.materialize_worktree(
+                target,
+                "repo--feature",
+                expected_repo=identity,
+                expected_worktree=frozen,
+                expected_base_ref="origin/main",
+                mode="bootstrap",
+            )
+
+            self.assertTrue(frozen.is_dir())
+            self.assertTrue(any("CREATE worktree" in action for action in actions))
+            branch = subprocess.check_output(["git", "branch", "--show-current"], cwd=frozen, text=True).strip()
+            self.assertEqual(branch, "reviewed/repo--feature")
+
+    def test_materialize_worktree_resume_uses_remote_task_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            frozen = Path(tmp) / "resume-worktree"
+            target, identity = self.make_remote_review_project(tmp, worktree=frozen)
+            subprocess.check_call(["git", "add", "automation", "results"], cwd=target)
+            subprocess.check_call(["git", "commit", "-m", "review task"], cwd=target, stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "branch", "reviewed/repo--feature", "HEAD"], cwd=target)
+            subprocess.check_call(["git", "push", "origin", "reviewed/repo--feature"], cwd=target, stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "branch", "-D", "reviewed/repo--feature"], cwd=target, stdout=subprocess.DEVNULL)
+
+            actions = rh.materialize_worktree(
+                target,
+                "repo--feature",
+                expected_repo=identity,
+                expected_worktree=frozen,
+                expected_base_ref="origin/main",
+                mode="resume",
+            )
+
+            self.assertTrue(frozen.is_dir())
+            self.assertTrue(any("CREATE branch reviewed/repo--feature" in action for action in actions))
+            current = rh.load_json(frozen / "automation" / "reviewed_handoff" / "tasks" / "repo--feature" / "CURRENT.json")
+            self.assertEqual(current["task_key"], "repo--feature")
+
+    def test_materialize_worktree_fails_closed_on_wrong_or_occupied_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            frozen = Path(tmp) / "project-reviewed"
+            target, identity = self.make_remote_review_project(tmp, worktree=frozen)
+            with self.assertRaisesRegex(rh.WorktreeMaterializeError, "WORKTREE_ASSERTION_FAILED"):
+                rh.materialize_worktree(
+                    target,
+                    "repo--feature",
+                    expected_repo=identity,
+                    expected_worktree=Path(tmp) / "other",
+                    expected_base_ref="origin/main",
+                    mode="bootstrap",
+                )
+            frozen.mkdir()
+            (frozen / "foreign.txt").write_text("not ours\n", encoding="utf-8")
+            with self.assertRaisesRegex(rh.WorktreeMaterializeError, "WORKTREE_PATH_OCCUPIED"):
+                rh.materialize_worktree(
+                    target,
+                    "repo--feature",
+                    expected_repo=identity,
+                    expected_worktree=frozen,
+                    expected_base_ref="origin/main",
+                    mode="bootstrap",
+                )
 
     def test_install_and_task_init_are_additive_and_branch_free(self) -> None:
         tmp, target = self.make_project(git=True)

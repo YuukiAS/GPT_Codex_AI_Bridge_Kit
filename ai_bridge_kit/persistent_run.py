@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import argparse
+import json
 import subprocess
 import sys
 from pathlib import Path, PurePosixPath
+from typing import Any
 
 
 PERSISTENT_RUN_BEGIN_MARKER = "<!-- ai-bridge-kit:persistent-run:start -->"
@@ -17,6 +19,58 @@ REQUIRED_TEMPLATE_FILES = (
 
 class PersistentRunError(ValueError):
     pass
+
+
+def normalize_progress_evidence(payload: dict[str, Any], *, stalled_after_seconds: int | None = None) -> dict[str, Any]:
+    stage = str(payload.get("stage") or payload.get("current_stage") or "UNKNOWN").strip() or "UNKNOWN"
+    events = payload.get("events") if isinstance(payload.get("events"), list) else []
+    last_event = events[-1] if events and isinstance(events[-1], dict) else None
+    completed = payload.get("completed")
+    total = payload.get("total")
+    fraction: float | None = None
+    if isinstance(completed, int) and isinstance(total, int) and total > 0 and 0 <= completed <= total:
+        fraction = completed / total
+    eta = payload.get("eta")
+    eta_basis = str(payload.get("eta_basis") or "").strip()
+    uncertainty = payload.get("eta_uncertainty")
+    if eta in {None, ""} or not eta_basis:
+        eta_value: str | int | float = "UNKNOWN"
+        uncertainty_value: str | int | float = "UNKNOWN"
+    else:
+        eta_value = eta
+        uncertainty_value = uncertainty if uncertainty not in {None, ""} else "UNKNOWN"
+    seconds_since_progress = payload.get("seconds_since_progress")
+    status = str(payload.get("status") or "normal").strip().lower() or "normal"
+    if stalled_after_seconds is not None and isinstance(seconds_since_progress, (int, float)):
+        if seconds_since_progress >= stalled_after_seconds:
+            status = "stalled"
+    if status not in {"normal", "slow", "stalled", "blocked", "complete", "failed"}:
+        status = "normal"
+    return {
+        "schema": "ai-bridge.persistent_run.progress.v1",
+        "stage": stage,
+        "status": status,
+        "last_progress_at": payload.get("last_progress_at") or (last_event or {}).get("timestamp") or "UNKNOWN",
+        "progress_event_count": len(events),
+        "progress_since_previous": bool(payload.get("progress_since_previous", bool(last_event))),
+        "completed": completed if isinstance(completed, int) else None,
+        "total": total if isinstance(total, int) else None,
+        "fraction": fraction,
+        "eta": eta_value,
+        "eta_basis": eta_basis or "UNKNOWN",
+        "eta_uncertainty": uncertainty_value,
+        "semantic_completion_claim": False,
+    }
+
+
+def normalize_progress_file(path: Path, *, stalled_after_seconds: int | None = None) -> dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise PersistentRunError(f"progress evidence unreadable: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise PersistentRunError("progress evidence must be a JSON object")
+    return normalize_progress_evidence(payload, stalled_after_seconds=stalled_after_seconds)
 
 
 def kit_root() -> Path:
@@ -211,6 +265,9 @@ def build_parser() -> argparse.ArgumentParser:
     kickoff = prompt_sub.add_parser("kickoff", help="Print explicit kickoff authorization for a Goal.")
     kickoff.add_argument("--target", type=Path, default=Path.cwd())
     kickoff.add_argument("--goal", required=True)
+    progress = sub.add_parser("progress", help="Normalize project-native Persistent Run progress evidence.")
+    progress.add_argument("--evidence", type=Path, required=True)
+    progress.add_argument("--stalled-after-seconds", type=int)
     return parser
 
 
@@ -229,6 +286,9 @@ def main(argv: list[str] | None = None) -> int:
             return code
         if args.command == "prompt" and args.prompt_command == "kickoff":
             print(render_kickoff_prompt(args.target, args.goal), end="")
+            return 0
+        if args.command == "progress":
+            print(json.dumps(normalize_progress_file(args.evidence, stalled_after_seconds=args.stalled_after_seconds), ensure_ascii=False, indent=2, sort_keys=True))
             return 0
     except PersistentRunError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)

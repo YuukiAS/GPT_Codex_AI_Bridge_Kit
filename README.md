@@ -6,38 +6,39 @@
 
 这个仓库的原则是：**默认保持简单，需要什么再加什么。** 普通项目只需要机器级规则和基础交接；只有确实需要时，才启用独立复核、高风险闭环、邮件通知、Overleaf 同步或视觉复核。
 
-当前集成版本：`0.8.5`（056 release main；这不是 GitHub release/tag 声明）。
+当前集成版本：`0.9.0`（low-friction operations convergence candidate；这不是 GitHub release/tag 声明）。
 
-## 三档 workflow
+## 三档工作模式
 
 ```text
 Lite
 最轻量，普通任务默认使用
 
-Review
+Reviewed Mode
 GPT 先规划，Codex 执行，再由 GPT 独立复核
 
-Control
+Controlled Mode
 高风险任务的严格多角色控制与验证
 ```
 
 这些是面向用户讨论和选择 workflow 时使用的显示名称。具体命令仍保持兼容：
-Review 使用 `ai-bridge reviewed-handoff ...`，Control 使用
-`ai-bridge agent-flow ...`。
+Reviewed Mode 使用 `ai-bridge reviewed-handoff ...`，Controlled Mode 使用
+`ai-bridge agent-flow ...`。机器级能力当前显示为 **Machine Policy**，兼容命令仍是
+`ai-bridge host ...`。
 
 ## 功能与版本
 
 | 能力 | 首次引入 | 作用 |
 |---|---:|---|
 | Lite | `0.1.0` | 最基础的 GPT → Codex → 复核文件交接 |
-| Host Policy | `0.2.0` | 一台机器上的 Codex 长期配置、Git 行为和通用规则 |
-| Generic Notifier | `0.3.0` | 任务合法终态后发送邮件通知 |
-| Control | `0.4.0` | 高风险任务的严格多角色验证闭环 |
-| Review | `0.5.0` | GPT 规划、Codex 执行、GPT 最多两轮独立复核 |
+| Machine Policy | `0.2.0` | 一台机器上的 Codex 长期配置、Git 行为和通用规则 |
+| Notifications | `0.3.0` | 任务合法终态或运行层进展后发送通知 |
+| Controlled Mode | `0.4.0` | 高风险任务的严格多角色验证闭环 |
+| Reviewed Mode | `0.5.0` | GPT 规划、Codex 执行、GPT 最多两轮独立复核 |
 | Visual Review | `0.5.2` | 对图片、PPT 截图等生成可验证视觉证据 |
 | Overleaf Bridge | `0.6.0` | 科研单一仓库中只把论文目录安全同步到 Overleaf |
 | Text Review / Text Transform | `0.6.1` | 私有 Markdown/plain-text 的加密复核与转换 transport |
-| Production Plugin Replay | `0.6.1` | 通过 Host Policy 预授权受控的本机真实插件回归入口 |
+| Production Plugin Replay | `0.6.1` | 通过 Machine Policy 预授权受控的本机真实插件回归入口 |
 | Goal Fidelity | `0.7.0` | Lite / Review / Control 防止把降级替代、窄证据或纯负面检查包装成原始目标完成 |
 | Persistent Run | `0.8.0` | 长期 Goal 的显式 kickoff、canonical tmux、恢复证据与不中断执行约束 |
 
@@ -65,6 +66,10 @@ Review 使用 `ai-bridge reviewed-handoff ...`，Control 使用
 - `0.8.5`：修复 Default-mode required human gate transport：Host Policy 期望
   `default_mode_request_user_input=false`，Lite/Host 使用 durable transcript
   wait/resume 语义，`host validate` 区分 feature key 是否受支持与期望启用状态；现阶段不代表已经 release、tag 或真实 Host install。
+- `0.9.0`：收口低打扰操作入口。Machine Policy 增加当前仓库 GitHub/Git 安全读、
+  单一 bounded `ai-bridge host publish-current-branch`、Reviewed Mode
+  `materialize-worktree`、Persistent Run progress/ETA 规范化和 Notifications
+  operational-progress brief；raw `git push origin main` 不再作为机器级低打扰入口。
 
 ## 一眼看懂：我到底该装什么
 
@@ -72,27 +77,27 @@ Review 使用 `ai-bridge reviewed-handoff ...`，Control 使用
 
 ```text
 机器层：一台机器 / 一个 CODEX_HOME 配一次
-└── Host Policy
+└── Machine Policy
 
 项目层：每个 Git 仓库按需安装
 ├── Lite                 基础 GPT ↔ Codex 交接，默认推荐
-├── Review               GPT 先规划，Codex 执行，再由 GPT 独立复核
+├── Reviewed Mode        GPT 先规划，Codex 执行，再由 GPT 独立复核
 ├── Persistent Run       长期 Goal 的 tmux 持久执行能力
-├── Generic Notifier     任务结束后发邮件
+├── Notifications        任务结束或运行层进展后发通知
 ├── Overleaf Bridge      只把论文目录同步到 Overleaf
 ├── Visual Review        对图片、PPT 截图等做独立视觉检查
-└── Control              高风险任务的严格闭环
+└── Controlled Mode      高风险任务的严格闭环
 
 任务层：某一次具体工作的实例
 ├── Lite 任务
-├── Review 任务
-└── Control 任务
+├── Reviewed Mode 任务
+└── Controlled Mode 任务
 ```
 
 绝大多数新项目建议从这里开始：
 
 ```text
-Host Policy + Lite
+Machine Policy + Lite
 ```
 
 不要因为项目大、文件多、运行时间长，就自动启用 Control。是否需要更重的流程，取决于“错误通过的代价”，而不是代码行数。
@@ -150,7 +155,7 @@ Goal 的 bounded kickoff 授权，应先显示 kickoff prompt 并等待用户发
 
 ---
 
-## 5. Host Policy（`0.2.0` 引入）：先配置 Codex 的长期规则
+## 5. Machine Policy（`0.2.0` 引入）：先配置 Codex 的长期规则
 
 先安装本仓库：
 
@@ -167,7 +172,7 @@ ai-bridge host validate
 
 如果一台机器上存在多个不同的 `CODEX_HOME`，它们应视为不同的 Codex 身份，分别配置。
 
-Host Policy 主要管理：
+Machine Policy 主要管理：
 
 ```text
 $CODEX_HOME/config.toml
@@ -179,7 +184,9 @@ $CODEX_HOME/rules/ai-bridge-global.rules
 
 - 用户可见的进度、计划、测试结果和完成报告默认使用自然中文；
 - 普通局部实现由 Codex 自行判断，真正会改变架构、范围、部署、Git 分支策略或科研语义的歧义才询问用户；
-- 当前 `main` 分支上的安全 `fetch`、快进 `pull`、正常 `add/commit/push origin main` 尽量减少重复授权；
+- 当前 `main` 分支上的安全 `fetch`、快进 `pull`、正常 `add/commit` 尽量减少重复授权；
+- 已存在同名远端分支的普通发布走单一 bounded 入口 `ai-bridge host publish-current-branch --expected-repo <owner/repo> --expected-branch <branch>`；raw `git push origin main` 保持审批路径；
+- 当前仓库范围的 `gh auth status --`、`gh pr list --`、`gh pr status --`、`gh issue list --`、`gh issue status --` 和 `gh run list --` 可低打扰读取；`--repo`、token display、任意 `gh api` 和 positional view 仍走审批路径；
 - 常见 Slurm 只读查询如 `squeue`、`sinfo`、`sacct`、`sstat`、`sprio`、`scontrol show ...` 和 `scontrol ping` 尽量减少重复授权；
 - `ps`、`tmux ls` / `tmux list-sessions` / `tmux has-session` 这类只读 host/session inspection，以及 `git fetch --all --prune` 这类已配置远端同步，尽量减少重复授权；
 - 已明确授权的本机 production plugin repair/replay 可走受控入口 `ai-bridge plugin-replay`，让 fresh Codex runtime 在 write-isolated replay workspace 中测试已安装插件；
@@ -187,9 +194,9 @@ $CODEX_HOME/rules/ai-bridge-global.rules
 - Slurm 的资源申请、任务状态修改、调度器修改、process mutation、tmux mutation、arbitrary Git fetch、generic shell/Python 和 shell 组合命令仍然不能因为包含只读查询而放开；
 - 如果下一步明确属于外部 GPT Planner/Reviewer/Critic，等待 GPT 不应被误判为任务失败。
 
-Host Policy 会尽量非破坏式修改已有配置，并在需要时创建备份。
+Machine Policy 会尽量非破坏式修改已有配置，并在需要时创建备份。
 
-`ai-bridge plugin-replay` 是机器级 Host Policy 预授权的窄入口，不是新的
+`ai-bridge plugin-replay` 是机器级 Machine Policy 预授权的窄入口，不是新的
 workflow。它要求 caller 指定目标 Git 仓库、已安装插件名、任务/说明文件和一个
 或多个显式 input file。input 默认必须位于 target Git repo 内；外部文件只能先放入
 `${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}/plugin-replay/inbox/` 这个固定 trusted
@@ -200,7 +207,7 @@ cwd 是 write-isolated workspace，默认 `workspace-write`、`approval_policy=n
 replay 网络关闭，且使用当前 Codex identity，不允许通过该入口切换到另一个
 `CODEX_HOME`。完整输出保留在本机 state 目录。当前 Codex runtime 仍可能读取同一
 用户可读文件；wrapper 会如实记录 read-scope diagnostic，但不把它包装成 strict
-read isolation。Host Policy 不会因此放开 raw `codex exec`、裸 shell/python、任意
+read isolation。Machine Policy 不会因此放开 raw `codex exec`、裸 shell/python、任意
 私人路径作为 replay input、整个 consumer repo 写入、外部上传、危险 Git、发布或部署。
 
 ---
@@ -244,9 +251,9 @@ Lite 并不意味着“只能做小任务”。普通功能开发、修 bug、�
 
 ---
 
-## 7. Review（`0.5.0` 引入）：需要 GPT 先定方案、完成后再独立复核
+## 7. Reviewed Mode（`0.5.0` 引入）：需要 GPT 先定方案、完成后再独立复核
 
-如果某项工作不能让 Codex 一边执行一边自己决定产品语义或科研方向，但又没有必要上最重的 Control，可以使用 Review。
+如果某项工作不能让 Codex 一边执行一边自己决定产品语义或科研方向，但又没有必要上最重的 Controlled Mode，可以使用 Reviewed Mode。
 
 最直观的流程是：
 
@@ -509,11 +516,11 @@ Overleaf Bridge **不会自动实时同步**。它就是一个按需、可检查
 
 ---
 
-## 9. Generic Notifier（`0.3.0` 引入）：按结构化 brief 发邮件
+## 9. Notifications（`0.3.0` 引入）：按结构化 brief 发通知
 
 Notifier 只负责通知，不负责决定任务是不是完成。
 
-权责边界是：语义决定者写结构化 brief，Generic Notifier 只做 deterministic 渲染、去重和 SMTP 发送。Planner/Reviewer/Critic/Final Critic 可以写自己决定对应的终态、人工等待或里程碑 brief；Controller/watcher 只可以写 operational failure/status brief。Executor/Codex 不能决定 PASS，不能写自由文本式用户结论邮件，也不能绕过 notifier 的 send-once/dedupe。
+权责边界是：语义决定者写结构化 brief，Notifications 只做 deterministic 渲染、去重和 SMTP 发送。Planner/Reviewer/Critic/Final Critic 可以写自己决定对应的终态、人工等待或里程碑 brief；Controller/watcher 只可以写 operational failure/status/progress brief。Executor/Codex 不能决定 PASS，不能写自由文本式用户结论邮件，也不能绕过 notifier 的 send-once/dedupe。
 
 如果项目需要终态邮件，先同步私有配置并发一封真实测试邮件：
 
@@ -674,7 +681,7 @@ Text Review workflow 只在 `main` / `reviewed/**` 上的 `results/**/text_revie
 
 ---
 
-## 12. Control（`0.4.0` 引入）：只有高风险任务才用
+## 12. Controlled Mode（`0.4.0` 引入）：只有高风险任务才用
 
 Control 面向“错误通过的代价很高”的任务，例如：
 
@@ -728,22 +735,22 @@ docs/V0_4_AGENT_FLOW_IMPLEMENTATION_SPEC.md
 ### 普通代码仓库
 
 ```text
-Host Policy
+Machine Policy
 + Lite
 ```
 
 ### 需要 GPT 先做方案、Codex 实现、GPT 再独立看一遍
 
 ```text
-Host Policy
+Machine Policy
 + Lite
-+ Review
++ Reviewed Mode
 ```
 
 ### 科研仓库同时放代码和论文，并希望用 Overleaf 协作
 
 ```text
-Host Policy
+Machine Policy
 + Lite
 + Overleaf Bridge
 ```
@@ -753,12 +760,12 @@ Host Policy
 在上述任意组合上再加：
 
 ```text
-Generic Notifier
+Notifications
 ```
 
 ### 长期 Goal 需要断线后继续运行
 
-在原有 Lite / Review / Control 组合上再加：
+在原有 Lite / Reviewed Mode / Controlled Mode 组合上再加：
 
 ```text
 Persistent Run
@@ -775,9 +782,9 @@ Visual Review
 ### 高风险科研、生产或安全敏感任务
 
 ```text
-Host Policy
+Machine Policy
 + Lite
-+ Control
++ Controlled Mode
 ```
 
 不要同时把所有可选层都装上，除非项目确实同时需要它们。

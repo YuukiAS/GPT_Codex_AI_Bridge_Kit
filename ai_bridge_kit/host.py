@@ -41,6 +41,20 @@ REQUIRED_CONFIG = {
 }
 
 
+class HostPublishError(ValueError):
+    pass
+
+
+@dataclass(frozen=True)
+class PublishResult:
+    status: str
+    repo: str
+    branch: str
+    pushed_oid: str
+    destination: str
+    output: str
+
+
 def kit_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
@@ -417,6 +431,263 @@ def _run_codex(args: list[str]) -> subprocess.CompletedProcess[str]:
     )
 
 
+def _git(
+    cwd: Path,
+    args: list[str],
+    *,
+    env: dict[str, str] | None = None,
+    check: bool = True,
+) -> subprocess.CompletedProcess[str]:
+    result = subprocess.run(
+        ["git", *args],
+        cwd=cwd,
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=env,
+    )
+    if check and result.returncode != 0:
+        message = (result.stderr or result.stdout or "git command failed").strip()
+        raise HostPublishError(message)
+    return result
+
+
+def _git_text(cwd: Path, args: list[str], *, env: dict[str, str] | None = None) -> str:
+    return _git(cwd, args, env=env).stdout.strip()
+
+
+def _git_lines(cwd: Path, args: list[str]) -> list[str]:
+    text = _git_text(cwd, args)
+    return [line.strip() for line in text.splitlines() if line.strip()]
+
+
+def _canonical_repo_identity(url: str) -> str:
+    value = url.strip()
+    if value.startswith("file://"):
+        return "local:" + Path(value.removeprefix("file://")).expanduser().resolve().as_posix()
+    local_candidate = Path(value).expanduser()
+    if local_candidate.exists() or value.startswith(("/", "./", "../")):
+        return "local:" + local_candidate.resolve().as_posix()
+    patterns = [
+        r"^https://github\.com/([^/]+)/([^/]+?)(?:\.git)?/?$",
+        r"^git@github\.com:([^/]+)/([^/]+?)(?:\.git)?$",
+        r"^ssh://git@github\.com/([^/]+)/([^/]+?)(?:\.git)?/?$",
+    ]
+    for pattern in patterns:
+        match = re.match(pattern, value)
+        if match:
+            return f"{match.group(1)}/{match.group(2)}"
+    raise HostPublishError("REMOTE_IDENTITY_UNSUPPORTED")
+
+
+def _single_remote_url(cwd: Path, args: list[str], reason: str) -> str:
+    urls = _git_lines(cwd, args)
+    if len(urls) != 1:
+        raise HostPublishError(reason)
+    return urls[0]
+
+
+def _is_true(value: str) -> bool:
+    return value.strip().lower() in {"true", "1", "yes", "on"}
+
+
+def _config_value(cwd: Path, key: str) -> str:
+    result = _git(cwd, ["config", "--get", key], check=False)
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def _config_entries_with_scope(cwd: Path) -> list[tuple[str, str, str]]:
+    result = _git(cwd, ["config", "--show-scope", "--show-origin", "--list"], check=False)
+    if result.returncode != 0:
+        raise HostPublishError("GIT_CONFIG_INSPECTION_FAILED")
+    entries: list[tuple[str, str, str]] = []
+    for raw in result.stdout.splitlines():
+        parts = raw.split("\t", 2)
+        if len(parts) != 3 or "=" not in parts[2]:
+            continue
+        scope, origin, assignment = parts
+        key, value = assignment.split("=", 1)
+        entries.append((scope.strip(), key.strip(), value.strip()))
+    return entries
+
+
+def _has_config_key(cwd: Path, key: str) -> bool:
+    return _git(cwd, ["config", "--get-all", key], check=False).returncode == 0
+
+
+def _reject_transport_injection(cwd: Path, env: dict[str, str]) -> None:
+    for key in ["GIT_SSH", "GIT_SSH_COMMAND"]:
+        if env.get(key):
+            raise HostPublishError("CUSTOM_SSH_TRANSPORT_REQUIRES_APPROVAL")
+    for key in ["GIT_ASKPASS", "SSH_ASKPASS"]:
+        if env.get(key):
+            raise HostPublishError("ASKPASS_REQUIRES_APPROVAL")
+    if any(
+        key in env
+        for key in [
+            "GIT_CONFIG_COUNT",
+            "GIT_CONFIG_GLOBAL",
+            "GIT_CONFIG_SYSTEM",
+            "GIT_CONFIG_NOSYSTEM",
+        ]
+    ) or any(key.startswith(("GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_")) for key in env):
+        raise HostPublishError("CUSTOM_GIT_CONFIG_REQUIRES_APPROVAL")
+    if any(key.startswith("GIT_PUSH_OPTION") for key in env):
+        raise HostPublishError("PUSH_OPTIONS_REQUIRE_APPROVAL")
+    if _has_config_key(cwd, "core.sshCommand"):
+        raise HostPublishError("CUSTOM_SSH_TRANSPORT_REQUIRES_APPROVAL")
+    if _has_config_key(cwd, "core.askPass"):
+        raise HostPublishError("ASKPASS_REQUIRES_APPROVAL")
+    for scope, key, _value in _config_entries_with_scope(cwd):
+        if key == "credential.helper" or (key.startswith("credential.") and key.endswith(".helper")):
+            if scope in {"local", "worktree", "command"}:
+                raise HostPublishError("REPO_CREDENTIAL_HELPER_REQUIRES_APPROVAL")
+
+
+def _pre_push_hook_path(cwd: Path) -> Path:
+    hooks_path = _config_value(cwd, "core.hooksPath")
+    git_dir = Path(_git_text(cwd, ["rev-parse", "--git-dir"]))
+    if not git_dir.is_absolute():
+        git_dir = cwd / git_dir
+    if hooks_path:
+        candidate = Path(hooks_path).expanduser()
+        if not candidate.is_absolute():
+            candidate = cwd / candidate
+        return candidate / "pre-push"
+    return git_dir / "hooks" / "pre-push"
+
+
+def _reject_active_hook(cwd: Path) -> None:
+    hook = _pre_push_hook_path(cwd)
+    if hook.exists() and os.access(hook, os.X_OK):
+        raise HostPublishError("PRE_PUSH_HOOK_REQUIRES_APPROVAL")
+
+
+def _sanitized_push_env(source: dict[str, str]) -> dict[str, str]:
+    env = dict(source)
+    for key in list(env):
+        if key in {
+            "GIT_SSH",
+            "GIT_SSH_COMMAND",
+            "GIT_SSH_VARIANT",
+            "GIT_ASKPASS",
+            "SSH_ASKPASS",
+            "GIT_CONFIG_COUNT",
+            "GIT_CONFIG_GLOBAL",
+            "GIT_CONFIG_SYSTEM",
+            "GIT_CONFIG_NOSYSTEM",
+        } or key.startswith(("GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_", "GIT_PUSH_OPTION")):
+            env.pop(key, None)
+    env["GIT_TERMINAL_PROMPT"] = "0"
+    return env
+
+
+def _assert_publisher_preconditions(
+    cwd: Path,
+    *,
+    expected_repo: str,
+    expected_branch: str,
+    env: dict[str, str],
+) -> tuple[str, str]:
+    if env.get("AI_BRIDGE_REVIEWED_RUNNER_PUSH_GUARD") or env.get("AI_BRIDGE_REVIEWED_EXECUTOR"):
+        raise HostPublishError("REVIEW_EXECUTOR_GUARD_REQUIRES_REVIEWED_RUNNER")
+    top = Path(_git_text(cwd, ["rev-parse", "--show-toplevel"])).resolve()
+    branch = _git_text(top, ["symbolic-ref", "--quiet", "--short", "HEAD"])
+    if branch != expected_branch:
+        raise HostPublishError("BRANCH_ASSERTION_FAILED")
+    fetch_url = _single_remote_url(top, ["remote", "get-url", "--all", "origin"], "REMOTE_URL_AMBIGUOUS")
+    push_url = _single_remote_url(top, ["remote", "get-url", "--push", "--all", "origin"], "REMOTE_PUSH_URL_AMBIGUOUS")
+    repo = _canonical_repo_identity(fetch_url)
+    push_repo = _canonical_repo_identity(push_url)
+    if repo != push_repo or repo != expected_repo:
+        raise HostPublishError("REMOTE_IDENTITY_MISMATCH")
+    if _config_value(top, f"branch.{branch}.remote") != "origin":
+        raise HostPublishError("UPSTREAM_REMOTE_MISMATCH")
+    if _config_value(top, f"branch.{branch}.merge") != f"refs/heads/{branch}":
+        raise HostPublishError("UPSTREAM_MERGE_MISMATCH")
+    if _is_true(_config_value(top, "remote.origin.mirror")):
+        raise HostPublishError("MIRROR_PUSH_REQUIRES_APPROVAL")
+    if _is_true(_config_value(top, "push.followTags")):
+        raise HostPublishError("FOLLOW_TAGS_REQUIRES_APPROVAL")
+    recurse = _config_value(top, "push.recurseSubmodules").lower()
+    if recurse and recurse not in {"no", "false", "off"}:
+        raise HostPublishError("RECURSIVE_SUBMODULE_PUSH_REQUIRES_APPROVAL")
+    if _has_config_key(top, "push.pushOption"):
+        raise HostPublishError("PUSH_OPTIONS_REQUIRE_APPROVAL")
+    signing = _config_value(top, "push.gpgSign").lower()
+    if signing and signing not in {"false", "no", "off"}:
+        raise HostPublishError("SIGNED_PUSH_REQUIRES_APPROVAL")
+    captured_head = _git_text(top, ["rev-parse", "HEAD"])
+    remote_query = _git_text(top, ["ls-remote", "--heads", "origin", f"refs/heads/{branch}"])
+    remote_parts = remote_query.split()
+    if len(remote_parts) < 2:
+        raise HostPublishError("REMOTE_SAME_NAME_BRANCH_REQUIRED")
+    remote_oid = remote_parts[0]
+    if _git(top, ["merge-base", "--is-ancestor", remote_oid, "HEAD"], check=False).returncode != 0:
+        raise HostPublishError("REMOTE_AHEAD_REQUIRES_PULL")
+    _reject_transport_injection(top, env)
+    _reject_active_hook(top)
+    return top.as_posix(), captured_head
+
+
+def publish_current_branch(
+    cwd: Path,
+    *,
+    expected_repo: str,
+    expected_branch: str,
+    env: dict[str, str] | None = None,
+) -> PublishResult:
+    active_env = dict(os.environ if env is None else env)
+    top_text, captured_head = _assert_publisher_preconditions(
+        cwd,
+        expected_repo=expected_repo,
+        expected_branch=expected_branch,
+        env=active_env,
+    )
+    top = Path(top_text)
+    mutation_env = _sanitized_push_env(active_env)
+    final_top, final_head = _assert_publisher_preconditions(
+        top,
+        expected_repo=expected_repo,
+        expected_branch=expected_branch,
+        env=mutation_env,
+    )
+    if Path(final_top) != top or final_head != captured_head:
+        raise HostPublishError("FINAL_RECHECK_CHANGED")
+    refspec = f"{captured_head}:refs/heads/{expected_branch}"
+    result = _git(
+        top,
+        [
+            "-c",
+            "push.followTags=false",
+            "-c",
+            "push.recurseSubmodules=no",
+            "-c",
+            "push.gpgSign=false",
+            "-c",
+            "core.hooksPath=/dev/null",
+            "push",
+            "--porcelain",
+            "origin",
+            refspec,
+        ],
+        env=mutation_env,
+        check=False,
+    )
+    output = "\n".join(part for part in [result.stdout.strip(), result.stderr.strip()] if part)
+    if result.returncode != 0:
+        raise HostPublishError(output or "git push failed")
+    return PublishResult(
+        status="published",
+        repo=expected_repo,
+        branch=expected_branch,
+        pushed_oid=captured_head,
+        destination=f"origin/refs/heads/{expected_branch}",
+        output=output,
+    )
+
+
 def _codex_version() -> tuple[str | None, str | None]:
     try:
         result = _run_codex(["--version"])
@@ -569,6 +840,46 @@ def validate_host_policy(codex_home: Path, cwd: Path | None = None) -> tuple[Hos
         "INPUT.txt",
         "--dry-run",
     ]
+    publisher_command = [
+        "ai-bridge",
+        "host",
+        "publish-current-branch",
+        "--expected-repo",
+        "YuukiAS/GPT_Codex_AI_Bridge_Kit",
+        "--expected-branch",
+        "main",
+    ]
+    materializer_command = [
+        "ai-bridge",
+        "reviewed-handoff",
+        "materialize-worktree",
+        "--target",
+        str(cwd or Path.cwd()),
+        "--task-key",
+        "repo--feature",
+        "--expected-repo",
+        "YuukiAS/GPT_Codex_AI_Bridge_Kit",
+        "--expected-worktree",
+        "/tmp/repo--feature",
+        "--expected-base-ref",
+        "origin/main",
+        "--mode",
+        "bootstrap",
+    ]
+    gh_safe_read_checks = [
+        ["gh", "auth", "status", "--"],
+        ["gh", "pr", "list", "--"],
+        ["gh", "pr", "status", "--"],
+        ["gh", "issue", "list", "--"],
+        ["gh", "issue", "status", "--"],
+        ["gh", "run", "list", "--"],
+    ]
+    gh_gated_checks = [
+        ["gh", "auth", "status", "--show-token"],
+        ["gh", "pr", "view", "1"],
+        ["gh", "pr", "list", "--repo", "private/repo"],
+        ["gh", "api", "/user"],
+    ]
     slurm_read_only_checks = [
         ["squeue", "-j", "156911", "-o", "%.18i %.9P %.30j %.8u %.2t %.12M %.12l %.20R %.30b"],
         ["squeue", "-u", "testuser", "-h"],
@@ -623,6 +934,10 @@ def validate_host_policy(codex_home: Path, cwd: Path | None = None) -> tuple[Hos
     ]
     checks: list[tuple[list[str], str, str, bool]] = [
         (replay_command, "allow", "direct", True),
+        (publisher_command, "allow", "direct", True),
+        (materializer_command, "allow", "direct", True),
+        *[(command, "allow", "direct", False) for command in gh_safe_read_checks],
+        *[(command, "prompt", "effective", False) for command in gh_gated_checks],
         *[(command, "allow", "direct", False) for command in slurm_read_only_checks],
         *[(command, "prompt", "effective", False) for command in slurm_gated_checks],
         *[(command, "allow", "direct", False) for command in process_read_only_checks],
@@ -641,7 +956,7 @@ def validate_host_policy(codex_home: Path, cwd: Path | None = None) -> tuple[Hos
         (["git", "add", "README.md"], "allow", "direct", False),
         (["git", "commit", "-m", "test"], "allow", "direct", False),
         (["git", "commit", "--amend", "--no-edit"], "allow", "direct", False),
-        (["git", "push", "origin", "main"], "allow", "direct", False),
+        (["git", "push", "origin", "main"], "prompt", "effective", False),
         (["git", "push", "origin", "test-branch"], "prompt", "effective", False),
         (["git", "push", "upstream", "main"], "no_match", "direct", False),
         (["git", "switch", "main"], "prompt", "effective", False),

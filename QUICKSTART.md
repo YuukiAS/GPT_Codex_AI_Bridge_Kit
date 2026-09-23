@@ -100,18 +100,31 @@ ai-bridge validate --target /path/to/project
 
 输出 `OK` 表示结构和任务文件基本合规。输出 `ERROR` 或 `WARN` 时，先修正路径、frontmatter 或命名，再交给 Codex 执行。
 
+机器级规则使用当前显示名 **Machine Policy**，兼容命令仍是 `ai-bridge host ...`。
+如果已经在当前分支完成任务，并且同名远端分支已经存在，低打扰发布使用 bounded
+入口而不是 raw `git push origin main`：
+
+```bash
+ai-bridge host publish-current-branch \
+  --expected-repo YuukiAS/GPT_Codex_AI_Bridge_Kit \
+  --expected-branch main
+```
+
+这两个参数只是 equality assertion；真实 repo、branch、upstream、remote ref 和
+transport/credential/hook 边界都由 helper 从当前 Git 状态重新读取。
+
 ## 7. 可选：选择更重的 workflow
 
 日常默认是 Lite，也就是 `ai-bridge init` / `ai-bridge validate` 安装的基础交接。
 
-如果需要 GPT 先规划、Codex 执行、再由 GPT 独立复核，使用 Review。命令仍保持兼容名称：
+如果需要 GPT 先规划、Codex 执行、再由 GPT 独立复核，使用 Reviewed Mode。命令仍保持兼容名称：
 
 ```bash
 ai-bridge reviewed-handoff install --target /path/to/project
 ai-bridge reviewed-handoff validate --target /path/to/project
 ```
 
-如果任务属于高风险科研、生产或安全敏感工作，且需要严格多角色控制与验证，使用 Control。命令仍保持兼容名称：
+如果任务属于高风险科研、生产或安全敏感工作，且需要严格多角色控制与验证，使用 Controlled Mode。命令仍保持兼容名称：
 
 ```bash
 ai-bridge agent-flow install --target /path/to/project
@@ -136,7 +149,7 @@ automation/persistent_run/CONTRACT_TEMPLATE.md
 GPT 写这个 Goal/task 时要先判断 execution lifetime。`run overnight`、
 `unattended`、`run until morning`、`leave it running`、`survive disconnect`
 或 `resume persistent Goal` 这类要求意味着需要 Persistent Run contract，但不代表
-必须把 Lite 任务改成 Review / Control 或 `task_type: "controller"`。如果仓库没有
+必须把 Lite 任务改成 Reviewed Mode / Controlled Mode 或 `task_type: "controller"`。如果仓库没有
 安装 Persistent Run，也没有用户选择的等价项目原生合同，不要把任务写成普通 live
 Codex session。
 
@@ -148,7 +161,7 @@ ai-bridge persistent-run prompt kickoff \
   --goal prompts/tasks/repo--long-run.md
 ```
 
-这个命令只打印授权文本，不会启动 tmux。Persistent Run 只约束长期执行和恢复：使用 canonical `tmux` session，已有兼容 run 时 resume，不把 session/PID/heartbeat 当作完成，不自动 fallback 到 `setsid`、`nohup`、裸后台 `&`、`screen` 或 `sudo`。Lite / Review / Control 的 workflow 选择和原 Goal 完成标准保持不变。
+这个命令只打印授权文本，不会启动 tmux。Persistent Run 只约束长期执行和恢复：使用 canonical `tmux` session，已有兼容 run 时 resume，不把 session/PID/heartbeat 当作完成，不自动 fallback 到 `setsid`、`nohup`、裸后台 `&`、`screen` 或 `sudo`。Lite / Reviewed Mode / Controlled Mode 的 workflow 选择和原 Goal 完成标准保持不变。
 
 Codex 收到 task 后会在实质执行前检查是否存在可预见的 approval-sensitive effect。
 仓库里的 Goal/Plan/contract 只证明 frozen scope，不等于当前用户授权；如果当前用户

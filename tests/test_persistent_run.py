@@ -181,6 +181,45 @@ class PersistentRunTests(unittest.TestCase):
             )
         self.assertIn("Goal: `prompts/tasks/001_goal.md`", out.getvalue())
 
+    def test_normalize_progress_uses_real_fraction_and_unknown_eta(self) -> None:
+        normalized = persistent_run.normalize_progress_evidence(
+            {
+                "stage": "fit-model",
+                "completed": 3,
+                "total": 10,
+                "events": [{"timestamp": "2026-09-23T01:00:00+00:00", "message": "checkpoint"}],
+            }
+        )
+
+        self.assertEqual(normalized["stage"], "fit-model")
+        self.assertEqual(normalized["fraction"], 0.3)
+        self.assertEqual(normalized["eta"], "UNKNOWN")
+        self.assertFalse(normalized["semantic_completion_claim"])
+
+    def test_normalize_progress_marks_stalled_from_real_no_progress_threshold(self) -> None:
+        normalized = persistent_run.normalize_progress_evidence(
+            {
+                "stage": "collect",
+                "seconds_since_progress": 7200,
+                "last_progress_at": "2026-09-23T01:00:00+00:00",
+            },
+            stalled_after_seconds=3600,
+        )
+
+        self.assertEqual(normalized["status"], "stalled")
+        self.assertEqual(normalized["last_progress_at"], "2026-09-23T01:00:00+00:00")
+
+    def test_progress_cli_outputs_normalized_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            evidence = Path(tmp) / "progress.json"
+            evidence.write_text('{"stage":"stage-a","eta":"2026-09-23T03:00:00+00:00","eta_basis":"recent checkpoints","eta_uncertainty":"plus/minus 20 minutes"}', encoding="utf-8")
+
+            with contextlib.redirect_stdout(io.StringIO()) as out:
+                self.assertEqual(persistent_run.main(["progress", "--evidence", str(evidence)]), 0)
+
+            self.assertIn('"stage": "stage-a"', out.getvalue())
+            self.assertIn('"eta_basis": "recent checkpoints"', out.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -10,6 +10,54 @@ prefix_rule(
 )
 
 prefix_rule(
+    pattern = ["ai-bridge", "host", "publish-current-branch"],
+    decision = "allow",
+    justification = "The user permanently authorizes Bridge Kit's bounded current-branch publisher; the helper must prove the current repo, branch, upstream, existing same-name remote branch, exact non-force ref update, clean transport/config boundary, and no Review executor guard before running git push.",
+)
+
+prefix_rule(
+    pattern = ["ai-bridge", "reviewed-handoff", "materialize-worktree"],
+    decision = "allow",
+    justification = "The user permanently authorizes Bridge Kit's bounded Reviewed Mode worktree materializer; the helper must derive the reviewed task branch from existing artifacts, compare repo/base/worktree assertions to frozen task state, and fail closed on ambiguity or drift.",
+)
+
+prefix_rule(
+    pattern = ["gh", "auth", "status", "--"],
+    decision = "allow",
+    justification = "The user permanently authorizes current-scope GitHub CLI authentication status reads without token display; cross-repo selectors, token display, and arbitrary API calls remain on the approval path.",
+)
+
+prefix_rule(
+    pattern = ["gh", "pr", "list", "--"],
+    decision = "allow",
+    justification = "The user permanently authorizes current-repository GitHub pull request listing; positional view forms and explicit --repo selectors remain on the approval path.",
+)
+
+prefix_rule(
+    pattern = ["gh", "pr", "status", "--"],
+    decision = "allow",
+    justification = "The user permanently authorizes current-repository GitHub pull request status reads; positional view forms and explicit --repo selectors remain on the approval path.",
+)
+
+prefix_rule(
+    pattern = ["gh", "issue", "list", "--"],
+    decision = "allow",
+    justification = "The user permanently authorizes current-repository GitHub issue listing; positional view forms and explicit --repo selectors remain on the approval path.",
+)
+
+prefix_rule(
+    pattern = ["gh", "issue", "status", "--"],
+    decision = "allow",
+    justification = "The user permanently authorizes current-repository GitHub issue status reads; positional view forms and explicit --repo selectors remain on the approval path.",
+)
+
+prefix_rule(
+    pattern = ["gh", "run", "list", "--"],
+    decision = "allow",
+    justification = "The user permanently authorizes current-repository GitHub Actions run listing; explicit --repo selectors and arbitrary gh api calls remain on the approval path.",
+)
+
+prefix_rule(
     pattern = [["squeue", "sinfo", "sacct", "sstat", "sprio"]],
     decision = "allow",
     justification = "The user permanently authorizes direct read-only Slurm inspection commands for queue, partition, accounting, step-statistics, and priority status; this does not authorize resource allocation, job mutation, scheduler mutation, shell composition, or generic script execution.",
@@ -149,8 +197,8 @@ prefix_rule(
 
 prefix_rule(
     pattern = ["git", "push", "origin", "main"],
-    decision = "allow",
-    justification = "The user permanently authorizes ordinary pushes to the already authorized origin/main branch without repeated manual or automatic approval review.",
+    decision = "prompt",
+    justification = "Raw origin/main publication is intentionally gated; low-friction current-branch publication must use ai-bridge host publish-current-branch so the exact effect and transport boundary can be checked.",
 )
 
 prefix_rule(
