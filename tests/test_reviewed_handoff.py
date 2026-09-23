@@ -6,6 +6,7 @@ import io
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from ai_bridge_kit import bridge_cli
@@ -403,6 +404,106 @@ class ReviewedHandoffTests(unittest.TestCase):
                     expected_base_ref="origin/main",
                     mode="bootstrap",
                 )
+
+    def test_materialize_worktree_rejects_symlink_redirection_for_frozen_locator(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            parent_a = Path(tmp) / "parent-a"
+            parent_b = Path(tmp) / "parent-b"
+            parent_a.mkdir()
+            parent_b.mkdir()
+            link = Path(tmp) / "review-link"
+            link.symlink_to(parent_a, target_is_directory=True)
+            frozen = link / "project-reviewed"
+            target, identity = self.make_remote_review_project(tmp, worktree=frozen)
+            link.unlink()
+            link.symlink_to(parent_b, target_is_directory=True)
+
+            with self.assertRaisesRegex(rh.WorktreeMaterializeError, "WORKTREE_LOCATOR_SYMLINK_REDIRECTION"):
+                rh.materialize_worktree(
+                    target,
+                    "repo--feature",
+                    expected_repo=identity,
+                    expected_worktree=frozen,
+                    expected_base_ref="origin/main",
+                    mode="bootstrap",
+                )
+
+    def test_materialize_worktree_bootstrap_requires_base_lineage(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            frozen = Path(tmp) / "project-reviewed"
+            target, identity = self.make_remote_review_project(tmp, worktree=frozen)
+            subprocess.check_call(["git", "checkout", "--orphan", "side"], cwd=target, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            (target / "side.txt").write_text("side\n", encoding="utf-8")
+            subprocess.check_call(["git", "add", "side.txt"], cwd=target)
+            subprocess.check_call(["git", "commit", "-m", "side"], cwd=target, stdout=subprocess.DEVNULL)
+            side_commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=target, text=True).strip()
+            subprocess.check_call(["git", "checkout", "main"], cwd=target, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            current_path = rh.task_root(target, "repo--feature") / "CURRENT.json"
+            current = rh.load_json(current_path)
+            current["base_commit"] = side_commit
+            rh.write_json(current_path, current)
+
+            with self.assertRaisesRegex(rh.WorktreeMaterializeError, "BASE_COMMIT_NOT_IN_FROZEN_BASE_LINEAGE"):
+                rh.materialize_worktree(
+                    target,
+                    "repo--feature",
+                    expected_repo=identity,
+                    expected_worktree=frozen,
+                    expected_base_ref="origin/main",
+                    mode="bootstrap",
+                )
+            self.assertIsNone(rh._branch_oid(target, "refs/heads/reviewed/repo--feature"))
+
+    def test_materialize_worktree_bootstrap_rolls_back_invocation_branch_on_worktree_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            frozen = Path(tmp) / "project-reviewed"
+            target, identity = self.make_remote_review_project(tmp, worktree=frozen)
+            original_git_run = rh.git_run
+
+            def fail_worktree_add(cwd: Path, args: list[str], *, check: bool = True):
+                if args[:2] == ["worktree", "add"]:
+                    raise rh.WorktreeMaterializeError("synthetic worktree failure")
+                return original_git_run(cwd, args, check=check)
+
+            with mock.patch.object(rh, "git_run", side_effect=fail_worktree_add):
+                with self.assertRaisesRegex(rh.WorktreeMaterializeError, "MATERIALIZE_WORKTREE_PARTIAL_FAILURE"):
+                    rh.materialize_worktree(
+                        target,
+                        "repo--feature",
+                        expected_repo=identity,
+                        expected_worktree=frozen,
+                        expected_base_ref="origin/main",
+                        mode="bootstrap",
+                    )
+            self.assertIsNone(rh._branch_oid(target, "refs/heads/reviewed/repo--feature"))
+
+    def test_materialize_worktree_resume_rolls_back_invocation_branch_on_worktree_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            frozen = Path(tmp) / "resume-worktree"
+            target, identity = self.make_remote_review_project(tmp, worktree=frozen)
+            subprocess.check_call(["git", "add", "automation", "results"], cwd=target)
+            subprocess.check_call(["git", "commit", "-m", "review task"], cwd=target, stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "branch", "reviewed/repo--feature", "HEAD"], cwd=target)
+            subprocess.check_call(["git", "push", "origin", "reviewed/repo--feature"], cwd=target, stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "branch", "-D", "reviewed/repo--feature"], cwd=target, stdout=subprocess.DEVNULL)
+            original_git_run = rh.git_run
+
+            def fail_worktree_add(cwd: Path, args: list[str], *, check: bool = True):
+                if args[:2] == ["worktree", "add"]:
+                    raise rh.WorktreeMaterializeError("synthetic worktree failure")
+                return original_git_run(cwd, args, check=check)
+
+            with mock.patch.object(rh, "git_run", side_effect=fail_worktree_add):
+                with self.assertRaisesRegex(rh.WorktreeMaterializeError, "MATERIALIZE_WORKTREE_PARTIAL_FAILURE"):
+                    rh.materialize_worktree(
+                        target,
+                        "repo--feature",
+                        expected_repo=identity,
+                        expected_worktree=frozen,
+                        expected_base_ref="origin/main",
+                        mode="resume",
+                    )
+            self.assertIsNone(rh._branch_oid(target, "refs/heads/reviewed/repo--feature"))
 
     def test_install_and_task_init_are_additive_and_branch_free(self) -> None:
         tmp, target = self.make_project(git=True)

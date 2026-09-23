@@ -44,3 +44,19 @@ ai-bridge persistent-run prompt kickoff \
 收到 kickoff 后，Codex 应读取 Goal 和 Persistent Run contract，检查 canonical tmux session、项目已有 lock / heartbeat / stage-state / checkpoint / resume evidence，再决定启动或恢复。已有兼容 run 时应 resume，不重复启动。
 
 tmux session、Slurm job、PID、heartbeat 或 checkpoint 只能证明活动或状态，不能证明 Goal 完成。完成声明仍必须由原 Goal 的正向完成标准支持。
+
+## Progress reporter
+
+Persistent Run 可以用项目原生进度 JSON 生成可恢复的本机观察报告：
+
+```bash
+ai-bridge persistent-run report \
+  --progress /path/to/project-progress.json
+
+ai-bridge persistent-run latest \
+  --progress /path/to/project-progress.json
+```
+
+`report` 会把 normalized latest 和 bounded recent history 写入 `${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}/persistent-run/`。它只比较项目原生事件：stage、真实 completed/total、ETA/UNKNOWN、stall/blocked/complete/failed 等。重复或非实质变化会更新本机 latest/history，但会被标记为 suppressed delivery。
+
+如果 contract 的 `Delivery mode` 选择 Notifications，只有在当前机器已经有合法 provider/recipient 配置时才能投射一次 operational-progress brief；不得为了报告进展而新建 credential、recipient、daemon、watcher 或 controller。

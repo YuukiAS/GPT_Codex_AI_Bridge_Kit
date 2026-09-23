@@ -41,6 +41,15 @@ Run/session key: <project-owned stable key>
 - Resume rule for an existing compatible run:
 - Stale-run or conflicting-run handling:
 
+## Progress Reporting
+
+- Progress source locator:
+- Report interval: 60 minutes unless the task contract gives a defensible shorter cadence; do not default below 15 minutes.
+- Delivery mode: local latest/history, or Notifications only when an existing authorized provider/recipient is already configured.
+- Stall threshold:
+
+Progress truth is owned by the project-native source above. Bridge may normalize, compare, persist latest/history, and optionally project a one-shot operational-progress Notification, but it must not infer domain progress from tmux/session/PID existence alone.
+
 ## Completion
 
 - Session, job or PID existence is not completion.

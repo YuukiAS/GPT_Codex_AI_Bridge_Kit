@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 
 from ai_bridge_kit import bridge_cli
+from ai_bridge_kit import reviewed_runner
 from ai_bridge_kit.host import (
     EXTERNAL_WAIT_POLICY_MARKERS,
     HOST_BEGIN_MARKER,
@@ -50,6 +51,36 @@ class HostPolicyTests(unittest.TestCase):
         subprocess.check_call(["git", "add", "README.md"], cwd=repo)
         subprocess.check_call(["git", "commit", "-m", "change"], cwd=repo, stdout=subprocess.DEVNULL)
         return repo, "local:" + remote.resolve().as_posix()
+
+    def make_canary(self, tmp: str, name: str = "canary") -> tuple[Path, Path]:
+        marker = Path(tmp) / f"{name}.marker"
+        script = Path(tmp) / name
+        script.write_text(f"#!/bin/sh\nprintf invoked > {marker}\nexit 1\n", encoding="utf-8")
+        script.chmod(0o700)
+        return script, marker
+
+    def remote_main_head(self, tmp: str) -> str:
+        return subprocess.check_output(
+            ["git", "rev-parse", "refs/heads/main"],
+            cwd=Path(tmp) / "remote.git",
+            text=True,
+        ).strip()
+
+    def assert_publish_rejects_without_canary_or_remote_change(
+        self,
+        repo: Path,
+        identity: str,
+        tmp: str,
+        *,
+        env: dict[str, str],
+        message: str,
+        marker: Path,
+    ) -> None:
+        before = self.remote_main_head(tmp)
+        with self.assertRaisesRegex(HostPublishError, message):
+            publish_current_branch(repo, expected_repo=identity, expected_branch="main", env=env)
+        self.assertFalse(marker.exists())
+        self.assertEqual(self.remote_main_head(tmp), before)
 
     def test_codex_home_resolution_priority(self) -> None:
         explicit = Path("/tmp/explicit-codex-home")
@@ -536,44 +567,90 @@ memories = false
                 publish_current_branch(repo, expected_repo=identity, expected_branch="main", env={"PATH": os.environ["PATH"]})
 
     def test_publish_current_branch_transport_fence_negatives(self) -> None:
-        cases = [
-            ({"GIT_SSH_COMMAND": "ssh -i /tmp/key"}, "CUSTOM_SSH_TRANSPORT_REQUIRES_APPROVAL"),
-            ({"GIT_SSH": "/tmp/ssh"}, "CUSTOM_SSH_TRANSPORT_REQUIRES_APPROVAL"),
-            ({"GIT_ASKPASS": "/tmp/askpass"}, "ASKPASS_REQUIRES_APPROVAL"),
-            ({"SSH_ASKPASS": "/tmp/askpass"}, "ASKPASS_REQUIRES_APPROVAL"),
-            ({"GIT_CONFIG_GLOBAL": "/tmp/gitconfig"}, "CUSTOM_GIT_CONFIG_REQUIRES_APPROVAL"),
-            ({"GIT_CONFIG_SYSTEM": "/tmp/gitconfig"}, "CUSTOM_GIT_CONFIG_REQUIRES_APPROVAL"),
-            ({"GIT_CONFIG_NOSYSTEM": "1"}, "CUSTOM_GIT_CONFIG_REQUIRES_APPROVAL"),
-            (
-                {"GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "credential.helper", "GIT_CONFIG_VALUE_0": "!echo bad"},
-                "CUSTOM_GIT_CONFIG_REQUIRES_APPROVAL",
-            ),
-        ]
-        for extra_env, message in cases:
-            with self.subTest(extra_env=extra_env):
-                with tempfile.TemporaryDirectory() as tmp:
-                    repo, identity = self.make_publish_repo(tmp)
+        with tempfile.TemporaryDirectory() as tmp:
+            repo, identity = self.make_publish_repo(tmp)
+            ssh, ssh_marker = self.make_canary(tmp, "ssh-canary")
+            askpass, askpass_marker = self.make_canary(tmp, "askpass-canary")
+            cases = [
+                ({"GIT_SSH_COMMAND": str(ssh)}, "CUSTOM_SSH_TRANSPORT_REQUIRES_APPROVAL", ssh_marker),
+                ({"GIT_SSH": str(ssh)}, "CUSTOM_SSH_TRANSPORT_REQUIRES_APPROVAL", ssh_marker),
+                ({"GIT_ASKPASS": str(askpass)}, "ASKPASS_REQUIRES_APPROVAL", askpass_marker),
+                ({"SSH_ASKPASS": str(askpass)}, "ASKPASS_REQUIRES_APPROVAL", askpass_marker),
+                ({"GIT_CONFIG_GLOBAL": str(Path(tmp) / "gitconfig")}, "CUSTOM_GIT_CONFIG_REQUIRES_APPROVAL", ssh_marker),
+                ({"GIT_CONFIG_SYSTEM": str(Path(tmp) / "gitconfig")}, "CUSTOM_GIT_CONFIG_REQUIRES_APPROVAL", ssh_marker),
+                ({"GIT_CONFIG_NOSYSTEM": "1"}, "CUSTOM_GIT_CONFIG_REQUIRES_APPROVAL", ssh_marker),
+                (
+                    {"GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "credential.helper", "GIT_CONFIG_VALUE_0": f"!{ssh}"},
+                    "CUSTOM_GIT_CONFIG_REQUIRES_APPROVAL",
+                    ssh_marker,
+                ),
+            ]
+            for extra_env, message, marker in cases:
+                with self.subTest(extra_env=extra_env):
+                    marker.unlink(missing_ok=True)
                     env = {"PATH": os.environ["PATH"], **extra_env}
-                    with self.assertRaisesRegex(HostPublishError, message):
-                        publish_current_branch(repo, expected_repo=identity, expected_branch="main", env=env)
+                    self.assert_publish_rejects_without_canary_or_remote_change(
+                        repo,
+                        identity,
+                        tmp,
+                        env=env,
+                        message=message,
+                        marker=marker,
+                    )
 
     def test_publish_current_branch_rejects_repo_config_injection_and_hook(self) -> None:
-        config_cases = [
-            ("core.sshCommand", "ssh -i /tmp/key", "CUSTOM_SSH_TRANSPORT_REQUIRES_APPROVAL"),
-            ("credential.helper", "!echo bad", "REPO_CREDENTIAL_HELPER_REQUIRES_APPROVAL"),
-            ("core.askPass", "/tmp/askpass", "ASKPASS_REQUIRES_APPROVAL"),
-            ("push.followTags", "true", "FOLLOW_TAGS_REQUIRES_APPROVAL"),
-            ("push.recurseSubmodules", "on-demand", "RECURSIVE_SUBMODULE_PUSH_REQUIRES_APPROVAL"),
-            ("push.pushOption", "ci.skip", "PUSH_OPTIONS_REQUIRE_APPROVAL"),
-            ("push.gpgSign", "true", "SIGNED_PUSH_REQUIRES_APPROVAL"),
-        ]
-        for key, value, message in config_cases:
-            with self.subTest(key=key):
-                with tempfile.TemporaryDirectory() as tmp:
-                    repo, identity = self.make_publish_repo(tmp)
+        with tempfile.TemporaryDirectory() as tmp:
+            ssh, ssh_marker = self.make_canary(tmp, "ssh-config-canary")
+            askpass, askpass_marker = self.make_canary(tmp, "askpass-config-canary")
+            cred, cred_marker = self.make_canary(tmp, "credential-canary")
+            config_cases = [
+                ("core.sshCommand", str(ssh), "CUSTOM_SSH_TRANSPORT_REQUIRES_APPROVAL", ssh_marker),
+                ("credential.helper", f"!{cred}", "REPO_CREDENTIAL_HELPER_REQUIRES_APPROVAL", cred_marker),
+                ("core.askPass", str(askpass), "ASKPASS_REQUIRES_APPROVAL", askpass_marker),
+                ("push.followTags", "true", "FOLLOW_TAGS_REQUIRES_APPROVAL", ssh_marker),
+                ("push.recurseSubmodules", "on-demand", "RECURSIVE_SUBMODULE_PUSH_REQUIRES_APPROVAL", ssh_marker),
+                ("push.pushOption", "ci.skip", "PUSH_OPTIONS_REQUIRE_APPROVAL", ssh_marker),
+                ("push.gpgSign", "true", "SIGNED_PUSH_REQUIRES_APPROVAL", ssh_marker),
+            ]
+            for key, value, message, marker in config_cases:
+                with self.subTest(key=key):
+                    case_root = Path(tmp) / key.replace(".", "-")
+                    case_root.mkdir()
+                    repo, identity = self.make_publish_repo(str(case_root))
+                    marker.unlink(missing_ok=True)
                     subprocess.check_call(["git", "config", "--local", key, value], cwd=repo)
-                    with self.assertRaisesRegex(HostPublishError, message):
-                        publish_current_branch(repo, expected_repo=identity, expected_branch="main", env={"PATH": os.environ["PATH"]})
+                    self.assert_publish_rejects_without_canary_or_remote_change(
+                        repo,
+                        identity,
+                        str(case_root),
+                        env={"PATH": os.environ["PATH"]},
+                        message=message,
+                        marker=marker,
+                    )
+
+    def test_publish_current_branch_rejects_worktree_config_canaries_before_remote(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo, identity = self.make_publish_repo(tmp)
+            ssh, ssh_marker = self.make_canary(tmp, "worktree-ssh-canary")
+            cred, cred_marker = self.make_canary(tmp, "worktree-credential-canary")
+            subprocess.check_call(["git", "config", "extensions.worktreeConfig", "true"], cwd=repo)
+            cases = [
+                ("core.sshCommand", str(ssh), "CUSTOM_SSH_TRANSPORT_REQUIRES_APPROVAL", ssh_marker),
+                ("credential.helper", f"!{cred}", "REPO_CREDENTIAL_HELPER_REQUIRES_APPROVAL", cred_marker),
+            ]
+            for key, value, message, marker in cases:
+                with self.subTest(key=key):
+                    marker.unlink(missing_ok=True)
+                    subprocess.check_call(["git", "config", "--worktree", key, value], cwd=repo)
+                    self.assert_publish_rejects_without_canary_or_remote_change(
+                        repo,
+                        identity,
+                        tmp,
+                        env={"PATH": os.environ["PATH"]},
+                        message=message,
+                        marker=marker,
+                    )
+                    subprocess.check_call(["git", "config", "--worktree", "--unset-all", key], cwd=repo)
 
         with tempfile.TemporaryDirectory() as tmp:
             repo, identity = self.make_publish_repo(tmp)
@@ -593,6 +670,22 @@ memories = false
                     expected_branch="main",
                     env={"PATH": os.environ["PATH"], "AI_BRIDGE_REVIEWED_RUNNER_PUSH_GUARD": "1"},
                 )
+
+    def test_publish_current_branch_rejects_real_reviewed_runner_guard_environment(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo, identity = self.make_publish_repo(tmp)
+            old_state_home = os.environ.get("AI_BRIDGE_STATE_HOME")
+            os.environ["AI_BRIDGE_STATE_HOME"] = str(Path(tmp) / "state")
+            try:
+                guard_env = reviewed_runner.push_guard_environment(repo)
+            finally:
+                if old_state_home is None:
+                    os.environ.pop("AI_BRIDGE_STATE_HOME", None)
+                else:
+                    os.environ["AI_BRIDGE_STATE_HOME"] = old_state_home
+
+            with self.assertRaisesRegex(HostPublishError, "CUSTOM_GIT_CONFIG_REQUIRES_APPROVAL"):
+                publish_current_branch(repo, expected_repo=identity, expected_branch="main", env=guard_env)
 
 
 if __name__ == "__main__":

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import json
 import os
 import subprocess
 import tempfile
@@ -219,6 +220,105 @@ class PersistentRunTests(unittest.TestCase):
 
             self.assertIn('"stage": "stage-a"', out.getvalue())
             self.assertIn('"eta_basis": "recent checkpoints"', out.getvalue())
+
+    def test_report_records_latest_bounded_history_and_dedupe(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            progress = Path(tmp) / "progress.json"
+            state = Path(tmp) / "state"
+            events = [
+                {
+                    "run_locator": "repo/run-a",
+                    "stage": "prepare",
+                    "observed_at": "2026-09-23T01:00:00+00:00",
+                    "last_progress_at": "2026-09-23T01:00:00+00:00",
+                    "message": "started",
+                    "events": [{"timestamp": "2026-09-23T01:00:00+00:00", "message": "started"}],
+                    "report_interval_seconds": 1,
+                    "allow_short_test_interval": True,
+                },
+                {
+                    "run_locator": "repo/run-a",
+                    "stage": "prepare",
+                    "observed_at": "2026-09-23T01:00:01+00:00",
+                    "last_progress_at": "2026-09-23T01:00:00+00:00",
+                    "message": "started",
+                    "events": [{"timestamp": "2026-09-23T01:00:00+00:00", "message": "started"}],
+                    "report_interval_seconds": 3600,
+                },
+                {
+                    "run_locator": "repo/run-a",
+                    "stage": "fit",
+                    "observed_at": "2026-09-23T01:05:00+00:00",
+                    "last_progress_at": "2026-09-23T01:05:00+00:00",
+                    "completed": 5,
+                    "total": 10,
+                    "unit": "epochs",
+                    "eta": "2026-09-23T01:20:00+00:00",
+                    "eta_basis": "checkpoint throughput",
+                    "eta_uncertainty": "plus/minus 5 minutes",
+                    "message": "halfway",
+                    "events": [{"timestamp": "2026-09-23T01:05:00+00:00", "message": "halfway"}],
+                    "report_interval_seconds": 3600,
+                },
+            ]
+            reports = []
+            for event in events:
+                progress.write_text(json.dumps(event), encoding="utf-8")
+                reports.append(persistent_run.report_progress_file(progress, state_root=state, history_limit=2))
+
+            self.assertEqual(reports[0]["delivery_decision"], "deliver")
+            self.assertEqual(reports[1]["delivery_decision"], "suppress")
+            self.assertEqual(reports[2]["delivery_reason"], "stage_transition")
+            self.assertEqual(reports[2]["normalized"]["fraction"], 0.5)
+            history_lines = Path(reports[2]["history_path"]).read_text(encoding="utf-8").splitlines()
+            self.assertEqual(len(history_lines), 2)
+
+            latest = persistent_run.latest_report_for_progress(progress, state_root=state)
+            self.assertEqual(latest["normalized"]["stage"], "fit")
+
+    def test_report_unknown_eta_and_stall_without_intervention(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            progress = Path(tmp) / "progress.json"
+            progress.write_text(
+                json.dumps(
+                    {
+                        "run_locator": "repo/run-stall",
+                        "stage": "collect",
+                        "observed_at": "2026-09-23T02:00:00+00:00",
+                        "last_progress_at": "2026-09-23T01:00:00+00:00",
+                        "seconds_since_progress": 7200,
+                        "stall_threshold_seconds": 60,
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            report = persistent_run.report_progress_file(progress, state_root=Path(tmp) / "state")
+
+            self.assertEqual(report["normalized"]["eta"], "UNKNOWN")
+            self.assertEqual(report["normalized"]["status"], "stalled")
+            self.assertEqual(report["delivery_reason"], "start_or_resume")
+            self.assertNotIn("restart", json.dumps(report).lower())
+
+    def test_report_cli_and_latest_cli_are_normal_entries(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            progress = Path(tmp) / "progress.json"
+            state = Path(tmp) / "state"
+            progress.write_text('{"run_locator":"repo/run-cli","stage":"stage-a","observed_at":"2026-09-23T01:00:00+00:00"}', encoding="utf-8")
+
+            with contextlib.redirect_stdout(io.StringIO()) as out:
+                self.assertEqual(
+                    persistent_run.main(["report", "--progress", str(progress), "--state-home", str(state)]),
+                    0,
+                )
+            self.assertIn('"schema": "ai-bridge.persistent_run.report.v1"', out.getvalue())
+
+            with contextlib.redirect_stdout(io.StringIO()) as out:
+                self.assertEqual(
+                    persistent_run.main(["latest", "--progress", str(progress), "--state-home", str(state)]),
+                    0,
+                )
+            self.assertIn('"stage": "stage-a"', out.getvalue())
 
 
 if __name__ == "__main__":

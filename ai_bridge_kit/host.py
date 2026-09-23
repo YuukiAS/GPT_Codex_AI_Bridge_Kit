@@ -516,7 +516,7 @@ def _has_config_key(cwd: Path, key: str) -> bool:
     return _git(cwd, ["config", "--get-all", key], check=False).returncode == 0
 
 
-def _reject_transport_injection(cwd: Path, env: dict[str, str]) -> None:
+def _reject_process_transport_env(env: dict[str, str]) -> None:
     for key in ["GIT_SSH", "GIT_SSH_COMMAND"]:
         if env.get(key):
             raise HostPublishError("CUSTOM_SSH_TRANSPORT_REQUIRES_APPROVAL")
@@ -535,6 +535,9 @@ def _reject_transport_injection(cwd: Path, env: dict[str, str]) -> None:
         raise HostPublishError("CUSTOM_GIT_CONFIG_REQUIRES_APPROVAL")
     if any(key.startswith("GIT_PUSH_OPTION") for key in env):
         raise HostPublishError("PUSH_OPTIONS_REQUIRE_APPROVAL")
+
+
+def _reject_repository_transport_config(cwd: Path) -> None:
     if _has_config_key(cwd, "core.sshCommand"):
         raise HostPublishError("CUSTOM_SSH_TRANSPORT_REQUIRES_APPROVAL")
     if _has_config_key(cwd, "core.askPass"):
@@ -590,6 +593,7 @@ def _assert_publisher_preconditions(
     expected_branch: str,
     env: dict[str, str],
 ) -> tuple[str, str]:
+    _reject_process_transport_env(env)
     if env.get("AI_BRIDGE_REVIEWED_RUNNER_PUSH_GUARD") or env.get("AI_BRIDGE_REVIEWED_EXECUTOR"):
         raise HostPublishError("REVIEW_EXECUTOR_GUARD_REQUIRES_REVIEWED_RUNNER")
     top = Path(_git_text(cwd, ["rev-parse", "--show-toplevel"])).resolve()
@@ -619,15 +623,16 @@ def _assert_publisher_preconditions(
     if signing and signing not in {"false", "no", "off"}:
         raise HostPublishError("SIGNED_PUSH_REQUIRES_APPROVAL")
     captured_head = _git_text(top, ["rev-parse", "HEAD"])
-    remote_query = _git_text(top, ["ls-remote", "--heads", "origin", f"refs/heads/{branch}"])
+    _reject_repository_transport_config(top)
+    _reject_active_hook(top)
+    remote_env = _sanitized_push_env(env)
+    remote_query = _git_text(top, ["ls-remote", "--heads", "origin", f"refs/heads/{branch}"], env=remote_env)
     remote_parts = remote_query.split()
     if len(remote_parts) < 2:
         raise HostPublishError("REMOTE_SAME_NAME_BRANCH_REQUIRED")
     remote_oid = remote_parts[0]
     if _git(top, ["merge-base", "--is-ancestor", remote_oid, "HEAD"], check=False).returncode != 0:
         raise HostPublishError("REMOTE_AHEAD_REQUIRES_PULL")
-    _reject_transport_injection(top, env)
-    _reject_active_hook(top)
     return top.as_posix(), captured_head
 
 

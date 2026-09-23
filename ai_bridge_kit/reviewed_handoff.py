@@ -236,7 +236,26 @@ def _frozen_worktree_locator(request_path: Path) -> Path:
     path = Path(matches[0]).expanduser()
     if not path.is_absolute():
         raise WorktreeMaterializeError("REQUEST_REVIEWED_WORKTREE_LOCATOR_MUST_BE_ABSOLUTE")
-    return path.resolve()
+    return path
+
+
+def _lexical_absolute(path: Path) -> Path:
+    path = path.expanduser()
+    if not path.is_absolute():
+        raise WorktreeMaterializeError("WORKTREE_LOCATOR_MUST_BE_ABSOLUTE")
+    return Path(path.as_posix())
+
+
+def _reject_symlink_redirection(path: Path) -> None:
+    current = Path(path.anchor)
+    parts = path.parts[1:] if path.anchor else path.parts
+    for index, part in enumerate(parts):
+        current = current / part
+        if current.exists() or current.is_symlink():
+            if current.is_symlink():
+                raise WorktreeMaterializeError("WORKTREE_LOCATOR_SYMLINK_REDIRECTION")
+        elif index < len(parts) - 1:
+            break
 
 
 def _worktree_entries(target: Path) -> list[dict[str, str]]:
@@ -272,7 +291,7 @@ def _path_registered_worktree(target: Path, worktree: Path) -> dict[str, str] | 
 
 def _ensure_available_worktree_path(target: Path, worktree: Path, branch_ref: str) -> str | None:
     target_root = target.resolve()
-    if worktree == target_root:
+    if worktree.resolve() == target_root:
         raise WorktreeMaterializeError("WORKTREE_PATH_IS_CANONICAL_CHECKOUT")
     registered = _path_registered_worktree(target, worktree)
     if registered:
@@ -304,6 +323,76 @@ def _remote_task_current(target: Path, remote_ref: str, task_key: str) -> dict[s
     return payload
 
 
+def _fetch_base_branch(target: Path, base_branch: str) -> str:
+    if not re.fullmatch(r"[A-Za-z0-9._/-]+", base_branch or ""):
+        raise WorktreeMaterializeError("BASE_BRANCH_INVALID")
+    ref = f"refs/remotes/origin/{base_branch}"
+    result = git_run(target, ["fetch", "origin", f"{base_branch}:{ref}"], check=False)
+    if result.returncode != 0:
+        raise WorktreeMaterializeError("BASE_BRANCH_FETCH_FAILED")
+    return ref
+
+
+def _require_base_lineage(target: Path, base_commit: str, base_ref: str) -> None:
+    if git_run(target, ["merge-base", "--is-ancestor", base_commit, base_ref], check=False).returncode != 0:
+        raise WorktreeMaterializeError("BASE_COMMIT_NOT_IN_FROZEN_BASE_LINEAGE")
+
+
+def _registered_branch_for_path(target: Path, worktree: Path) -> str | None:
+    entry = _path_registered_worktree(target, worktree)
+    return entry.get("branch") if entry else None
+
+
+def _worktree_is_clean(path: Path) -> bool:
+    if not path.exists():
+        return True
+    result = git_run(path, ["status", "--porcelain"], check=False)
+    return result.returncode == 0 and not result.stdout.strip()
+
+
+def _rollback_materialize(
+    target: Path,
+    *,
+    branch: str,
+    branch_ref: str,
+    branch_oid: str | None,
+    worktree: Path,
+    created_branch: bool,
+    created_worktree: bool,
+    failure: Exception,
+) -> WorktreeMaterializeError:
+    evidence: list[str] = [f"failure={failure}"]
+    if created_worktree:
+        registered_branch = _registered_branch_for_path(target, worktree)
+        if registered_branch == branch_ref and _worktree_is_clean(worktree):
+            remove = git_run(target, ["worktree", "remove", str(worktree)], check=False)
+            if remove.returncode == 0:
+                evidence.append(f"removed_worktree={worktree}")
+            else:
+                evidence.append(f"worktree_cleanup_failed={remove.stderr.strip() or remove.stdout.strip()}")
+        elif registered_branch == branch_ref:
+            evidence.append(f"worktree_cleanup_refused_dirty={worktree}")
+        elif worktree.exists() and not any(worktree.iterdir()):
+            try:
+                worktree.rmdir()
+                evidence.append(f"removed_empty_worktree_dir={worktree}")
+            except OSError:
+                evidence.append(f"empty_worktree_dir_cleanup_failed={worktree}")
+        else:
+            evidence.append(f"worktree_cleanup_not_owned={worktree}")
+    if created_branch:
+        current_oid = _branch_oid(target, branch_ref)
+        if current_oid and (branch_oid is None or current_oid == branch_oid) and not _branch_worktree_path(target, branch_ref):
+            delete = git_run(target, ["branch", "-D", branch], check=False)
+            if delete.returncode == 0:
+                evidence.append(f"removed_branch={branch}")
+            else:
+                evidence.append(f"branch_cleanup_failed={delete.stderr.strip() or delete.stdout.strip()}")
+        elif current_oid:
+            evidence.append(f"branch_cleanup_refused={branch}@{current_oid}")
+    return WorktreeMaterializeError("MATERIALIZE_WORKTREE_PARTIAL_FAILURE: " + "; ".join(evidence))
+
+
 def materialize_worktree(
     target: Path,
     task_key: str,
@@ -331,8 +420,10 @@ def materialize_worktree(
         raise WorktreeMaterializeError("BASE_REF_ASSERTION_FAILED")
     if not git_commit_exists(target, base_commit):
         raise WorktreeMaterializeError("BASE_COMMIT_MISSING")
-    frozen_worktree = _frozen_worktree_locator(root / "REQUEST.md")
-    asserted_worktree = expected_worktree.expanduser().resolve()
+    frozen_worktree = _lexical_absolute(_frozen_worktree_locator(root / "REQUEST.md"))
+    _reject_symlink_redirection(frozen_worktree)
+    asserted_worktree = _lexical_absolute(expected_worktree)
+    _reject_symlink_redirection(asserted_worktree)
     if asserted_worktree != frozen_worktree:
         raise WorktreeMaterializeError("WORKTREE_ASSERTION_FAILED")
     branch = f"reviewed/{task_key}"
@@ -347,7 +438,25 @@ def materialize_worktree(
             raise WorktreeMaterializeError("LOCAL_TASK_BRANCH_ALREADY_EXISTS")
         if _branch_oid(target, f"refs/remotes/origin/{branch}"):
             raise WorktreeMaterializeError("REMOTE_TASK_BRANCH_ALREADY_EXISTS")
-        git_run(target, ["worktree", "add", "-b", branch, str(frozen_worktree), base_commit])
+        base_ref = _fetch_base_branch(target, base_branch)
+        _require_base_lineage(target, base_commit, base_ref)
+        created_branch = False
+        try:
+            git_run(target, ["branch", branch, base_commit])
+            created_branch = True
+            git_run(target, ["worktree", "add", str(frozen_worktree), branch])
+        except Exception as exc:
+            raise _rollback_materialize(
+                target,
+                branch=branch,
+                branch_ref=branch_ref,
+                branch_oid=base_commit,
+                worktree=frozen_worktree,
+                created_branch=created_branch,
+                created_worktree=frozen_worktree.exists(),
+                failure=exc,
+            ) from exc
+        actions.append(f"CREATE branch {branch} at {base_commit}")
         actions.append(f"CREATE worktree {frozen_worktree} at {branch}")
         return actions
 
@@ -368,10 +477,24 @@ def materialize_worktree(
     local_oid = _branch_oid(target, branch_ref)
     if local_oid and local_oid != remote_oid:
         raise WorktreeMaterializeError("LOCAL_REMOTE_BRANCH_AMBIGUITY")
+    created_branch = False
     if not local_oid:
         git_run(target, ["branch", branch, remote_oid])
+        created_branch = True
         actions.append(f"CREATE branch {branch} at {remote_oid}")
-    git_run(target, ["worktree", "add", str(frozen_worktree), branch])
+    try:
+        git_run(target, ["worktree", "add", str(frozen_worktree), branch])
+    except Exception as exc:
+        raise _rollback_materialize(
+            target,
+            branch=branch,
+            branch_ref=branch_ref,
+            branch_oid=remote_oid,
+            worktree=frozen_worktree,
+            created_branch=created_branch,
+            created_worktree=frozen_worktree.exists(),
+            failure=exc,
+        ) from exc
     actions.append(f"CREATE worktree {frozen_worktree} at {branch}")
     return actions
 
