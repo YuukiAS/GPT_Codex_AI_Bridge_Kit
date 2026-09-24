@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Make Reviewed Mode watcher machine-state writes atomic so concurrent readers
+  cannot observe truncated `watcher.json` during updates.
+- Skip the full Tests workflow for pure `docs/design/**` and `results/**`
+  metadata/evidence pushes, and cancel superseded in-progress main CI runs.
+
 ## 0.9.0 - 2026-09-24
 
 - Rename current user-facing taxonomy to Machine Policy, Reviewed Mode,

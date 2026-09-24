@@ -175,6 +175,34 @@ class ReviewedRunnerTests(unittest.TestCase):
             runner.write_local_state(target, {"schema": "AI_BRIDGE_REVIEWED_WATCHER_STATE_V1", "events": {}})
             self.assertEqual(subprocess.check_output(["git", "status", "--porcelain"], cwd=target, text=True).strip(), "")
 
+    def test_write_local_state_replaces_atomically_without_truncating_existing_state(self) -> None:
+        tmp, target, state_home = self.make_project()
+        with tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(state_home)}):
+            previous = {"schema": "AI_BRIDGE_REVIEWED_WATCHER_STATE_V1", "events": {"old": {"completed": True}}}
+            updated = {"schema": "AI_BRIDGE_REVIEWED_WATCHER_STATE_V1", "events": {"new": {"completed": False}}}
+            path = runner.state_path(target)
+            runner.write_local_state(target, previous)
+            seen_temp_names: list[str] = []
+            real_replace = os.replace
+
+            def inspect_before_replace(src, dst):
+                src_path = Path(src)
+                dst_path = Path(dst)
+                seen_temp_names.append(src_path.name)
+                self.assertEqual(dst_path, path)
+                self.assertEqual(src_path.parent, path.parent)
+                self.assertNotEqual(src_path.name, "watcher.json.tmp")
+                self.assertEqual(json.loads(dst_path.read_text(encoding="utf-8")), previous)
+                self.assertEqual(json.loads(src_path.read_text(encoding="utf-8")), updated)
+                real_replace(src, dst)
+
+            with mock.patch("ai_bridge_kit.reviewed_runner.os.replace", side_effect=inspect_before_replace):
+                runner.write_local_state(target, updated)
+
+            self.assertEqual(json.loads(path.read_text(encoding="utf-8")), updated)
+            self.assertEqual(len(seen_temp_names), 1)
+            self.assertFalse((path.parent / "watcher.json.tmp").exists())
+
     def test_watcher_dry_run_only_targets_executor_states(self) -> None:
         tmp, target, state_home = self.make_project()
         with tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(state_home)}):

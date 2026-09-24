@@ -3,7 +3,17 @@ name: Tests
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "docs/design/**"
+      - "results/**"
   pull_request:
+    paths-ignore:
+      - "docs/design/**"
+      - "results/**"
+
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   unittest:
