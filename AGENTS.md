@@ -491,6 +491,8 @@ Review watcher 只能同步和使用用户已经授权且当前 checkout 的 bra
 
 根 `AGENTS.md` 是写给 Codex 的操作入口，应保持可执行、明确、低歧义。复杂 workflow 状态机、schema 和历史设计放在 `docs/`，不要把全部实现规格重复复制到 README。
 
+README 的信息架构必须保持“版本历史”和“当前使用说明”分离：只能有一个 canonical version-history section，按旧到新记录版本增量；不得同时维护“功能与版本”“版本演进”“某版本解决了什么”等重复历史区。Capability section 描述 current state，标题不写 introduced version；后续版本增强已有 capability 时，只在 version-history 记录增量，并把 capability section 更新为最新完整行为，不在正文里累积 changelog 段落。Capability section 应按用户理解和使用层级排序，而不是发布时间；每次 release/refinement closure 都要检查 README 的整体目录、重复信息和阅读顺序，不能只 append 新段落。
+
 如果 README 与实现发生冲突，应修 README；Review 行为与 `docs/V0_5_REVIEWED_HANDOFF_IMPLEMENTATION_SPEC.md` 冲突时优先修实现；Control 行为与 `docs/V0_4_AGENT_FLOW_IMPLEMENTATION_SPEC.md` 冲突时也优先按规格修实现，除非用户明确改变了架构决策。
 
 ## 13. 兼容性和发布

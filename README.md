@@ -4,94 +4,13 @@
 
 它解决的问题很实际：项目做久以后，真正麻烦的往往不是“让 Codex 写代码”，而是怎么让不同机器上的 Codex 遵守同一套长期规则，怎么把 GPT 的规划稳定交给 Codex，怎么在重要任务结束前增加独立复核，以及怎么把论文、通知、视觉检查这些能力接进现有科研仓库，而不是每个项目重新搭一套脚手架。
 
-这个仓库的原则是：**默认保持简单，需要什么再加什么。** 普通项目只需要机器级规则和基础交接；只有确实需要时，才启用独立复核、高风险闭环、邮件通知、Overleaf 同步或视觉复核。
+这个仓库的原则是：**默认保持简单，需要什么再加什么。** 普通项目通常只需要机器级规则和基础交接；只有确实需要时，才启用独立复核、高风险闭环、长期运行、通知、Overleaf 同步或视觉/文本复核。
 
 当前集成版本：`0.9.0`（低打扰操作收口已完成文档同步；这不是 GitHub release/tag 声明）。
 
-## 0.9.0 解决了什么
-
-`0.9.0` 主要解决的是一个使用体验问题：安全、常见、已经有边界的操作，不应该每次都被当成高风险动作反复拦住；但真正危险的 Git、进程、凭据和远端操作也不能因此被放开。
-
-实际变化可以这样理解：
-
-- 普通 Git/GitHub 只读诊断更顺了。当前仓库范围内的 GitHub 状态读取、已配置远端同步、进程/session 只读检查等安全操作，由 Machine Policy 低打扰处理；跨仓库读取、token 展示、任意 `gh api`、shell 组合和危险 Git 仍然走审批。
-- 最后一步普通发布更稳定了。当前分支已经选好、用户已经授权、`origin` 上同名分支已经存在时，GitHub HTTPS 发布可以走唯一的受边界约束入口 `ai-bridge host publish-current-branch`，避免原始 `git push origin main` 在最后又被 Auto-review 卡住。
-- 发布传输边界更清楚了。`GitHub HTTPS + 现有 system/global/gh credential helper` 是低打扰可信路径；SSH、scp-style 和 custom transport 仍回到普通原始 Git push 审批。Bridge Kit 不配置 SSH key、ssh-agent 或 `known_hosts`，也不会替你把 remote 从 HTTPS 改成 SSH。
-- Reviewed Mode 创建或恢复任务 worktree 时更少被审批误伤。`ai-bridge reviewed-handoff materialize-worktree` 只允许从冻结的 repo、task、base 和 path 物化 exact worktree，不会变成通用 Git wrapper。
-- Persistent Run 不只保证“任务别死”。它现在能报告真实 stage/progress、有依据 ETA 或 `UNKNOWN`、以及 stalled 状态；这些运行进展也可以通过已有 Notifications 投影出去。但它仍不是自动控制系统，不会自动重启、取消、扩资源或宣布任务完成。
-
-整体设计不是给 Codex 全面放权，而是把安全的原生命令尽量留在原生命令里；只有原生权限规则表达不了的两个动态 Git 动作，才放进受边界约束的操作入口。危险操作继续审批。
-
-README 同步状态：已按 `0.9.0` final closure 更新。
-
-## 三档工作模式
-
-```text
-Lite
-最轻量，普通任务默认使用
-
-Reviewed Mode
-GPT 先规划，Codex 执行，再由 GPT 独立复核
-
-Controlled Mode
-高风险任务的严格多角色控制与验证
-```
-
-这些是面向用户讨论和选择 workflow 时使用的显示名称。具体命令仍保持兼容：
-Reviewed Mode 使用 `ai-bridge reviewed-handoff ...`，Controlled Mode 使用
-`ai-bridge agent-flow ...`。机器级能力当前显示为 **Machine Policy**，兼容命令仍是
-`ai-bridge host ...`。
-
-## 功能与版本
-
-| 能力 | 首次引入 | 作用 |
-|---|---:|---|
-| Lite | `0.1.0` | 最基础的 GPT → Codex → 复核文件交接 |
-| Machine Policy | `0.2.0` | 一台机器上的 Codex 长期配置、Git 行为和通用规则 |
-| Notifications | `0.3.0` | 任务合法终态或运行层进展后发送通知 |
-| Controlled Mode | `0.4.0` | 高风险任务的严格多角色验证闭环 |
-| Reviewed Mode | `0.5.0` | GPT 规划、Codex 执行、GPT 最多两轮独立复核 |
-| Visual Review | `0.5.2` | 对图片、PPT 截图等生成可验证视觉证据 |
-| Overleaf Bridge | `0.6.0` | 科研单一仓库中只把论文目录安全同步到 Overleaf |
-| Text Review / Text Transform | `0.6.1` | 私有 Markdown/plain-text 的加密复核与转换 transport |
-| Production Plugin Replay | `0.6.1` | 通过 Machine Policy 预授权受控的本机真实插件回归入口 |
-| Goal Fidelity | `0.7.0` | Lite / Review / Control 防止把降级替代、窄证据或纯负面检查包装成原始目标完成 |
-| Persistent Run | `0.8.0` | 长期 Goal 的显式 kickoff、canonical tmux、恢复证据与不中断执行约束 |
-
-本项目采用 `0.x` 迭代方式。每个 `0.x` 小版本通常代表一项可独立使用的能力进入稳定工作流；后面的补丁版本主要用于安全性、兼容性和默认行为修正。这不是严格的 Semantic Versioning 承诺，而是当前阶段的版本阅读方式。
-
-### 版本演进
-
-`0.2.1`、`0.3.1`、`0.5.1`、`0.5.3`、`0.5.4` 主要是已有能力的行为完善、安全修复或默认配置更新，不是新的顶层安装层：
-
-- `0.2.1`：完善 Host Policy 的用户可见中文叙述策略。
-- `0.3.1`：Notifier 输出改为中文优先。
-- `0.5.1`：稳定 External GPT 等待规则和 Host Policy Git 授权语义。
-- `0.5.3`：稳定 Visual Review 的 GitHub Actions 安装和证据文件写回。
-- `0.5.4`：更新 Visual Review 默认模型。
-- `0.6.1`：把三档 workflow 的显示名称简化为 Lite / Review / Control，同时加入 Text Review、Text Transform、受控 production plugin replay、Review watcher lifecycle/status、dirty-tree waiting、FINAL_REPORT preflight 和 notifier ownership hardening。
-- `0.7.0`：加入 Goal Fidelity / anti-degradation 约束，要求完成声明必须有原始目标的正向结果、不可替代语义没有被削弱、证据范围覆盖 claim 范围；它不新增 workflow、角色、状态、schema、runner、watcher 或默认 API/Visual/Text 成本。
-- `0.7.1`：修复 Review Plan schema evolution；新 Plan 使用 V2 Goal Fidelity contract，历史 V1 frozen Plan 无需改写即可继续验证/执行，但新的 freeze 必须使用 V2。
-- `0.7.2`：修复 Host Policy 对常见 Slurm 只读 inspection 的误拒绝；直接 `squeue`、`sinfo`、`sacct`、`sstat`、`sprio`、`scontrol show ...` 和 `scontrol ping` 可不再重复审批，但 `sbatch`、`srun`、`salloc`、`scancel`、mutating `scontrol`、`sacctmgr modify` 和 shell pipeline 仍走审批路径。
-- `0.7.3`：减少 unattended / overnight 任务里已复现的低风险诊断误拒绝；直接 `ps`、`git fetch --all --prune`、`tmux ls`、`tmux list-sessions` 和 `tmux has-session` 可不再重复审批，但 process mutation、tmux mutation、arbitrary Git fetch、generic shell/Python 和危险 Git 仍走审批路径。
-- `0.8.0`：新增 Persistent Run 项目能力。它不是第四档 workflow，而是让明确授权的长期 Goal 使用 canonical `tmux` session、项目原生 lock / heartbeat / stage-state / checkpoint / resume evidence 和用户可见 kickoff 文本来启动或恢复；不新增 Host Policy 全局 allow、不自动 fallback 到 `setsid` / `nohup` / 裸后台 `&` / `screen` / `sudo`，也不改变原 Goal 的完成标准。
-- `0.8.1`：加固 GPT task authoring 和 Codex startup preflight。GPT 必须把 overnight / unattended / survive-disconnect 这类 execution lifetime 需求和 Lite / Review / Control workflow 分开判断；已安装 Persistent Run 的仓库必须把合同字段写进 Goal/task，后续 next-task 也必须 carry forward。Codex 则必须在可预见的 Persistent Run kickoff、private external transfer、paid/external call、deployment 或 resource allocation 前提前请求 bounded 当前用户授权；仓库内 Goal/Plan/contract 只证明 frozen scope，不等于当前用户授权。
-- `0.8.2`：收窄 Text Review 付费复核 contract，允许 consumer workflow 在已有默认预算内冻结更严格的 call count、campaign ceiling、per-call ceiling、retry、model/pricing/service-tier/tools/cache policy，并在 reservation / receipt / ledger reload 前 fail closed。
-- `0.8.3`：完善 Lite fresh-repo root `AGENTS.md` scaffold、existing-root managed block raw-byte preservation，以及 Lite fallback versioning 默认规则。
-- `0.8.4`：要求新建 Review 任务默认使用 `<scope-token>--<goal-token>` 语义 task key，同时继续兼容历史 `<id>_<short_slug>` 任务和结果目录；普通 authoring 文档与任务模板同步改用语义 task key 示例。
-- `0.8.5`：修复 Default-mode required human gate transport：Host Policy 期望
-  `default_mode_request_user_input=false`，Lite/Host 使用 durable transcript
-  wait/resume 语义，`host validate` 区分 feature key 是否受支持与期望启用状态；现阶段不代表已经 release、tag 或真实 Host install。
-- `0.9.0`：收口低打扰操作入口。Machine Policy 增加当前仓库 GitHub/Git 安全读；
-  GitHub HTTPS 普通发布使用单一受边界约束的
-  `ai-bridge host publish-current-branch`，SSH/scp/custom transport 回到普通审批；
-  Reviewed Mode 增加冻结 worktree 的 `materialize-worktree`；Persistent Run 增加
-  progress/ETA/stalled 报告，并可通过 Notifications 投影 operational-progress brief。
-  raw `git push origin main` 不再作为机器级低打扰入口。
-
 ## 一眼看懂：我到底该装什么
 
-整个工具包分成三层。
+整个工具包分成三层：
 
 ```text
 机器层：一台机器 / 一个 CODEX_HOME 配一次
@@ -100,11 +19,12 @@ Reviewed Mode 使用 `ai-bridge reviewed-handoff ...`，Controlled Mode 使用
 项目层：每个 Git 仓库按需安装
 ├── Lite                 基础 GPT ↔ Codex 交接，默认推荐
 ├── Reviewed Mode        GPT 先规划，Codex 执行，再由 GPT 独立复核
+├── Controlled Mode      高风险任务的严格闭环
 ├── Persistent Run       长期 Goal 的 tmux 持久执行能力
 ├── Notifications        任务结束或运行层进展后发通知
 ├── Overleaf Bridge      只把论文目录同步到 Overleaf
 ├── Visual Review        对图片、PPT 截图等做独立视觉检查
-└── Controlled Mode      高风险任务的严格闭环
+└── Text Review / Transform
 
 任务层：某一次具体工作的实例
 ├── Lite 任务
@@ -120,66 +40,55 @@ Machine Policy + Lite
 
 不要因为项目大、文件多、运行时间长，就自动启用 Control。是否需要更重的流程，取决于“错误通过的代价”，而不是代码行数。
 
----
-
-## 4. Persistent Run（`0.8.0` 引入）：长期 Goal 的持久执行
-
-Persistent Run 是项目层可选能力，不是第四套 workflow。Lite / Review /
-Control 三档 workflow 保持不变；Persistent Run 只解决长期任务在 Codex / SSH
-断开后如何继续运行、如何恢复、以及如何避免临时发明后台机制的问题。
-
-安装到某个 Git 仓库：
-
-```bash
-ai-bridge persistent-run install --target /path/to/project
-ai-bridge persistent-run validate --target /path/to/project
-```
-
-安装后只会写入：
+## 三档工作模式
 
 ```text
-automation/persistent_run/README.md
-automation/persistent_run/CONTRACT_TEMPLATE.md
-automation/persistent_run/KICKOFF_TEMPLATE.md
-AGENTS.md 中的 ai-bridge-kit:persistent-run managed block
+Lite
+最轻量，普通任务默认使用
+
+Reviewed Mode
+GPT 先规划，Codex 执行，再由 GPT 独立复核
+
+Controlled Mode
+高风险任务的严格多角色控制与验证
 ```
 
-它不会安装 Lite / Review / Control，不会修改 `$CODEX_HOME`，不会创建
-`.codex/rules`，也不会放开全局 `tmux new-session`、`setsid`、`nohup`、
-`sbatch`、`salloc` 或 generic shell/Python。
+这些是面向用户讨论和选择 workflow 时使用的显示名称。具体命令仍保持兼容：Reviewed Mode 使用 `ai-bridge reviewed-handoff ...`，Controlled Mode 使用 `ai-bridge agent-flow ...`。机器级能力当前显示为 **Machine Policy**，兼容命令仍是 `ai-bridge host ...`。
 
-给某个已经冻结的 Goal 生成 kickoff 授权文本：
+## 版本演进
 
-```bash
-ai-bridge persistent-run prompt kickoff \
-  --target /path/to/project \
-  --goal prompts/tasks/repo--long-run.md
-```
+本表是 README 中唯一的版本历史摘要。它回答“每个版本增加或改变了什么”；后面的功能章节只说明当前怎么使用。
 
-这个命令只打印用户可见授权，不会启动 tmux。用户把这段 kickoff 发给 Codex
-后，Codex 才能针对同一个 frozen Goal 使用 canonical `tmux` session 启动或恢复。
-已有兼容 run 时应 resume，不重复启动；`tmux` session、Slurm job、PID、
-heartbeat 或 checkpoint 只能证明活动或状态，不能替代原 Goal 的完成标准。
+| 版本 | 新增 / 主要变化 | 用户实际得到什么 |
+|---|---|---|
+| `0.1.0` | Lite Handoff、任务文件、执行结果和基础初始化/验证入口。 | 可以用 `prompts/tasks/<task_key>.md` 和 `results/<task_key>/result.md` 做最基础的 GPT -> Codex -> GPT 交接。 |
+| `0.2.0` | Machine Policy 成为机器级配置层。 | 可以用 `ai-bridge host install/status/validate` 管理 `$CODEX_HOME`，把机器规则和项目初始化分开。 |
+| `0.2.1` | Host Policy 用户叙述改为中文优先。 | Codex 给用户看的进度、计划和结果默认更符合中文工作流。 |
+| `0.3.0` | Generic Notifier。 | 可以通过结构化 brief 发送一次性终态邮件，并保留 Lite 兼容。 |
+| `0.3.1` | Notifier 邮件中文优先。 | 通知邮件对中文用户更直接，同时保留 task key、路径、branch 等技术字面量。 |
+| `0.4.0` | Controlled Mode / Agent-Flow。 | 高风险任务可以使用 Planner、Critic、Controller、Verifier、Executor 的严格闭环。 |
+| `0.5.0` | Reviewed Mode。 | 可以让 GPT 先冻结方案，Codex 执行，再由 GPT 最多两轮独立复核。 |
+| `0.5.1` | Host Policy Git 授权语义和 External GPT 等待规则。 | 普通当前分支开发更顺，外部 Planner/Reviewer/Critic 的正常等待不会被误判为失败。 |
+| `0.5.2` | Visual Review。 | 图片、PPT 截图、视觉结果可以生成独立可验证的视觉证据。 |
+| `0.5.3` | Visual Review GitHub Actions 安装和 evidence writeback 加固。 | 视觉复核能在 consumer 仓库更稳定地安装、触发和写回证据。 |
+| `0.5.4` | Visual Review 默认模型更新。 | 未显式覆盖模型时，视觉复核使用当前统一默认模型。 |
+| `0.6.0` | Overleaf Bridge。 | 科研 monorepo 中 Codex 仍读整个仓库，但只把论文目录安全同步到 Overleaf。 |
+| `0.6.1` | Lite / Review / Control 显示名、Text Review / Text Transform、Production Plugin Replay、Review watcher lifecycle/status、Notifier ownership hardening。 | 私有文本可加密复核/转换；插件可受控本机回归；Review watcher 和通知边界更清楚。 |
+| `0.7.0` | Goal Fidelity / anti-degradation。 | 完成声明必须对应原始目标，不能把降级替代、窄证据或 blacklist-only 检查包装成完整完成。 |
+| `0.7.1` | Review Plan V2 与历史 V1 兼容。 | 新冻结方案必须包含 Goal Fidelity contract，旧 frozen Plan 不必迁移也能继续验证。 |
+| `0.7.2` | Slurm 只读 inspection 低打扰规则。 | 直接 `squeue`、`sinfo`、`sacct`、`sstat`、`sprio`、`scontrol show ...` / `ping` 不再反复审批，调度器/任务 mutation 仍审批。 |
+| `0.7.3` | 低风险 unattended diagnostics 误拒绝修正。 | 直接 `ps`、`git fetch --all --prune`、`tmux ls/list-sessions/has-session` 可低打扰执行，process/tmux mutation 仍审批。 |
+| `0.8.0` | Persistent Run。 | 长期 Goal 可以通过明确 kickoff、canonical tmux、lock/heartbeat/checkpoint/resume evidence 持久运行。 |
+| `0.8.1` | Persistent Run authoring 和启动前授权 preflight。 | GPT 写长期 Goal 时必须说明 backend、run key、资源边界和完成标准；Codex 启动前会检查当前用户授权。 |
+| `0.8.2` | Text Review 付费复核预算收窄 contract。 | 私有文本复核可以绑定更严格的 call count、费用、模型和 retry 边界，超界前默认失败。 |
+| `0.8.3` | Lite fresh-repo scaffold、root `AGENTS.md` 保留和 fallback versioning。 | 新仓库初始化更干净，已有根规则不被误覆盖。 |
+| `0.8.4` | Reviewed Handoff 语义 task key。 | 新 Review 任务默认用 `<scope-token>--<goal-token>`，历史编号任务仍可读取和验证。 |
+| `0.8.5` | Default-mode required human gate transport 修正。 | 必需人工输入使用 durable transcript wait/resume，不依赖会自动 resolve 的默认模式问题卡。 |
+| `0.9.0` | 低打扰操作收口：current-repo safe reads、GitHub HTTPS bounded publisher、Reviewed worktree materializer、Persistent Run progress/ETA/stalled、Notifications operational progress。 | 安全原生命令更少被误拦；GitHub HTTPS 普通发布和冻结 Review worktree 有受边界约束入口；SSH/custom、危险 Git、自动控制和语义 PASS 仍不被放权。 |
 
-`0.8.1` 起，生成长期 Goal 时也要提前写清 Persistent Run contract。GPT 不能把
-“run overnight”“unattended”“survive disconnect”这类要求降级成普通 live
-Codex session，也不能因为运行时间长就自动改成 Review / Control。已安装 Persistent
-Run 的仓库应在 task/Goal 中写入 `Persistent execution: REQUIRED`、`Backend: tmux`、
-repo-relative `Goal source`、stable `Run/session key`、资源边界、恢复证据和原始
-positive completion criteria。Codex 启动时如果当前用户消息还没有同一个 frozen
-Goal 的 bounded kickoff 授权，应先显示 kickoff prompt 并等待用户发送；同一授权
-已存在时不重复询问，新的资源、recipient/provider、purpose、backend 或越界副作用
-仍然单独 gate。
+本项目采用 `0.x` 迭代方式。每个 `0.x` 小版本通常代表一项可独立使用的能力进入稳定工作流；补丁版本主要用于安全性、兼容性和默认行为修正。这不是严格的 Semantic Versioning 承诺，而是当前阶段的版本阅读方式。
 
-`0.9.0` 起，Persistent Run 还能把长期任务的运行状态说清楚：当前 stage、真实
-progress fraction、有依据 ETA 或 `UNKNOWN`、以及从真实 no-progress evidence 推出的
-stalled 状态。它也可以把这些 operational progress 交给 Notifications 发送。这里报告
-的是运行进展，不是自动控制：Bridge Kit 不会因此自动重启任务、取消任务、扩资源，
-也不会把 heartbeat、PID、tmux session 或 ETA 当成 Goal 完成。
-
----
-
-## 5. Machine Policy（`0.2.0` 引入）：先配置 Codex 的长期规则
+## Machine Policy：先配置 Codex 的长期规则
 
 先安装本仓库：
 
@@ -206,38 +115,38 @@ $CODEX_HOME/rules/ai-bridge-global.rules
 
 它负责的是长期行为，例如：
 
-- 用户可见的进度、计划、测试结果和完成报告默认使用自然中文；
-- 普通局部实现由 Codex 自行判断，真正会改变架构、范围、部署、Git 分支策略或科研语义的歧义才询问用户；
-- 当前 `main` 分支上的安全 `fetch`、快进 `pull`、正常 `add/commit` 尽量减少重复授权；
-- 已存在同名远端分支的 GitHub HTTPS 普通发布走单一受边界约束的入口 `ai-bridge host publish-current-branch --expected-repo <owner/repo> --expected-branch <branch>`；原始 `git push origin main` 保持审批路径；
-- 这个受边界约束的发布入口只把 `https://github.com/<owner>/<repo>.git` 加上现有 system/global/gh credential helper 视为低打扰可信路径；SSH、scp-style 和 custom transport 会默认失败并回到普通审批，Bridge Kit 不配置 SSH key、ssh-agent 或 `known_hosts`；
-- 当前仓库范围的 `gh auth status --`、`gh pr list --`、`gh pr status --`、`gh issue list --`、`gh issue status --` 和 `gh run list --` 可低打扰读取；`--repo`、token display、任意 `gh api` 和 positional view 仍走审批路径；
-- 常见 Slurm 只读查询如 `squeue`、`sinfo`、`sacct`、`sstat`、`sprio`、`scontrol show ...` 和 `scontrol ping` 尽量减少重复授权；
-- `ps`、`tmux ls` / `tmux list-sessions` / `tmux has-session` 这类只读 host/session inspection，以及 `git fetch --all --prune` 这类已配置远端同步，尽量减少重复授权；
-- 已明确授权的本机 production plugin repair/replay 可走受控入口 `ai-bridge plugin-replay`，让 fresh Codex runtime 在 write-isolated replay workspace 中测试已安装插件；
-- `force push`、改 remote、删除分支、`reset --hard`、`git clean` 等危险操作仍然不能因为“自动化”而放开；
-- Slurm 的资源申请、任务状态修改、调度器修改、process mutation、tmux mutation、arbitrary Git fetch、generic shell/Python 和 shell 组合命令仍然不能因为包含只读查询而放开；
+- 用户可见的进度、计划、测试结果和完成报告默认使用自然中文。
+- 普通局部实现由 Codex 自行判断；真正会改变架构、范围、部署、Git 分支策略或科研语义的歧义才询问用户。
+- 当前 `main` 分支上的安全 `fetch`、快进 `pull`、正常 `add/commit` 尽量减少重复授权。
+- 当前仓库范围的 `gh auth status --`、`gh pr list --`、`gh pr status --`、`gh issue list --`、`gh issue status --` 和 `gh run list --` 可低打扰读取；`--repo`、token display、任意 `gh api` 和 positional view 仍走审批路径。
+- 常见 Slurm 只读查询如 `squeue`、`sinfo`、`sacct`、`sstat`、`sprio`、`scontrol show ...` 和 `scontrol ping` 尽量减少重复授权；资源申请、任务状态修改和调度器修改仍走审批。
+- `ps`、`tmux ls` / `tmux list-sessions` / `tmux has-session` 这类只读 host/session inspection，以及 `git fetch --all --prune` 这类已配置远端同步，尽量减少重复授权。
 - 如果下一步明确属于外部 GPT Planner/Reviewer/Critic，等待 GPT 不应被误判为任务失败。
+
+### GitHub HTTPS 普通发布
+
+已经在当前分支完成任务、同名远端分支已经存在、且 remote 是 GitHub HTTPS 时，低打扰发布使用单一受边界约束入口：
+
+```bash
+ai-bridge host publish-current-branch \
+  --expected-repo <owner/repo> \
+  --expected-branch <branch>
+```
+
+这两个参数只是 equality assertion；真实 repo、branch、upstream、remote ref、transport、credential 和 hook 边界都由 helper 从当前 Git 状态重新读取。
+
+可信低打扰路径只包括：
+
+```text
+https://github.com/<owner>/<repo>.git
++ existing system/global/gh credential helper
+```
+
+SSH、scp-style 和 custom transport 会默认失败并回到普通原始 Git push 审批。Bridge Kit 不配置 SSH key、ssh-agent 或 `known_hosts`，也不会替你把 remote 从 HTTPS 改成 SSH。raw `git push origin main` 保持审批路径；`force push`、改 remote、删除分支、`reset --hard`、`git clean` 等危险操作仍然不能因为“自动化”而放开。
 
 Machine Policy 会尽量非破坏式修改已有配置，并在需要时创建备份。
 
-`ai-bridge plugin-replay` 是机器级 Machine Policy 预授权的窄入口，不是新的
-workflow。它要求 caller 指定目标 Git 仓库、已安装插件名、任务/说明文件和一个
-或多个显式 input file。input 默认必须位于 target Git repo 内；外部文件只能先放入
-`${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}/plugin-replay/inbox/` 这个固定 trusted
-inbox；symlink resolve 后仍必须落在授权根内。task/说明文件只能来自 target repo、
-当前 caller repo 或 trusted inbox。每次运行只把这些文件复制到
-`${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}/plugin-replay/<run-id>/`，child Codex 的
-cwd 是 write-isolated workspace，默认 `workspace-write`、`approval_policy=never`、本地
-replay 网络关闭，且使用当前 Codex identity，不允许通过该入口切换到另一个
-`CODEX_HOME`。完整输出保留在本机 state 目录。当前 Codex runtime 仍可能读取同一
-用户可读文件；wrapper 会如实记录 read-scope diagnostic，但不把它包装成 strict
-read isolation。Machine Policy 不会因此放开 raw `codex exec`、裸 shell/python、任意
-私人路径作为 replay input、整个 consumer repo 写入、外部上传、危险 Git、发布或部署。
-
----
-
-## 6. Lite（`0.1.0` 引入）：新项目默认安装
+## Lite：新项目默认安装
 
 进入一个正式 Git 仓库后：
 
@@ -246,7 +155,7 @@ ai-bridge init --target /path/to/project
 ai-bridge validate --target /path/to/project
 ```
 
-它会给项目建立一套轻量、可版本控制的 GPT ↔ Codex 交接结构。核心关系可以理解成：
+Lite 会给项目建立一套轻量、可版本控制的 GPT ↔ Codex 交接结构。核心关系可以理解成：
 
 ```text
 GPT 写清楚要做什么
@@ -274,9 +183,7 @@ Lite 并不意味着“只能做小任务”。普通功能开发、修 bug、�
 
 `ai-bridge init` 只配置当前项目，不会偷偷修改你的 `$CODEX_HOME`，也不会自动安装下面那些可选能力。
 
----
-
-## 7. Reviewed Mode（`0.5.0` 引入）：需要 GPT 先定方案、完成后再独立复核
+## Reviewed Mode：GPT 先定方案、完成后再独立复核
 
 如果某项工作不能让 Codex 一边执行一边自己决定产品语义或科研方向，但又没有必要上最重的 Controlled Mode，可以使用 Reviewed Mode。
 
@@ -313,14 +220,13 @@ ai-bridge reviewed-handoff task init \
   --objective "这里写任务目标"
 ```
 
-新的 Reviewed Handoff task 默认使用 semantic key：`<scope-token>--<goal-token>`，
-例如 `repo--example`。历史 numbered task 继续可验证，不需要迁移。
+新的 Reviewed Handoff task 默认使用 semantic key：`<scope-token>--<goal-token>`，例如 `repo--example`。历史 numbered task 继续可验证，不需要迁移。
 
 这套流程默认最多两轮 GPT 复核。第一轮如果返回 `REVISE`，允许 Codex 自动返修一次；第二轮仍未通过，就进入人工决策，不继续无限循环。
 
 如果复核已经 `PASS` 并进入 `AWAIT_HUMAN_DECISION`，但用户阅读全文或检查 artifact 后明确拒绝当前结果，使用 `ai-bridge reviewed-handoff human record --decision REJECT --route REVISE|NEEDS_GPT_PLANNER` 记录这次 human decision。只需按冻结 Plan 修复时回到 `REVISE`；如果拒绝理由证明 Plan 自身需要一次最小修订，则回到 `NEEDS_GPT_PLANNER`。这个入口不会重置 `review_round`，不会删除原 Reviewer PASS，也不会在预算用尽后开启第三轮。
 
-GPT 侧可以通过 ChatGPT「安排任务」定期查看 GitHub 中的任务状态；Codex 侧可以运行轻量监视器，在 `PLAN_FROZEN` 或 `REVISE` 时启动执行：
+Codex 侧可以运行轻量监视器，在 `PLAN_FROZEN` 或 `REVISE` 时启动执行：
 
 ```bash
 ai-bridge reviewed-handoff watcher run \
@@ -340,27 +246,15 @@ ai-bridge reviewed-handoff watcher restart --target /path/to/project --branch <e
 
 监视器不会自行创建分支或 PR。它也不会把 Codex Executor 变成新的决策角色：Executor 只执行冻结方案并提交结果，发布仍由 watcher 在验证后完成。
 
-`0.9.0` 起，Reviewed Mode 还有一个受边界约束的 worktree 物化入口：
-`ai-bridge reviewed-handoff materialize-worktree`。它解决的是“任务已经冻结，
-repo、task、base、path 都已经确定，但精确 task worktree 创建或恢复仍被审批卡住”
-的问题。这个入口只接受冻结 scope，不会变成通用 `git worktree` / branch wrapper，
-也不会替用户选择新分支、改 remote 或创建 PR。
-
-`PLAN_FROZEN` 只有在当前 `PLAN.md` 结构合法时才会被 watcher 视为可执行。0.7.1 起，新 freeze / re-freeze 必须使用 `AI_BRIDGE_REVIEWED_PLAN_V2`，历史 `AI_BRIDGE_REVIEWED_PLAN_V1` frozen Plan 按自身旧章节做兼容验证，不追溯要求补写 Goal Fidelity H2；如果 GitHub 上出现临时不合法的 workflow 状态，watcher 会拒绝启动 Executor、记录本机状态并低频重试。Planner 后续修好同一分支后，不需要用户重新启动 watcher。
-
-如果目标仓库已有未知 dirty working tree，watcher 仍会 fail closed：不启动 Executor、不 stash/reset/commit/push、不猜测这些文件属于哪个 task。不同的是 persistent watcher 会记录 `dirty_worktree_wait`、dirty paths，并低频等待；外部合法动作把工作树恢复 clean 后，同一个 watcher 会继续正常路由。
-
-需要查看后台 Executor 状态时，可以运行：
+Reviewed Mode 还提供受边界约束的 worktree 物化入口：
 
 ```bash
-ai-bridge reviewed-handoff watcher status \
-  --target /path/to/project \
-  --branch <existing-authorized-branch>
+ai-bridge reviewed-handoff materialize-worktree ...
 ```
 
-这个状态入口读取本机 watcher state 和仓库中的 `CURRENT.json`，报告 task、当前 state、Executor event、runtime 类型、可用 thread id、started/completed 时间、上次 exit/result、等待 owner 和上次发布状态。当前稳定生产路径仍是 `codex exec`。2026-08-26 的 Codex App/App Server 实验表明，外部 `codex app-server --stdio` 可以创建 durable、cwd 绑定且最终会出现在 App project 中的 thread，但没有验证到运行中 thread 的稳定实时发现，因此它不作为 Review production launcher。完整记录见 `docs/REVIEWED_HANDOFF_CODEX_APP_VISIBILITY_DECISION_2026-08-26.md`。
+它解决的是“任务已经冻结，repo、task、base、path 都已经确定，但 exact task worktree 创建或恢复仍被审批卡住”的问题。这个入口只接受冻结 scope，不会变成通用 `git worktree` / branch wrapper，也不会替用户选择新分支、改 remote 或创建 PR。
 
-外部 GPT、CI 或 Visual Review 尚未给出新决定时，属于正常等待，而不是 `BLOCKED`。
+`PLAN_FROZEN` 只有在当前 `PLAN.md` 结构合法时才会被 watcher 视为可执行。外部 GPT、CI、Text Review 或 Visual Review 尚未给出新决定时，属于正常等待，而不是 `BLOCKED`。
 
 详细状态规则和边界见：
 
@@ -368,13 +262,140 @@ ai-bridge reviewed-handoff watcher status \
 docs/V0_5_REVIEWED_HANDOFF_IMPLEMENTATION_SPEC.md
 ```
 
----
+## Controlled Mode：高风险任务的严格闭环
 
-## 8. Overleaf Bridge（`0.6.0` 引入）：一个科研仓库里同时管代码和论文
+Control 面向“错误通过的代价很高”的任务，例如：
 
-这是 `0.6.0` 引入的能力，已完成真实科研仓库与 Overleaf 的双向端到端验证。
+- 科研方法或系统架构的大改；
+- 昂贵训练或长时间计算；
+- 数据、安全或隐私敏感逻辑；
+- 生产部署；
+- 重要迁移；
+- 必须能证明“为什么可以判定通过”的工作。
 
-它针对很常见的科研项目结构：
+安装命令仍使用兼容 CLI 名称：
+
+```bash
+ai-bridge agent-flow install --target /path/to/project
+ai-bridge agent-flow validate --target /path/to/project
+```
+
+它会增加 `automation/agent_flow/` 控制目录，但不会替换 Lite，也不会自行创建 Git 分支。
+
+整体分工可以直观理解成：
+
+```text
+Planner      决定要实现什么
+Critic       检查方案和最终闭环是否真的成立
+Controller   只负责机械路由，不替人做判断
+Verifier     根据冻结要求建立验证标准
+Executor     只负责实现
+Human        最终保留人工决定权
+```
+
+Control 比 Review 更重，因为它会显式保存冻结要求、验证依据、稳定审查对象和最终独立检查。它的目的不是“堆更多 Agent”，而是避免同一个角色既写要求、又改实现、又自己宣布通过。
+
+一个项目只需安装一次 Control；每个高风险任务再单独创建任务实例：
+
+```bash
+ai-bridge agent-flow task init \
+  --target /path/to/project \
+  --task-key repo--example
+```
+
+详细设计见：
+
+```text
+docs/V0_4_AGENT_FLOW_IMPLEMENTATION_SPEC.md
+```
+
+## Persistent Run：长期 Goal 的持久执行
+
+Persistent Run 是项目层可选能力，不是第四套 workflow。Lite / Review / Control 三档 workflow 保持不变；Persistent Run 只解决长期任务在 Codex / SSH 断开后如何继续运行、如何恢复、以及如何避免临时发明后台机制的问题。
+
+安装到某个 Git 仓库：
+
+```bash
+ai-bridge persistent-run install --target /path/to/project
+ai-bridge persistent-run validate --target /path/to/project
+```
+
+安装后只会写入：
+
+```text
+automation/persistent_run/README.md
+automation/persistent_run/CONTRACT_TEMPLATE.md
+automation/persistent_run/KICKOFF_TEMPLATE.md
+AGENTS.md 中的 ai-bridge-kit:persistent-run managed block
+```
+
+它不会安装 Lite / Review / Control，不会修改 `$CODEX_HOME`，不会创建 `.codex/rules`，也不会放开全局 `tmux new-session`、`setsid`、`nohup`、`sbatch`、`salloc` 或 generic shell/Python。
+
+给某个已经冻结的 Goal 生成 kickoff 授权文本：
+
+```bash
+ai-bridge persistent-run prompt kickoff \
+  --target /path/to/project \
+  --goal prompts/tasks/repo--long-run.md
+```
+
+这个命令只打印用户可见授权，不会启动 tmux。用户把这段 kickoff 发给 Codex 后，Codex 才能针对同一个 frozen Goal 使用 canonical `tmux` session 启动或恢复。已有兼容 run 时应 resume，不重复启动；`tmux` session、Slurm job、PID、heartbeat 或 checkpoint 只能证明活动或状态，不能替代原 Goal 的完成标准。
+
+当前 Persistent Run 还可以把长期任务的运行状态说清楚：
+
+- 当前 stage；
+- 真实 progress fraction；
+- 有依据 ETA，或者在证据不足时返回 `UNKNOWN`；
+- 从真实 no-progress evidence 推出的 stalled 状态；
+- latest/history/reconnect 查询。
+
+这些运行进展可以通过 Notifications 投影出去。这里报告的是运行进展，不是自动控制：Bridge Kit 不会因此自动重启任务、取消任务、扩资源，也不会把 heartbeat、PID、tmux session 或 ETA 当成 Goal 完成。
+
+GPT 写长期 Goal/task 时要先判断 execution lifetime。`run overnight`、`unattended`、`run until morning`、`leave it running`、`survive disconnect` 或 `resume persistent Goal` 这类要求意味着需要 Persistent Run contract，但不代表必须把 Lite 任务改成 Reviewed Mode / Controlled Mode。如果仓库没有安装 Persistent Run，也没有用户选择的等价项目原生合同，不要把任务写成普通 live Codex session。
+
+Codex 收到 task 后会在实质执行前检查是否存在可预见的 approval-sensitive effect。仓库里的 Goal/Plan/contract 只证明 frozen scope，不等于当前用户授权；如果当前用户消息没有包含同一个 frozen Goal 的 bounded kickoff 授权，Codex 应先显示 kickoff 并等待用户发送，而不是先启动 tmux 或做大量前置工作。
+
+## Notifications：按结构化 brief 发通知
+
+Notifier 只负责通知，不负责决定任务是不是完成。
+
+权责边界是：语义决定者写结构化 brief，Notifications 只做 deterministic 渲染、去重和 SMTP 发送。Planner/Reviewer/Critic/Final Critic 可以写自己决定对应的终态、人工等待或里程碑 brief；Controller/watcher 只可以写 operational failure/status/progress brief。Executor/Codex 不能决定 PASS，不能写自由文本式用户结论邮件，也不能绕过 notifier 的 send-once/dedupe。
+
+如果项目需要终态邮件，先同步私有配置并发一封真实测试邮件：
+
+```bash
+cd /path/to/project
+ai-bridge private sync --profile notifier
+ai-bridge notifier send-test
+```
+
+任务完成后，工作流可以生成：
+
+```text
+results/<task_key>/notification_brief.json
+```
+
+再发送：
+
+```bash
+ai-bridge notifier send results/<task_key>/notification_brief.json
+```
+
+推荐这种一次性发送方式，不要求为了通知常驻一个 tmux、systemd 或后台轮询进程。
+
+向后兼容的旧 `notification_brief.json` 仍表示 terminal/user-decision 通知。需要 workflow 继续运行的非阻塞里程碑通知时，可以写入：
+
+```text
+results/<task_key>/notifications/<event>.json
+```
+
+新结构化 brief 使用短字段，例如 `event_type`、`status`、`decision_authority`、`key_conclusion`、`next_step`、`action_required` 和 `evidence_paths`。邮件正文由 notifier 模板渲染成简洁中文，而不是让 Executor 生成整封自由文本邮件。重复 brief 会按内容 digest 去重，不会重复发送。
+
+Operational progress 可以报告运行层进展或阻塞，但不能声称 semantic PASS、READY、release readiness 或 final completion。邮件密码等秘密配置保存在本地私有文件，不应提交到项目仓库。
+
+## Overleaf Bridge：一个科研仓库里同时管代码和论文
+
+Overleaf Bridge 针对很常见的科研项目结构：
 
 ```text
 research-repo/
@@ -429,15 +450,6 @@ ai-bridge overleaf install \
 automation/overleaf/config.toml
 ```
 
-例如：
-
-```toml
-schema_version = 1
-paper_root = "paper/manuscript"
-main_document = "main.tex"
-exclude_paths = []
-```
-
 然后在 Overleaf 创建一个空白项目，删除默认 `main.tex`，取得它的 Git URL，再执行：
 
 ```bash
@@ -447,9 +459,7 @@ ai-bridge overleaf connect \
   --bootstrap
 ```
 
-Overleaf 项目可能使用 `main`、`master` 或其他默认分支。Bridge Kit 会在
-`connect` 时读取该项目实际声明的远端分支，并把结果保存在本机
-`connection.json` 中；科研仓库的 `config.toml` 不需要配置 `main/master`。
+Overleaf 项目可能使用 `main`、`master` 或其他默认分支。Bridge Kit 会读取项目实际声明的远端分支，并把结果保存在本机 `connection.json` 中；科研仓库的 `config.toml` 不需要配置 `main/master`。
 
 Overleaf 的 token 不写入本仓库，也不写入 `connection.json`；认证交给正常的 Git credential helper。
 
@@ -459,80 +469,31 @@ Codex 在本地写完论文后，推荐顺序是：
 
 ```text
 修改论文
-→ 本地编译 / 检查
-→ commit
-→ git push origin main
-→ ai-bridge overleaf status
-→ ai-bridge overleaf push
+-> 本地编译 / 检查
+-> commit
+-> git push origin main
+-> ai-bridge overleaf status
+-> ai-bridge overleaf push
 ```
 
 如果导师或合作者直接在 Overleaf 修改：
 
 ```text
 ai-bridge overleaf status
-→ ai-bridge overleaf pull
-→ 检查 git diff
-→ 本地重新编译
-→ commit
-→ git push origin main
+-> ai-bridge overleaf pull
+-> 检查 git diff
+-> 本地重新编译
+-> commit
+-> git push origin main
 ```
 
 `pull` 只把 Overleaf 修改带回论文目录，不会替你自动 commit，也不会自动推 GitHub。
 
-### 为什么不会轻易覆盖双方修改
+Bridge 会记录上一次成功同步时的内容摘要，并比较上次同步版本、本地论文和 Overleaf 当前版本。只有本地改了可以 `push`；只有 Overleaf 改了可以 `pull`；两边都从上次同步后发生不同修改时会判定为分叉并拒绝自动覆盖。
 
-Bridge 会记录上一次成功同步时的内容摘要，并比较：
+同步前先让非 excluded 的 `paper_root` 保持 clean：tracked、staged、deleted、renamed 或 untracked manuscript 文件都应先 review/compile/commit，避免未提交草稿被用作 baseline 或被 pull 覆盖。`exclude_paths` 只用于 Overleaf 编译不需要的 GitHub-only 文件；编译需要的 `.tex`、`.bib`、figures、tables 和 style/class 文件必须留在 publication projection 中。
 
-```text
-上次同步版本
-本地论文
-Overleaf 当前版本
-```
-
-因此能区分：
-
-- 只有本地改了：可以 `push`；
-- 只有 Overleaf 改了：可以 `pull`；
-- 两边内容相同：刷新同步基线即可；
-- 两边都从上次同步后发生不同修改：判定为分叉，拒绝自动覆盖。
-
-`connect`、`push` 和 `pull` 还要求真正要发布的论文目录处于干净状态。未提交、未跟踪或被忽略但实际存在的论文文件不会被悄悄覆盖。
-
-### `exclude_paths` 是干什么的
-
-它只适合排除 **Overleaf 编译不需要**、但你想留在 GitHub 或本地的辅助文件，例如：
-
-```text
-AGENTS.md
-README.md
-main.pdf
-作者自己的本地说明
-```
-
-以下文件如果参与论文编译，就不能排除：
-
-```text
-.tex
-.bib
-.sty
-.cls
-LaTeX 实际引用的图片
-LaTeX 实际引用的表格或其他资源
-```
-
-所有 Overleaf 编译真正需要的文件，都应该位于 `paper_root` 内并参与同步。
-
-### 多台机器怎么办
-
-下面这些属于每台机器自己的本地状态：
-
-```text
-${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}/overleaf/<repo-id>/
-├── connection.json
-└── mirror/
-```
-
-如果同一个项目在 Mac、工作站和服务器上都要直接操作 Overleaf，每台机器各自 `connect` 一次即可。不要把上述本地状态提交进 GitHub。
+每台机器的 `connection.json` 和 `mirror/` 都在 `${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}/overleaf/<repo-id>/`，不提交到 GitHub；多台机器要各自 `connect`。Overleaf Bridge 不会自动实时同步，它是一个按需、可检查、尽量不覆盖别人修改的论文同步层。
 
 常用命令：
 
@@ -543,51 +504,7 @@ ai-bridge overleaf pull --target /path/to/research-repo
 ai-bridge overleaf validate --target /path/to/research-repo
 ```
 
-Overleaf Bridge **不会自动实时同步**。它就是一个按需、可检查、尽量不覆盖别人修改的论文同步层。
-
----
-
-## 9. Notifications（`0.3.0` 引入）：按结构化 brief 发通知
-
-Notifier 只负责通知，不负责决定任务是不是完成。
-
-权责边界是：语义决定者写结构化 brief，Notifications 只做 deterministic 渲染、去重和 SMTP 发送。Planner/Reviewer/Critic/Final Critic 可以写自己决定对应的终态、人工等待或里程碑 brief；Controller/watcher 只可以写 operational failure/status/progress brief。Executor/Codex 不能决定 PASS，不能写自由文本式用户结论邮件，也不能绕过 notifier 的 send-once/dedupe。
-
-如果项目需要终态邮件，先同步私有配置并发一封真实测试邮件：
-
-```bash
-cd /path/to/project
-ai-bridge private sync --profile notifier
-ai-bridge notifier send-test
-```
-
-任务完成后，工作流可以生成：
-
-```text
-results/<task_key>/notification_brief.json
-```
-
-再发送：
-
-```bash
-ai-bridge notifier send results/<task_key>/notification_brief.json
-```
-
-推荐这种一次性发送方式，不要求为了通知常驻一个 tmux、systemd 或后台轮询进程。
-
-向后兼容的旧 `notification_brief.json` 仍表示 terminal/user-decision 通知。需要 workflow 继续运行的非阻塞里程碑通知时，可以写入：
-
-```text
-results/<task_key>/notifications/<event>.json
-```
-
-新结构化 brief 使用短字段，例如 `event_type`、`status`、`decision_authority`、`key_conclusion`、`next_step`、`action_required` 和 `evidence_paths`。邮件正文由 notifier 模板渲染成简洁中文，而不是让 Executor 生成整封自由文本邮件。重复 brief 会按内容 digest 去重，不会重复发送。
-
-邮件密码等秘密配置保存在本地私有文件，不应提交到项目仓库。
-
----
-
-## 10. Visual Review（`0.5.2` 引入）：给图片和视觉产物增加独立检查
+## Visual Review：给图片和视觉产物增加独立检查
 
 Visual Review 用来检查真正需要“看图”才能判断的问题，例如：
 
@@ -611,12 +528,6 @@ ai-bridge visual-review preflight --target /path/to/project
 OPENAI_VISUAL_REVIEW_API_KEY
 ```
 
-默认模型为：
-
-```text
-gpt-5.6-terra
-```
-
 生成的结果通常写到：
 
 ```text
@@ -631,9 +542,7 @@ Visual Review workflow 只在 `main` / `reviewed/**` 上的 `results/**/visual_r
 
 默认隐私策略是保守的：安装视觉复核能力不等于允许自动上传患者影像、私有临床数据、未公开科研图片、凭据或其他敏感内容。没有明确外部上传授权时应拒绝。
 
----
-
-## 11. Text Review：给私有文本产物增加独立全文检查
+## Text Review / Text Transform：给私有文本增加独立处理证据
 
 Text Review 用于 Review 中这类场景：最终验收必须读完整 user-facing Markdown/plain text，但正文不能作为 plaintext 提交到 public task branch。它不是新的 GPT role，而是和 Visual Review 平级的 evidence producer。
 
@@ -688,7 +597,7 @@ OPENAI_REVIEW_API_KEY
 OPENAI_VISUAL_REVIEW_API_KEY
 ```
 
-所以已经接入 Visual Review 的 repository 不需要为了 Text Review 再创建第二个 OpenAI key。默认模型仍为 `gpt-5.6-terra`，可用 `OPENAI_TEXT_REVIEW_MODEL` 或 CLI `--model` 显式覆盖。
+所以已经接入 Visual Review 的 repository 不需要为了 Text Review 再创建第二个 OpenAI key。默认模型可用 `OPENAI_TEXT_REVIEW_MODEL` 或 CLI `--model` 显式覆盖。
 
 加密一个本机私有 Markdown artifact：
 
@@ -708,60 +617,31 @@ ai-bridge text-review encrypt \
 
 在 Review 中，若 `CURRENT.text_review_required=true`，缺少 `TEXT_REVIEW.json`、plaintext SHA mismatch、manifest identity mismatch 或旧 artifact evidence 都不能支持 PASS，也不会消耗 review round；系统会等待 Text Review evidence 或要求恢复。
 
-Text Review workflow 只在 `main` / `reviewed/**` 上的 `results/**/text_review/text_inputs.json` 改动或手动 `workflow_dispatch` 时运行，普通 `reviewed/**` push 不会触发昂贵 review job。`TEXT_REVIEW.json` writeback 会推回触发它的同一个 branch。
+Text Transform 使用同一类加密 transport 做私有 Markdown/plain-text 转换：Git 中只保存 ciphertext、manifest 和元数据，GitHub Actions 临时解密、调用 OpenAI Responses API with `store=false`，再把生成结果加密给本机 output recipient。它适合需要外部模型处理私有文本、但不能把 plaintext 提交到仓库的转换任务。
 
----
+## Production Plugin Replay：受控本机插件回归
 
-## 12. Controlled Mode（`0.4.0` 引入）：只有高风险任务才用
+`ai-bridge plugin-replay` 是 Machine Policy 预授权的窄入口，不是新的 workflow。
 
-Control 面向“错误通过的代价很高”的任务，例如：
+它用于已经授权的本机 production plugin repair/replay：让 fresh Codex runtime 在 write-isolated replay workspace 中测试当前 Codex identity 中已安装的插件。
 
-- 科研方法或系统架构的大改；
-- 昂贵训练或长时间计算；
-- 数据、安全或隐私敏感逻辑；
-- 生产部署；
-- 重要迁移；
-- 必须能证明“为什么可以判定通过”的工作。
+调用方必须指定目标 Git 仓库、已安装插件名、任务/说明文件和一个或多个显式 input file。input 默认必须位于 target Git repo 内；外部文件只能先放入 `${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}/plugin-replay/inbox/` 这个固定 trusted inbox。task/说明文件只能来自 target repo、当前 caller repo 或 trusted inbox。
 
-安装命令仍使用兼容 CLI 名称：
+每次运行只把这些文件复制到 `${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}/plugin-replay/<run-id>/`，child Codex 的 cwd 是 write-isolated workspace，默认 `workspace-write`、`approval_policy=never`、本地 replay 网络关闭，且使用当前 Codex identity，不允许通过该入口切换到另一个 `CODEX_HOME`。完整输出保留在本机 state 目录。
 
-```bash
-ai-bridge agent-flow install --target /path/to/project
-ai-bridge agent-flow validate --target /path/to/project
-```
+当前 Codex runtime 仍可能读取同一用户可读文件；wrapper 会如实记录 read-scope diagnostic，但不把它包装成 strict read isolation。Machine Policy 不会因此放开 raw `codex exec`、裸 shell/python、任意私人路径作为 replay input、整个 consumer repo 写入、外部上传、危险 Git、发布或部署。
 
-它会增加 `automation/agent_flow/` 控制目录，但不会替换 Lite，也不会自行创建 Git 分支。
-
-整体分工可以直观理解成：
-
-```text
-Planner      决定要实现什么
-Critic       检查方案和最终闭环是否真的成立
-Controller   只负责机械路由，不替人做判断
-Verifier     根据冻结要求建立验证标准
-Executor     只负责实现
-Human        最终保留人工决定权
-```
-
-Control 比 Review 更重，因为它会显式保存冻结要求、验证依据、稳定审查对象和最终独立检查。它的目的不是“堆更多 Agent”，而是避免同一个角色既写要求、又改实现、又自己宣布通过。
-
-一个项目只需安装一次 Control；每个高风险任务再单独创建任务实例：
+常用形态：
 
 ```bash
-ai-bridge agent-flow task init \
+ai-bridge plugin-replay \
   --target /path/to/project \
-  --task-key repo--example
+  --plugin <plugin> \
+  --task <task-file> \
+  --input <explicit-file>
 ```
 
-详细设计见：
-
-```text
-docs/V0_4_AGENT_FLOW_IMPLEMENTATION_SPEC.md
-```
-
----
-
-## 13. 常见选择
+## 常见选择
 
 ### 普通代码仓库
 
@@ -778,20 +658,12 @@ Machine Policy
 + Reviewed Mode
 ```
 
-### 科研仓库同时放代码和论文，并希望用 Overleaf 协作
+### 高风险科研、生产或安全敏感任务
 
 ```text
 Machine Policy
 + Lite
-+ Overleaf Bridge
-```
-
-### 需要完成后邮件提醒
-
-在上述任意组合上再加：
-
-```text
-Notifications
++ Controlled Mode
 ```
 
 ### 长期 Goal 需要断线后继续运行
@@ -802,6 +674,22 @@ Notifications
 Persistent Run
 ```
 
+### 需要完成后邮件提醒，或报告运行层进展
+
+在上述任意组合上再加：
+
+```text
+Notifications
+```
+
+### 科研仓库同时放代码和论文，并希望用 Overleaf 协作
+
+```text
+Machine Policy
++ Lite
++ Overleaf Bridge
+```
+
 ### 图片/PPT/视觉结果必须真正看图审核
 
 按需增加：
@@ -810,19 +698,17 @@ Persistent Run
 Visual Review
 ```
 
-### 高风险科研、生产或安全敏感任务
+### 私有 Markdown/plain text 需要独立全文检查或转换
+
+按需增加：
 
 ```text
-Machine Policy
-+ Lite
-+ Controlled Mode
+Text Review / Text Transform
 ```
 
 不要同时把所有可选层都装上，除非项目确实同时需要它们。
 
----
-
-## 14. 常用命令速查
+## 常用命令速查
 
 ```bash
 # 机器级长期规则
@@ -830,8 +716,8 @@ ai-bridge host install
 ai-bridge host status
 ai-bridge host validate
 
-# 本机真实插件回归
-ai-bridge plugin-replay --target /path/to/project --plugin <plugin> --task <task-file> --input <explicit-file>
+# GitHub HTTPS 当前分支低打扰发布
+ai-bridge host publish-current-branch --expected-repo <owner/repo> --expected-branch <branch>
 
 # 普通项目交接
 ai-bridge init --target /path/to/project
@@ -840,11 +726,21 @@ ai-bridge validate --target /path/to/project
 # 独立 GPT 复核
 ai-bridge reviewed-handoff install --target /path/to/project
 ai-bridge reviewed-handoff validate --target /path/to/project
+ai-bridge reviewed-handoff materialize-worktree ...
+
+# 高风险闭环
+ai-bridge agent-flow install --target /path/to/project
+ai-bridge agent-flow validate --target /path/to/project
 
 # 长期 Goal 的持久执行 contract
 ai-bridge persistent-run install --target /path/to/project
 ai-bridge persistent-run validate --target /path/to/project
 ai-bridge persistent-run prompt kickoff --target /path/to/project --goal prompts/tasks/repo--long-run.md
+
+# 邮件通知
+ai-bridge private sync --profile notifier
+ai-bridge notifier send-test
+ai-bridge notifier send results/<task_key>/notification_brief.json
 
 # Overleaf
 ai-bridge overleaf install --target /path/to/project --paper-root paper/manuscript
@@ -858,18 +754,16 @@ ai-bridge overleaf validate --target /path/to/project
 ai-bridge visual-review install --target /path/to/project
 ai-bridge visual-review preflight --target /path/to/project
 
-# 邮件通知
-ai-bridge private sync --profile notifier
-ai-bridge notifier send-test
+# 文本复核 / 转换
+ai-bridge text-review install --target /path/to/project
+ai-bridge text-review preflight --target /path/to/project
+ai-bridge text-review configure --target /path/to/project --repo owner/name
 
-# 高风险闭环
-ai-bridge agent-flow install --target /path/to/project
-ai-bridge agent-flow validate --target /path/to/project
+# 本机真实插件回归
+ai-bridge plugin-replay --target /path/to/project --plugin <plugin> --task <task-file> --input <explicit-file>
 ```
 
----
-
-## 15. 设计原则
+## 设计原则
 
 这套工具长期遵守几条简单原则：
 
@@ -882,9 +776,7 @@ ai-bridge agent-flow validate --target /path/to/project
 7. **完成要对应原始目标。** 不能把没有命中 blacklist、窄范围测试通过、helper path 成功、toy/synthetic evidence 或降级 fallback 包装成完整目标完成。
 8. **对真实风险严格，对形式主义克制。** 需要证明时就建立证据链；普通任务不为了流程漂亮增加无必要复杂度。
 
----
-
-## 16. 进一步阅读
+## 进一步阅读
 
 快速上手：
 
@@ -913,4 +805,4 @@ CHANGELOG.md
 AGENTS.md
 ```
 
-如果只是第一次使用，不需要先读完这些规格。通常从本文的“新机器”“新项目”和对应的可选能力开始即可。
+如果只是第一次使用，不需要先读完这些规格。通常从本文的“Machine Policy”“Lite”和对应的可选能力开始即可。
