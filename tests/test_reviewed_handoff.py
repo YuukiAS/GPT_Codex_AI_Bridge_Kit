@@ -330,6 +330,13 @@ class ReviewedHandoffTests(unittest.TestCase):
         )
         return target, "local:" + remote.resolve().as_posix()
 
+    def publish_review_install(self, target: Path) -> str:
+        subprocess.check_call(["git", "add", "automation", "results"], cwd=target)
+        subprocess.check_call(["git", "commit", "-m", "review install"], cwd=target, stdout=subprocess.DEVNULL)
+        subprocess.check_call(["git", "push", "origin", "main"], cwd=target, stdout=subprocess.DEVNULL)
+        subprocess.check_call(["git", "fetch", "--all", "--prune"], cwd=target, stdout=subprocess.DEVNULL)
+        return subprocess.check_output(["git", "rev-parse", "refs/remotes/origin/main"], cwd=target, text=True).strip()
+
     def test_bridge_cli_routes_reviewed_handoff_without_touching_legacy_cli(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "project"
@@ -359,19 +366,14 @@ class ReviewedHandoffTests(unittest.TestCase):
     def test_task_bootstrap_creates_exact_first_worktree_without_polluting_main(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             target, identity = self.make_remote_review_project(tmp, worktree=Path(tmp) / "unused")
-            subprocess.check_call(["git", "add", "automation", "results"], cwd=target)
-            subprocess.check_call(["git", "commit", "-m", "review install"], cwd=target, stdout=subprocess.DEVNULL)
-            subprocess.check_call(["git", "push", "origin", "main"], cwd=target, stdout=subprocess.DEVNULL)
+            base_commit = self.publish_review_install(target)
             task_key = "repo--bootstrap"
-            frozen = Path(tmp) / "repo-bootstrap"
-            base_commit = subprocess.check_output(["git", "rev-parse", "origin/main"], cwd=target, text=True).strip()
+            frozen = target.parent / f"{target.name}-{task_key}"
 
             actions = rh.bootstrap_task_worktree(
                 target,
                 task_key,
                 expected_repo=identity,
-                expected_worktree=frozen,
-                expected_base_ref="origin/main",
                 expected_base_commit=base_commit,
                 objective="Bootstrap through the bounded normal entry.",
             )
@@ -386,21 +388,233 @@ class ReviewedHandoffTests(unittest.TestCase):
             request = (rh.task_root(frozen, task_key) / "REQUEST.md").read_text(encoding="utf-8")
             self.assertIn(f"- Reviewed worktree locator: {frozen}", request)
 
+    def test_task_bootstrap_rejects_cross_repo_and_stale_base_assertions(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target, identity = self.make_remote_review_project(tmp, worktree=Path(tmp) / "unused")
+            base_commit = self.publish_review_install(target)
+            stale = subprocess.check_output(["git", "rev-parse", "HEAD~1"], cwd=target, text=True).strip()
+
+            with self.assertRaisesRegex(rh.WorktreeMaterializeError, "REPO_ASSERTION_FAILED"):
+                rh.bootstrap_task_worktree(
+                    target,
+                    "repo--wrong-repo",
+                    expected_repo="example/other",
+                    expected_base_commit=base_commit,
+                )
+            with self.assertRaisesRegex(rh.WorktreeMaterializeError, "BASE_COMMIT_NOT_POST_SYNC_ORIGIN_MAIN"):
+                rh.bootstrap_task_worktree(
+                    target,
+                    "repo--stale-base",
+                    expected_repo=identity,
+                    expected_base_commit=stale,
+                )
+
+    def test_task_bootstrap_rejects_noncanonical_remote_profiles(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target, identity = self.make_remote_review_project(tmp, worktree=Path(tmp) / "unused")
+            base_commit = self.publish_review_install(target)
+
+            cases = [
+                ("second-remote", [["remote", "add", "upstream", str(Path(tmp) / "remote.git")]]),
+                ("skipFetchAll", [["config", "remote.origin.skipFetchAll", "true"]]),
+                ("skipDefaultUpdate", [["config", "remote.origin.skipDefaultUpdate", "true"]]),
+                (
+                    "main-only-refspec",
+                    [
+                        ["config", "--unset-all", "remote.origin.fetch"],
+                        ["config", "--add", "remote.origin.fetch", "+refs/heads/main:refs/remotes/origin/main"],
+                    ],
+                ),
+                (
+                    "multiple-refspecs",
+                    [
+                        ["config", "--add", "remote.origin.fetch", "+refs/heads/extra:refs/remotes/origin/extra"],
+                    ],
+                ),
+                (
+                    "negative-refspec",
+                    [
+                        ["config", "--add", "remote.origin.fetch", "^refs/heads/private"],
+                    ],
+                ),
+                (
+                    "custom-destination",
+                    [
+                        ["config", "--unset-all", "remote.origin.fetch"],
+                        ["config", "--add", "remote.origin.fetch", "+refs/heads/*:refs/review-cache/origin/*"],
+                    ],
+                ),
+            ]
+            for name, commands in cases:
+                clone = Path(tmp) / f"clone-{name}"
+                subprocess.check_call(["git", "clone", str(Path(tmp) / "remote.git"), str(clone)], stdout=subprocess.DEVNULL)
+                subprocess.check_call(["git", "config", "user.email", "test@example.org"], cwd=clone)
+                subprocess.check_call(["git", "config", "user.name", "Test User"], cwd=clone)
+                for command in commands:
+                    subprocess.check_call(["git", *command], cwd=clone, stdout=subprocess.DEVNULL)
+                with self.subTest(name=name):
+                    with self.assertRaisesRegex(
+                        rh.WorktreeMaterializeError,
+                        "NONCANONICAL_REMOTE_CONFIGURATION_REQUIRES_ORDINARY_APPROVAL",
+                    ):
+                        rh.bootstrap_task_worktree(
+                            clone,
+                            f"repo--{name.lower().replace('_', '-')}",
+                            expected_repo=identity,
+                            expected_base_commit=base_commit,
+                        )
+
+    def test_task_bootstrap_uses_post_fetch_local_reviewed_ref_state(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target, identity = self.make_remote_review_project(tmp, worktree=Path(tmp) / "unused")
+            base_commit = self.publish_review_install(target)
+            task_key = "repo--remote-presence"
+            subprocess.check_call(["git", "branch", f"reviewed/{task_key}", base_commit], cwd=target)
+            subprocess.check_call(["git", "push", "origin", f"reviewed/{task_key}"], cwd=target, stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "branch", "-D", f"reviewed/{task_key}"], cwd=target, stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "fetch", "--all", "--prune"], cwd=target, stdout=subprocess.DEVNULL)
+
+            with self.assertRaisesRegex(rh.WorktreeMaterializeError, "REMOTE_TASK_BRANCH_ALREADY_EXISTS"):
+                rh.bootstrap_task_worktree(
+                    target,
+                    task_key,
+                    expected_repo=identity,
+                    expected_base_commit=base_commit,
+                )
+
+            subprocess.check_call(["git", "push", "origin", "--delete", f"reviewed/{task_key}"], cwd=target, stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "fetch", "--all", "--prune"], cwd=target, stdout=subprocess.DEVNULL)
+            actions = rh.bootstrap_task_worktree(
+                target,
+                task_key,
+                expected_repo=identity,
+                expected_base_commit=base_commit,
+            )
+
+            self.assertTrue(any(f"CREATE branch reviewed/{task_key}" in action for action in actions))
+            self.assertTrue((target.parent / f"{target.name}-{task_key}").is_dir())
+
+    def test_task_bootstrap_rejects_reachable_executable_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target, identity = self.make_remote_review_project(tmp, worktree=Path(tmp) / "unused")
+            base_commit = self.publish_review_install(target)
+            cases = ["reference-transaction", "post-checkout", "post-index-change"]
+            for hook_name in cases:
+                clone = Path(tmp) / f"hook-{hook_name}"
+                subprocess.check_call(["git", "clone", str(Path(tmp) / "remote.git"), str(clone)], stdout=subprocess.DEVNULL)
+                hook = clone / ".git" / "hooks" / hook_name
+                hook.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+                hook.chmod(0o755)
+                with self.subTest(hook=hook_name):
+                    with self.assertRaisesRegex(rh.WorktreeMaterializeError, "REACHABLE_EXECUTABLE_PATH_REQUIRES_ORDINARY_APPROVAL"):
+                        rh.bootstrap_task_worktree(
+                            clone,
+                            f"repo--hook-{hook_name}",
+                            expected_repo=identity,
+                            expected_base_commit=base_commit,
+                        )
+
+    def test_task_bootstrap_rejects_hooks_path_filters_and_fsmonitor(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target, identity = self.make_remote_review_project(tmp, worktree=Path(tmp) / "unused")
+            base_commit = self.publish_review_install(target)
+            cases = ["hooksPath", "smudge", "process", "fsmonitor"]
+            for case in cases:
+                clone = Path(tmp) / f"exec-{case}"
+                subprocess.check_call(["git", "clone", str(Path(tmp) / "remote.git"), str(clone)], stdout=subprocess.DEVNULL)
+                if case == "hooksPath":
+                    hooks = clone / "custom-hooks"
+                    hooks.mkdir()
+                    hook = hooks / "post-checkout"
+                    hook.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+                    hook.chmod(0o755)
+                    subprocess.check_call(["git", "config", "core.hooksPath", "custom-hooks"], cwd=clone)
+                elif case == "smudge":
+                    subprocess.check_call(["git", "config", "filter.demo.smudge", "demo-smudge"], cwd=clone)
+                elif case == "process":
+                    subprocess.check_call(["git", "config", "filter.demo.process", "demo-process"], cwd=clone)
+                else:
+                    subprocess.check_call(["git", "config", "core.fsmonitor", "demo-fsmonitor"], cwd=clone)
+                with self.subTest(case=case):
+                    with self.assertRaisesRegex(rh.WorktreeMaterializeError, "REACHABLE_EXECUTABLE_PATH_REQUIRES_ORDINARY_APPROVAL"):
+                        rh.bootstrap_task_worktree(
+                            clone,
+                            f"repo--exec-{case.lower()}",
+                            expected_repo=identity,
+                            expected_base_commit=base_commit,
+                        )
+
+    def test_task_bootstrap_rejects_task_output_redirection(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target, identity = self.make_remote_review_project(tmp, worktree=Path(tmp) / "unused")
+            task_key = "repo--output-redirection"
+            outside = Path(tmp) / "outside"
+            outside.mkdir()
+            (target / "results" / task_key).symlink_to(outside, target_is_directory=True)
+            subprocess.check_call(["git", "add", "results"], cwd=target)
+            subprocess.check_call(["git", "commit", "-m", "malicious result symlink"], cwd=target, stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "push", "origin", "main"], cwd=target, stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "fetch", "--all", "--prune"], cwd=target, stdout=subprocess.DEVNULL)
+            base_commit = subprocess.check_output(["git", "rev-parse", "refs/remotes/origin/main"], cwd=target, text=True).strip()
+
+            with self.assertRaisesRegex(rh.WorktreeMaterializeError, "TASK_BOOTSTRAP_PARTIAL_FAILURE"):
+                rh.bootstrap_task_worktree(
+                    target,
+                    task_key,
+                    expected_repo=identity,
+                    expected_base_commit=base_commit,
+                )
+            self.assertIsNone(rh._branch_oid(target, f"refs/heads/reviewed/{task_key}"))
+
+    def test_task_bootstrap_performs_zero_network_operations(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target, identity = self.make_remote_review_project(tmp, worktree=Path(tmp) / "unused")
+            base_commit = self.publish_review_install(target)
+            original_git_run = rh.git_run
+            network_calls: list[list[str]] = []
+
+            def record_network(cwd: Path, args: list[str], *, check: bool = True):
+                if args and args[0] in {"fetch", "ls-remote", "push"}:
+                    network_calls.append(args)
+                    raise rh.WorktreeMaterializeError("network call forbidden")
+                return original_git_run(cwd, args, check=check)
+
+            with mock.patch.object(rh, "git_run", side_effect=record_network):
+                rh.bootstrap_task_worktree(
+                    target,
+                    "repo--zero-network",
+                    expected_repo=identity,
+                    expected_base_commit=base_commit,
+                )
+            self.assertEqual(network_calls, [])
+
+    def test_task_bootstrap_cli_rejects_selector_arguments(self) -> None:
+        with self.assertRaises(SystemExit):
+            rh.main(
+                [
+                    "task",
+                    "bootstrap",
+                    "--target",
+                    "/tmp/project",
+                    "--task-key",
+                    "repo--feature",
+                    "--expected-repo",
+                    "owner/repo",
+                    "--expected-base-commit",
+                    "0" * 40,
+                ]
+            )
+
     def test_materialize_worktree_remote_only_resume_without_canonical_main_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             target, identity = self.make_remote_review_project(tmp, worktree=Path(tmp) / "unused")
-            subprocess.check_call(["git", "add", "automation", "results"], cwd=target)
-            subprocess.check_call(["git", "commit", "-m", "review install"], cwd=target, stdout=subprocess.DEVNULL)
-            subprocess.check_call(["git", "push", "origin", "main"], cwd=target, stdout=subprocess.DEVNULL)
             task_key = "repo--remote-resume"
-            frozen = Path(tmp) / "repo-remote-resume"
-            base_commit = subprocess.check_output(["git", "rev-parse", "origin/main"], cwd=target, text=True).strip()
+            frozen = target.parent / f"{target.name}-{task_key}"
+            base_commit = self.publish_review_install(target)
             rh.bootstrap_task_worktree(
                 target,
                 task_key,
                 expected_repo=identity,
-                expected_worktree=frozen,
-                expected_base_ref="origin/main",
                 expected_base_commit=base_commit,
                 objective="Remote-only resume fixture.",
             )

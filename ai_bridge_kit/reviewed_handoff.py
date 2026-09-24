@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -237,6 +238,88 @@ def _origin_repo_identity(target: Path) -> str:
     if len(urls) != 1:
         raise WorktreeMaterializeError("REMOTE_URL_AMBIGUOUS")
     return _canonical_repo_identity(urls[0])
+
+
+def _git_config_values(target: Path, key: str) -> list[str]:
+    result = git_run(target, ["config", "--get-all", key], check=False)
+    if result.returncode not in {0, 1}:
+        raise WorktreeMaterializeError("GIT_CONFIG_READ_FAILED")
+    if result.returncode == 1:
+        return []
+    return result.stdout.splitlines()
+
+
+def _config_values_are_absent_or_false(values: list[str]) -> bool:
+    false_values = {"false", "no", "off", "0"}
+    return all(value.strip().lower() in false_values for value in values)
+
+
+def _require_canonical_fetch_profile(target: Path) -> None:
+    remotes = sorted(line.strip() for line in git_run(target, ["remote"]).stdout.splitlines() if line.strip())
+    if remotes != ["origin"]:
+        raise WorktreeMaterializeError("NONCANONICAL_REMOTE_CONFIGURATION_REQUIRES_ORDINARY_APPROVAL")
+    for key in ["remote.origin.skipFetchAll", "remote.origin.skipDefaultUpdate"]:
+        values = _git_config_values(target, key)
+        if values and not _config_values_are_absent_or_false(values):
+            raise WorktreeMaterializeError("NONCANONICAL_REMOTE_CONFIGURATION_REQUIRES_ORDINARY_APPROVAL")
+    if _git_config_values(target, "remote.origin.fetch") != ["+refs/heads/*:refs/remotes/origin/*"]:
+        raise WorktreeMaterializeError("NONCANONICAL_REMOTE_CONFIGURATION_REQUIRES_ORDINARY_APPROVAL")
+
+
+def _repo_local_bootstrap_worktree(target: Path, task_key: str) -> Path:
+    return _lexical_absolute(target.resolve().parent / f"{target.resolve().name}-{task_key}")
+
+
+def _hook_roots(target: Path) -> list[Path]:
+    values = _git_config_values(target, "core.hooksPath")
+    if len(values) > 1:
+        raise WorktreeMaterializeError("REACHABLE_EXECUTABLE_PATH_REQUIRES_ORDINARY_APPROVAL")
+    if not values:
+        git_dir = Path(git_output(target, ["rev-parse", "--git-dir"]))
+        if not git_dir.is_absolute():
+            git_dir = target / git_dir
+        return [git_dir / "hooks"]
+    hooks_path = Path(values[0]).expanduser()
+    if not hooks_path.is_absolute():
+        hooks_path = target / hooks_path
+    return [hooks_path]
+
+
+def _executable_file_exists(path: Path) -> bool:
+    try:
+        return path.is_file() and os.access(path, os.X_OK)
+    except OSError:
+        return False
+
+
+def _require_no_reachable_external_executables(target: Path) -> None:
+    for hook_root in _hook_roots(target):
+        for hook_name in ["reference-transaction", "post-checkout", "post-index-change"]:
+            if _executable_file_exists(hook_root / hook_name):
+                raise WorktreeMaterializeError("REACHABLE_EXECUTABLE_PATH_REQUIRES_ORDINARY_APPROVAL")
+    config = git_run(target, ["config", "--get-regexp", r"^filter\..*\.(smudge|process)$"], check=False)
+    if config.returncode == 0 and config.stdout.strip():
+        raise WorktreeMaterializeError("REACHABLE_EXECUTABLE_PATH_REQUIRES_ORDINARY_APPROVAL")
+    if config.returncode not in {0, 1}:
+        raise WorktreeMaterializeError("GIT_CONFIG_READ_FAILED")
+    for value in _git_config_values(target, "core.fsmonitor"):
+        if value.strip().lower() not in {"false", "no", "off", "0"}:
+            raise WorktreeMaterializeError("REACHABLE_EXECUTABLE_PATH_REQUIRES_ORDINARY_APPROVAL")
+
+
+def _reject_repository_output_redirection(target: Path, task_key: str) -> None:
+    root = target.resolve()
+    protected = [
+        root / "automation",
+        root / "automation" / "reviewed_handoff",
+        root / "automation" / "reviewed_handoff" / "tasks",
+        root / "automation" / "reviewed_handoff" / "tasks" / task_key,
+        root / "results",
+        root / "results" / task_key,
+    ]
+    for path in protected:
+        if path.is_symlink() or (path.exists() and not path.is_dir()):
+            raise WorktreeMaterializeError("TASK_OUTPUT_PATH_REDIRECTION_REQUIRES_ORDINARY_APPROVAL")
 
 
 def _frozen_worktree_locator_from_text(text: str) -> Path:
@@ -741,8 +824,6 @@ def bootstrap_task_worktree(
     task_key: str,
     *,
     expected_repo: str,
-    expected_worktree: Path,
-    expected_base_ref: str,
     expected_base_commit: str,
     objective: str = "",
     max_review_rounds: int = 2,
@@ -763,9 +844,14 @@ def bootstrap_task_worktree(
         raise WorktreeMaterializeError("Review is not installed; run reviewed-handoff install first")
     if not re.fullmatch(r"[0-9a-fA-F]{40}", expected_base_commit or ""):
         raise WorktreeMaterializeError("EXPECTED_BASE_COMMIT_INVALID")
-    if not expected_base_ref.startswith("origin/"):
-        raise WorktreeMaterializeError("EXPECTED_BASE_REF_MUST_BE_ORIGIN_BRANCH")
-    base_branch = expected_base_ref.removeprefix("origin/")
+    _require_canonical_fetch_profile(target)
+    _require_no_reachable_external_executables(target)
+    origin_main = _branch_oid(target, "refs/remotes/origin/main")
+    if not origin_main:
+        raise WorktreeMaterializeError("ORIGIN_MAIN_REMOTE_TRACKING_REF_REQUIRED")
+    if origin_main != expected_base_commit:
+        raise WorktreeMaterializeError("BASE_COMMIT_NOT_POST_SYNC_ORIGIN_MAIN")
+    base_branch = "main"
     root = task_root(target, task_key)
     local_request = (root / "REQUEST.md").exists()
     local_current = (root / "CURRENT.json").exists()
@@ -773,7 +859,7 @@ def bootstrap_task_worktree(
         raise WorktreeMaterializeError("LOCAL_TASK_METADATA_PARTIAL")
     if local_request and local_current:
         raise WorktreeMaterializeError("LOCAL_TASK_METADATA_ALREADY_EXISTS")
-    worktree = _lexical_absolute(expected_worktree)
+    worktree = _repo_local_bootstrap_worktree(target, task_key)
     _reject_symlink_redirection(worktree)
     branch = f"reviewed/{task_key}"
     branch_ref = f"refs/heads/{branch}"
@@ -782,12 +868,10 @@ def bootstrap_task_worktree(
         raise WorktreeMaterializeError("LOCAL_TASK_BRANCH_ALREADY_MATERIALIZED_WITHOUT_METADATA")
     if _branch_oid(target, branch_ref):
         raise WorktreeMaterializeError("LOCAL_TASK_BRANCH_ALREADY_EXISTS")
-    base_ref = _fetch_base_branch(target, base_branch)
+    if _branch_oid(target, f"refs/remotes/origin/{branch}"):
+        raise WorktreeMaterializeError("REMOTE_TASK_BRANCH_ALREADY_EXISTS")
     if not git_commit_exists(target, expected_base_commit):
         raise WorktreeMaterializeError("BASE_COMMIT_MISSING")
-    _require_base_lineage(target, expected_base_commit, base_ref)
-    if _remote_branch_exists(target, branch):
-        raise WorktreeMaterializeError("REMOTE_TASK_BRANCH_ALREADY_EXISTS")
 
     created_branch = False
     created_worktree = False
@@ -798,6 +882,8 @@ def bootstrap_task_worktree(
         created_branch = True
         git_run(target, ["worktree", "add", str(worktree), branch])
         created_worktree = True
+        _require_no_reachable_external_executables(worktree)
+        _reject_repository_output_redirection(worktree, task_key)
         actions.extend(
             _initialize_task_files(
                 worktree,
@@ -825,7 +911,7 @@ def bootstrap_task_worktree(
             task_key=task_key,
             created_branch=created_branch,
             created_worktree=created_worktree,
-            created_task_paths=created_task_paths or (task_root(worktree, task_key).exists() or result_root(worktree, task_key).exists()),
+            created_task_paths=created_task_paths,
             failure=exc,
         ) from exc
     return [
@@ -1950,11 +2036,8 @@ def build_parser() -> argparse.ArgumentParser:
     task_init.add_argument("--text-review-required", action="store_true")
     task_init.add_argument("--text-review-manifest-path", default="")
     task_bootstrap = task_sub.add_parser("bootstrap")
-    task_bootstrap.add_argument("--target", type=Path, default=Path.cwd())
     task_bootstrap.add_argument("--task-key", required=True)
     task_bootstrap.add_argument("--expected-repo", required=True)
-    task_bootstrap.add_argument("--expected-worktree", type=Path, required=True)
-    task_bootstrap.add_argument("--expected-base-ref", required=True)
     task_bootstrap.add_argument("--expected-base-commit", required=True)
     task_bootstrap.add_argument("--objective", default="")
     task_bootstrap.add_argument("--max-review-rounds", type=int, default=2)
@@ -2043,11 +2126,9 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "task" and args.task_command == "bootstrap":
             for action in bootstrap_task_worktree(
-                args.target,
+                Path.cwd(),
                 args.task_key,
                 expected_repo=args.expected_repo,
-                expected_worktree=args.expected_worktree,
-                expected_base_ref=args.expected_base_ref,
                 expected_base_commit=args.expected_base_commit,
                 objective=args.objective,
                 max_review_rounds=args.max_review_rounds,

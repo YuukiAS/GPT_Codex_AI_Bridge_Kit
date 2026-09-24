@@ -21,20 +21,25 @@ GPT 异步唤醒使用 ChatGPT「安排任务」定时检查 GitHub 上的 `CURR
 
 ## Task worktree normal entries
 
-brand-new Reviewed task 第一次创建 reviewed branch/worktree 时，使用：
+brand-new Reviewed task 第一次创建 reviewed branch/worktree 时，先在当前 repo 做同步：
+
+```bash
+git fetch --all --prune
+```
+
+确认 repo 是 ordinary single-origin clone profile 后，在同一个 repo cwd 里使用：
 
 ```bash
 ai-bridge reviewed-handoff task bootstrap \
-  --target /path/to/project \
   --task-key repo--example \
   --expected-repo owner/name \
-  --expected-worktree /absolute/path/to/project-repo--example \
-  --expected-base-ref origin/main \
-  --expected-base-commit <base-commit> \
+  --expected-base-commit <post-sync-origin-main-oid> \
   --objective "这里写任务目标"
 ```
 
-这个入口只执行当前用户已经批准的 exact repo/task/path/base effect。它固定派生 `reviewed/<task_key>`，把首份 `REQUEST.md` / `CURRENT.json` 写进新 reviewed worktree，不把 first-bootstrap task metadata 写回 canonical main。它是 Machine Policy `prompt` 路径，不是永久 generic allow。
+这个入口只作用于当前 cwd Git repo。它固定派生 `reviewed/<task_key>`，把 sibling worktree 固定为 `<repo-parent>/<repo-dir>-<task_key>`，把首份 `REQUEST.md` / `CURRENT.json` 写进新 reviewed worktree，不把 first-bootstrap task metadata 写回 canonical main。它要求 canonical origin-only fetch profile、post-sync `origin/main` exact OID、zero network bootstrap、reachable executable fence 和 task/results output fence；非 canonical repo 不会被自动改 config。
+
+这个入口是 Machine Policy `allow` 路径，但不是通用 Git wrapper。
 
 已有 task artifacts 后，恢复或重新物化 exact worktree 使用 artifact-bound：
 

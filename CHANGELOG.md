@@ -14,12 +14,18 @@
 ## 0.9.1 - 2026-09-24
 
 - Add `ai-bridge reviewed-handoff task bootstrap` as the first-bootstrap normal
-  entry for brand-new Reviewed tasks. It derives `reviewed/<task_key>`, requires
-  exact repo/worktree/base assertions, creates the exact worktree, and writes the
-  first `REQUEST.md` / `CURRENT.json` only inside that reviewed worktree.
-- Keep first bootstrap on the Machine Policy `prompt` path while preserving
-  permanent `allow` only for artifact-bound `materialize-worktree`. Raw
-  `git worktree add` remains approval-gated and is not a normal fallback.
+  entry for brand-new Reviewed tasks. It now operates only on the current repo,
+  derives `reviewed/<task_key>`, derives the deterministic sibling worktree,
+  requires the exact post-sync `origin/main` OID, creates the worktree, and
+  writes the first `REQUEST.md` / `CURRENT.json` only inside that reviewed
+  worktree.
+- Harden first bootstrap for the Machine Policy `allow` path: require an
+  ordinary origin-only fetch profile, reject `skipFetchAll` /
+  `skipDefaultUpdate`, reject noncanonical origin fetch refspecs, reject
+  local reviewed remote-tracking branch presence, keep bootstrap network-free,
+  and fail closed on reachable hook/filter/fsmonitor execution paths or
+  task/result output redirection. Raw `git worktree add` remains approval-gated
+  and is not a normal fallback.
 - Refactor Reviewed task initialization so ordinary `task init` and first
   bootstrap share one REQUEST/CURRENT initializer, including explicit reviewed
   worktree locator writing for bootstrap.

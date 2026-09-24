@@ -338,7 +338,7 @@ memories = false
             self.assertTrue(any("ai-bridge plugin-replay" in line and "=> allow" in line for line in lines))
             self.assertTrue(any("ai-bridge host publish-current-branch" in line and "=> allow" in line for line in lines))
             self.assertTrue(any("ai-bridge reviewed-handoff materialize-worktree" in line and "=> allow" in line for line in lines))
-            self.assertTrue(any("ai-bridge reviewed-handoff task bootstrap" in line and "=> prompt" in line for line in lines))
+            self.assertTrue(any("ai-bridge reviewed-handoff task bootstrap" in line and "=> allow" in line for line in lines))
             self.assertTrue(any("gh auth status -- => allow" in line for line in lines))
             self.assertTrue(any("gh pr list -- => allow" in line for line in lines))
             self.assertTrue(any("gh pr status -- => allow" in line for line in lines))
@@ -436,7 +436,7 @@ memories = false
                 ("ai-bridge", "plugin-replay", "--target", str(Path.cwd()), "--plugin", "sites", "--task", "TASK.md", "--input", "INPUT.txt", "--dry-run"): "allow",
                 ("ai-bridge", "host", "publish-current-branch", "--expected-repo", "YuukiAS/GPT_Codex_AI_Bridge_Kit", "--expected-branch", "main"): "allow",
                 ("ai-bridge", "reviewed-handoff", "materialize-worktree", "--target", str(Path.cwd()), "--task-key", "repo--feature", "--expected-repo", "YuukiAS/GPT_Codex_AI_Bridge_Kit", "--expected-worktree", "/tmp/repo--feature", "--expected-base-ref", "origin/main", "--mode", "bootstrap"): "allow",
-                ("ai-bridge", "reviewed-handoff", "task", "bootstrap", "--target", str(Path.cwd()), "--task-key", "repo--feature", "--expected-repo", "YuukiAS/GPT_Codex_AI_Bridge_Kit", "--expected-worktree", "/tmp/repo--feature", "--expected-base-ref", "origin/main", "--expected-base-commit", "0000000000000000000000000000000000000000"): "prompt",
+                ("ai-bridge", "reviewed-handoff", "task", "bootstrap", "--task-key", "repo--feature", "--expected-repo", "YuukiAS/GPT_Codex_AI_Bridge_Kit", "--expected-base-commit", "0000000000000000000000000000000000000000"): "allow",
                 ("gh", "auth", "status", "--"): "allow",
                 ("gh", "pr", "list", "--"): "allow",
                 ("gh", "pr", "status", "--"): "allow",

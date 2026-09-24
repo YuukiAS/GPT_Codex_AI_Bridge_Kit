@@ -85,7 +85,7 @@ Controlled Mode
 | `0.8.4` | Reviewed Handoff 语义 task key。 | 新 Review 任务默认用 `<scope-token>--<goal-token>`，历史编号任务仍可读取和验证。 |
 | `0.8.5` | Default-mode required human gate transport 修正。 | 必需人工输入使用 durable transcript wait/resume，不依赖会自动 resolve 的默认模式问题卡。 |
 | `0.9.0` | 低打扰操作收口：current-repo safe reads、GitHub HTTPS bounded publisher、Reviewed worktree materializer、Persistent Run progress/ETA/stalled、Notifications operational progress。 | 安全原生命令更少被误拦；GitHub HTTPS 普通发布和冻结 Review worktree 有受边界约束入口；SSH/custom、危险 Git、自动控制和语义 PASS 仍不被放权。 |
-| `0.9.1` | Reviewed Mode first bootstrap normal entry。 | brand-new Reviewed task 可以通过 `ai-bridge reviewed-handoff task bootstrap` 创建 exact reviewed branch/worktree 和首份 REQUEST/CURRENT；existing task resume 继续走 artifact-bound `materialize-worktree`，raw `git worktree add` 仍不作为正常 fallback。 |
+| `0.9.1` | Reviewed Mode first bootstrap normal entry。 | brand-new Reviewed task 可以通过 repo-local `ai-bridge reviewed-handoff task bootstrap` 创建 deterministic sibling worktree 和首份 REQUEST/CURRENT；helper 要求 canonical origin-only fetch profile、post-sync `origin/main` OID、zero network bootstrap 和 executable/output fences；existing task resume 继续走 artifact-bound `materialize-worktree`，raw `git worktree add` 仍不作为正常 fallback。 |
 
 本项目采用 `0.x` 迭代方式。每个 `0.x` 小版本通常代表一项可独立使用的能力进入稳定工作流；补丁版本主要用于安全性、兼容性和默认行为修正。这不是严格的 Semantic Versioning 承诺，而是当前阶段的版本阅读方式。
 
@@ -249,20 +249,25 @@ ai-bridge reviewed-handoff watcher restart --target /path/to/project --branch <e
 
 Reviewed Mode 有两条受边界约束的 worktree 路径。
 
-brand-new task 第一次创建 reviewed branch/worktree 时，使用当前用户已经批准的 exact repo/task/path/base effect，然后走：
+brand-new task 第一次创建 reviewed branch/worktree 时，先在当前 repo 做同步：
+
+```bash
+git fetch --all --prune
+```
+
+确认 repo 是 ordinary single-origin clone profile 后，在同一个 repo cwd 里走：
 
 ```bash
 ai-bridge reviewed-handoff task bootstrap \
-  --target /path/to/project \
   --task-key repo--example \
   --expected-repo owner/name \
-  --expected-worktree /absolute/path/to/project-repo--example \
-  --expected-base-ref origin/main \
-  --expected-base-commit <base-commit> \
+  --expected-base-commit <post-sync-origin-main-oid> \
   --objective "这里写任务目标"
 ```
 
-这个入口会派生固定分支 `reviewed/<task_key>`，创建 exact worktree，并把首份 `REQUEST.md` / `CURRENT.json` 只写在新 reviewed worktree 中。它是 authorization-bound first bootstrap，不是永久 generic allow，也不会让用户手工拼 `git worktree add` 或自己组装控制文件。
+这个入口只作用于当前 cwd Git repo。它固定派生分支 `reviewed/<task_key>`，把 worktree 固定为 `<repo-parent>/<repo-dir>-<task_key>`，并把首份 `REQUEST.md` / `CURRENT.json` 只写在新 reviewed worktree 中。它要求 `origin` 是唯一 remote、`remote.origin.fetch` 是完整 heads 映射、`skipFetchAll` / `skipDefaultUpdate` 没有跳过 origin、`expected-base-commit` 等于本地 post-sync `origin/main`，并且 bootstrap 内部不做 fetch、ls-remote、push 或 provider call。可触发外部命令的 hook/filter/fsmonitor、以及 task/results 输出路径 symlink/非目录重定向都会默认失败。
+
+这个入口是 hardened repo-local standing allow，不是通用 `git worktree` wrapper，也不会替用户选择新分支、改 remote 或规范化 Git config。
 
 已经存在 task artifacts 后，恢复或重新物化 exact worktree 继续使用：
 
@@ -746,7 +751,8 @@ ai-bridge validate --target /path/to/project
 # 独立 GPT 复核
 ai-bridge reviewed-handoff install --target /path/to/project
 ai-bridge reviewed-handoff validate --target /path/to/project
-ai-bridge reviewed-handoff task bootstrap --target /path/to/project --task-key repo--example --expected-repo owner/name --expected-worktree /absolute/path --expected-base-ref origin/main --expected-base-commit <base-commit> --objective "这里写任务目标"
+git fetch --all --prune
+ai-bridge reviewed-handoff task bootstrap --task-key repo--example --expected-repo owner/name --expected-base-commit <post-sync-origin-main-oid> --objective "这里写任务目标"
 ai-bridge reviewed-handoff materialize-worktree ...
 
 # 高风险闭环
