@@ -11,6 +11,25 @@
 - Skip the full Tests workflow for pure `docs/design/**` and `results/**`
   metadata/evidence pushes, and cancel superseded in-progress main CI runs.
 
+## 0.9.1 - 2026-09-24
+
+- Add `ai-bridge reviewed-handoff task bootstrap` as the first-bootstrap normal
+  entry for brand-new Reviewed tasks. It derives `reviewed/<task_key>`, requires
+  exact repo/worktree/base assertions, creates the exact worktree, and writes the
+  first `REQUEST.md` / `CURRENT.json` only inside that reviewed worktree.
+- Keep first bootstrap on the Machine Policy `prompt` path while preserving
+  permanent `allow` only for artifact-bound `materialize-worktree`. Raw
+  `git worktree add` remains approval-gated and is not a normal fallback.
+- Refactor Reviewed task initialization so ordinary `task init` and first
+  bootstrap share one REQUEST/CURRENT initializer, including explicit reviewed
+  worktree locator writing for bootstrap.
+- Extend `materialize-worktree --mode resume` to support remote-only recovery:
+  when canonical main has no task metadata, it fetches the exact reviewed
+  branch, reads and validates remote `REQUEST.md` / `CURRENT.json` before local
+  checkout, then rematerializes without copying metadata into canonical main.
+- Add fail-closed handling for partial local task metadata and conservative
+  current-invocation rollback coverage for bootstrap failures.
+
 ## 0.9.0 - 2026-09-24
 
 - Rename current user-facing taxonomy to Machine Policy, Reviewed Mode,

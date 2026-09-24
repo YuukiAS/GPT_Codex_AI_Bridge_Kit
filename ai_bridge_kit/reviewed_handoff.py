@@ -126,6 +126,17 @@ class ReviewedStatus:
     task_count: int
 
 
+@dataclass(frozen=True)
+class TaskScope:
+    source: str
+    current: dict[str, Any]
+    request_text: str
+    base_branch: str
+    base_commit: str
+    frozen_worktree: Path
+    remote_oid: str | None = None
+
+
 def kit_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
@@ -228,8 +239,7 @@ def _origin_repo_identity(target: Path) -> str:
     return _canonical_repo_identity(urls[0])
 
 
-def _frozen_worktree_locator(request_path: Path) -> Path:
-    text = read_text(request_path)
+def _frozen_worktree_locator_from_text(text: str) -> Path:
     matches = re.findall(r"^- Reviewed worktree locator:\s*(\S.*?)\s*$", text, flags=re.MULTILINE)
     if len(matches) != 1:
         raise WorktreeMaterializeError("REQUEST_REVIEWED_WORKTREE_LOCATOR_REQUIRED")
@@ -237,6 +247,10 @@ def _frozen_worktree_locator(request_path: Path) -> Path:
     if not path.is_absolute():
         raise WorktreeMaterializeError("REQUEST_REVIEWED_WORKTREE_LOCATOR_MUST_BE_ABSOLUTE")
     return path
+
+
+def _frozen_worktree_locator(request_path: Path) -> Path:
+    return _frozen_worktree_locator_from_text(read_text(request_path))
 
 
 def _lexical_absolute(path: Path) -> Path:
@@ -311,16 +325,123 @@ def _branch_oid(target: Path, ref: str) -> str | None:
     return result.stdout.strip() if result.returncode == 0 else None
 
 
-def _remote_task_current(target: Path, remote_ref: str, task_key: str) -> dict[str, Any]:
-    path = f"automation/reviewed_handoff/tasks/{task_key}/CURRENT.json"
+def _remote_task_text(target: Path, remote_ref: str, task_key: str, filename: str) -> str:
+    path = f"automation/reviewed_handoff/tasks/{task_key}/{filename}"
     result = git_run(target, ["show", f"{remote_ref}:{path}"], check=False)
     if result.returncode != 0:
         raise WorktreeMaterializeError("REMOTE_TASK_METADATA_MISSING")
+    return result.stdout
+
+
+def _remote_task_current(target: Path, remote_ref: str, task_key: str) -> dict[str, Any]:
     try:
-        payload = json.loads(result.stdout)
+        payload = json.loads(_remote_task_text(target, remote_ref, task_key, "CURRENT.json"))
     except json.JSONDecodeError as exc:
         raise WorktreeMaterializeError("REMOTE_TASK_METADATA_INVALID") from exc
     return payload
+
+
+def _remote_task_request(target: Path, remote_ref: str, task_key: str) -> str:
+    return _remote_task_text(target, remote_ref, task_key, "REQUEST.md")
+
+
+def _remote_branch_exists(target: Path, branch: str) -> bool:
+    result = git_run(target, ["ls-remote", "--heads", "origin", branch], check=False)
+    if result.returncode != 0:
+        raise WorktreeMaterializeError("REMOTE_BRANCH_CHECK_FAILED")
+    return bool(result.stdout.strip())
+
+
+def _fetch_remote_task_branch(target: Path, branch: str) -> str:
+    fetch = git_run(target, ["fetch", "origin", f"{branch}:refs/remotes/origin/{branch}"], check=False)
+    if fetch.returncode != 0:
+        raise WorktreeMaterializeError("REMOTE_TASK_BRANCH_REQUIRED")
+    remote_ref = f"refs/remotes/origin/{branch}"
+    remote_oid = _branch_oid(target, remote_ref)
+    if not remote_oid:
+        raise WorktreeMaterializeError("REMOTE_TASK_BRANCH_REQUIRED")
+    return remote_oid
+
+
+def _base_ref_matches(expected_base_ref: str, base_branch: str, base_commit: str) -> bool:
+    return expected_base_ref in {base_branch, f"origin/{base_branch}", base_commit}
+
+
+def _parse_task_scope(
+    *,
+    task_key: str,
+    current: dict[str, Any],
+    request_text: str,
+    source: str,
+    remote_oid: str | None = None,
+) -> TaskScope:
+    if current.get("task_key") != task_key:
+        raise WorktreeMaterializeError(f"{source}_TASK_KEY_MISMATCH")
+    base_branch = str(current.get("base_branch") or "")
+    base_commit = str(current.get("base_commit") or "")
+    if not base_branch or not base_commit:
+        raise WorktreeMaterializeError(f"{source}_TASK_BASE_REQUIRED")
+    frozen_worktree = _lexical_absolute(_frozen_worktree_locator_from_text(request_text))
+    _reject_symlink_redirection(frozen_worktree)
+    return TaskScope(
+        source=source,
+        current=current,
+        request_text=request_text,
+        base_branch=base_branch,
+        base_commit=base_commit,
+        frozen_worktree=frozen_worktree,
+        remote_oid=remote_oid,
+    )
+
+
+def _load_task_scope(
+    target: Path,
+    task_key: str,
+    *,
+    expected_repo: str,
+    expected_worktree: Path,
+    expected_base_ref: str,
+    mode: str,
+) -> TaskScope:
+    if _origin_repo_identity(target) != expected_repo:
+        raise WorktreeMaterializeError("REPO_ASSERTION_FAILED")
+    root = task_root(target, task_key)
+    request_path = root / "REQUEST.md"
+    current_path = root / "CURRENT.json"
+    local_request = request_path.exists()
+    local_current = current_path.exists()
+    if local_request != local_current:
+        raise WorktreeMaterializeError("LOCAL_TASK_METADATA_PARTIAL")
+    if local_request and local_current:
+        scope = _parse_task_scope(
+            task_key=task_key,
+            current=load_json(current_path),
+            request_text=read_text(request_path),
+            source="LOCAL",
+        )
+    elif mode == "resume":
+        branch = f"reviewed/{task_key}"
+        remote_oid = _fetch_remote_task_branch(target, branch)
+        remote_ref = f"refs/remotes/origin/{branch}"
+        scope = _parse_task_scope(
+            task_key=task_key,
+            current=_remote_task_current(target, remote_ref, task_key),
+            request_text=_remote_task_request(target, remote_ref, task_key),
+            source="REMOTE",
+            remote_oid=remote_oid,
+        )
+    else:
+        raise WorktreeMaterializeError("LOCAL_TASK_METADATA_REQUIRED")
+
+    asserted_worktree = _lexical_absolute(expected_worktree)
+    _reject_symlink_redirection(asserted_worktree)
+    if asserted_worktree != scope.frozen_worktree:
+        raise WorktreeMaterializeError("WORKTREE_ASSERTION_FAILED")
+    if not _base_ref_matches(expected_base_ref, scope.base_branch, scope.base_commit):
+        raise WorktreeMaterializeError("BASE_REF_ASSERTION_FAILED")
+    if not git_commit_exists(target, scope.base_commit):
+        raise WorktreeMaterializeError("BASE_COMMIT_MISSING")
+    return scope
 
 
 def _fetch_base_branch(target: Path, base_branch: str) -> str:
@@ -393,6 +514,134 @@ def _rollback_materialize(
     return WorktreeMaterializeError("MATERIALIZE_WORKTREE_PARTIAL_FAILURE: " + "; ".join(evidence))
 
 
+def _cleanup_invocation_task_paths(worktree: Path, task_key: str) -> list[str]:
+    evidence: list[str] = []
+    paths = [
+        task_root(worktree, task_key),
+        result_root(worktree, task_key),
+    ]
+    for path in paths:
+        if path.exists():
+            for child in sorted(path.rglob("*"), reverse=True):
+                if child.is_file() or child.is_symlink():
+                    child.unlink()
+                elif child.is_dir():
+                    child.rmdir()
+            path.rmdir()
+            evidence.append(f"removed_invocation_path={path}")
+    for parent in [
+        result_root(worktree, task_key).parent,
+        task_root(worktree, task_key).parent,
+    ]:
+        try:
+            if parent.exists() and not any(parent.iterdir()):
+                parent.rmdir()
+                evidence.append(f"removed_empty_parent={parent}")
+        except OSError:
+            evidence.append(f"parent_cleanup_refused={parent}")
+    return evidence
+
+
+def _rollback_bootstrap(
+    target: Path,
+    *,
+    branch: str,
+    branch_ref: str,
+    branch_oid: str,
+    worktree: Path,
+    task_key: str,
+    created_branch: bool,
+    created_worktree: bool,
+    created_task_paths: bool,
+    failure: Exception,
+) -> WorktreeMaterializeError:
+    evidence: list[str] = [f"failure={failure}"]
+    if created_task_paths and created_worktree:
+        try:
+            evidence.extend(_cleanup_invocation_task_paths(worktree, task_key))
+        except Exception as exc:
+            evidence.append(f"task_path_cleanup_failed={exc}")
+    materialize_error = _rollback_materialize(
+        target,
+        branch=branch,
+        branch_ref=branch_ref,
+        branch_oid=branch_oid,
+        worktree=worktree,
+        created_branch=created_branch,
+        created_worktree=created_worktree,
+        failure=WorktreeMaterializeError("; ".join(evidence)),
+    )
+    return WorktreeMaterializeError(str(materialize_error).replace("MATERIALIZE_WORKTREE_PARTIAL_FAILURE", "TASK_BOOTSTRAP_PARTIAL_FAILURE", 1))
+
+
+def _initialize_task_files(
+    target: Path,
+    task_key: str,
+    *,
+    objective: str,
+    max_review_rounds: int,
+    ci_required: bool,
+    visual_review_required: bool,
+    visual_review_manifest_path: str,
+    text_review_required: bool,
+    text_review_manifest_path: str,
+    base_commit: str | None = None,
+    base_branch: str | None = None,
+    reviewed_worktree: Path | None = None,
+) -> list[str]:
+    root = task_root(target, task_key)
+    if root.exists():
+        raise ValueError(f"Review task already exists: {task_key}")
+    root.mkdir(parents=True)
+    result_root(target, task_key).mkdir(parents=True, exist_ok=True)
+    request_template = read_text(reviewed_root(target) / "templates" / "REQUEST.md")
+    request_text = request_template.replace("<TASK_KEY>", task_key).replace(
+        "<OBJECTIVE>", objective.strip() or "TODO: GPT Planner should write the task objective."
+    )
+    if reviewed_worktree is not None:
+        locator = f"- Reviewed worktree locator: {_lexical_absolute(reviewed_worktree)}"
+        placeholder = "<absolute path selected by the current-user kickoff when bounded worktree materialization is required>"
+        if placeholder in request_text:
+            request_text = request_text.replace(placeholder, str(_lexical_absolute(reviewed_worktree)))
+        elif "Reviewed worktree locator:" not in request_text:
+            marker = "## User constraints\n"
+            if marker in request_text:
+                request_text = request_text.replace(marker, marker + "\n" + locator + "\n", 1)
+            else:
+                request_text = request_text.rstrip() + "\n\n## User constraints\n\n" + locator + "\n"
+    write_text(root / "REQUEST.md", request_text)
+    current = {
+        "schema": CURRENT_SCHEMA,
+        "task_key": task_key,
+        "state": "PLAN_REQUESTED",
+        "review_round": 0,
+        "max_review_rounds": max_review_rounds,
+        "plan_revision": 0,
+        "max_plan_revisions": 1,
+        "base_commit": base_commit or current_commit(target),
+        "base_branch": base_branch or current_branch(target),
+        "implementation_commit": None,
+        "ci_required": ci_required,
+        "ci_status": "PENDING" if ci_required else "NOT_REQUIRED",
+        "last_review_decision": None,
+        "next_action": "RUN_GPT_PLANNER",
+    }
+    if visual_review_required:
+        current["visual_review_required"] = True
+        current["visual_review_manifest_path"] = visual_review_manifest_path or f"results/{task_key}/visual_review/visual_inputs.json"
+        current["visual_review_evidence_path"] = f"results/{task_key}/visual_review/VISUAL_REVIEW.json"
+    if text_review_required:
+        current["text_review_required"] = True
+        current["text_review_manifest_path"] = text_review_manifest_path or f"results/{task_key}/text_review/text_inputs.json"
+        current["text_review_evidence_path"] = f"results/{task_key}/text_review/TEXT_REVIEW.json"
+    write_json(root / "CURRENT.json", current)
+    return [
+        f"CREATE {root / 'REQUEST.md'}",
+        f"CREATE {root / 'CURRENT.json'}",
+        f"DIR {result_root(target, task_key)}",
+    ]
+
+
 def materialize_worktree(
     target: Path,
     task_key: str,
@@ -407,30 +656,19 @@ def materialize_worktree(
         raise WorktreeMaterializeError("mode must be bootstrap or resume")
     if task_keys.existing_task_key_error(task_key):
         raise WorktreeMaterializeError("invalid task_key")
-    if _origin_repo_identity(target) != expected_repo:
-        raise WorktreeMaterializeError("REPO_ASSERTION_FAILED")
-    root = task_root(target, task_key)
-    current = load_json(root / "CURRENT.json")
-    base_branch = str(current.get("base_branch") or "")
-    base_commit = str(current.get("base_commit") or "")
-    if current.get("task_key") != task_key:
-        raise WorktreeMaterializeError("CURRENT_TASK_KEY_MISMATCH")
-    allowed_base_refs = {base_branch, f"origin/{base_branch}", base_commit}
-    if expected_base_ref not in allowed_base_refs:
-        raise WorktreeMaterializeError("BASE_REF_ASSERTION_FAILED")
-    if not git_commit_exists(target, base_commit):
-        raise WorktreeMaterializeError("BASE_COMMIT_MISSING")
-    frozen_worktree = _lexical_absolute(_frozen_worktree_locator(root / "REQUEST.md"))
-    _reject_symlink_redirection(frozen_worktree)
-    asserted_worktree = _lexical_absolute(expected_worktree)
-    _reject_symlink_redirection(asserted_worktree)
-    if asserted_worktree != frozen_worktree:
-        raise WorktreeMaterializeError("WORKTREE_ASSERTION_FAILED")
+    scope = _load_task_scope(
+        target,
+        task_key,
+        expected_repo=expected_repo,
+        expected_worktree=expected_worktree,
+        expected_base_ref=expected_base_ref,
+        mode=mode,
+    )
     branch = f"reviewed/{task_key}"
     branch_ref = f"refs/heads/{branch}"
-    availability = _ensure_available_worktree_path(target, frozen_worktree, branch_ref)
+    availability = _ensure_available_worktree_path(target, scope.frozen_worktree, branch_ref)
     if availability == "already_materialized":
-        return [f"OK already materialized: {frozen_worktree}"]
+        return [f"OK already materialized: {scope.frozen_worktree}"]
 
     actions: list[str] = []
     if mode == "bootstrap":
@@ -438,41 +676,40 @@ def materialize_worktree(
             raise WorktreeMaterializeError("LOCAL_TASK_BRANCH_ALREADY_EXISTS")
         if _branch_oid(target, f"refs/remotes/origin/{branch}"):
             raise WorktreeMaterializeError("REMOTE_TASK_BRANCH_ALREADY_EXISTS")
-        base_ref = _fetch_base_branch(target, base_branch)
-        _require_base_lineage(target, base_commit, base_ref)
+        base_ref = _fetch_base_branch(target, scope.base_branch)
+        _require_base_lineage(target, scope.base_commit, base_ref)
         created_branch = False
         try:
-            git_run(target, ["branch", branch, base_commit])
+            git_run(target, ["branch", branch, scope.base_commit])
             created_branch = True
-            git_run(target, ["worktree", "add", str(frozen_worktree), branch])
+            git_run(target, ["worktree", "add", str(scope.frozen_worktree), branch])
         except Exception as exc:
             raise _rollback_materialize(
                 target,
                 branch=branch,
                 branch_ref=branch_ref,
-                branch_oid=base_commit,
-                worktree=frozen_worktree,
+                branch_oid=scope.base_commit,
+                worktree=scope.frozen_worktree,
                 created_branch=created_branch,
-                created_worktree=frozen_worktree.exists(),
+                created_worktree=scope.frozen_worktree.exists(),
                 failure=exc,
             ) from exc
-        actions.append(f"CREATE branch {branch} at {base_commit}")
-        actions.append(f"CREATE worktree {frozen_worktree} at {branch}")
+        actions.append(f"CREATE branch {branch} at {scope.base_commit}")
+        actions.append(f"CREATE worktree {scope.frozen_worktree} at {branch}")
         return actions
 
-    fetch = git_run(target, ["fetch", "origin", f"{branch}:refs/remotes/origin/{branch}"], check=False)
-    if fetch.returncode != 0:
-        raise WorktreeMaterializeError("REMOTE_TASK_BRANCH_REQUIRED")
     remote_ref = f"refs/remotes/origin/{branch}"
-    remote_oid = _branch_oid(target, remote_ref)
-    if not remote_oid:
-        raise WorktreeMaterializeError("REMOTE_TASK_BRANCH_REQUIRED")
+    remote_oid = scope.remote_oid or _fetch_remote_task_branch(target, branch)
     remote_current = _remote_task_current(target, remote_ref, task_key)
     if remote_current.get("task_key") != task_key:
         raise WorktreeMaterializeError("REMOTE_TASK_METADATA_MISMATCH")
-    if remote_current.get("base_branch") != base_branch or remote_current.get("base_commit") != base_commit:
+    if remote_current.get("base_branch") != scope.base_branch or remote_current.get("base_commit") != scope.base_commit:
         raise WorktreeMaterializeError("REMOTE_TASK_BASE_MISMATCH")
-    if git_run(target, ["merge-base", "--is-ancestor", base_commit, remote_oid], check=False).returncode != 0:
+    remote_request = _remote_task_request(target, remote_ref, task_key)
+    remote_worktree = _lexical_absolute(_frozen_worktree_locator_from_text(remote_request))
+    if remote_worktree != scope.frozen_worktree:
+        raise WorktreeMaterializeError("REMOTE_TASK_WORKTREE_MISMATCH")
+    if git_run(target, ["merge-base", "--is-ancestor", scope.base_commit, remote_oid], check=False).returncode != 0:
         raise WorktreeMaterializeError("REMOTE_TASK_LINEAGE_MISMATCH")
     local_oid = _branch_oid(target, branch_ref)
     if local_oid and local_oid != remote_oid:
@@ -483,20 +720,119 @@ def materialize_worktree(
         created_branch = True
         actions.append(f"CREATE branch {branch} at {remote_oid}")
     try:
-        git_run(target, ["worktree", "add", str(frozen_worktree), branch])
+        git_run(target, ["worktree", "add", str(scope.frozen_worktree), branch])
     except Exception as exc:
         raise _rollback_materialize(
             target,
             branch=branch,
             branch_ref=branch_ref,
             branch_oid=remote_oid,
-            worktree=frozen_worktree,
+            worktree=scope.frozen_worktree,
             created_branch=created_branch,
-            created_worktree=frozen_worktree.exists(),
+            created_worktree=scope.frozen_worktree.exists(),
             failure=exc,
         ) from exc
-    actions.append(f"CREATE worktree {frozen_worktree} at {branch}")
+    actions.append(f"CREATE worktree {scope.frozen_worktree} at {branch}")
     return actions
+
+
+def bootstrap_task_worktree(
+    target: Path,
+    task_key: str,
+    *,
+    expected_repo: str,
+    expected_worktree: Path,
+    expected_base_ref: str,
+    expected_base_commit: str,
+    objective: str = "",
+    max_review_rounds: int = 2,
+    ci_required: bool = False,
+    visual_review_required: bool = False,
+    visual_review_manifest_path: str = "",
+    text_review_required: bool = False,
+    text_review_manifest_path: str = "",
+) -> list[str]:
+    target = target.resolve()
+    if error := task_keys.new_task_key_error(task_key):
+        raise WorktreeMaterializeError(error)
+    if max_review_rounds not in {1, 2}:
+        raise WorktreeMaterializeError("Review allows max_review_rounds of 1 or 2")
+    if _origin_repo_identity(target) != expected_repo:
+        raise WorktreeMaterializeError("REPO_ASSERTION_FAILED")
+    if not inspect_reviewed_handoff(target).installed:
+        raise WorktreeMaterializeError("Review is not installed; run reviewed-handoff install first")
+    if not re.fullmatch(r"[0-9a-fA-F]{40}", expected_base_commit or ""):
+        raise WorktreeMaterializeError("EXPECTED_BASE_COMMIT_INVALID")
+    if not expected_base_ref.startswith("origin/"):
+        raise WorktreeMaterializeError("EXPECTED_BASE_REF_MUST_BE_ORIGIN_BRANCH")
+    base_branch = expected_base_ref.removeprefix("origin/")
+    root = task_root(target, task_key)
+    local_request = (root / "REQUEST.md").exists()
+    local_current = (root / "CURRENT.json").exists()
+    if local_request != local_current:
+        raise WorktreeMaterializeError("LOCAL_TASK_METADATA_PARTIAL")
+    if local_request and local_current:
+        raise WorktreeMaterializeError("LOCAL_TASK_METADATA_ALREADY_EXISTS")
+    worktree = _lexical_absolute(expected_worktree)
+    _reject_symlink_redirection(worktree)
+    branch = f"reviewed/{task_key}"
+    branch_ref = f"refs/heads/{branch}"
+    availability = _ensure_available_worktree_path(target, worktree, branch_ref)
+    if availability == "already_materialized":
+        raise WorktreeMaterializeError("LOCAL_TASK_BRANCH_ALREADY_MATERIALIZED_WITHOUT_METADATA")
+    if _branch_oid(target, branch_ref):
+        raise WorktreeMaterializeError("LOCAL_TASK_BRANCH_ALREADY_EXISTS")
+    base_ref = _fetch_base_branch(target, base_branch)
+    if not git_commit_exists(target, expected_base_commit):
+        raise WorktreeMaterializeError("BASE_COMMIT_MISSING")
+    _require_base_lineage(target, expected_base_commit, base_ref)
+    if _remote_branch_exists(target, branch):
+        raise WorktreeMaterializeError("REMOTE_TASK_BRANCH_ALREADY_EXISTS")
+
+    created_branch = False
+    created_worktree = False
+    created_task_paths = False
+    actions: list[str] = []
+    try:
+        git_run(target, ["branch", branch, expected_base_commit])
+        created_branch = True
+        git_run(target, ["worktree", "add", str(worktree), branch])
+        created_worktree = True
+        actions.extend(
+            _initialize_task_files(
+                worktree,
+                task_key,
+                objective=objective,
+                max_review_rounds=max_review_rounds,
+                ci_required=ci_required,
+                visual_review_required=visual_review_required,
+                visual_review_manifest_path=visual_review_manifest_path,
+                text_review_required=text_review_required,
+                text_review_manifest_path=text_review_manifest_path,
+                base_commit=expected_base_commit,
+                base_branch=base_branch,
+                reviewed_worktree=worktree,
+            )
+        )
+        created_task_paths = True
+    except Exception as exc:
+        raise _rollback_bootstrap(
+            target,
+            branch=branch,
+            branch_ref=branch_ref,
+            branch_oid=expected_base_commit,
+            worktree=worktree,
+            task_key=task_key,
+            created_branch=created_branch,
+            created_worktree=created_worktree,
+            created_task_paths=created_task_paths or (task_root(worktree, task_key).exists() or result_root(worktree, task_key).exists()),
+            failure=exc,
+        ) from exc
+    return [
+        f"CREATE branch {branch} at {expected_base_commit}",
+        f"CREATE worktree {worktree} at {branch}",
+        *actions,
+    ]
 
 
 def git_is_ancestor(target: Path, base_commit: str, implementation_commit: str) -> bool:
@@ -599,46 +935,17 @@ def init_task(
     status = inspect_reviewed_handoff(target)
     if not status.installed:
         raise ValueError("Review is not installed; run reviewed-handoff install first")
-    root = task_root(target, task_key)
-    if root.exists():
-        raise ValueError(f"Review task already exists: {task_key}")
-    root.mkdir(parents=True)
-    result_root(target, task_key).mkdir(parents=True, exist_ok=True)
-    request_template = read_text(reviewed_root(target) / "templates" / "REQUEST.md")
-    request_text = request_template.replace("<TASK_KEY>", task_key).replace(
-        "<OBJECTIVE>", objective.strip() or "TODO: GPT Planner should write the task objective."
+    return _initialize_task_files(
+        target,
+        task_key,
+        objective=objective,
+        max_review_rounds=max_review_rounds,
+        ci_required=ci_required,
+        visual_review_required=visual_review_required,
+        visual_review_manifest_path=visual_review_manifest_path,
+        text_review_required=text_review_required,
+        text_review_manifest_path=text_review_manifest_path,
     )
-    write_text(root / "REQUEST.md", request_text)
-    current = {
-        "schema": CURRENT_SCHEMA,
-        "task_key": task_key,
-        "state": "PLAN_REQUESTED",
-        "review_round": 0,
-        "max_review_rounds": max_review_rounds,
-        "plan_revision": 0,
-        "max_plan_revisions": 1,
-        "base_commit": current_commit(target),
-        "base_branch": current_branch(target),
-        "implementation_commit": None,
-        "ci_required": ci_required,
-        "ci_status": "PENDING" if ci_required else "NOT_REQUIRED",
-        "last_review_decision": None,
-        "next_action": "RUN_GPT_PLANNER",
-    }
-    if visual_review_required:
-        current["visual_review_required"] = True
-        current["visual_review_manifest_path"] = visual_review_manifest_path or f"results/{task_key}/visual_review/visual_inputs.json"
-        current["visual_review_evidence_path"] = f"results/{task_key}/visual_review/VISUAL_REVIEW.json"
-    if text_review_required:
-        current["text_review_required"] = True
-        current["text_review_manifest_path"] = text_review_manifest_path or f"results/{task_key}/text_review/text_inputs.json"
-        current["text_review_evidence_path"] = f"results/{task_key}/text_review/TEXT_REVIEW.json"
-    write_json(root / "CURRENT.json", current)
-    return [
-        f"CREATE {root / 'REQUEST.md'}",
-        f"CREATE {root / 'CURRENT.json'}",
-        f"DIR {result_root(target, task_key)}",
-    ]
 
 
 def validate_plan_file(path: Path, task_key: str) -> list[str]:
@@ -1642,6 +1949,20 @@ def build_parser() -> argparse.ArgumentParser:
     task_init.add_argument("--visual-review-manifest-path", default="")
     task_init.add_argument("--text-review-required", action="store_true")
     task_init.add_argument("--text-review-manifest-path", default="")
+    task_bootstrap = task_sub.add_parser("bootstrap")
+    task_bootstrap.add_argument("--target", type=Path, default=Path.cwd())
+    task_bootstrap.add_argument("--task-key", required=True)
+    task_bootstrap.add_argument("--expected-repo", required=True)
+    task_bootstrap.add_argument("--expected-worktree", type=Path, required=True)
+    task_bootstrap.add_argument("--expected-base-ref", required=True)
+    task_bootstrap.add_argument("--expected-base-commit", required=True)
+    task_bootstrap.add_argument("--objective", default="")
+    task_bootstrap.add_argument("--max-review-rounds", type=int, default=2)
+    task_bootstrap.add_argument("--ci-required", action="store_true")
+    task_bootstrap.add_argument("--visual-review-required", action="store_true")
+    task_bootstrap.add_argument("--visual-review-manifest-path", default="")
+    task_bootstrap.add_argument("--text-review-required", action="store_true")
+    task_bootstrap.add_argument("--text-review-manifest-path", default="")
 
     transition = sub.add_parser("transition")
     transition_sub = transition.add_subparsers(dest="transition_command")
@@ -1710,6 +2031,24 @@ def main(argv: list[str] | None = None) -> int:
             for action in init_task(
                 args.target,
                 args.task_key,
+                objective=args.objective,
+                max_review_rounds=args.max_review_rounds,
+                ci_required=args.ci_required,
+                visual_review_required=args.visual_review_required,
+                visual_review_manifest_path=args.visual_review_manifest_path,
+                text_review_required=args.text_review_required,
+                text_review_manifest_path=args.text_review_manifest_path,
+            ):
+                print(action)
+            return 0
+        if args.command == "task" and args.task_command == "bootstrap":
+            for action in bootstrap_task_worktree(
+                args.target,
+                args.task_key,
+                expected_repo=args.expected_repo,
+                expected_worktree=args.expected_worktree,
+                expected_base_ref=args.expected_base_ref,
+                expected_base_commit=args.expected_base_commit,
                 objective=args.objective,
                 max_review_rounds=args.max_review_rounds,
                 ci_required=args.ci_required,

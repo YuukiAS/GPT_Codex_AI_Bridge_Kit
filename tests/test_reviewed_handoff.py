@@ -356,6 +356,92 @@ class ReviewedHandoffTests(unittest.TestCase):
             branch = subprocess.check_output(["git", "branch", "--show-current"], cwd=frozen, text=True).strip()
             self.assertEqual(branch, "reviewed/repo--feature")
 
+    def test_task_bootstrap_creates_exact_first_worktree_without_polluting_main(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target, identity = self.make_remote_review_project(tmp, worktree=Path(tmp) / "unused")
+            subprocess.check_call(["git", "add", "automation", "results"], cwd=target)
+            subprocess.check_call(["git", "commit", "-m", "review install"], cwd=target, stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "push", "origin", "main"], cwd=target, stdout=subprocess.DEVNULL)
+            task_key = "repo--bootstrap"
+            frozen = Path(tmp) / "repo-bootstrap"
+            base_commit = subprocess.check_output(["git", "rev-parse", "origin/main"], cwd=target, text=True).strip()
+
+            actions = rh.bootstrap_task_worktree(
+                target,
+                task_key,
+                expected_repo=identity,
+                expected_worktree=frozen,
+                expected_base_ref="origin/main",
+                expected_base_commit=base_commit,
+                objective="Bootstrap through the bounded normal entry.",
+            )
+
+            self.assertTrue(frozen.is_dir())
+            self.assertTrue(any("CREATE branch reviewed/repo--bootstrap" in action for action in actions))
+            self.assertFalse((rh.task_root(target, task_key) / "CURRENT.json").exists())
+            self.assertTrue((rh.task_root(frozen, task_key) / "CURRENT.json").exists())
+            current = rh.load_json(rh.task_root(frozen, task_key) / "CURRENT.json")
+            self.assertEqual(current["base_commit"], base_commit)
+            self.assertEqual(current["base_branch"], "main")
+            request = (rh.task_root(frozen, task_key) / "REQUEST.md").read_text(encoding="utf-8")
+            self.assertIn(f"- Reviewed worktree locator: {frozen}", request)
+
+    def test_materialize_worktree_remote_only_resume_without_canonical_main_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target, identity = self.make_remote_review_project(tmp, worktree=Path(tmp) / "unused")
+            subprocess.check_call(["git", "add", "automation", "results"], cwd=target)
+            subprocess.check_call(["git", "commit", "-m", "review install"], cwd=target, stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "push", "origin", "main"], cwd=target, stdout=subprocess.DEVNULL)
+            task_key = "repo--remote-resume"
+            frozen = Path(tmp) / "repo-remote-resume"
+            base_commit = subprocess.check_output(["git", "rev-parse", "origin/main"], cwd=target, text=True).strip()
+            rh.bootstrap_task_worktree(
+                target,
+                task_key,
+                expected_repo=identity,
+                expected_worktree=frozen,
+                expected_base_ref="origin/main",
+                expected_base_commit=base_commit,
+                objective="Remote-only resume fixture.",
+            )
+            subprocess.check_call(["git", "add", "automation", "results"], cwd=frozen)
+            subprocess.check_call(["git", "commit", "-m", "review task"], cwd=frozen, stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "push", "origin", f"reviewed/{task_key}"], cwd=frozen, stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "worktree", "remove", str(frozen)], cwd=target, stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "branch", "-D", f"reviewed/{task_key}"], cwd=target, stdout=subprocess.DEVNULL)
+
+            self.assertFalse((rh.task_root(target, task_key) / "CURRENT.json").exists())
+            actions = rh.materialize_worktree(
+                target,
+                task_key,
+                expected_repo=identity,
+                expected_worktree=frozen,
+                expected_base_ref="origin/main",
+                mode="resume",
+            )
+
+            self.assertTrue(frozen.is_dir())
+            self.assertTrue(any(f"CREATE branch reviewed/{task_key}" in action for action in actions))
+            current = rh.load_json(rh.task_root(frozen, task_key) / "CURRENT.json")
+            self.assertEqual(current["task_key"], task_key)
+            self.assertFalse((rh.task_root(target, task_key) / "CURRENT.json").exists())
+
+    def test_materialize_worktree_local_partial_metadata_fails_closed_before_remote(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            frozen = Path(tmp) / "resume-worktree"
+            target, identity = self.make_remote_review_project(tmp, worktree=frozen)
+            (rh.task_root(target, "repo--feature") / "CURRENT.json").unlink()
+
+            with self.assertRaisesRegex(rh.WorktreeMaterializeError, "LOCAL_TASK_METADATA_PARTIAL"):
+                rh.materialize_worktree(
+                    target,
+                    "repo--feature",
+                    expected_repo=identity,
+                    expected_worktree=frozen,
+                    expected_base_ref="origin/main",
+                    mode="resume",
+                )
+
     def test_materialize_worktree_resume_uses_remote_task_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             frozen = Path(tmp) / "resume-worktree"

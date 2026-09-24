@@ -879,6 +879,24 @@ def validate_host_policy(codex_home: Path, cwd: Path | None = None) -> tuple[Hos
         "--mode",
         "bootstrap",
     ]
+    bootstrap_command = [
+        "ai-bridge",
+        "reviewed-handoff",
+        "task",
+        "bootstrap",
+        "--target",
+        str(cwd or Path.cwd()),
+        "--task-key",
+        "repo--feature",
+        "--expected-repo",
+        "YuukiAS/GPT_Codex_AI_Bridge_Kit",
+        "--expected-worktree",
+        "/tmp/repo--feature",
+        "--expected-base-ref",
+        "origin/main",
+        "--expected-base-commit",
+        "0" * 40,
+    ]
     gh_safe_read_checks = [
         ["gh", "auth", "status", "--"],
         ["gh", "pr", "list", "--"],
@@ -949,6 +967,7 @@ def validate_host_policy(codex_home: Path, cwd: Path | None = None) -> tuple[Hos
         (replay_command, "allow", "direct", True),
         (publisher_command, "allow", "direct", True),
         (materializer_command, "allow", "direct", True),
+        (bootstrap_command, "prompt", "effective", True),
         *[(command, "allow", "direct", False) for command in gh_safe_read_checks],
         *[(command, "prompt", "effective", False) for command in gh_gated_checks],
         *[(command, "allow", "direct", False) for command in slurm_read_only_checks],

@@ -6,7 +6,7 @@
 
 这个仓库的原则是：**默认保持简单，需要什么再加什么。** 普通项目通常只需要机器级规则和基础交接；只有确实需要时，才启用独立复核、高风险闭环、长期运行、通知、Overleaf 同步或视觉/文本复核。
 
-当前集成版本：`0.9.0`（低打扰操作收口已完成文档同步；这不是 GitHub release/tag 声明）。
+当前集成版本：`0.9.1`（Reviewed Mode first-bootstrap normal entry 已完成候选实现；这不是 GitHub release/tag 声明）。
 
 ## 一眼看懂：我到底该装什么
 
@@ -85,6 +85,7 @@ Controlled Mode
 | `0.8.4` | Reviewed Handoff 语义 task key。 | 新 Review 任务默认用 `<scope-token>--<goal-token>`，历史编号任务仍可读取和验证。 |
 | `0.8.5` | Default-mode required human gate transport 修正。 | 必需人工输入使用 durable transcript wait/resume，不依赖会自动 resolve 的默认模式问题卡。 |
 | `0.9.0` | 低打扰操作收口：current-repo safe reads、GitHub HTTPS bounded publisher、Reviewed worktree materializer、Persistent Run progress/ETA/stalled、Notifications operational progress。 | 安全原生命令更少被误拦；GitHub HTTPS 普通发布和冻结 Review worktree 有受边界约束入口；SSH/custom、危险 Git、自动控制和语义 PASS 仍不被放权。 |
+| `0.9.1` | Reviewed Mode first bootstrap normal entry。 | brand-new Reviewed task 可以通过 `ai-bridge reviewed-handoff task bootstrap` 创建 exact reviewed branch/worktree 和首份 REQUEST/CURRENT；existing task resume 继续走 artifact-bound `materialize-worktree`，raw `git worktree add` 仍不作为正常 fallback。 |
 
 本项目采用 `0.x` 迭代方式。每个 `0.x` 小版本通常代表一项可独立使用的能力进入稳定工作流；补丁版本主要用于安全性、兼容性和默认行为修正。这不是严格的 Semantic Versioning 承诺，而是当前阶段的版本阅读方式。
 
@@ -246,13 +247,32 @@ ai-bridge reviewed-handoff watcher restart --target /path/to/project --branch <e
 
 监视器不会自行创建分支或 PR。它也不会把 Codex Executor 变成新的决策角色：Executor 只执行冻结方案并提交结果，发布仍由 watcher 在验证后完成。
 
-Reviewed Mode 还提供受边界约束的 worktree 物化入口：
+Reviewed Mode 有两条受边界约束的 worktree 路径。
+
+brand-new task 第一次创建 reviewed branch/worktree 时，使用当前用户已经批准的 exact repo/task/path/base effect，然后走：
+
+```bash
+ai-bridge reviewed-handoff task bootstrap \
+  --target /path/to/project \
+  --task-key repo--example \
+  --expected-repo owner/name \
+  --expected-worktree /absolute/path/to/project-repo--example \
+  --expected-base-ref origin/main \
+  --expected-base-commit <base-commit> \
+  --objective "这里写任务目标"
+```
+
+这个入口会派生固定分支 `reviewed/<task_key>`，创建 exact worktree，并把首份 `REQUEST.md` / `CURRENT.json` 只写在新 reviewed worktree 中。它是 authorization-bound first bootstrap，不是永久 generic allow，也不会让用户手工拼 `git worktree add` 或自己组装控制文件。
+
+已经存在 task artifacts 后，恢复或重新物化 exact worktree 继续使用：
 
 ```bash
 ai-bridge reviewed-handoff materialize-worktree ...
 ```
 
-它解决的是“任务已经冻结，repo、task、base、path 都已经确定，但 exact task worktree 创建或恢复仍被审批卡住”的问题。这个入口只接受冻结 scope，不会变成通用 `git worktree` / branch wrapper，也不会替用户选择新分支、改 remote 或创建 PR。
+`materialize-worktree` 只接受已冻结的 `REQUEST.md` / `CURRENT.json` scope。它可以从本地 artifacts 恢复，也可以在 canonical main 没有 task files 时，先从 exact remote reviewed branch 读取并校验 `REQUEST.md` / `CURRENT.json`，再 checkout/materialize。它不会按分支名盲目收养远端任务，也不会把 remote metadata 复制回 canonical main。
+
+这两条路径都不会变成通用 `git worktree` / branch wrapper，也不会替用户选择新分支、改 remote 或创建 PR。raw `git worktree add` 仍留在普通审批路径。
 
 `PLAN_FROZEN` 只有在当前 `PLAN.md` 结构合法时才会被 watcher 视为可执行。外部 GPT、CI、Text Review 或 Visual Review 尚未给出新决定时，属于正常等待，而不是 `BLOCKED`。
 
@@ -726,6 +746,7 @@ ai-bridge validate --target /path/to/project
 # 独立 GPT 复核
 ai-bridge reviewed-handoff install --target /path/to/project
 ai-bridge reviewed-handoff validate --target /path/to/project
+ai-bridge reviewed-handoff task bootstrap --target /path/to/project --task-key repo--example --expected-repo owner/name --expected-worktree /absolute/path --expected-base-ref origin/main --expected-base-commit <base-commit> --objective "这里写任务目标"
 ai-bridge reviewed-handoff materialize-worktree ...
 
 # 高风险闭环

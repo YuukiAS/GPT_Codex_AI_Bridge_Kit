@@ -22,6 +22,12 @@ prefix_rule(
 )
 
 prefix_rule(
+    pattern = ["ai-bridge", "reviewed-handoff", "task", "bootstrap"],
+    decision = "prompt",
+    justification = "Reviewed Mode first bootstrap creates a new task branch/worktree before REQUEST/CURRENT artifacts exist, so it must consume a current-user authorization for the exact repo/task/path/base effect and must not inherit the permanent artifact-bound materializer allow.",
+)
+
+prefix_rule(
     pattern = ["gh", "auth", "status", "--"],
     decision = "allow",
     justification = "The user permanently authorizes current-scope GitHub CLI authentication status reads without token display; cross-repo selectors, token display, and arbitrary API calls remain on the approval path.",

@@ -19,6 +19,33 @@ GPT 异步唤醒使用 ChatGPT「安排任务」定时检查 GitHub 上的 `CURR
 
 当前新建或重新冻结的 `PLAN.md` 必须使用 `AI_BRIDGE_REVIEWED_PLAN_V2`，也就是包含 Goal Fidelity 章节的 Plan contract。历史 `AI_BRIDGE_REVIEWED_PLAN_V1` frozen Plan 仍按自身旧章节兼容验证和继续执行，不要求回写 `## Positive completion` 或 `## Non-substitutable semantics`；但新的 `PLAN_FROZEN` transition 不能再使用 V1。
 
+## Task worktree normal entries
+
+brand-new Reviewed task 第一次创建 reviewed branch/worktree 时，使用：
+
+```bash
+ai-bridge reviewed-handoff task bootstrap \
+  --target /path/to/project \
+  --task-key repo--example \
+  --expected-repo owner/name \
+  --expected-worktree /absolute/path/to/project-repo--example \
+  --expected-base-ref origin/main \
+  --expected-base-commit <base-commit> \
+  --objective "这里写任务目标"
+```
+
+这个入口只执行当前用户已经批准的 exact repo/task/path/base effect。它固定派生 `reviewed/<task_key>`，把首份 `REQUEST.md` / `CURRENT.json` 写进新 reviewed worktree，不把 first-bootstrap task metadata 写回 canonical main。它是 Machine Policy `prompt` 路径，不是永久 generic allow。
+
+已有 task artifacts 后，恢复或重新物化 exact worktree 使用 artifact-bound：
+
+```bash
+ai-bridge reviewed-handoff materialize-worktree ...
+```
+
+`materialize-worktree --mode resume` 可以从本地 `REQUEST.md` / `CURRENT.json` 校验 scope；如果 canonical main 没有该 task metadata，也可以先从 exact remote reviewed branch 读取并校验 `REQUEST.md` / `CURRENT.json`，再 checkout/materialize。它不能只凭 branch 名收养远端任务，也不会把 remote metadata 复制回 canonical main。
+
+raw `git worktree add` 不是正常 fallback，仍走普通审批路径。
+
 机器上长期运行 watcher：
 
 ```bash
