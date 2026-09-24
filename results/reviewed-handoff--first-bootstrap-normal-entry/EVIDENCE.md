@@ -128,3 +128,38 @@ git diff --check
 
 PASS
 ```
+
+## Final cross-repo gate closure
+
+Recorded: 2026-09-24
+
+Bridge production identity:
+
+```text
+BRIDGE_PRODUCTION_IDENTITY=a41c2e32c630aaf2a200ca336f04c4ea31650786
+```
+
+AI_Skills integration closure returned:
+
+```text
+FB_G1_AT=PASS
+AI_SKILLS_BASE=b725c7e5d812732f34f2704509eecbd095388ca8
+AI_SKILLS_PRODUCTION_CANDIDATE=c17214449d8ca8761664ff15d49140c692a0fcb1
+AI_SKILLS_EVIDENCE_TIP=0d18dfbf43e803c2746c11a58333475fa6b7d983
+AI_SKILLS_FINAL_MAIN=0d18dfbf43e803c2746c11a58333475fa6b7d983
+WORKFLOW_CORE_VERSION=0.4
+AI_SKILLS_REPOSITORY_VERSION=5.1.1
+SECOND_APPROVAL_OCCURRED=NO
+REAL_SIBLING_CREATED=YES
+REQUEST_CURRENT_VALID=YES
+CANONICAL_MAIN_POLLUTED=NO
+BOOTSTRAP_NETWORK_CALLS=0
+RAW_GIT_FALLBACK_USED=NO
+FB_G4=PASS
+FB_G5=PASS
+OVERALL_0_9_1_FIRST_BOOTSTRAP_CLOSURE=PASS
+```
+
+This is an evidence-only closure entry. No Bridge production source, Machine
+Policy, version, runtime behavior, or AI_Skills worktree state was changed by
+this entry.
