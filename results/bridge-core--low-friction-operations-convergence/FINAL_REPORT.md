@@ -2,37 +2,56 @@
 
 ## Status
 
-`37a773cd83971d64f194a7d82c55a24889bd8164` is the current recovery code candidate. It includes the B1-B3 repairs from `47cea1edb5bcb0d8038c4c6bd925f2f1ccd5c90c`, a CI environment guard for hosted runners without `codex`, and a Python 3.14 test cleanup stability fix, but this is **not** a full final PASS / release-closure claim.
+`160166b0276e3f79e05252c8828f249d1d6409ae` is the task-owned HTTPS-only
+publisher correction candidate. It has been published to `origin/main` through
+the bounded GitHub HTTPS publisher and passed local and hosted tests.
 
-The previous implementation candidate `88fa67c44e6e491ed548f033ce0d3c33f63525c4` was the pre-final Critic recovery baseline. Its old complete wording is superseded by this report.
+This report updates the earlier recovery conclusion after Plan v0.4. The old
+SSH positive failure remains historical evidence, but SSH positive publication
+is no longer a release gate or product claim for 0.9.0.
 
-## What changed
+## What Changed
 
-- Publisher preflight now rejects transport/config/credential/askpass injection before any remote/network Git preflight.
-- Persistent Run now has an event-driven reporter with local latest/history and reconnect query.
-- Reviewed materializer now uses stable frozen worktree identity, checks bootstrap base lineage, and rolls back only invocation-created local state when safe.
+- Trusted low-friction publication is now GitHub HTTPS only:
+  `https://github.com/<owner>/<repo>.git`.
+- SSH, scp-style, and custom transports now fail closed in the bounded
+  publisher and route to ordinary approval.
+- Publisher classification uses effective fetch/push URLs after Git URL
+  rewriting.
+- Shared `_canonical_repo_identity()` remains unchanged for Reviewed Handoff and
+  local disposable repository use.
 
 ## Verified
 
-- Local focused recovery tests pass: `Ran 121 tests ... OK`.
-- Local full suite passes: `Ran 394 tests ... OK`.
-- GitHub Actions run `35895831666` passed on Python 3.9 and Python 3.x.
-- Live `/home/yuukias/.codex` Machine Policy validates.
-- Bounded publisher published recovery code candidate `37a773c` to `origin/main`; fetch verified it before later evidence-only reporting updates.
-- Publisher canary negatives did not execute canaries and did not mutate remote refs.
-- Reviewed materializer normal-entry sibling bootstrap and `/tmp` rematerialization passed.
-- Persistent Run reporter normal-entry multi-event and UNKNOWN/stall cases passed.
-- Official Codex plugin reinstall path succeeded for `workflow-core@yuukias-ai-skills`.
-- Notifications delivery is now proven through existing configuration: `send-test` and a structured `operational_progress` brief both sent successfully.
+- Focused host-policy tests pass: `Ran 27 tests ... OK`.
+- Full local suite passes: `Ran 397 tests ... OK`.
+- GitHub Actions passed for the publisher correction commit:
+  `35947503209`.
+- GitHub Actions passed for the later published main baseline:
+  `35947601396`.
+- `/home/yuukias/.codex` Machine Policy validates with installed
+  `/home/yuukias/conda/bin/ai-bridge`.
+- Bounded publisher published `160166b0276e3f79e05252c8828f249d1d6409ae` via
+  GitHub HTTPS using existing credentials and ordinary non-force ref update.
+- Effective SSH/scp/custom, literal HTTPS rewritten to SSH/custom, and HTTPS
+  fetch / SSH push mismatch negatives fail closed before network.
 
-## Not Closed
+## Product Boundary
 
-- Standard SSH positive publication could not be proven: GitHub SSH returned `Permission denied (publickey)` and could not write `known_hosts`.
+- `trusted low-friction = GitHub HTTPS`
+- `SSH/custom = ordinary approval`
+
+The previous SSH positive failures are retained as provenance from the old
+scope. Plan v0.4 removes SSH positive publication from the product claim; it
+does not weaken the SSH/custom security negative gate.
 
 ## Evidence
 
-See `results/bridge-core--low-friction-operations-convergence/EVIDENCE.md`.
+See
+`results/bridge-core--low-friction-operations-convergence/EVIDENCE.md`.
 
 ## Current Conclusion
 
-Implementation repair is substantially complete, but final release closure remains blocked by the missing standard GitHub SSH positive path. Do not treat this as a completed 0.9.0 release PASS.
+The approved HTTPS-only scope correction is ready for pre-final Critic review.
+Do not interpret this as a claim that SSH/custom transports are trusted
+low-friction publication paths.

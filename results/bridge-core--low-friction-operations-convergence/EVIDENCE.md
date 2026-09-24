@@ -2,39 +2,70 @@
 
 Task key: `bridge-core--low-friction-operations-convergence`
 
-Status: `RECOVERY_IMPLEMENTED_PARTIAL_FINAL_GATES`
+Status: `HTTPS_ONLY_RECOVERY_READY_FOR_PREFINAL_CRITIC`
 
-This file supersedes the pre-final evidence from baseline
-`88fa67c44e6e491ed548f033ce0d3c33f63525c4`. That baseline was useful
-implementation provenance, but it was returned for recovery by the pre-final
-Critic and is not final PASS evidence.
+This file supersedes the earlier partial recovery evidence that treated a
+standard GitHub SSH positive publication as a final release gate. The prior SSH
+positive failures remain real historical provenance, but Plan v0.4 removes SSH
+positive publication from the 0.9.0 product claim.
 
 ## Candidate Identity
 
-- Recovery code candidate: `37a773cd83971d64f194a7d82c55a24889bd8164`
-- B1-B3 implementation commit: `47cea1edb5bcb0d8038c4c6bd925f2f1ccd5c90c`
-- CI environment gate commit: `5bf6f401d5fcf98277a031d94abf55ac6ad77da1`
-- CI cleanup stability commit: `37a773cd83971d64f194a7d82c55a24889bd8164`
+- Approved amended plan:
+  `docs/design/0.9.0_low_friction_operations_convergence_plan_v0.4_2026-09-24.md`
+- Amended recovery goal:
+  `docs/design/0.9.0_low_friction_operations_convergence_recovery_goal_v0.2_2026-09-24.md`
+- HTTPS-only publisher source correction:
+  `160166b0276e3f79e05252c8828f249d1d6409ae`
+- Published main baseline observed after an independent later main commit:
+  `b933053530cfa9971c735cf38f428ae7cebd46ca`
 - Branch: `main`
 - Canonical worktree: `/home/yuukias/GPT_Codex_AI_Bridge_Kit`
 - Remote: `origin -> https://github.com/YuukiAS/GPT_Codex_AI_Bridge_Kit.git`
 - CODEX_HOME: `/home/yuukias/.codex`
 
-## B1-B3 Repairs
+Scope note: `160166b0276e3f79e05252c8828f249d1d6409ae` is the task-owned
+publisher correction. `b933053530cfa9971c735cf38f428ae7cebd46ca` was already
+the latest published main baseline before this evidence refresh and is not
+claimed as part of this HTTPS-only publisher correction.
 
-- B1: `publish-current-branch` now rejects process transport/config/askpass overrides before any remote/network Git preflight, then runs `ls-remote` and `push` under sanitized environment.
-- B2: Persistent Run now has `ai-bridge persistent-run report` and `latest`, with machine-local latest/history, event comparison, dedupe/cadence, ETA materiality, UNKNOWN/stall semantics, and no daemon/watcher/controller.
-- B3: Reviewed materializer now treats the frozen worktree locator as stable lexical identity, rejects symlink redirection, verifies bootstrap base lineage against `origin/<base_branch>`, and rolls back only invocation-created local branch/worktree state when safe.
+## Product Claim After Plan v0.4
+
+- Trusted low-friction publication is GitHub HTTPS only:
+  `https://github.com/<owner>/<repo>.git`.
+- SSH, scp-style, and custom transports are not trusted low-friction positive
+  paths. They route to ordinary approval.
+- Effective fetch and push URLs are classified after Git URL rewriting.
+- A literal HTTPS remote that is effectively rewritten to SSH/custom fails
+  closed before any remote/network Git operation.
+- HTTPS fetch with SSH/custom effective push URL fails closed before any
+  remote/network Git operation.
+- SSH/custom trusted-helper fail-closed remains a security negative gate.
+- SSH positive publication is no longer required or claimed.
+
+## Source Changes
+
+- Added a publisher-specific GitHub HTTPS identity parser in
+  `ai_bridge_kit/host.py`.
+- Kept shared `_canonical_repo_identity()` unchanged so Reviewed Handoff and
+  local disposable repo identity continue to support existing HTTPS, SSH, and
+  local shapes.
+- Moved bounded publisher remote identity classification to the publisher-only
+  HTTPS parser while preserving existing transport/config/credential/askpass,
+  hook, branch, ancestry, and final recheck fences.
+- Added deterministic tests for GitHub HTTPS positive bounded publication,
+  SSH/scp/custom effective URL rejection, literal HTTPS rewritten to SSH,
+  HTTPS fetch / SSH push mismatch, and shared identity parser compatibility.
 
 ## Deterministic Verification
 
-Focused recovery tests:
+Focused host-policy suite:
 
 ```text
-python -m unittest tests.test_persistent_run tests.test_host_policy tests.test_reviewed_handoff
+python -m unittest tests.test_host_policy
 ```
 
-Result: `Ran 121 tests ... OK`
+Result: `Ran 27 tests ... OK`
 
 Full local suite:
 
@@ -42,137 +73,164 @@ Full local suite:
 python -m unittest discover -s tests -p 'test_*.py'
 ```
 
-Result: `Ran 394 tests ... OK`
-
-CI environment follow-up:
-
-- `tests.test_upfront_authorization_persistent_authoring.UpfrontAuthorizationPersistentAuthoringTests.test_execpolicy_still_prompts_tmux_mutation_and_fallbacks` now skips only when `codex` CLI is absent.
-- On the target machine, where `codex` is installed, the execpolicy probe still ran and passed.
-- On hosted GitHub Actions, the skip prevents an infrastructure-only failure from replacing the live Machine Policy validation gate.
-- Reviewed runner tests now use Python-supported temporary-directory cleanup tolerance for Git object cleanup races observed only on hosted Python 3.14.
+Result: `Ran 397 tests ... OK`
 
 Diff hygiene:
 
 ```text
-git diff --cached --check
+git diff --check
 ```
 
-Result: exit 0 before candidate commit.
+Result: exit 0.
 
-## Live Machine Policy
+## Live Machine Policy And Runtime Binding
 
-Command:
+Trusted executable and imported source check:
 
 ```text
-python -m ai_bridge_kit.bridge_cli host install --codex-home /home/yuukias/.codex
-python -m ai_bridge_kit.bridge_cli host validate --codex-home /home/yuukias/.codex
+command -v ai-bridge
+python -c "import ai_bridge_kit, ai_bridge_kit.host, ai_bridge_kit.bridge_cli, shutil; ..."
+git diff --quiet -- ai_bridge_kit/host.py ai_bridge_kit/bridge_cli.py
+git diff --quiet 160166b0276e3f79e05252c8828f249d1d6409ae -- ai_bridge_kit/host.py ai_bridge_kit/bridge_cli.py tests/test_host_policy.py
 ```
 
 Result:
 
-- install returned `No changes needed; host policy is already configured.`
-- validate exit 0
+- Trusted executable: `/home/yuukias/conda/bin/ai-bridge`
+- Imported package source:
+  `/home/yuukias/GPT_Codex_AI_Bridge_Kit/ai_bridge_kit`
+- `host.py`, `bridge_cli.py`, and `tests/test_host_policy.py` matched
+  `160166b0276e3f79e05252c8828f249d1d6409ae`.
+- Existing editable install already loaded the task-owned final source path for
+  the affected publisher entry. No `pip install -e` was run.
+
+Machine Policy validation:
+
+```text
+ai-bridge host validate --codex-home /home/yuukias/.codex
+```
+
+Result: exit 0.
+
+Important validate observations:
+
+- `overall state: configured`
 - `features.default_mode_request_user_input: false (configured)`
 - `features.memories: true (configured)`
 - `ai-bridge host publish-current-branch ... => allow`
-- `ai-bridge reviewed-handoff materialize-worktree ... => allow`
-- safe `gh auth/pr/issue/run ... --` reads => allow
 - raw `git push origin main` => prompt
 - dangerous Git/shell/tmux/process/Slurm mutation neighbors => prompt/no-match
 
-No new backup directory was created because this recovery did not change the Machine Policy managed files and the install was a no-op.
+Managed files did not need refresh, so `ai-bridge host install --codex-home
+/home/yuukias/.codex` was not run.
 
 ## Normal-Entry Gates Rerun
 
-G1/G2:
-
-- `gh auth status --` succeeded for account `YuukiAS` without token display.
-- `gh pr list --` succeeded.
-- `gh run list --` succeeded.
-- `host validate` confirmed token display, positional `gh pr view`, `--repo`, arbitrary `gh api`, dangerous Git, shell/Python composition and mutation neighbors remain gated.
-
 G3:
 
-- `ai-bridge host publish-current-branch --expected-repo YuukiAS/GPT_Codex_AI_Bridge_Kit --expected-branch main` published `47cea1edb5bcb0d8038c4c6bd925f2f1ccd5c90c`, `5bf6f401d5fcf98277a031d94abf55ac6ad77da1`, and later `37a773cd83971d64f194a7d82c55a24889bd8164` to `origin/main`.
-- Follow-up `git fetch origin main` verified the code candidate at `HEAD == origin/main == 37a773cd83971d64f194a7d82c55a24889bd8164` before later evidence-only reporting updates.
-- The push again emitted a local tracking-ref lock warning after the remote accepted the update; the independent fetch verified the remote state.
+- Effective fetch URL:
+  `https://github.com/YuukiAS/GPT_Codex_AI_Bridge_Kit.git`
+- Effective push URL:
+  `https://github.com/YuukiAS/GPT_Codex_AI_Bridge_Kit.git`
+- Bounded publisher command:
+
+```text
+python -m ai_bridge_kit.bridge_cli host publish-current-branch --expected-repo YuukiAS/GPT_Codex_AI_Bridge_Kit --expected-branch main
+```
+
+Result:
+
+```text
+status: published
+repo: YuukiAS/GPT_Codex_AI_Bridge_Kit
+branch: main
+destination: origin/refs/heads/main
+pushed_oid: 160166b0276e3f79e05252c8828f249d1d6409ae
+transport: GitHub HTTPS
+ref update: 7c9fe16..160166b
+```
+
+The command used the existing GitHub HTTPS credential path and did not require
+repeated approval. The remote accepted the ordinary non-force ref update. The
+publisher emitted a local tracking-ref/credential lock warning after the remote
+accepted the update; an independent fetch verified the remote state:
+
+```text
+git fetch origin main
+git rev-parse HEAD
+git rev-parse origin/main
+```
+
+Result at source publication time:
+
+```text
+HEAD == origin/main == 160166b0276e3f79e05252c8828f249d1d6409ae
+```
 
 G4:
 
-- Normal HTTPS publication through the bounded publisher succeeded using existing GitHub HTTPS credential manager.
-- CLI canary negatives passed for `GIT_SSH_COMMAND`, `GIT_SSH`, `GIT_ASKPASS`, `SSH_ASKPASS`, `GIT_CONFIG_GLOBAL`, `GIT_CONFIG_SYSTEM`, `GIT_CONFIG_NOSYSTEM`, `GIT_CONFIG_COUNT`, local `core.sshCommand`, local `credential.helper`, local `core.askPass`, worktree `core.sshCommand`, and worktree `credential.helper`.
-- In every canary case the expected rejection occurred, the canary marker remained absent, and the remote ref did not change.
-- Required positive standard SSH agent/config publication was not proven: `ssh -T -o BatchMode=yes -o StrictHostKeyChecking=accept-new git@github.com` returned `Permission denied (publickey)` and could not write `known_hosts` in the current environment.
-- Current recheck still does not prove the SSH positive path: strict standard SSH failed with `Host key verification failed`, a temporary known-hosts authentication probe failed with `Permission denied (publickey)`, and `ssh-add -l` returned `Error connecting to agent: No such file or directory`.
+- GitHub HTTPS positive: passed through bounded publisher as above.
+- Existing exact-effect/security negatives: retained and covered by
+  `tests.test_host_policy`.
+- Effective SSH/scp/custom remote fail-closed before network: passed.
+- Literal HTTPS rewritten to SSH/custom negative: passed.
+- HTTPS fetch / SSH push mismatch negative: passed.
+- SSH positive publication: no longer required by Plan v0.4 and not claimed.
 
-G5/G6/G7:
-
-- `ai-bridge reviewed-handoff materialize-worktree` succeeded for exact sibling bootstrap.
-- The same normal entry succeeded for `/tmp`-style rematerialization from an existing `reviewed/<task_key>` remote branch.
-- Wrong path failed closed with `WORKTREE_ASSERTION_FAILED`.
-- Deterministic tests cover changed symlink target, wrong/occupied path, base lineage mismatch, metadata mismatch, branch ambiguity, and invocation-owned rollback.
-
-G8:
-
-- `ai-bridge plugin-replay --help` still exposes only the narrow production replay shape.
-- `ai-bridge plugin-replay --plugin ai-skills-core@yuukias-ai-skills ... --dry-run` accepted explicit repo-local task/input files and produced machine-local replay metadata.
-- `codex plugin list` shows `ai-skills-core@yuukias-ai-skills` installed/enabled.
-- AI Skills maintainer source still directs production evidence to `ai-bridge plugin-replay --plugin ai-skills-core@yuukias-ai-skills`.
-
-G9:
-
-- Official Codex plugin path was exercised with:
-  `codex plugin add workflow-core@yuukias-ai-skills --json`
-- It succeeded after allowing writes to the existing Codex plugin cache.
-- Result kept the legal production plugin identity: `workflow-core@yuukias-ai-skills`, version `0.3`.
-- No Bridge candidate-plugin-replay path was used.
-
-G10/G11:
-
-- `ai-bridge persistent-run report --progress ...` processed a three-event local run.
-- First event delivered `start_or_resume`.
-- Duplicate/non-material event was marked `suppress`.
-- Stage transition delivered with `fraction=0.5`, real unit `epochs`, ETA basis `checkpoint throughput`, and uncertainty `plus/minus 5 minutes`.
-- `ai-bridge persistent-run latest --progress ...` returned latest without tmux attach.
-- Independent stall case produced `eta=UNKNOWN`, `status=stalled`, preserved last progress timestamp, and did not restart/cancel/mutate resources.
-
-G12:
-
-- `ai-bridge notifier send` rejected an invalid `operational_progress` brief with `status=PASS` before delivery.
-- Existing Notifications provider/recipient is now proven available: `ai-bridge notifier send-test` returned `sent: sent`.
-- A valid one-shot `operational_progress` brief was sent through the existing Notifications configuration:
-  `results/bridge-core--low-friction-operations-convergence/notifications/recovery_operational_progress_20260924.json`.
-- `ai-bridge notifier status` after the operational-progress send reported `sent_count: 1`, `last_success.brief_path` equal to that notification brief, and `last_failure: null`.
-- No provider, recipient, account, or credential was changed or created.
-
-G13:
-
-- Real `reviewed_runner.push_guard_environment()` caused generic `publish-current-branch` to refuse before mutation.
-- Remote ref did not change.
+Rejected cases prove no remote/network publication through the trusted helper by
+mocking publisher network points and asserting they are never reached. Existing
+canary tests continue proving injected executables are not run and remote refs
+do not change for transport/config/credential/askpass/hook negatives.
 
 G14:
 
-- Recovery code candidate, live Machine Policy validation, local full tests and normal-entry probes above all bind to code candidate `37a773cd83971d64f194a7d82c55a24889bd8164`.
-- This evidence file is a later evidence artifact and does not change the source candidate code. It records that full release closure is not claimable because G4 SSH positive remains unavailable.
+- The task-owned source correction, runtime publisher entry, local deterministic
+  tests, live host validation, and HTTPS normal-entry publication all bind to
+  `160166b0276e3f79e05252c8828f249d1d6409ae`.
+- This evidence refresh records the amended HTTPS-only product claim and no
+  longer treats SSH positive publication as a remaining product gate.
+- Final documentation now explicitly states:
+  - `trusted low-friction = GitHub HTTPS`
+  - `SSH/custom = ordinary approval`
 
-G15:
+## Should-Not-Change Regressions
 
-- No generic Git facade, second publisher, auth DB/token store, wrapper registry, new workflow class, daemon/watcher hierarchy, generic shell/Python allow, force/destructive Git allow, or Host-wide `approval_policy=never` was added.
-- Existing narrow plugin-replay child `approval_policy="never"` contract remains isolated and unchanged.
-
-## External CI
-
-GitHub Actions run `35895831666` for `37a773cd83971d64f194a7d82c55a24889bd8164` passed.
+The full local suite passed after the HTTPS-only publisher change:
 
 ```text
-Python 3.9: passed
-Python 3.x: passed
+python -m unittest discover -s tests -p 'test_*.py'
+Ran 397 tests ... OK
 ```
 
-The earlier hosted failure for `47cea1e` was an infrastructure-only `codex executable not found` failure in the CI environment. A later evidence-only commit also exposed a hosted Python 3.14 temporary Git object cleanup race. The current source candidate keeps the live target-machine execpolicy probe, lets hosted CI skip that single probe only when `codex` is absent, and tolerates the Python 3.14 cleanup race in reviewed-runner tests.
+This includes coverage for B1/B2/B3-adjacent behavior, Reviewed Handoff,
+Reviewed runner, Persistent Run, Notifications, plugin-replay, G13, and G15.
 
-## Remaining Non-Closure Items
+External CI:
 
-- G4 standard SSH agent/config positive publication is not proven on this machine because GitHub SSH authentication is unavailable.
+- GitHub Actions run `35947503209` for
+  `160166b0276e3f79e05252c8828f249d1d6409ae`: success.
+- GitHub Actions run `35947601396` for
+  `b933053530cfa9971c735cf38f428ae7cebd46ca`: success.
 
-Therefore this recovery cannot honestly be marked final release PASS in the current environment.
+## Historical SSH Provenance
+
+Earlier recovery evidence observed real SSH positive failures:
+
+- `ssh -T -o BatchMode=yes -o StrictHostKeyChecking=accept-new git@github.com`
+  returned `Permission denied (publickey)` and could not write `known_hosts` in
+  the current environment.
+- A later strict standard SSH probe failed with `Host key verification failed`.
+- A temporary known-hosts authentication probe failed with
+  `Permission denied (publickey)`.
+- `ssh-add -l` returned `Error connecting to agent: No such file or directory`.
+
+These remain real historical facts under the old scope. They are no longer
+release blockers after Plan v0.4 because SSH positive publication is not part of
+the HTTPS-only trusted low-friction product claim.
+
+## Current Conclusion
+
+The approved HTTPS-only scope correction has been implemented, tested, published
+through GitHub HTTPS, and validated against the affected gates. This package is
+ready for the requested pre-final Critic review. It is not a claim that
+SSH/custom transports are trusted low-friction publication paths.
