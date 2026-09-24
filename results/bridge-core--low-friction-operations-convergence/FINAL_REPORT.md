@@ -10,6 +10,22 @@ This report updates the earlier recovery conclusion after Plan v0.4. The old
 SSH positive failure remains historical evidence, but SSH positive publication
 is no longer a release gate or product claim for 0.9.0.
 
+Independent pre-final Critic result:
+
+```text
+CRITIC_RESULT=PASS
+REVIEW_STAGE=PRE_FINAL
+B1_PUBLISH_TRANSPORT_FENCE=CLOSED
+B2_PERSISTENT_RUN_REPORTER=CLOSED
+B3_REVIEWED_FROZEN_SCOPE=CLOSED
+B4_FINAL_GATE_EVIDENCE=CLOSED
+G3=PASS
+G4=PASS
+G14=PASS
+PRODUCTION_REPAIR_REQUIRED=NO
+READY_FOR_FINAL_CLOSURE=YES
+```
+
 ## What Changed
 
 - Trusted low-friction publication is now GitHub HTTPS only:
@@ -52,6 +68,6 @@ See
 
 ## Current Conclusion
 
-The approved HTTPS-only scope correction is ready for pre-final Critic review.
-Do not interpret this as a claim that SSH/custom transports are trusted
-low-friction publication paths.
+The approved HTTPS-only scope correction is final-closed after independent
+pre-final Critic PASS. Do not interpret this as a claim that SSH/custom
+transports are trusted low-friction publication paths.

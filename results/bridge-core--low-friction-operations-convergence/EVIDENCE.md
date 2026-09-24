@@ -2,12 +2,15 @@
 
 Task key: `bridge-core--low-friction-operations-convergence`
 
-Status: `HTTPS_ONLY_RECOVERY_READY_FOR_PREFINAL_CRITIC`
+Status: `FINAL_CLOSURE_PASS`
 
 This file supersedes the earlier partial recovery evidence that treated a
 standard GitHub SSH positive publication as a final release gate. The prior SSH
 positive failures remain real historical provenance, but Plan v0.4 removes SSH
-positive publication from the 0.9.0 product claim.
+positive publication from the 0.9.0 product claim. The independent pre-final
+Critic has now reviewed Plan v0.4 plus the current implementation/evidence and
+returned PASS, so this document records final closure for the approved
+HTTPS-only scope.
 
 ## Candidate Identity
 
@@ -19,6 +22,8 @@ positive publication from the 0.9.0 product claim.
   `160166b0276e3f79e05252c8828f249d1d6409ae`
 - Published main baseline observed after an independent later main commit:
   `b933053530cfa9971c735cf38f428ae7cebd46ca`
+- Main observed by pre-final Critic:
+  `0c7cdba8b12df9b519c83d1b6d5a1a99dd4827ec`
 - Branch: `main`
 - Canonical worktree: `/home/yuukias/GPT_Codex_AI_Bridge_Kit`
 - Remote: `origin -> https://github.com/YuukiAS/GPT_Codex_AI_Bridge_Kit.git`
@@ -28,6 +33,29 @@ Scope note: `160166b0276e3f79e05252c8828f249d1d6409ae` is the task-owned
 publisher correction. `b933053530cfa9971c735cf38f428ae7cebd46ca` was already
 the latest published main baseline before this evidence refresh and is not
 claimed as part of this HTTPS-only publisher correction.
+
+## Independent Pre-Final Critic Closure
+
+The independent pre-final Critic reviewed the approved Plan v0.4, the
+task-owned HTTPS publisher candidate, the current main evidence package, and the
+final report. The closure result transferred by the user is:
+
+```text
+CRITIC_RESULT=PASS
+REVIEW_STAGE=PRE_FINAL
+B1_PUBLISH_TRANSPORT_FENCE=CLOSED
+B2_PERSISTENT_RUN_REPORTER=CLOSED
+B3_REVIEWED_FROZEN_SCOPE=CLOSED
+B4_FINAL_GATE_EVIDENCE=CLOSED
+G3=PASS
+G4=PASS
+G14=PASS
+PRODUCTION_REPAIR_REQUIRED=NO
+READY_FOR_FINAL_CLOSURE=YES
+```
+
+No production repair is required after this Critic PASS. The final closure
+action is evidence/control-plane only.
 
 ## Product Claim After Plan v0.4
 
@@ -231,6 +259,8 @@ the HTTPS-only trusted low-friction product claim.
 ## Current Conclusion
 
 The approved HTTPS-only scope correction has been implemented, tested, published
-through GitHub HTTPS, and validated against the affected gates. This package is
-ready for the requested pre-final Critic review. It is not a claim that
-SSH/custom transports are trusted low-friction publication paths.
+through GitHub HTTPS, validated against the affected gates, and independently
+accepted by the pre-final Critic. Bridge Kit 0.9.0
+`bridge-core--low-friction-operations-convergence` is final-closed for the
+approved HTTPS-only scope. This is not a claim that SSH/custom transports are
+trusted low-friction publication paths.
