@@ -6,7 +6,23 @@
 
 这个仓库的原则是：**默认保持简单，需要什么再加什么。** 普通项目只需要机器级规则和基础交接；只有确实需要时，才启用独立复核、高风险闭环、邮件通知、Overleaf 同步或视觉复核。
 
-当前集成版本：`0.9.0`（low-friction operations convergence candidate；这不是 GitHub release/tag 声明）。
+当前集成版本：`0.9.0`（低打扰操作收口已完成文档同步；这不是 GitHub release/tag 声明）。
+
+## 0.9.0 解决了什么
+
+`0.9.0` 主要解决的是一个使用体验问题：安全、常见、已经有边界的操作，不应该每次都被当成高风险动作反复拦住；但真正危险的 Git、进程、凭据和远端操作也不能因此被放开。
+
+实际变化可以这样理解：
+
+- 普通 Git/GitHub 只读诊断更顺了。当前仓库范围内的 GitHub 状态读取、已配置远端同步、进程/session 只读检查等安全操作，由 Machine Policy 低打扰处理；跨仓库读取、token 展示、任意 `gh api`、shell 组合和危险 Git 仍然走审批。
+- 最后一步普通发布更稳定了。当前分支已经选好、用户已经授权、`origin` 上同名分支已经存在时，GitHub HTTPS 发布可以走唯一的受边界约束入口 `ai-bridge host publish-current-branch`，避免原始 `git push origin main` 在最后又被 Auto-review 卡住。
+- 发布传输边界更清楚了。`GitHub HTTPS + 现有 system/global/gh credential helper` 是低打扰可信路径；SSH、scp-style 和 custom transport 仍回到普通原始 Git push 审批。Bridge Kit 不配置 SSH key、ssh-agent 或 `known_hosts`，也不会替你把 remote 从 HTTPS 改成 SSH。
+- Reviewed Mode 创建或恢复任务 worktree 时更少被审批误伤。`ai-bridge reviewed-handoff materialize-worktree` 只允许从冻结的 repo、task、base 和 path 物化 exact worktree，不会变成通用 Git wrapper。
+- Persistent Run 不只保证“任务别死”。它现在能报告真实 stage/progress、有依据 ETA 或 `UNKNOWN`、以及 stalled 状态；这些运行进展也可以通过已有 Notifications 投影出去。但它仍不是自动控制系统，不会自动重启、取消、扩资源或宣布任务完成。
+
+整体设计不是给 Codex 全面放权，而是把安全的原生命令尽量留在原生命令里；只有原生权限规则表达不了的两个动态 Git 动作，才放进受边界约束的操作入口。危险操作继续审批。
+
+README 同步状态：已按 `0.9.0` final closure 更新。
 
 ## 三档工作模式
 
@@ -66,10 +82,12 @@ Reviewed Mode 使用 `ai-bridge reviewed-handoff ...`，Controlled Mode 使用
 - `0.8.5`：修复 Default-mode required human gate transport：Host Policy 期望
   `default_mode_request_user_input=false`，Lite/Host 使用 durable transcript
   wait/resume 语义，`host validate` 区分 feature key 是否受支持与期望启用状态；现阶段不代表已经 release、tag 或真实 Host install。
-- `0.9.0`：收口低打扰操作入口。Machine Policy 增加当前仓库 GitHub/Git 安全读、
-  单一 bounded `ai-bridge host publish-current-branch`、Reviewed Mode
-  `materialize-worktree`、Persistent Run progress/ETA 规范化和 Notifications
-  operational-progress brief；raw `git push origin main` 不再作为机器级低打扰入口。
+- `0.9.0`：收口低打扰操作入口。Machine Policy 增加当前仓库 GitHub/Git 安全读；
+  GitHub HTTPS 普通发布使用单一受边界约束的
+  `ai-bridge host publish-current-branch`，SSH/scp/custom transport 回到普通审批；
+  Reviewed Mode 增加冻结 worktree 的 `materialize-worktree`；Persistent Run 增加
+  progress/ETA/stalled 报告，并可通过 Notifications 投影 operational-progress brief。
+  raw `git push origin main` 不再作为机器级低打扰入口。
 
 ## 一眼看懂：我到底该装什么
 
@@ -153,6 +171,12 @@ Goal 的 bounded kickoff 授权，应先显示 kickoff prompt 并等待用户发
 已存在时不重复询问，新的资源、recipient/provider、purpose、backend 或越界副作用
 仍然单独 gate。
 
+`0.9.0` 起，Persistent Run 还能把长期任务的运行状态说清楚：当前 stage、真实
+progress fraction、有依据 ETA 或 `UNKNOWN`、以及从真实 no-progress evidence 推出的
+stalled 状态。它也可以把这些 operational progress 交给 Notifications 发送。这里报告
+的是运行进展，不是自动控制：Bridge Kit 不会因此自动重启任务、取消任务、扩资源，
+也不会把 heartbeat、PID、tmux session 或 ETA 当成 Goal 完成。
+
 ---
 
 ## 5. Machine Policy（`0.2.0` 引入）：先配置 Codex 的长期规则
@@ -185,7 +209,8 @@ $CODEX_HOME/rules/ai-bridge-global.rules
 - 用户可见的进度、计划、测试结果和完成报告默认使用自然中文；
 - 普通局部实现由 Codex 自行判断，真正会改变架构、范围、部署、Git 分支策略或科研语义的歧义才询问用户；
 - 当前 `main` 分支上的安全 `fetch`、快进 `pull`、正常 `add/commit` 尽量减少重复授权；
-- 已存在同名远端分支的普通发布走单一 bounded 入口 `ai-bridge host publish-current-branch --expected-repo <owner/repo> --expected-branch <branch>`；raw `git push origin main` 保持审批路径；
+- 已存在同名远端分支的 GitHub HTTPS 普通发布走单一受边界约束的入口 `ai-bridge host publish-current-branch --expected-repo <owner/repo> --expected-branch <branch>`；原始 `git push origin main` 保持审批路径；
+- 这个受边界约束的发布入口只把 `https://github.com/<owner>/<repo>.git` 加上现有 system/global/gh credential helper 视为低打扰可信路径；SSH、scp-style 和 custom transport 会默认失败并回到普通审批，Bridge Kit 不配置 SSH key、ssh-agent 或 `known_hosts`；
 - 当前仓库范围的 `gh auth status --`、`gh pr list --`、`gh pr status --`、`gh issue list --`、`gh issue status --` 和 `gh run list --` 可低打扰读取；`--repo`、token display、任意 `gh api` 和 positional view 仍走审批路径；
 - 常见 Slurm 只读查询如 `squeue`、`sinfo`、`sacct`、`sstat`、`sprio`、`scontrol show ...` 和 `scontrol ping` 尽量减少重复授权；
 - `ps`、`tmux ls` / `tmux list-sessions` / `tmux has-session` 这类只读 host/session inspection，以及 `git fetch --all --prune` 这类已配置远端同步，尽量减少重复授权；
@@ -314,6 +339,12 @@ ai-bridge reviewed-handoff watcher restart --target /path/to/project --branch <e
 同一个 `target + branch` 只允许一个正式 watcher。第二个实例会返回 `ALREADY_RUNNING` 和真实 PID；如果 Bridge Kit 源码已经更新，`watcher status` 会显示 `RESTART_REQUIRED`，但不会自动打断正在工作的 watcher。
 
 监视器不会自行创建分支或 PR。它也不会把 Codex Executor 变成新的决策角色：Executor 只执行冻结方案并提交结果，发布仍由 watcher 在验证后完成。
+
+`0.9.0` 起，Reviewed Mode 还有一个受边界约束的 worktree 物化入口：
+`ai-bridge reviewed-handoff materialize-worktree`。它解决的是“任务已经冻结，
+repo、task、base、path 都已经确定，但精确 task worktree 创建或恢复仍被审批卡住”
+的问题。这个入口只接受冻结 scope，不会变成通用 `git worktree` / branch wrapper，
+也不会替用户选择新分支、改 remote 或创建 PR。
 
 `PLAN_FROZEN` 只有在当前 `PLAN.md` 结构合法时才会被 watcher 视为可执行。0.7.1 起，新 freeze / re-freeze 必须使用 `AI_BRIDGE_REVIEWED_PLAN_V2`，历史 `AI_BRIDGE_REVIEWED_PLAN_V1` frozen Plan 按自身旧章节做兼容验证，不追溯要求补写 Goal Fidelity H2；如果 GitHub 上出现临时不合法的 workflow 状态，watcher 会拒绝启动 Executor、记录本机状态并低频重试。Planner 后续修好同一分支后，不需要用户重新启动 watcher。
 

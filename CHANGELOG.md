@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Synchronize README / Quickstart wording with the 0.9.0 final closure so users
+  can see the concrete low-friction Git/GitHub, publisher, Reviewed Mode,
+  Persistent Run, and Notifications behavior without reading internal gate
+  labels.
 - Make Reviewed Mode watcher machine-state writes atomic so concurrent readers
   cannot observe truncated `watcher.json` during updates.
 - Skip the full Tests workflow for pure `docs/design/**` and `results/**`
@@ -18,10 +22,11 @@
   view forms, custom Git remotes/helpers, ext-diff/textconv, shell composition,
   and dangerous neighbors gated.
 - Add the single bounded `ai-bridge host publish-current-branch` operation for
-  existing same-name branch publication with exact-effect checks, remote
-  identity assertions, behind/ancestry checks, no force/tag/submodule/push
-  option expansion, pre-push hook rejection, Review executor guard rejection,
-  and transport/config/credential/askpass fences.
+  existing same-name GitHub HTTPS branch publication with exact-effect checks,
+  remote identity assertions, behind/ancestry checks, no force/tag/submodule/
+  push option expansion, pre-push hook rejection, Review executor guard
+  rejection, and transport/config/credential/askpass fences. SSH/scp/custom
+  transports remain on the ordinary raw Git approval path.
 - Add the bounded `ai-bridge reviewed-handoff materialize-worktree` operation
   so Reviewed Mode can bootstrap or rematerialize the exact frozen task
   worktree from existing `REQUEST.md` and `CURRENT.json` artifacts without

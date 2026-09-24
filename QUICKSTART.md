@@ -101,8 +101,8 @@ ai-bridge validate --target /path/to/project
 输出 `OK` 表示结构和任务文件基本合规。输出 `ERROR` 或 `WARN` 时，先修正路径、frontmatter 或命名，再交给 Codex 执行。
 
 机器级规则使用当前显示名 **Machine Policy**，兼容命令仍是 `ai-bridge host ...`。
-如果已经在当前分支完成任务，并且同名远端分支已经存在，低打扰发布使用 bounded
-入口而不是 raw `git push origin main`：
+如果已经在当前分支完成任务，并且同名远端分支已经存在，GitHub HTTPS 的低打扰发布
+使用受边界约束的入口，而不是原始 `git push origin main`：
 
 ```bash
 ai-bridge host publish-current-branch \
@@ -112,6 +112,10 @@ ai-bridge host publish-current-branch \
 
 这两个参数只是 equality assertion；真实 repo、branch、upstream、remote ref 和
 transport/credential/hook 边界都由 helper 从当前 Git 状态重新读取。
+这个入口只把 `https://github.com/<owner>/<repo>.git` 加上现有
+system/global/gh credential helper 视为可信低打扰路径。SSH、scp-style
+或 custom remote 会回到普通原始 Git push 审批；Bridge Kit 不配置 SSH key、agent
+或 `known_hosts`。
 
 ## 7. 可选：选择更重的 workflow
 
