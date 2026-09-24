@@ -481,6 +481,14 @@ def _canonical_repo_identity(url: str) -> str:
     raise HostPublishError("REMOTE_IDENTITY_UNSUPPORTED")
 
 
+def _publisher_github_https_identity(url: str) -> str:
+    value = url.strip()
+    match = re.match(r"^https://github\.com/([^/]+)/([^/]+)\.git$", value)
+    if not match:
+        raise HostPublishError("UNSUPPORTED_TRANSPORT_REQUIRES_ORDINARY_APPROVAL")
+    return f"{match.group(1)}/{match.group(2)}"
+
+
 def _single_remote_url(cwd: Path, args: list[str], reason: str) -> str:
     urls = _git_lines(cwd, args)
     if len(urls) != 1:
@@ -600,12 +608,6 @@ def _assert_publisher_preconditions(
     branch = _git_text(top, ["symbolic-ref", "--quiet", "--short", "HEAD"])
     if branch != expected_branch:
         raise HostPublishError("BRANCH_ASSERTION_FAILED")
-    fetch_url = _single_remote_url(top, ["remote", "get-url", "--all", "origin"], "REMOTE_URL_AMBIGUOUS")
-    push_url = _single_remote_url(top, ["remote", "get-url", "--push", "--all", "origin"], "REMOTE_PUSH_URL_AMBIGUOUS")
-    repo = _canonical_repo_identity(fetch_url)
-    push_repo = _canonical_repo_identity(push_url)
-    if repo != push_repo or repo != expected_repo:
-        raise HostPublishError("REMOTE_IDENTITY_MISMATCH")
     if _config_value(top, f"branch.{branch}.remote") != "origin":
         raise HostPublishError("UPSTREAM_REMOTE_MISMATCH")
     if _config_value(top, f"branch.{branch}.merge") != f"refs/heads/{branch}":
@@ -625,6 +627,12 @@ def _assert_publisher_preconditions(
     captured_head = _git_text(top, ["rev-parse", "HEAD"])
     _reject_repository_transport_config(top)
     _reject_active_hook(top)
+    fetch_url = _single_remote_url(top, ["remote", "get-url", "--all", "origin"], "REMOTE_URL_AMBIGUOUS")
+    push_url = _single_remote_url(top, ["remote", "get-url", "--push", "--all", "origin"], "REMOTE_PUSH_URL_AMBIGUOUS")
+    repo = _publisher_github_https_identity(fetch_url)
+    push_repo = _publisher_github_https_identity(push_url)
+    if repo != push_repo or repo != expected_repo:
+        raise HostPublishError("REMOTE_IDENTITY_MISMATCH")
     remote_env = _sanitized_push_env(env)
     remote_query = _git_text(top, ["ls-remote", "--heads", "origin", f"refs/heads/{branch}"], env=remote_env)
     remote_parts = remote_query.split()

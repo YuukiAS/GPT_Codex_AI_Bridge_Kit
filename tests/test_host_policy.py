@@ -6,7 +6,9 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
+from ai_bridge_kit import host as host_module
 from ai_bridge_kit import bridge_cli
 from ai_bridge_kit import reviewed_runner
 from ai_bridge_kit.host import (
@@ -18,6 +20,7 @@ from ai_bridge_kit.host import (
     RULES_RELATIVE_PATH,
     _effective_execpolicy_decision,
     _execpolicy_decision,
+    _canonical_repo_identity,
     config_values,
     desired_agents_block,
     desired_rules_text,
@@ -52,6 +55,14 @@ class HostPolicyTests(unittest.TestCase):
         subprocess.check_call(["git", "commit", "-m", "change"], cwd=repo, stdout=subprocess.DEVNULL)
         return repo, "local:" + remote.resolve().as_posix()
 
+    def make_github_https_publish_repo(self, tmp: str) -> tuple[Path, str]:
+        repo, _identity = self.make_publish_repo(tmp)
+        subprocess.check_call(
+            ["git", "remote", "set-url", "origin", "https://github.com/YuukiAS/GPT_Codex_AI_Bridge_Kit.git"],
+            cwd=repo,
+        )
+        return repo, "YuukiAS/GPT_Codex_AI_Bridge_Kit"
+
     def make_canary(self, tmp: str, name: str = "canary") -> tuple[Path, Path]:
         marker = Path(tmp) / f"{name}.marker"
         script = Path(tmp) / name
@@ -81,6 +92,44 @@ class HostPolicyTests(unittest.TestCase):
             publish_current_branch(repo, expected_repo=identity, expected_branch="main", env=env)
         self.assertFalse(marker.exists())
         self.assertEqual(self.remote_main_head(tmp), before)
+
+    def run_with_fake_github_network(self, repo: Path, callback, *, remote_oid: str | None = None):
+        real_git = host_module._git
+        remote_oid = remote_oid or subprocess.check_output(["git", "rev-parse", "HEAD^"], cwd=repo, text=True).strip()
+        network_calls: list[list[str]] = []
+
+        def fake_git(cwd, args, *, env=None, check=True):
+            if args[:2] == ["ls-remote", "--heads"]:
+                network_calls.append(list(args))
+                return subprocess.CompletedProcess(
+                    ["git", *args],
+                    0,
+                    stdout=f"{remote_oid}\trefs/heads/main\n",
+                    stderr="",
+                )
+            if "push" in args and "--porcelain" in args:
+                network_calls.append(list(args))
+                return subprocess.CompletedProcess(["git", *args], 0, stdout="", stderr="")
+            return real_git(cwd, args, env=env, check=check)
+
+        with mock.patch("ai_bridge_kit.host._git", side_effect=fake_git):
+            result = callback()
+        return result, network_calls
+
+    def assert_publish_rejects_before_network(self, repo: Path, identity: str, *, message: str) -> None:
+        real_git = host_module._git
+        network_calls: list[list[str]] = []
+
+        def fake_git(cwd, args, *, env=None, check=True):
+            if args[:2] == ["ls-remote", "--heads"] or ("push" in args and "--porcelain" in args):
+                network_calls.append(list(args))
+                return subprocess.CompletedProcess(["git", *args], 1, stdout="", stderr="network should not run")
+            return real_git(cwd, args, env=env, check=check)
+
+        with mock.patch("ai_bridge_kit.host._git", side_effect=fake_git):
+            with self.assertRaisesRegex(HostPublishError, message):
+                publish_current_branch(repo, expected_repo=identity, expected_branch="main", env={"PATH": os.environ["PATH"]})
+        self.assertEqual(network_calls, [])
 
     def test_codex_home_resolution_priority(self) -> None:
         explicit = Path("/tmp/explicit-codex-home")
@@ -504,67 +553,109 @@ memories = false
 
             self.assertEqual(_effective_execpolicy_decision(decision), "prompt", raw)
 
+    def test_shared_repo_identity_still_supports_reviewed_and_local_shapes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            local = Path(tmp) / "repo.git"
+            local.mkdir()
+
+            self.assertEqual(_canonical_repo_identity("https://github.com/YuukiAS/GPT_Codex_AI_Bridge_Kit.git"), "YuukiAS/GPT_Codex_AI_Bridge_Kit")
+            self.assertEqual(_canonical_repo_identity("git@github.com:YuukiAS/GPT_Codex_AI_Bridge_Kit.git"), "YuukiAS/GPT_Codex_AI_Bridge_Kit")
+            self.assertEqual(_canonical_repo_identity("ssh://git@github.com/YuukiAS/GPT_Codex_AI_Bridge_Kit.git"), "YuukiAS/GPT_Codex_AI_Bridge_Kit")
+            self.assertEqual(_canonical_repo_identity(str(local)), "local:" + local.resolve().as_posix())
+
     def test_publish_current_branch_pushes_existing_same_name_branch(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            repo, identity = self.make_publish_repo(tmp)
+            repo, identity = self.make_github_https_publish_repo(tmp)
             head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
 
-            result = publish_current_branch(
+            result, network_calls = self.run_with_fake_github_network(
                 repo,
-                expected_repo=identity,
-                expected_branch="main",
-                env={"PATH": os.environ["PATH"]},
+                lambda: publish_current_branch(
+                    repo,
+                    expected_repo=identity,
+                    expected_branch="main",
+                    env={"PATH": os.environ["PATH"]},
+                ),
             )
 
-            remote_head = subprocess.check_output(
-                ["git", "rev-parse", "refs/heads/main"],
-                cwd=Path(tmp) / "remote.git",
-                text=True,
-            ).strip()
             self.assertEqual(result.status, "published")
             self.assertEqual(result.pushed_oid, head)
-            self.assertEqual(remote_head, head)
+            self.assertEqual([call[0] for call in network_calls], ["ls-remote", "ls-remote", "-c"])
 
     def test_publish_current_branch_cli_entrypoint(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            repo, identity = self.make_publish_repo(tmp)
+            repo, identity = self.make_github_https_publish_repo(tmp)
             old_cwd = Path.cwd()
             try:
                 os.chdir(repo)
-                code = bridge_cli.main(
-                    [
-                        "host",
-                        "publish-current-branch",
-                        "--expected-repo",
-                        identity,
-                        "--expected-branch",
-                        "main",
-                    ]
+                code, network_calls = self.run_with_fake_github_network(
+                    repo,
+                    lambda: bridge_cli.main(
+                        [
+                            "host",
+                            "publish-current-branch",
+                            "--expected-repo",
+                            identity,
+                            "--expected-branch",
+                            "main",
+                        ]
+                    ),
                 )
             finally:
                 os.chdir(old_cwd)
 
             self.assertEqual(code, 0)
+            self.assertEqual([call[0] for call in network_calls], ["ls-remote", "ls-remote", "-c"])
 
     def test_publish_current_branch_rejects_wrong_repo_branch_and_remote_ahead(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            repo, identity = self.make_publish_repo(tmp)
+            repo, identity = self.make_github_https_publish_repo(tmp)
             with self.assertRaisesRegex(HostPublishError, "REMOTE_IDENTITY_MISMATCH"):
-                publish_current_branch(repo, expected_repo="YuukiAS/GPT_Codex_AI_Bridge_Kit", expected_branch="main", env={"PATH": os.environ["PATH"]})
+                publish_current_branch(repo, expected_repo="YuukiAS/Other_Repo", expected_branch="main", env={"PATH": os.environ["PATH"]})
             with self.assertRaisesRegex(HostPublishError, "BRANCH_ASSERTION_FAILED"):
                 publish_current_branch(repo, expected_repo=identity, expected_branch="develop", env={"PATH": os.environ["PATH"]})
 
-            other = Path(tmp) / "other"
-            subprocess.check_call(["git", "clone", str(Path(tmp) / "remote.git"), str(other)], stdout=subprocess.DEVNULL)
-            subprocess.check_call(["git", "config", "user.email", "test@example.org"], cwd=other)
-            subprocess.check_call(["git", "config", "user.name", "Test User"], cwd=other)
-            (other / "remote.txt").write_text("remote\n", encoding="utf-8")
-            subprocess.check_call(["git", "add", "remote.txt"], cwd=other)
-            subprocess.check_call(["git", "commit", "-m", "remote"], cwd=other, stdout=subprocess.DEVNULL)
-            subprocess.check_call(["git", "push", "origin", "main"], cwd=other, stdout=subprocess.DEVNULL)
-
             with self.assertRaisesRegex(HostPublishError, "REMOTE_AHEAD_REQUIRES_PULL"):
-                publish_current_branch(repo, expected_repo=identity, expected_branch="main", env={"PATH": os.environ["PATH"]})
+                self.run_with_fake_github_network(
+                    repo,
+                    lambda: publish_current_branch(repo, expected_repo=identity, expected_branch="main", env={"PATH": os.environ["PATH"]}),
+                    remote_oid="0" * 40,
+                )
+
+    def test_publish_current_branch_rejects_non_https_effective_transports_before_network(self) -> None:
+        cases = [
+            ("git@github.com:YuukiAS/GPT_Codex_AI_Bridge_Kit.git", None),
+            ("ssh://git@github.com/YuukiAS/GPT_Codex_AI_Bridge_Kit.git", None),
+            ("foo::YuukiAS/GPT_Codex_AI_Bridge_Kit", None),
+            ("https://github.com/YuukiAS/GPT_Codex_AI_Bridge_Kit.git", ("url.git@github.com:.insteadOf", "https://github.com/")),
+        ]
+        for remote_url, rewrite in cases:
+            with self.subTest(remote_url=remote_url, rewrite=rewrite):
+                with tempfile.TemporaryDirectory() as tmp:
+                    repo, identity = self.make_github_https_publish_repo(tmp)
+                    subprocess.check_call(["git", "remote", "set-url", "origin", remote_url], cwd=repo)
+                    if rewrite:
+                        subprocess.check_call(["git", "config", "--local", rewrite[0], rewrite[1]], cwd=repo)
+
+                    self.assert_publish_rejects_before_network(
+                        repo,
+                        identity,
+                        message="UNSUPPORTED_TRANSPORT_REQUIRES_ORDINARY_APPROVAL",
+                    )
+
+    def test_publish_current_branch_rejects_https_fetch_ssh_push_before_network(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo, identity = self.make_github_https_publish_repo(tmp)
+            subprocess.check_call(
+                ["git", "remote", "set-url", "--push", "origin", "git@github.com:YuukiAS/GPT_Codex_AI_Bridge_Kit.git"],
+                cwd=repo,
+            )
+
+            self.assert_publish_rejects_before_network(
+                repo,
+                identity,
+                message="UNSUPPORTED_TRANSPORT_REQUIRES_ORDINARY_APPROVAL",
+            )
 
     def test_publish_current_branch_transport_fence_negatives(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
