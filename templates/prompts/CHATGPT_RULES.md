@@ -81,9 +81,19 @@ or migrate into a heavier workflow.
 
 Long runtime is not a workflow selector. Overnight, unattended, multi-hour,
 multi-stage, run-until-morning, leave-it-running, survive-disconnect, and resume
-persistent Goal requests should first be classified as execution-lifetime
-requirements. If this repository has `automation/persistent_run/` installed and
-the task requires persistence, read:
+persistent Goal requests should first be classified across three separate
+questions: upfront authorization readiness, process lifetime owner, and
+project-native progress reporting. Duration alone must not select Persistent
+Run or `Backend: tmux`.
+
+If work is scheduler-owned, such as an accepted `sbatch` job, or already owned
+by a detached service/job, do not add tmux solely because the run is long or
+unattended. Write the exact scheduler/resource authorization boundary when one
+is required, and use scheduler/project-native progress evidence.
+
+If a terminal-owned foreground process or orchestrator must survive
+Codex/SSH/terminal disconnect, and this repository has
+`automation/persistent_run/` installed, read:
 
 ```text
 automation/persistent_run/README.md
@@ -97,11 +107,11 @@ recovery evidence, heartbeat/stage-state/checkpoint/resume semantics, and the
 original positive completion criteria. This does not create a fourth workflow
 and does not require changing `task_type` from `execution`.
 
-If the user requires persistence but this repository lacks
-`automation/persistent_run/` and no user-selected project-native equivalent
-contract exists, report that the persistence capability is missing. Do not write
-an ordinary live-session task that would fail the user's survive-disconnect
-requirement.
+If terminal-owned survive-disconnect persistence is required but this repository
+lacks `automation/persistent_run/` and no user-selected project-native
+equivalent contract exists, report that the persistence capability is missing.
+Do not write an ordinary live-session task that would fail the user's
+survive-disconnect requirement.
 
 Medium/high risk tasks and controller tasks must explicitly fill the new
 frontmatter fields. Low-risk tasks may use defaults, `none`, or empty lists.

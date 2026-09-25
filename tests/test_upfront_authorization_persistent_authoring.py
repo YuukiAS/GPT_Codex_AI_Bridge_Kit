@@ -57,7 +57,12 @@ class UpfrontAuthorizationPersistentAuthoringTests(unittest.TestCase):
             self,
             text,
             [
-                "execution lifetime",
+                "process lifetime owner",
+                "authorization readiness",
+                "progress reporting",
+                "不自动选择 tmux",
+                "scheduler-owned batch",
+                "terminal-owned foreground process/orchestrator",
                 "Persistent execution: REQUIRED",
                 "Backend: tmux",
                 "Run/session key",
@@ -75,9 +80,15 @@ class UpfrontAuthorizationPersistentAuthoringTests(unittest.TestCase):
             [
                 "Decide Execution Lifetime Separately",
                 "Task type and execution lifetime are different decisions",
+                "Upfront authorization readiness",
+                "Process persistence topology",
+                "Progress reporting",
                 "overnight",
                 "unattended",
                 "survive disconnect",
+                "Do not infer `Persistent execution: REQUIRED` or `Backend: tmux` from duration alone",
+                "scheduler-owned batch job such as `sbatch`",
+                "Persistent Run/tmux remains eligible",
                 "automation/persistent_run/README.md",
                 "automation/persistent_run/CONTRACT_TEMPLATE.md",
                 "Persistent execution: REQUIRED",
@@ -92,6 +103,94 @@ class UpfrontAuthorizationPersistentAuthoringTests(unittest.TestCase):
         self.assertNotIn("task_type: \"persistent\"", text)
         self.assertNotIn("workflow: \"Persistent Run\"", text)
 
+    def test_normal_authoring_surfaces_cover_topology_not_duration(self) -> None:
+        github = read_repo_text("chatgpt/GITHUB_MCP_REPO_INSTRUCTIONS.md")
+        template = read_repo_text("templates/prompts/templates/TASK_TEMPLATE.md")
+
+        assert_contains_all(
+            self,
+            github,
+            [
+                "authorization readiness",
+                "process lifetime owner",
+                "progress reporting",
+                "不自动选择 tmux",
+                "scheduler-owned batch",
+                "sbatch",
+                "already-detached service/job",
+                "terminal-owned foreground process/orchestrator",
+                "survive Codex/SSH/terminal disconnect",
+                "Persistent Run",
+            ],
+        )
+        assert_contains_all(
+            self,
+            template,
+            [
+                "upfront authorization readiness",
+                "process lifetime owner",
+                "project-native progress reporting",
+                "Do not select Persistent Run or `Backend: tmux` solely",
+                "Scheduler-owned batch jobs such as `sbatch`",
+                "already-detached services/jobs",
+                "terminal-owned foreground process or orchestrator",
+                "survive Codex/SSH/terminal disconnect",
+                "Persistent Run",
+            ],
+        )
+
+    def test_scheduler_native_authoring_does_not_select_tmux_for_duration(self) -> None:
+        github = read_repo_text("chatgpt/GITHUB_MCP_REPO_INSTRUCTIONS.md")
+        template = read_repo_text("templates/prompts/templates/TASK_TEMPLATE.md")
+
+        assert_contains_all(
+            self,
+            github,
+            [
+                "duration/overnight/unattended",
+                "Persistent execution: REQUIRED",
+                "Backend: tmux",
+                "不要仅因",
+                "scheduler-owned batch",
+            ],
+        )
+        assert_contains_all(
+            self,
+            template,
+            [
+                "Do not select Persistent Run or `Backend: tmux` solely because the task is long",
+                "Scheduler-owned batch jobs such as `sbatch`",
+                "already-detached services/jobs",
+                "instead of adding tmux for duration",
+            ],
+        )
+
+    def test_terminal_owned_survive_disconnect_still_selects_persistent_run(self) -> None:
+        github = read_repo_text("chatgpt/GITHUB_MCP_REPO_INSTRUCTIONS.md")
+        template = read_repo_text("templates/prompts/templates/TASK_TEMPLATE.md")
+
+        assert_contains_all(
+            self,
+            github,
+            [
+                "terminal-owned foreground process/orchestrator",
+                "survive Codex/SSH/terminal disconnect",
+                "Persistent Run Contract",
+                "Persistent execution: REQUIRED",
+                "Backend: tmux",
+            ],
+        )
+        assert_contains_all(
+            self,
+            template,
+            [
+                "terminal-owned foreground process or orchestrator",
+                "survive Codex/SSH/terminal disconnect",
+                "CONTRACT_TEMPLATE.md",
+                "fill every value",
+            ],
+        )
+
     def test_task_template_can_author_harmless_persistent_goal_without_new_workflow(self) -> None:
         template = read_repo_text("templates/prompts/templates/TASK_TEMPLATE.md")
         contract = read_repo_text("templates/persistent_run/CONTRACT_TEMPLATE.md")
@@ -103,6 +202,7 @@ class UpfrontAuthorizationPersistentAuthoringTests(unittest.TestCase):
                 "## Persistent Run Contract",
                 "Persistent execution: NOT_REQUIRED",
                 "Backend: none",
+                "Do not select Persistent Run or `Backend: tmux` solely because the task is long",
                 "automation/persistent_run/CONTRACT_TEMPLATE.md",
             ],
         )
@@ -190,8 +290,12 @@ class UpfrontAuthorizationPersistentAuthoringTests(unittest.TestCase):
             text,
             [
                 "`automation/persistent_run/`",
-                "execution-lifetime",
+                "upfront authorization readiness",
+                "process lifetime owner",
+                "project-native progress reporting",
                 "Long runtime is not a workflow selector",
+                "Duration alone must not select Persistent Run or `Backend: tmux`",
+                "scheduler-owned",
                 "Persistent execution: REQUIRED",
                 "Backend: tmux",
                 "`Goal source`",
@@ -222,6 +326,9 @@ class UpfrontAuthorizationPersistentAuthoringTests(unittest.TestCase):
                 "Specific private external transfer",
                 "Specific paid/external API call",
                 "repository task, Plan, Goal, or Persistent Run contract",
+                "Duration does not by itself authorize or require Persistent Run/tmux",
+                "Scheduler-owned batch jobs",
+                "terminal-owned foreground processes or orchestrators",
                 "not by itself current-user-visible authorization",
                 "exact bounded authorization for the same frozen effect",
                 "do not ask again",

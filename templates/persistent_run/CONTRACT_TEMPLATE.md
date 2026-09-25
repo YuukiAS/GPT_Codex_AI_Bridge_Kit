@@ -1,5 +1,11 @@
 # Persistent Run Contract
 
+Use this contract only after deciding that the required process/orchestrator is
+terminal-owned and must survive Codex/SSH/terminal disconnect. Do not select
+this contract solely because the task is long, overnight, unattended or
+multi-hour; scheduler-owned batch jobs and already-detached services/jobs should
+keep their native lifetime owner.
+
 Persistent execution: REQUIRED
 Backend: tmux
 Goal source: <repo-relative path>

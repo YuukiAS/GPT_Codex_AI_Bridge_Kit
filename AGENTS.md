@@ -23,7 +23,7 @@ Bridge Kit 的能力按作用域分成机器层、项目层和任务层。真正
 ├── Reviewed Mode       optional GPT-planned/reviewed workflow
 ├── Notifications       optional
 ├── Overleaf Bridge     optional manuscript publication mirror
-├── Persistent Run      optional tmux persistence contract for long Goals
+├── Persistent Run      optional tmux persistence contract for terminal-owned Goals that must survive disconnect
 └── Controlled Mode     optional for high-risk repositories
 
 任务层
@@ -216,7 +216,8 @@ ai-bridge notifier send results/<task_key>/notification_brief.json
 
 Persistent Run 是项目层可选能力，不是第四套 workflow。Lite / Review /
 Control 三档 workflow 保持不变；Persistent Run 只约束明确标记为 persistent
-execution 的长期 Goal 如何通过 canonical tmux session 启动、恢复和观察。
+execution、且实际进程或 orchestrator 由终端拥有并必须在 Codex / SSH /
+terminal 断开后继续运行的 Goal 如何通过 canonical tmux session 启动、恢复和观察。
 
 安装命令：
 
@@ -246,17 +247,26 @@ generic Python。需要真实长期启动时，用户必须通过
 `ai-bridge persistent-run prompt kickoff --target <repo> --goal <repo-relative-goal>`
 生成并发送当前用户可见 kickoff 授权；这个命令只打印文本，不启动 tmux。
 
-0.8.1 起，GPT 写任务时必须把 execution lifetime 与 `task_type` / Lite /
-Review / Control workflow 分开判断。overnight、unattended、run until morning、
-multi-hour、leave it running、survive disconnect 或 resume persistent Goal 是
-Persistent Run 触发语义，但不是自动升级 Review / Control 或 controller task 的理由。
-如果目标仓库已安装 `automation/persistent_run/`，GPT 必须读取其中 README 和
+0.9.2 起，GPT 写任务时必须把 execution lifetime 与 `task_type` / Lite /
+Review / Control workflow 分开判断，并进一步拆开三件事：upfront
+authorization readiness、process persistence topology、project-native progress
+reporting。overnight、unattended、run until morning、multi-hour 或 leave it
+running 只触发这套判断，不自动选择 Persistent Run/tmux，也不是自动升级
+Review / Control 或 controller task 的理由。
+
+scheduler-owned batch job（例如已接受的 `sbatch`）或 already-detached
+service/job 不应仅因 duration 增加 tmux；应写清 exact scheduler/resource
+authorization boundary 和 scheduler/project-native progress evidence，并让原生
+owner 负责寿命。terminal-owned foreground process/orchestrator 若必须 survive
+Codex / SSH / terminal disconnect，且没有 scheduler/service/project-native owner
+已经提供寿命，才选择 Persistent Run/tmux。如果目标仓库已安装
+`automation/persistent_run/`，GPT 必须读取其中 README 和
 `CONTRACT_TEMPLATE.md`，并在 Goal/task 中写明 `Persistent execution: REQUIRED`、
 `Backend: tmux`、`Goal source`、`Run/session key`、authorized effects、resource
 boundary、forbidden expansion、recovery evidence、heartbeat / stage-state /
-checkpoint / resume semantics 和原始 positive completion criteria。如果仓库未安装
-Persistent Run，且用户没有选择等价的项目原生持久执行合同，不得把 overnight /
-unattended 需求降级成普通 live-session task。
+checkpoint / resume semantics 和原始 positive completion criteria。如果确实需要
+terminal-owned survive-disconnect 持久执行，但仓库未安装 Persistent Run，且用户
+没有选择等价的项目原生持久执行合同，不得降级成普通 live-session task。
 
 Codex 执行前必须做 upfront authorization preflight：先读取 frozen Goal/task 中
 正面声明的 approval-sensitive effects，例如 Persistent Run kickoff / canonical

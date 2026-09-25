@@ -34,7 +34,17 @@ Task type and execution lifetime are different decisions. Do not turn a task
 into Review, Control, or `task_type: "controller"` merely because it is long,
 overnight, unattended, multi-stage, or must survive Codex / SSH disconnect.
 
-Treat these user intents as strong persistent-execution triggers:
+Treat long or unattended intent as a startup-readiness signal first, not as an
+automatic `tmux` decision. Separate three questions before writing the task:
+
+1. Upfront authorization readiness: which foreseeable required `HUMAN_ONLY`
+   effects must be authorized before expensive or long precursor work?
+2. Process persistence topology: who owns the execution lifetime if Codex, SSH,
+   or the terminal disappears?
+3. Progress reporting: what project-native evidence reports stage, progress,
+   ETA/UNKNOWN, stalled/blocked/complete/failed status, and reconnect state?
+
+These phrases require that analysis:
 
 - overnight, run overnight, run until morning
 - unattended, leave it running
@@ -42,8 +52,19 @@ Treat these user intents as strong persistent-execution triggers:
 - survive disconnect, continue after Codex/SSH exit
 - resume persistent Goal
 
-If the repository has Persistent Run installed and the task requires
-persistence, read:
+Do not infer `Persistent execution: REQUIRED` or `Backend: tmux` from duration
+alone. If work is submitted as a scheduler-owned batch job such as `sbatch`, or
+is already owned by a detached service/job, the scheduler/service owns lifetime
+after accepted submission; write the exact scheduler/resource authorization and
+project-native progress evidence, but do not add tmux solely because the run is
+overnight or multi-hour. If there is no survive-disconnect requirement, write an
+ordinary execution task.
+
+Persistent Run/tmux remains eligible when the actual foreground process or
+orchestrator is terminal-owned and must survive Codex/SSH/terminal disconnect,
+and no scheduler/service/project-native owner already provides the lifetime.
+If the repository has Persistent Run installed and that topology requires tmux,
+read:
 
 ```text
 automation/persistent_run/README.md
@@ -58,8 +79,8 @@ boundary, forbidden expansion, recovery evidence,
 heartbeat/stage-state/checkpoint/resume semantics, and the original positive
 completion criteria.
 
-If the user requires overnight/unattended persistence but the repository lacks
-`automation/persistent_run/` and no user-chosen project-native equivalent
+If terminal-owned survive-disconnect persistence is required but the repository
+lacks `automation/persistent_run/` and no user-chosen project-native equivalent
 contract exists, report that persistence capability is missing. Do not silently
 write an ordinary live-session task that would stop when Codex disconnects.
 

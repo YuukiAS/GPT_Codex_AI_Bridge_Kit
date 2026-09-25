@@ -2,7 +2,9 @@
 
 本仓库已启用 AI Bridge Kit 的 Persistent Run。
 
-Persistent Run 是可选项目能力，不是 Lite / Review / Control 之外的第四套 workflow，也不是新的 Planner / Reviewer / Critic / Verifier / watcher / state machine。它只约束明确标记为 persistent execution 的长期 Goal 如何通过 canonical tmux session 启动、恢复和观察。
+Persistent Run 是可选项目能力，不是 Lite / Review / Control 之外的第四套 workflow，也不是新的 Planner / Reviewer / Critic / Verifier / watcher / state machine。它只约束明确标记为 persistent execution、且实际进程或 orchestrator 由终端拥有并必须 survive Codex/SSH/terminal disconnect 的 Goal 如何通过 canonical tmux session 启动、恢复和观察。
+
+长时间、overnight、unattended 或 multi-hour 本身不是 tmux 选择条件。执行前先分开判断：upfront authorization readiness、process persistence topology、project-native progress reporting。scheduler-owned batch job（例如已接受的 `sbatch`）或 already-detached service/job 不应仅因 duration 增加 tmux；它们仍要按普通规则处理调度器/资源授权和项目原生进度证据。
 
 当当前 Goal/task/contract 明确写明 `Persistent execution: REQUIRED` 时：
 
@@ -13,7 +15,7 @@ Persistent Run 是可选项目能力，不是 Lite / Review / Control 之外的�
 - 启动前先用 `tmux has-session` / `tmux ls` 和项目已有 lock / heartbeat / stage-state / checkpoint / resume evidence 判断是否已有兼容 run；已有兼容 run 时 resume，不重复启动。
 - 使用项目/Goal 自己授权的 launcher 或命令，不要发明 Bridge Kit 通用科研 orchestrator。
 - 启动后检查 tmux session 和最强的项目原生进度证据；Codex / SSH disconnect 不得被解释为实验或任务失败。
-- 进度报告应来自 Persistent Run contract 中的 `Progress source locator`。使用 `ai-bridge persistent-run report --progress <path>` 记录本机 latest/history，用 `ai-bridge persistent-run latest --progress <path>` 做 reconnect 查询；不要从 tmux/PID 存在推断领域进展、百分比或 ETA。
+- 进度报告应来自 Persistent Run contract 中的 `Progress source locator` 或项目原生 progress source。使用 `ai-bridge persistent-run report --progress <path>` 记录本机 latest/history，用 `ai-bridge persistent-run latest --progress <path>` 做 reconnect 查询；这些命令不需要对应的 tmux session，不要从 tmux/PID 存在推断领域进展、百分比或 ETA。
 - 后续恢复同一个 frozen Goal 时，不要仅因为任务长期运行、detached 或 unattended 而反复要求相同批准；新的 artifact、recipient/provider、resource、purpose、backend 或 Goal 外副作用仍按正常审批规则处理。
 - optional diagnostic failure 不得自动终止整个 Goal；如果 lock、heartbeat、stage-state、checkpoint 或 output evidence 提供了更强状态，应以这些证据为准。
 - tmux session、Slurm job、PID、heartbeat 或 checkpoint 只证明活动或状态，不证明 Goal 完成；原 Goal 的 positive completion criteria 仍是完成声明的唯一依据。

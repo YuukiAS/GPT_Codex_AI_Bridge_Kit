@@ -150,12 +150,9 @@ ai-bridge persistent-run validate --target /path/to/project
 automation/persistent_run/CONTRACT_TEMPLATE.md
 ```
 
-GPT 写这个 Goal/task 时要先判断 execution lifetime。`run overnight`、
-`unattended`、`run until morning`、`leave it running`、`survive disconnect`
-或 `resume persistent Goal` 这类要求意味着需要 Persistent Run contract，但不代表
-必须把 Lite 任务改成 Reviewed Mode / Controlled Mode 或 `task_type: "controller"`。如果仓库没有
-安装 Persistent Run，也没有用户选择的等价项目原生合同，不要把任务写成普通 live
-Codex session。
+GPT 写这个 Goal/task 时要先把三件事分开：启动前授权预检、进程寿命归属、项目原生进度报告。`run overnight`、`unattended`、`run until morning`、`multi-hour` 或 `leave it running` 只说明要做这套判断，不自动意味着 Persistent Run/tmux，也不代表必须把 Lite 任务改成 Reviewed Mode / Controlled Mode 或 `task_type: "controller"`。
+
+如果任务是 scheduler-owned batch（例如已接受的 `sbatch`）或 already-detached service/job，让调度器或服务拥有寿命，并写清资源/调度器授权边界和项目原生进度证据，不要仅因 duration 增加 tmux。只有 terminal-owned foreground process/orchestrator 必须 survive Codex/SSH/terminal disconnect，且没有项目原生 owner 已经提供寿命时，才写 Persistent Run contract。如果这种断线存活能力确实必需，但仓库没有安装 Persistent Run，也没有用户选择的等价项目原生合同，不要把任务写成普通 live Codex session。
 
 真正启动前，由用户生成并发送 kickoff 授权：
 
@@ -165,7 +162,7 @@ ai-bridge persistent-run prompt kickoff \
   --goal prompts/tasks/repo--long-run.md
 ```
 
-这个命令只打印授权文本，不会启动 tmux。Persistent Run 只约束长期执行和恢复：使用 canonical `tmux` session，已有兼容 run 时 resume，不把 session/PID/heartbeat 当作完成，不自动 fallback 到 `setsid`、`nohup`、裸后台 `&`、`screen` 或 `sudo`。Lite / Reviewed Mode / Controlled Mode 的 workflow 选择和原 Goal 完成标准保持不变。
+这个命令只打印授权文本，不会启动 tmux。Persistent Run 只约束已经选择 tmux 的终端拥有型执行和恢复：使用 canonical `tmux` session，已有兼容 run 时 resume，不把 session/PID/heartbeat 当作完成，不自动 fallback 到 `setsid`、`nohup`、裸后台 `&`、`screen` 或 `sudo`。Lite / Reviewed Mode / Controlled Mode 的 workflow 选择和原 Goal 完成标准保持不变。
 
 Codex 收到 task 后会在实质执行前检查是否存在可预见的 approval-sensitive effect。
 仓库里的 Goal/Plan/contract 只证明 frozen scope，不等于当前用户授权；如果当前用户

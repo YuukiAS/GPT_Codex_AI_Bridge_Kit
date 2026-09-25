@@ -7,7 +7,7 @@
 1. 读取仓库根目录 `AGENTS.md`。
 2. 读取 `prompts/CHATGPT_RULES.md`。
 3. 如果要让 Codex 执行，读取 `prompts/AGENT_RULES.md` 和现有 `prompts/tasks/`。
-4. 如果仓库存在 `automation/persistent_run/`，且用户要求 overnight、unattended、long-running、run until morning、survive disconnect、resume persistent Goal，或等价的持久执行语义，先读取 `automation/persistent_run/README.md` 和 `automation/persistent_run/CONTRACT_TEMPLATE.md`。
+4. 如果用户要求 overnight、unattended、long-running、run until morning、leave it running、survive disconnect、resume persistent Goal，或等价的长期/无人值守语义，先把授权预检、进程寿命归属和进度报告来源分开判断；只有判断为终端拥有且必须断线存活的执行拓扑，并且仓库存在 `automation/persistent_run/` 时，才读取 `automation/persistent_run/README.md` 和 `automation/persistent_run/CONTRACT_TEMPLATE.md`。
 5. 如果只是参考背景，再读取用户明确指定的 `docs/notes/` 或 `docs/wiki/` 文件。
 
 ## 固定写入规则
@@ -38,9 +38,16 @@ prompts/tasks/<next_task_key>.md
 
 这张 task 必须包含 YAML frontmatter，并写清楚允许动作、禁止动作、预期产出、停止条件和人工决策点。若任务会生成文件型产物，预期产出必须包含 `results/<task_key>/`。
 
-任务生成时要把 execution lifetime 和 workflow/task type 分开判断。运行时间长、overnight、unattended 或需要 survive disconnect，并不自动变成 Review / Control / controller task；在已经安装 Persistent Run 的仓库中，它可以仍然是 Lite `task_type: "execution"`，但必须写入明确的 `Persistent Run Contract`，至少包含 `Persistent execution: REQUIRED`、`Backend: tmux`、`Goal source`、`Run/session key`、authorized effects、resource boundary、forbidden expansion、recovery evidence、heartbeat/stage-state/checkpoint/resume semantics 和原始 positive completion criteria。
+任务生成时要把 authorization readiness、process lifetime owner 和 progress reporting 分开判断。运行时间长、overnight、unattended、multi-hour 或 run until morning 不自动选择 tmux，也不自动变成 Review / Control / controller task。
 
-如果用户要求持久执行，但仓库没有 `automation/persistent_run/`，且用户没有选择等价的项目原生持久执行合同，不要把它降级成普通 live-session task；应报告缺少 Persistent Run capability 或请求用户先安装/选择合同。
+正确写法：
+
+- 长期或无人值守意图先触发 upfront authorization readiness：列出冻结范围内可预见且必需的 `HUMAN_ONLY` effect，并在大量前置工作前要求当前用户明确授权。
+- 如果执行是 scheduler-owned batch，例如 `sbatch` 已接管排队/运行寿命，或已有 already-detached service/job 接管寿命，不要仅因 duration/overnight/unattended 写 `Persistent execution: REQUIRED` 或 `Backend: tmux`；仍要写清 exact scheduler/resource approval boundary 和 scheduler/project-native progress evidence。
+- 如果是 terminal-owned foreground process/orchestrator，并且必须 survive Codex/SSH/terminal disconnect，在已经安装 Persistent Run 的仓库中仍可使用 Lite `task_type: "execution"`，但必须写入明确的 `Persistent Run Contract`，至少包含 `Persistent execution: REQUIRED`、`Backend: tmux`、`Goal source`、`Run/session key`、authorized effects、resource boundary、forbidden expansion、recovery evidence、heartbeat/stage-state/checkpoint/resume semantics 和原始 positive completion criteria。
+- 如果没有 survive-disconnect requirement，写普通 execution task，并保留项目原生进度/证据要求。
+
+如果 terminal-owned survive-disconnect 持久执行确实必需，但仓库没有 `automation/persistent_run/`，且用户没有选择等价的项目原生持久执行合同，不要把它降级成普通 live-session task；应报告缺少 Persistent Run capability 或请求用户先安装/选择合同。
 
 如果 task 依赖论文或长期研究结论，应显式引用相关 `docs/wiki/` 页面，而不是要求 Codex 重新从 PDF 猜上下文。
 

@@ -76,6 +76,16 @@ approval-sensitive effects that are positively declared in frontmatter or in
 sections such as `Allowed Actions`, `Forbidden Actions`,
 `Human Decision Points`, and `Persistent Run Contract`.
 
+For long, overnight, unattended, or multi-hour work, keep authorization
+readiness separate from process persistence and progress reporting. Duration
+does not by itself authorize or require Persistent Run/tmux. Scheduler-owned
+batch jobs and already-detached services/jobs keep their native lifetime owner;
+terminal-owned foreground processes or orchestrators that must survive
+Codex/SSH/terminal disconnect may use Persistent Run/tmux only when the frozen
+Goal selects that backend and current-user authorization covers the bounded
+mutation. Progress reports must come from project-native evidence, not from
+session/PID existence.
+
 Approval-sensitive effects include:
 
 - Persistent Run kickoff or canonical `tmux` launch.

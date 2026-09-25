@@ -153,6 +153,39 @@ class PersistentRunTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertTrue(any(".codex/rules" in line for line in lines))
 
+    def test_installed_guidance_separates_duration_scheduler_and_tmux_topology(self) -> None:
+        target = self.make_repo()
+        persistent_run.install_persistent_run(target)
+
+        readme = (target / "automation" / "persistent_run" / "README.md").read_text(encoding="utf-8")
+        agents = (target / "AGENTS.md").read_text(encoding="utf-8")
+        contract = (target / "automation" / "persistent_run" / "CONTRACT_TEMPLATE.md").read_text(encoding="utf-8")
+        kickoff = (target / "automation" / "persistent_run" / "KICKOFF_TEMPLATE.md").read_text(encoding="utf-8")
+
+        combined = "\n".join([readme, agents, contract, kickoff])
+        self.assertIn("upfront authorization readiness", combined)
+        self.assertIn("process persistence topology", combined)
+        self.assertIn("project-native progress reporting", combined)
+        self.assertIn("不自动选择 tmux", readme)
+        self.assertIn("scheduler-owned batch", combined)
+        self.assertIn("sbatch", combined)
+        self.assertIn("already-detached", combined)
+        self.assertIn("terminal-owned", combined)
+        self.assertIn("survive Codex/SSH/terminal disconnect", combined)
+        self.assertIn("not a universal unattended approval", kickoff)
+
+    def test_report_latest_guidance_is_independent_of_tmux_session(self) -> None:
+        target = self.make_repo()
+        persistent_run.install_persistent_run(target)
+
+        readme = (target / "automation" / "persistent_run" / "README.md").read_text(encoding="utf-8")
+        agents = (target / "AGENTS.md").read_text(encoding="utf-8")
+
+        self.assertIn("独立于 tmux", readme)
+        self.assertIn("scheduler-native", readme)
+        self.assertIn("不需要对应的 tmux session", agents)
+        self.assertIn("不要从 tmux/PID 存在推断", agents)
+
     def test_bridge_cli_dispatches_install_validate_and_kickoff(self) -> None:
         target = self.make_repo()
         self.write_goal(target)

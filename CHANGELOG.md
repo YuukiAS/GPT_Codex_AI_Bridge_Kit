@@ -11,6 +11,21 @@
 - Skip the full Tests workflow for pure `docs/design/**` and `results/**`
   metadata/evidence pushes, and cancel superseded in-progress main CI runs.
 
+## 0.9.2 - 2026-09-25
+
+- Refine unattended and long-running task authoring so `overnight`,
+  `unattended`, `multi-hour`, and similar duration wording first triggers
+  upfront authorization readiness analysis instead of automatically selecting
+  Persistent Run/tmux.
+- Keep Persistent Run for terminal-owned foreground processes or orchestrators
+  that must survive Codex/SSH/terminal disconnect, while scheduler-owned batch
+  jobs such as accepted `sbatch` work and already-detached services/jobs keep
+  their native lifetime owner.
+- Clarify installed Persistent Run templates, normal ChatGPT authoring entries,
+  Quickstart, README, and AGENTS so project-native progress reporting remains
+  usable without a tmux session and does not infer semantic completion from
+  session/PID existence.
+
 ## 0.9.1 - 2026-09-24
 
 - Add `ai-bridge reviewed-handoff task bootstrap` as the first-bootstrap normal

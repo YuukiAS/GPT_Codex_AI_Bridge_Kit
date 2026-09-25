@@ -79,14 +79,29 @@ completion unless this section explicitly authorizes it as equivalent.
 Use `Persistent execution: NOT_REQUIRED` for ordinary live Codex tasks.
 
 If the user requested overnight, unattended, run-until-morning, multi-hour,
-survive-disconnect, leave-it-running, or resume-persistent-Goal execution, and
-this repository has `automation/persistent_run/` installed, replace this section
-with the installed `automation/persistent_run/CONTRACT_TEMPLATE.md` fields and
-fill every value.
+leave-it-running, survive-disconnect, or resume-persistent-Goal execution, first
+separate:
 
-If persistent execution is required but the repository lacks Persistent Run and
-the user has not chosen an equivalent project-native contract, stop and report
-the missing persistence capability instead of weakening the task.
+1. upfront authorization readiness for foreseeable required `HUMAN_ONLY`
+   effects;
+2. process lifetime owner if Codex, SSH, or the terminal disappears;
+3. project-native progress reporting evidence.
+
+Do not select Persistent Run or `Backend: tmux` solely because the task is long,
+overnight, unattended, or multi-hour. Scheduler-owned batch jobs such as
+`sbatch`, and already-detached services/jobs, own their lifetime after accepted
+submission; write their exact authorization/resource boundary and
+scheduler/project-native progress evidence instead of adding tmux for duration.
+
+If a terminal-owned foreground process or orchestrator must survive
+Codex/SSH/terminal disconnect, and this repository has
+`automation/persistent_run/` installed, replace this section with the installed
+`automation/persistent_run/CONTRACT_TEMPLATE.md` fields and fill every value.
+
+If terminal-owned survive-disconnect persistence is required but the repository
+lacks Persistent Run and the user has not chosen an equivalent project-native
+contract, stop and report the missing persistence capability instead of
+weakening the task.
 
 Persistent execution: NOT_REQUIRED
 Backend: none

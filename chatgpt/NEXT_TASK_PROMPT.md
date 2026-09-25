@@ -83,10 +83,18 @@ Carry forward:
   run/session key, resource boundary, recovery evidence, and original positive
   completion criteria
 
-Do not silently degrade an overnight/unattended/persistent requirement into a
-normal live Codex session. If the repository lacks Persistent Run and no
-user-chosen equivalent project-native contract exists, report the missing
-persistence capability instead of writing a task that cannot survive disconnect.
+When the next task is long, overnight, unattended, or multi-hour, first separate
+upfront authorization readiness, execution lifetime owner, and project-native
+progress reporting. Do not carry duration wording forward as automatic
+Persistent Run/tmux. Scheduler-owned batch work and already-detached services
+should keep their native lifetime owner; terminal-owned work that must survive
+Codex/SSH/terminal disconnect may still require Persistent Run/tmux.
+
+Do not silently degrade a real terminal-owned survive-disconnect requirement
+into a normal live Codex session. If that persistence is required and the
+repository lacks Persistent Run and no user-chosen equivalent project-native
+contract exists, report the missing persistence capability instead of writing a
+task that cannot survive disconnect.
 
 ## Output Format
 
