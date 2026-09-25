@@ -6,7 +6,7 @@
 
 这个仓库的原则是：**默认保持简单，需要什么再加什么。** 普通项目通常只需要机器级规则和基础交接；只有确实需要时，才启用独立复核、高风险闭环、长期运行、通知、Overleaf 同步或视觉/文本复核。
 
-当前正式分发版本：`0.9.1`（复核模式（Reviewed Mode）首次创建的正常入口已纳入正式 `release` 分支；本仓库的正常机器同步以 `release` 分支为权威来源，不依赖 GitHub Release 或 tag）。当前 `main` 正在形成 `0.9.2` 候选：修正无人值守 / 长时间执行与 Persistent Run 的选择语义，但尚未推进正式 `release` 分支。
+当前正式分发版本：`0.9.2`。正式 `release` 分支已指向生产候选 `6bbaca5a3af6240fbc88fa54cf78fa9acc147f67`；本仓库的正常机器同步以 `release` 分支为权威来源，不依赖 GitHub Release 或 tag。`main` 可继续包含后续 evidence / docs-only closure 提交，但这些更晚提交不会因此自动成为正式 release target。
 
 ## 一眼看懂：我到底该装什么
 
