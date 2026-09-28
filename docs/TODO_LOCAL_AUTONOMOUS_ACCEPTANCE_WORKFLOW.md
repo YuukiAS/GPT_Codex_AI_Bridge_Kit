@@ -547,3 +547,184 @@ For a complex product, distinct defects that keep getting fixed are therefore
 allowed to continue past four reviews. The loop stops because progress has
 stalled or the hard safety fuse is reached, not merely because the project was
 complex.
+
+
+## 2026-09-28 Lucerna 12-hour run: orchestration-efficiency lessons
+
+Lucerna's first long Local Review-style closure run exposed a second requirement:
+the workflow must optimize **time-to-next-useful-review**, not merely guarantee
+fresh-reviewer independence.
+
+Observed auditable intervals from the Lucerna run:
+
+- first broad reviewer evidence window: ~26m;
+- Locke reviewer: ~1h19m;
+- Aristotle reviewer: ~17m;
+- Dalton reviewer: ~9m;
+- post-Dalton producer native-smoke repair loop: ~39m on one repeated close/
+  capture/readiness mechanism;
+- Carver produced failing readiness artifacts within ~1m and additional black
+  captures within ~7m, but the orchestrator waited longer before terminating
+  the pass;
+- the full 12-hour wall-clock run also contains earlier multi-hour spans whose
+  exact command-level attribution was not yet available in tracked evidence.
+
+This run shows that reviewer-count limits alone are insufficient. A Local Review
+implementation should also track **stage time**, **evidence reuse**, and
+**artifact heartbeat**.
+
+### Required future efficiency controls
+
+1. **Cheap producer preflight before a fresh Reviewer**
+
+   Do not spend a fresh Reviewer pass on a candidate that already fails a cheap,
+   deterministic prerequisite such as:
+
+   - frontend/DOM readiness;
+   - valid non-black capture;
+   - native interaction smoke;
+   - exact release identity;
+   - required local fixture readiness.
+
+   These are producer/preflight gates. A Reviewer should receive a candidate
+   only after the cheap prerequisite evidence is green.
+
+2. **Reviewer artifact heartbeat / fail-fast**
+
+   While a Reviewer is running, the orchestrator should watch reviewer-owned
+   artifact/event progress.
+
+   If a blocking prerequisite failure is already conclusive, for example:
+
+   ```text
+   DOM_NOT_READY
+   INVALID_CAPTURE
+   RELEASE_IDENTITY_MISMATCH
+   NATIVE_INTERACTION_PREREQUISITE_FAIL
+   ```
+
+   do not let the Reviewer continue collecting low-value downstream screenshots
+   or wait idle for a final prose report. Stop the pass, materialize the finding,
+   and route repair immediately.
+
+3. **Evidence dependency graph, not full rerun by default**
+
+   Model acceptance evidence in coarse reusable domains, for example:
+
+   ```text
+   build/release identity
+   native shell/readiness
+   interaction behavior
+   state semantics
+   copy
+   visual composition
+   notification behavior
+   packaging
+   ```
+
+   After a repair, invalidate only domains affected by the changed source/
+   mechanism plus dependent gates. Do not automatically regenerate every
+   screenshot, notification soak, and packaging artifact when the change cannot
+   affect them.
+
+   Fresh Reviewer judgment is still required on the new candidate, but it may
+   reuse independently validated unchanged-domain evidence after checking its
+   candidate/source binding and invalidation rules.
+
+4. **Mechanism-level repair before repeated native-smoke iterations**
+
+   Multiple consecutive repairs to the same mechanism should switch from
+   symptom-level iteration to a diagnostic/root-cause phase before another full
+   Reviewer is launched.
+
+   Lucerna's close/capture sequence progressed through readiness, window
+   geometry, WebView geometry, and DOM click geometry before converging. Future
+   orchestration should classify these as one
+   `native-panel-readiness-and-hit-target` mechanism early and demand one
+   bounded diagnostic packet before repeated rebuild/review.
+
+5. **Separate diagnostic loop from release-review loop**
+
+   Reviewer should identify a product defect. Once a low-level mechanism is
+   known broken, the Producer may run bounded targeted diagnostic/repair loops
+   without consuming fresh full Reviewer passes.
+
+   Only return to a fresh Reviewer after the mechanism-specific producer gate is
+   stable.
+
+6. **Build/release caching with correctness binding**
+
+   Avoid full packaging rebuilds when only a reviewer artifact or non-packaging
+   evidence changes.
+
+   Rebuild exact release when implementation/frontend assets affecting the
+   executable change. Rebuild installers only when packaging inputs changed or
+   final release identity requires it.
+
+   Cache must always be bound to source/input digests; never reuse stale binaries
+   for convenience.
+
+7. **Stage wall-time accounting**
+
+   Persist per-task timing at least for:
+
+   ```text
+   producer_analysis
+   targeted_tests
+   full_tests
+   frontend_build
+   tauri_release_build
+   packaging
+   native_smoke
+   visual_capture
+   reviewer_wait
+   reviewer_active
+   publisher
+   idle/wait
+   ```
+
+   This is needed to distinguish expensive but useful validation from accidental
+   idle time or repeated evidence generation.
+
+8. **Low-value reviewer detection**
+
+   A reviewer pass is low-value when it spends material wall time after a
+   conclusive prerequisite blocker is already known, repeats unchanged evidence,
+   or produces no new finding/closure/coverage.
+
+   Two such passes in one task should force orchestrator-policy review before
+   continuing.
+
+9. **Canonical hardened acceptance primitives**
+
+   Once a mechanism is fixed generically, preserve it as a reusable tested
+   primitive rather than rediscovering it in future projects/runs.
+
+   Candidate primitives include:
+
+   - reliable frontend-mounted readiness handshake;
+   - non-black/valid native capture preflight;
+   - exact DOM-to-screen hit-target mapping for native UI smoke;
+   - titlebar close/Esc/tray reopen smoke;
+   - stable reviewer artifact heartbeat;
+   - incremental acceptance invalidation.
+
+   This is the main anti-regression lesson: expensive acceptance knowledge should
+   become workflow/tooling infrastructure, not remain one-off repair history.
+
+### Promotion implication
+
+Before Local Review is promoted to a stable Bridge Kit workflow, benchmark not
+only defect escape rate but also:
+
+- median wall time per useful reviewer pass;
+- percentage of reviewer time spent after a conclusive blocker was already
+  observable;
+- rebuild/package time per repair;
+- reused vs regenerated acceptance domains;
+- repeated-mechanism repair count;
+- time from reviewer blocker evidence to Producer repair start;
+- cumulative Codex token use per closed P0/P1/P2 finding.
+
+The workflow should be considered successful only if independence improves
+quality **without turning acceptance into an hours-long serial evidence loop**.
