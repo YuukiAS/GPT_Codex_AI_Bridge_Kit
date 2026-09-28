@@ -230,3 +230,116 @@ Do not yet:
 
 This TODO records a real workflow gap and the observed successful shape so it can
 be evaluated deliberately instead of re-invented inside future product repos.
+
+
+## 2026-09-28 naming / product-shape recommendation
+
+After comparing the existing Lite, Reviewed Mode, and Controlled Mode semantics,
+the current recommendation is to preserve four distinct workflow levels rather
+than folding local autonomous acceptance into Lite or Reviewed.
+
+Provisional **display names**:
+
+```text
+Lite
+Local Review
+GPT Review
+Governed
+```
+
+Meaning:
+
+- **Lite** — one bounded GPT→Codex handoff; no mandatory independent review loop.
+- **Local Review** — GPT freezes the goal/rubric once, then local Codex Executor
+  and fresh local Codex Reviewer iterate autonomously until the bounded promotion
+  gate passes.
+- **GPT Review** — current Reviewed Mode semantics: GPT planning plus an external
+  GPT review decision after implementation; preserves stronger independent
+  semantic/product judgment.
+- **Governed** — current Controlled Mode semantics: full high-risk
+  Planner/Critic/Controller/Verifier/Executor authority separation, frozen
+  requirements/provenance, and Final Critic closure.
+
+These names are intentionally role/assurance-oriented. Exact CLI command names
+and compatibility aliases remain an implementation decision. Existing
+`reviewed-handoff` and `agent-flow` commands must remain backward compatible
+if display names change.
+
+The strongest reason to keep four levels is that **Local Review and GPT Review
+solve different uncertainty**:
+
+- Local Review answers: “Did we actually build and polish the already-frozen
+  product correctly?”
+- GPT Review answers: “Does an independent GPT agree that the semantics/product
+  result are correct?”
+- Governed answers: “Can we prove a high-risk task passed under separated
+  authority and bound evidence?”
+
+Do not make Lite implicitly launch reviewers; Lite should stay cheap and
+predictable.
+
+## ChatGPT Work boundary
+
+Current OpenAI product documentation treats ChatGPT Work and Codex as separate
+experiences. Work can operate on local folders in the ChatGPT desktop app when
+the user explicitly opens/grants them, but there is currently no documented
+supported Codex CLI/harness command that launches a ChatGPT Work conversation.
+
+Therefore a future Local Review workflow must **not depend on Codex launching
+GPT Work**.
+
+Preferred Local Review runtime:
+
+1. native fresh Codex subagent/context when supported;
+2. fresh isolated local Codex process/session fallback.
+
+ChatGPT Work may be an **optional additional product reviewer** when explicitly
+started by the user or when a future supported programmatic handoff exists. It
+must not be a required transition in Local Review.
+
+The existing GPT Review workflow may continue to use external GPT transports
+(such as Scheduled GPT) independently of Local Review. A future transport
+abstraction may support Work, but only after a supported launch/handoff surface
+exists.
+
+## Bounded-loop / token-cost requirements
+
+Local Review must never be an unbounded Executor↔Reviewer loop.
+
+Recommended default budgets to validate experimentally:
+
+```text
+initial reviewer pass: 1
+max repair rounds: 3
+max fresh reviewer passes: 4 total
+same exact finding allowed after repair: 1 recurrence
+same finding class before root-cause escalation: 2 occurrences
+root-cause consolidation pass: 1
+parallel reviewers by default: 1
+```
+
+After budget exhaustion, do not silently keep spending tokens. Produce one
+bounded terminal handoff such as `LOCAL_REVIEW_BUDGET_EXHAUSTED` with a compact
+finding summary and an explicit next route (typically GPT Review or human
+decision depending on task semantics).
+
+Additional cost controls:
+
+- Reviewer reads the frozen goal, current diff/source, exact release and
+  task-owned evidence; it should not reread unrelated repository history every
+  round.
+- No new Reviewer pass when production source/relevant artifact identity did not
+  change.
+- After a repair, invalidate only evidence affected by the change rather than
+  blindly regenerating every expensive artifact.
+- Same defect twice should trigger shared-mechanism/root-cause repair instead of
+  repeated symptom patches.
+- Track reviewer/repair round counts and, when available from the runtime,
+  cumulative token usage and wall time.
+- Optional soft budgets for cumulative tokens/wall time may warn the Controller;
+  a hard loop-count budget remains required even when token accounting is
+  unavailable.
+
+These defaults are candidates, not yet released contract. Lucerna and at least
+one additional consumer such as Bobbio should be used as real validation before
+the workflow is promoted to a stable public mode.
