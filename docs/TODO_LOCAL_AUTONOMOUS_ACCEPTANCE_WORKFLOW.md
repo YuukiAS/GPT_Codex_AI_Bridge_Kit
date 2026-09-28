@@ -728,3 +728,294 @@ only defect escape rate but also:
 
 The workflow should be considered successful only if independence improves
 quality **without turning acceptance into an hours-long serial evidence loop**.
+
+
+## 2026-09-29 requirement: Local Review must self-harden without user/GPT intervention
+
+Lucerna's cost attribution is now sufficient to freeze one additional core
+requirement: Local Review must not merely iterate on the product. It must also
+**turn recurring review/evidence friction into reusable, tested local
+infrastructure during the run**.
+
+The workflow is not successful if every fresh Reviewer rediscovers how to:
+
+- launch the exact native release;
+- wait for the real frontend-ready condition;
+- obtain a valid non-black screenshot;
+- map DOM control geometry to screen coordinates;
+- click native controls reliably;
+- prove close/Esc/tray-reopen behavior;
+- collect notification evidence;
+- bind evidence to the exact candidate;
+- distinguish product failure from review-harness failure.
+
+### Review-infrastructure finding class
+
+Add an explicit non-product finding category:
+
+`REVIEW_INFRA_GAP`
+
+Examples:
+
+- screenshot helper produces black frames;
+- DOM probe runs before frontend mount;
+- native hit-target coordinates are unreliable;
+- reviewer cannot tell whether the exact release is running;
+- the same evidence requires ad-hoc shell reconstruction every pass;
+- a capture/native-smoke helper fails nondeterministically.
+
+A `REVIEW_INFRA_GAP` must not be reported to the user as a product defect.
+
+It routes to the local Executor/Orchestrator for tooling hardening.
+
+### Automatic tooling-hardening trigger
+
+Enter `TOOLING_HARDENING_REQUIRED` when any of the following is true:
+
+1. the same evidence-collection action fails twice in one task;
+2. two fresh Reviewers need materially the same ad-hoc workaround;
+3. a Reviewer pass fails before reaching product judgment because of harness/
+   capture/readiness/tooling;
+4. more than one manual shell sequence is used to produce the same evidence
+   shape;
+5. a review-infrastructure mechanism consumes more wall time than the configured
+   threshold without producing new product coverage.
+
+This is an internal Local Review transition, not a human/GPT escalation.
+
+### Harden once, reuse afterwards
+
+The hardening loop is:
+
+```text
+review infrastructure failure
+→ classify REVIEW_INFRA_GAP
+→ identify mechanism_key
+→ implement/repair one reusable helper
+→ add deterministic regression test
+→ register capability
+→ run cheap capability preflight
+→ only then launch a fresh Reviewer
+```
+
+Do not repeatedly paste new PowerShell/Python/shell snippets into Reviewer
+prompts for the same job.
+
+If a script/helper already exists, repair it in place and strengthen its tests
+instead of creating `capture-v2`, `capture-final`, `capture-final2`, etc.
+
+### Project-local capability registry
+
+Local Review should install a small tracked capability registry, with a shape
+similar to:
+
+```text
+automation/local_review/
+  CAPABILITIES.json
+  tools/
+  fixtures/
+  tasks/
+```
+
+Exact paths remain an implementation decision, but the registry should record
+for each hardened primitive:
+
+```text
+capability_id
+purpose
+platform
+entrypoint
+inputs
+outputs
+preconditions
+success_contract
+regression_test
+source_digest
+last_validated_candidate
+reusable_across_tasks
+```
+
+This allows the next Reviewer to ask for a semantic capability such as
+`native_panel_capture` or `tray_close_escape_smoke`, rather than reinventing
+the command sequence.
+
+Machine-local paths/PIDs/session IDs remain outside Git.
+
+### Script/tool ownership rule
+
+When a repeatable evidence operation is needed, the workflow itself must decide
+whether to codify it.
+
+Default rule:
+
+- first one-off diagnostic may remain ad hoc;
+- second use of the same operation in the same task must use or create a script/
+  helper;
+- any operation required by the final acceptance contract must have a stable
+  entrypoint before the final Reviewer PASS.
+
+Examples:
+
+- native screenshot capture;
+- panel readiness probe;
+- button hit-target smoke;
+- notification-log snapshot;
+- release identity check;
+- reviewer artifact heartbeat.
+
+This directly addresses the Lucerna failure mode where screenshot/native-smoke
+knowledge was rediscovered over several hours.
+
+### Capability preflight before Reviewer launch
+
+Before each fresh Reviewer, the Orchestrator runs a cheap local preflight over
+the capabilities required by that review.
+
+Example:
+
+```text
+exact_release_identity=PASS
+frontend_ready_probe=PASS
+native_panel_capture=PASS
+capture_non_black=PASS
+tray_close_escape_smoke=PASS
+reviewer_output_path=PASS
+```
+
+If a capability preflight fails, do not spend a Reviewer pass.
+
+Repair/harden the capability locally first.
+
+### Reviewer prompts consume capabilities, not plumbing
+
+Reviewer instructions should specify **what evidence to obtain**, not how to
+rebuild low-level tooling.
+
+Bad:
+
+```text
+run this 40-line PowerShell snippet, then inspect HWND coordinates...
+```
+
+Good:
+
+```text
+use capability native_panel_capture
+use capability tray_close_escape_smoke
+review the resulting evidence independently
+```
+
+The implementation behind the capability remains testable and replaceable.
+
+### Automatic reuse and invalidation
+
+A hardened capability may be reused across Reviewer passes when:
+
+- its source digest is unchanged;
+- its own regression test still passes;
+- its preconditions still hold;
+- candidate changes do not invalidate the capability itself.
+
+Product evidence generated by the capability is still candidate-bound and must
+follow normal evidence invalidation rules.
+
+This separates:
+
+- **tool validity** — may persist across candidates;
+- **product evidence** — usually bound to one candidate.
+
+### Self-observability is mandatory
+
+Local Review must write its own lightweight orchestration telemetry while it
+runs. Do not wait until a 12-hour incident to reconstruct it from mtimes.
+
+At minimum emit append-only events for:
+
+```text
+stage_start
+stage_end
+reviewer_spawn
+reviewer_heartbeat
+reviewer_first_useful_evidence
+reviewer_conclusive_blocker
+reviewer_shutdown
+repair_start
+repair_end
+build_start
+build_end
+capability_preflight
+infra_gap_detected
+root_cause_mode_entered
+candidate_frozen
+candidate_invalidated
+```
+
+Each event should include timestamp, task key, candidate identity, stage,
+mechanism/finding identity where applicable, and bounded token/runtime metrics
+when available.
+
+### No silent one-hour gaps
+
+A Local Review run must not have unobserved hour-long gaps by design.
+
+Use stage-specific heartbeat/deadline semantics:
+
+- no useful Reviewer artifact/heartbeat for a bounded interval -> inspect/
+  restart the Reviewer locally;
+- conclusive blocker observed -> stop downstream Reviewer work immediately;
+- build/test subprocess with no progress -> inspect process state before waiting
+  indefinitely;
+- unknown wait reason -> persist the reason/state instead of silently sleeping.
+
+Exact timeouts should be calibrated empirically and may vary by stage. Avoid one
+universal short timeout that kills legitimate builds.
+
+### Learning artifact after every costly mechanism
+
+When a mechanism consumes material repair time or more than one attempt, Local
+Review should automatically write a compact machine-readable learning record:
+
+```text
+mechanism_key
+symptoms
+root_cause
+hardened_capability
+regression_test
+affected_surfaces
+reusable_scope
+future_preflight
+time_spent
+tokens_spent_if_known
+```
+
+If the lesson is consumer-specific, keep it in the consumer repository.
+
+If it is generic across projects, mark:
+
+`BRIDGE_PROMOTION_CANDIDATE=true`
+
+and emit a structured promotion artifact for later Bridge Kit maintenance.
+Do not require the user or GPT to manually notice that the same infrastructure
+problem has happened repeatedly.
+
+### Autonomy requirement
+
+For Local Review normal operation, neither the user nor external GPT is required
+between the frozen initial goal and final acceptance.
+
+The local Orchestrator owns:
+
+- evidence-tool preparation;
+- capability hardening;
+- Reviewer restart/fallback;
+- product repair routing;
+- root-cause escalation;
+- incremental invalidation;
+- timing/heartbeat accounting;
+- final bounded promotion decision.
+
+User/GPT involvement remains reserved for the already-defined semantic/human
+boundaries, not for ordinary review infrastructure.
+
+This autonomy requirement is a promotion gate for Local Review, not optional
+polish.
