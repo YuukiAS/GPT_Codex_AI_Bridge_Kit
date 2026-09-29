@@ -292,16 +292,76 @@ def _executable_file_exists(path: Path) -> bool:
         return False
 
 
+def _configured_external_filter_names(target: Path, *, local_only: bool = False) -> tuple[set[str], int]:
+    args = ["config"]
+    if local_only:
+        args.append("--local")
+    args.extend(["--get-regexp", r"^filter\..*\.(smudge|process)$"])
+    config = git_run(target, args, check=False)
+    if config.returncode not in {0, 1}:
+        return set(), config.returncode
+    names: set[str] = set()
+    for line in config.stdout.splitlines():
+        match = re.match(r"^filter\.([^.]+)\.(?:smudge|process)(?:\s|$)", line)
+        if match:
+            names.add(match.group(1))
+    return names, config.returncode
+
+
+def _attribute_filter_names_from_text(text: str) -> set[str]:
+    names: set[str] = set()
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        for token in line.split()[1:]:
+            if token.startswith("filter="):
+                name = token.split("=", 1)[1].strip()
+                if name:
+                    names.add(name)
+    return names
+
+
+def _repository_declared_filter_names(target: Path) -> set[str]:
+    names: set[str] = set()
+    tracked = git_run(target, ["ls-files", "-z"], check=False)
+    if tracked.returncode != 0:
+        raise WorktreeMaterializeError("GIT_CONFIG_READ_FAILED")
+    for raw in tracked.stdout.split("\0"):
+        if not raw or not raw.endswith(".gitattributes"):
+            continue
+        path = target / raw
+        try:
+            names.update(_attribute_filter_names_from_text(path.read_text(encoding="utf-8")))
+        except OSError:
+            raise WorktreeMaterializeError("GIT_CONFIG_READ_FAILED")
+    git_dir = Path(git_output(target, ["rev-parse", "--git-dir"]))
+    if not git_dir.is_absolute():
+        git_dir = target / git_dir
+    info_attributes = git_dir / "info" / "attributes"
+    if info_attributes.exists():
+        try:
+            names.update(_attribute_filter_names_from_text(info_attributes.read_text(encoding="utf-8")))
+        except OSError:
+            raise WorktreeMaterializeError("GIT_CONFIG_READ_FAILED")
+    return names
+
+
 def _require_no_reachable_external_executables(target: Path) -> None:
     for hook_root in _hook_roots(target):
         for hook_name in ["reference-transaction", "post-checkout", "post-index-change"]:
             if _executable_file_exists(hook_root / hook_name):
                 raise WorktreeMaterializeError("REACHABLE_EXECUTABLE_PATH_REQUIRES_ORDINARY_APPROVAL")
-    config = git_run(target, ["config", "--get-regexp", r"^filter\..*\.(smudge|process)$"], check=False)
-    if config.returncode == 0 and config.stdout.strip():
-        raise WorktreeMaterializeError("REACHABLE_EXECUTABLE_PATH_REQUIRES_ORDINARY_APPROVAL")
-    if config.returncode not in {0, 1}:
+    local_filter_names, local_status = _configured_external_filter_names(target, local_only=True)
+    if local_status not in {0, 1}:
         raise WorktreeMaterializeError("GIT_CONFIG_READ_FAILED")
+    if local_filter_names:
+        raise WorktreeMaterializeError("REACHABLE_EXECUTABLE_PATH_REQUIRES_ORDINARY_APPROVAL")
+    configured_filter_names, config_status = _configured_external_filter_names(target)
+    if config_status not in {0, 1}:
+        raise WorktreeMaterializeError("GIT_CONFIG_READ_FAILED")
+    if configured_filter_names and (configured_filter_names & _repository_declared_filter_names(target)):
+        raise WorktreeMaterializeError("REACHABLE_EXECUTABLE_PATH_REQUIRES_ORDINARY_APPROVAL")
     for value in _git_config_values(target, "core.fsmonitor"):
         if value.strip().lower() not in {"false", "no", "off", "0"}:
             raise WorktreeMaterializeError("REACHABLE_EXECUTABLE_PATH_REQUIRES_ORDINARY_APPROVAL")

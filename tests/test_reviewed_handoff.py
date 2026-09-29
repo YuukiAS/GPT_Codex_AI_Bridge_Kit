@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 from datetime import datetime, timedelta, timezone
 import io
+import os
 import subprocess
 import tempfile
 import unittest
@@ -543,6 +544,46 @@ class ReviewedHandoffTests(unittest.TestCase):
                             expected_repo=identity,
                             expected_base_commit=base_commit,
                         )
+
+    def test_task_bootstrap_allows_unreferenced_global_filter_but_rejects_reachable_filter(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target, identity = self.make_remote_review_project(tmp, worktree=Path(tmp) / "unused")
+            base_commit = self.publish_review_install(target)
+            global_config = Path(tmp) / "global-gitconfig"
+            global_config.write_text(
+                "[filter \"demo\"]\n"
+                "\tprocess = demo-process\n",
+                encoding="utf-8",
+            )
+
+            safe_clone = Path(tmp) / "safe-global-filter"
+            subprocess.check_call(["git", "clone", str(Path(tmp) / "remote.git"), str(safe_clone)], stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "config", "user.email", "test@example.org"], cwd=safe_clone)
+            subprocess.check_call(["git", "config", "user.name", "Test User"], cwd=safe_clone)
+            with mock.patch.dict(os.environ, {"GIT_CONFIG_GLOBAL": str(global_config)}):
+                actions = rh.bootstrap_task_worktree(
+                    safe_clone,
+                    "repo--global-filter-safe",
+                    expected_repo=identity,
+                    expected_base_commit=base_commit,
+                )
+            self.assertTrue(any("CREATE branch reviewed/repo--global-filter-safe" in action for action in actions))
+
+            unsafe_clone = Path(tmp) / "reachable-global-filter"
+            subprocess.check_call(["git", "clone", str(Path(tmp) / "remote.git"), str(unsafe_clone)], stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "config", "user.email", "test@example.org"], cwd=unsafe_clone)
+            subprocess.check_call(["git", "config", "user.name", "Test User"], cwd=unsafe_clone)
+            (unsafe_clone / ".gitattributes").write_text("*.bin filter=demo\n", encoding="utf-8")
+            subprocess.check_call(["git", "add", ".gitattributes"], cwd=unsafe_clone)
+            subprocess.check_call(["git", "commit", "-m", "declare filtered content"], cwd=unsafe_clone, stdout=subprocess.DEVNULL)
+            with mock.patch.dict(os.environ, {"GIT_CONFIG_GLOBAL": str(global_config)}):
+                with self.assertRaisesRegex(rh.WorktreeMaterializeError, "REACHABLE_EXECUTABLE_PATH_REQUIRES_ORDINARY_APPROVAL"):
+                    rh.bootstrap_task_worktree(
+                        unsafe_clone,
+                        "repo--global-filter-reachable",
+                        expected_repo=identity,
+                        expected_base_commit=base_commit,
+                    )
 
     def test_task_bootstrap_rejects_task_output_redirection(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -13,6 +13,9 @@
 - Extend the Tests workflow path filter to pure Markdown, docs, and results
   updates while preserving full CI for source, tests, workflow, and config
   changes.
+- Keep Reviewed Handoff bootstrap's executable-path approval gate fail-closed
+  for repo-local filters and repository-declared global filters, while avoiding
+  false positives from unrelated runner-global filter configuration.
 
 ## 0.9.2 - 2026-09-25
 
