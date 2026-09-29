@@ -810,11 +810,13 @@ class ReviewedHandoffTests(unittest.TestCase):
 
     def test_publish_first_rejects_non_first_publication_current_state_before_network(self) -> None:
         cases = [
+            ("schema", "AI_BRIDGE_REVIEWED_CURRENT_V0", "CURRENT_SCHEMA_MISMATCH"),
             ("state", "READY_FOR_GPT_REVIEW", "CURRENT_STATE_NOT_FIRST_PUBLICATION"),
             ("next_action", "WAIT_FOR_GPT_REVIEW", "CURRENT_NEXT_ACTION_NOT_FIRST_PUBLICATION"),
             ("review_round", 1, "CURRENT_REVIEW_ROUND_NOT_ZERO"),
             ("plan_revision", 1, "CURRENT_PLAN_REVISION_NOT_ZERO"),
             ("implementation_commit", "1" * 40, "CURRENT_IMPLEMENTATION_ALREADY_BOUND"),
+            ("base_branch", "not-main", "CURRENT_BASE_BRANCH_NOT_MAIN"),
         ]
         for field, value, error in cases:
             with self.subTest(field=field):

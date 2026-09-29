@@ -1163,6 +1163,8 @@ def _validate_publish_first_scope(target: Path, task_key: str, expected_repo: st
         current_payload = json.loads(read_text(current_path))
     except json.JSONDecodeError as exc:
         raise PublishFirstError("CURRENT_JSON_INVALID") from exc
+    if current_payload.get("schema") != CURRENT_SCHEMA:
+        raise PublishFirstError("CURRENT_SCHEMA_MISMATCH")
     if current_payload.get("task_key") != task_key:
         raise PublishFirstError("CURRENT_TASK_KEY_MISMATCH")
     if current_payload.get("state") != "PLAN_REQUESTED":
@@ -1179,6 +1181,8 @@ def _validate_publish_first_scope(target: Path, task_key: str, expected_repo: st
     _reject_symlink_redirection(frozen_worktree)
     if frozen_worktree != target:
         raise PublishFirstError("WORKTREE_ASSERTION_FAILED")
+    if current_payload.get("base_branch") != "main":
+        raise PublishFirstError("CURRENT_BASE_BRANCH_NOT_MAIN")
     base_commit = str(current_payload.get("base_commit") or "")
     if not re.fullmatch(r"[0-9a-fA-F]{40}", base_commit):
         raise PublishFirstError("CURRENT_BASE_COMMIT_INVALID")
