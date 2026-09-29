@@ -28,6 +28,12 @@ prefix_rule(
 )
 
 prefix_rule(
+    pattern = ["ai-bridge", "reviewed-handoff", "task", "publish-first"],
+    decision = "allow",
+    justification = "The user permanently authorizes Bridge Kit's bounded Reviewed Mode first-publication helper; it must operate only on the exact current reviewed/<task_key> worktree, publish only the single raw first-bootstrap REQUEST/CURRENT commit to the same-name origin branch through GitHub HTTPS with an internal empty-expect lease, bind upstream only after post-read identity, and fail closed on any history/path/blob, transport, config, hook, existing-ref, partial, or ambiguous condition.",
+)
+
+prefix_rule(
     pattern = ["gh", "auth", "status", "--"],
     decision = "allow",
     justification = "The user permanently authorizes current-scope GitHub CLI authentication status reads without token display; cross-repo selectors, token display, and arbitrary API calls remain on the approval path.",

@@ -244,6 +244,7 @@ memories = false
             self.assertIn('pattern = ["ai-bridge", "host", "publish-current-branch"]', rules_path.read_text(encoding="utf-8"))
             self.assertIn('pattern = ["ai-bridge", "reviewed-handoff", "materialize-worktree"]', rules_path.read_text(encoding="utf-8"))
             self.assertIn('pattern = ["ai-bridge", "reviewed-handoff", "task", "bootstrap"]', rules_path.read_text(encoding="utf-8"))
+            self.assertIn('pattern = ["ai-bridge", "reviewed-handoff", "task", "publish-first"]', rules_path.read_text(encoding="utf-8"))
             self.assertIn('pattern = ["gh", "pr", "list", "--"]', rules_path.read_text(encoding="utf-8"))
             self.assertIn('pattern = ["ps"]', rules_path.read_text(encoding="utf-8"))
             self.assertIn('pattern = ["git", "fetch", "--all", "--prune"]', rules_path.read_text(encoding="utf-8"))
@@ -339,6 +340,7 @@ memories = false
             self.assertTrue(any("ai-bridge host publish-current-branch" in line and "=> allow" in line for line in lines))
             self.assertTrue(any("ai-bridge reviewed-handoff materialize-worktree" in line and "=> allow" in line for line in lines))
             self.assertTrue(any("ai-bridge reviewed-handoff task bootstrap" in line and "=> allow" in line for line in lines))
+            self.assertTrue(any("ai-bridge reviewed-handoff task publish-first" in line and "=> allow" in line for line in lines))
             self.assertTrue(any("gh auth status -- => allow" in line for line in lines))
             self.assertTrue(any("gh pr list -- => allow" in line for line in lines))
             self.assertTrue(any("gh pr status -- => allow" in line for line in lines))
@@ -437,6 +439,7 @@ memories = false
                 ("ai-bridge", "host", "publish-current-branch", "--expected-repo", "YuukiAS/GPT_Codex_AI_Bridge_Kit", "--expected-branch", "main"): "allow",
                 ("ai-bridge", "reviewed-handoff", "materialize-worktree", "--target", str(Path.cwd()), "--task-key", "repo--feature", "--expected-repo", "YuukiAS/GPT_Codex_AI_Bridge_Kit", "--expected-worktree", "/tmp/repo--feature", "--expected-base-ref", "origin/main", "--mode", "bootstrap"): "allow",
                 ("ai-bridge", "reviewed-handoff", "task", "bootstrap", "--task-key", "repo--feature", "--expected-repo", "YuukiAS/GPT_Codex_AI_Bridge_Kit", "--expected-base-commit", "0000000000000000000000000000000000000000"): "allow",
+                ("ai-bridge", "reviewed-handoff", "task", "publish-first", "--task-key", "repo--feature", "--expected-repo", "YuukiAS/GPT_Codex_AI_Bridge_Kit"): "allow",
                 ("gh", "auth", "status", "--"): "allow",
                 ("gh", "pr", "list", "--"): "allow",
                 ("gh", "pr", "status", "--"): "allow",
@@ -522,6 +525,7 @@ memories = false
                 ("git", "push", "origin", "--force", "main"): "prompt",
                 ("git", "push", "origin", "main", "--force"): "prompt",
                 ("git", "push", "origin", "main", "--force-with-lease"): "prompt",
+                ("git", "push", "--force-with-lease", "origin", "main"): "prompt",
                 ("git", "push", "origin", "main", "-f"): "prompt",
             }
 

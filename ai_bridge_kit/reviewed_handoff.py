@@ -12,7 +12,19 @@ from pathlib import Path
 from typing import Any
 
 from . import external_wait
-from .host import _canonical_repo_identity
+from .host import (
+    HostPublishError,
+    _canonical_repo_identity,
+    _config_value as _host_config_value,
+    _has_config_key as _host_has_config_key,
+    _is_true as _host_is_true,
+    _publisher_github_https_identity,
+    _reject_active_hook,
+    _reject_process_transport_env,
+    _reject_repository_transport_config,
+    _sanitized_push_env,
+    _single_remote_url,
+)
 from . import task_keys
 from . import text_review
 from . import visual_review
@@ -119,6 +131,10 @@ class WorktreeMaterializeError(ValueError):
     pass
 
 
+class PublishFirstError(ValueError):
+    pass
+
+
 @dataclass
 class ReviewedStatus:
     target: Path
@@ -136,6 +152,17 @@ class TaskScope:
     base_commit: str
     frozen_worktree: Path
     remote_oid: str | None = None
+
+
+@dataclass(frozen=True)
+class FirstPublicationResult:
+    status: str
+    repo: str
+    task_key: str
+    branch: str
+    pushed_oid: str
+    destination: str
+    output: str
 
 
 def kit_root() -> Path:
@@ -179,7 +206,13 @@ def git_output(target: Path, args: list[str]) -> str:
     return subprocess.check_output(["git", *args], cwd=target, text=True, stderr=subprocess.DEVNULL).strip()
 
 
-def git_run(target: Path, args: list[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
+def git_run(
+    target: Path,
+    args: list[str],
+    *,
+    check: bool = True,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(
         ["git", *args],
         cwd=target,
@@ -187,6 +220,7 @@ def git_run(target: Path, args: list[str], *, check: bool = True) -> subprocess.
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        env=env,
     )
     if check and result.returncode != 0:
         raise WorktreeMaterializeError((result.stderr or result.stdout or "git command failed").strip())
@@ -979,6 +1013,297 @@ def bootstrap_task_worktree(
         f"CREATE worktree {worktree} at {branch}",
         *actions,
     ]
+
+
+def _git_raw(
+    target: Path,
+    args: list[str],
+    *,
+    check: bool = True,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    return git_run(target, ["--no-replace-objects", *args], check=check, env=env)
+
+
+def _git_raw_text(target: Path, args: list[str]) -> str:
+    return _git_raw(target, args).stdout.strip()
+
+
+def _active_graft_lines(target: Path) -> list[str]:
+    graft_path = Path(git_output(target, ["rev-parse", "--git-path", "info/grafts"]))
+    if not graft_path.is_absolute():
+        graft_path = target / graft_path
+    if not graft_path.exists():
+        return []
+    lines: list[str] = []
+    for raw in graft_path.read_text(encoding="utf-8").splitlines():
+        stripped = raw.strip()
+        if stripped and not stripped.startswith("#"):
+            lines.append(stripped)
+    return lines
+
+
+def _raw_commit_parents(target: Path, commit: str) -> list[str]:
+    raw = _git_raw_text(target, ["cat-file", "-p", commit])
+    parents: list[str] = []
+    for line in raw.splitlines():
+        if not line:
+            break
+        if line.startswith("parent "):
+            parents.append(line.split(" ", 1)[1].strip())
+    return parents
+
+
+def _tree_path_exists(target: Path, commit: str, rel: str) -> bool:
+    result = _git_raw(target, ["cat-file", "-e", f"{commit}:{rel}"], check=False)
+    return result.returncode == 0
+
+
+def _raw_diff_name_status(target: Path, base_commit: str, head_commit: str) -> list[tuple[str, str]]:
+    result = _git_raw(
+        target,
+        ["diff-tree", "--no-commit-id", "-r", "--name-status", "--no-renames", "-z", base_commit, head_commit],
+    )
+    fields = result.stdout.split("\0")
+    entries: list[tuple[str, str]] = []
+    index = 0
+    while index < len(fields):
+        status = fields[index]
+        if not status:
+            index += 1
+            continue
+        if index + 1 >= len(fields):
+            raise PublishFirstError("RAW_DIFF_PARSE_FAILED")
+        entries.append((status, fields[index + 1]))
+        index += 2
+    return entries
+
+
+def _raw_tree_entry(target: Path, commit: str, rel: str) -> tuple[str, str, str]:
+    result = _git_raw(target, ["ls-tree", "-z", commit, "--", rel])
+    entries = [entry for entry in result.stdout.split("\0") if entry]
+    if len(entries) != 1:
+        raise PublishFirstError("RAW_TREE_ENTRY_MISSING_OR_AMBIGUOUS")
+    meta, _, path = entries[0].partition("\t")
+    parts = meta.split()
+    if len(parts) != 3 or path != rel:
+        raise PublishFirstError("RAW_TREE_ENTRY_INVALID")
+    mode, kind, oid = parts
+    return mode, kind, oid
+
+
+def _raw_blob_text(target: Path, commit: str, rel: str) -> str:
+    return _git_raw(target, ["show", f"{commit}:{rel}"]).stdout
+
+
+def _require_publish_first_transport_fences(
+    target: Path,
+    *,
+    expected_repo: str,
+    env: dict[str, str],
+) -> dict[str, str]:
+    _reject_process_transport_env(env)
+    if env.get("AI_BRIDGE_REVIEWED_RUNNER_PUSH_GUARD") or env.get("AI_BRIDGE_REVIEWED_EXECUTOR"):
+        raise PublishFirstError("REVIEW_EXECUTOR_GUARD_REQUIRES_REVIEWED_RUNNER")
+    if _host_is_true(_host_config_value(target, "remote.origin.mirror")):
+        raise PublishFirstError("MIRROR_PUSH_REQUIRES_APPROVAL")
+    if _host_is_true(_host_config_value(target, "push.followTags")):
+        raise PublishFirstError("FOLLOW_TAGS_REQUIRES_APPROVAL")
+    recurse = _host_config_value(target, "push.recurseSubmodules").lower()
+    if recurse and recurse not in {"no", "false", "off"}:
+        raise PublishFirstError("RECURSIVE_SUBMODULE_PUSH_REQUIRES_APPROVAL")
+    if _host_has_config_key(target, "push.pushOption"):
+        raise PublishFirstError("PUSH_OPTIONS_REQUIRE_APPROVAL")
+    signing = _host_config_value(target, "push.gpgSign").lower()
+    if signing and signing not in {"false", "no", "off"}:
+        raise PublishFirstError("SIGNED_PUSH_REQUIRES_APPROVAL")
+    try:
+        _reject_repository_transport_config(target)
+        _reject_active_hook(target)
+        fetch_url = _single_remote_url(target, ["remote", "get-url", "--all", "origin"], "REMOTE_URL_AMBIGUOUS")
+        push_url = _single_remote_url(target, ["remote", "get-url", "--push", "--all", "origin"], "REMOTE_PUSH_URL_AMBIGUOUS")
+        repo = _publisher_github_https_identity(fetch_url)
+        push_repo = _publisher_github_https_identity(push_url)
+    except HostPublishError as exc:
+        raise PublishFirstError(str(exc)) from exc
+    if repo != push_repo or repo != expected_repo:
+        raise PublishFirstError("REMOTE_IDENTITY_MISMATCH")
+    return {"repo": repo, "fetch_url": fetch_url, "push_url": push_url}
+
+
+def _validate_publish_first_scope(target: Path, task_key: str, expected_repo: str) -> tuple[str, dict[str, Any], str, str]:
+    target = target.resolve()
+    if error := task_keys.new_task_key_error(task_key):
+        raise PublishFirstError(error)
+    if _origin_repo_identity(target) != expected_repo:
+        raise PublishFirstError("REPO_ASSERTION_FAILED")
+    if not inspect_reviewed_handoff(target).installed:
+        raise PublishFirstError("Review is not installed; run reviewed-handoff install first")
+    branch = f"reviewed/{task_key}"
+    branch_ref = f"refs/heads/{branch}"
+    current_branch_name = current_branch(target)
+    if current_branch_name != branch:
+        raise PublishFirstError("BRANCH_ASSERTION_FAILED")
+    if not _worktree_is_clean(target):
+        raise PublishFirstError("WORKTREE_NOT_CLEAN")
+    top = Path(git_output(target, ["rev-parse", "--show-toplevel"])).resolve()
+    if top != target:
+        raise PublishFirstError("WORKTREE_TOPLEVEL_MISMATCH")
+    if _active_graft_lines(target):
+        raise PublishFirstError("ACTIVE_GRAFTS_REQUIRE_ORDINARY_APPROVAL")
+    head = _git_raw_text(target, ["rev-parse", "HEAD"])
+    request_rel = f"automation/reviewed_handoff/tasks/{task_key}/REQUEST.md"
+    current_rel = f"automation/reviewed_handoff/tasks/{task_key}/CURRENT.json"
+    current_path = target / current_rel
+    request_path = target / request_rel
+    if not current_path.exists() or not request_path.exists():
+        raise PublishFirstError("LOCAL_TASK_METADATA_REQUIRED")
+    request_text = read_text(request_path)
+    try:
+        current_payload = json.loads(read_text(current_path))
+    except json.JSONDecodeError as exc:
+        raise PublishFirstError("CURRENT_JSON_INVALID") from exc
+    if current_payload.get("task_key") != task_key:
+        raise PublishFirstError("CURRENT_TASK_KEY_MISMATCH")
+    if current_payload.get("state") != "PLAN_REQUESTED":
+        raise PublishFirstError("CURRENT_STATE_NOT_FIRST_PUBLICATION")
+    if current_payload.get("next_action") != "RUN_GPT_PLANNER":
+        raise PublishFirstError("CURRENT_NEXT_ACTION_NOT_FIRST_PUBLICATION")
+    if current_payload.get("review_round") != 0:
+        raise PublishFirstError("CURRENT_REVIEW_ROUND_NOT_ZERO")
+    if current_payload.get("plan_revision") != 0:
+        raise PublishFirstError("CURRENT_PLAN_REVISION_NOT_ZERO")
+    if current_payload.get("implementation_commit") is not None:
+        raise PublishFirstError("CURRENT_IMPLEMENTATION_ALREADY_BOUND")
+    frozen_worktree = _lexical_absolute(_frozen_worktree_locator_from_text(request_text))
+    _reject_symlink_redirection(frozen_worktree)
+    if frozen_worktree != target:
+        raise PublishFirstError("WORKTREE_ASSERTION_FAILED")
+    base_commit = str(current_payload.get("base_commit") or "")
+    if not re.fullmatch(r"[0-9a-fA-F]{40}", base_commit):
+        raise PublishFirstError("CURRENT_BASE_COMMIT_INVALID")
+    if not git_commit_exists(target, base_commit):
+        raise PublishFirstError("BASE_COMMIT_MISSING")
+    parents = _raw_commit_parents(target, head)
+    if parents != [base_commit]:
+        raise PublishFirstError("RAW_HEAD_NOT_SINGLE_DIRECT_CHILD")
+    if _tree_path_exists(target, base_commit, request_rel) or _tree_path_exists(target, base_commit, current_rel):
+        raise PublishFirstError("RAW_BASE_ALREADY_HAS_TASK_METADATA")
+    expected_diff = [("A", request_rel), ("A", current_rel)]
+    observed_diff = sorted(_raw_diff_name_status(target, base_commit, head))
+    if observed_diff != sorted(expected_diff):
+        raise PublishFirstError("RAW_FIRST_PUBLICATION_DIFF_OUT_OF_SCOPE")
+    for rel in [request_rel, current_rel]:
+        mode, kind, _oid = _raw_tree_entry(target, head, rel)
+        if kind != "blob" or not mode.startswith("100"):
+            raise PublishFirstError("RAW_TASK_METADATA_NOT_REGULAR_BLOB")
+    raw_current = json.loads(_raw_blob_text(target, head, current_rel))
+    if raw_current != current_payload:
+        raise PublishFirstError("RAW_CURRENT_BLOB_MISMATCH")
+    raw_request = _raw_blob_text(target, head, request_rel)
+    if raw_request != request_text:
+        raise PublishFirstError("RAW_REQUEST_BLOB_MISMATCH")
+    if _lexical_absolute(_frozen_worktree_locator_from_text(raw_request)) != target:
+        raise PublishFirstError("RAW_REQUEST_WORKTREE_MISMATCH")
+    count = _git_raw_text(target, ["rev-list", "--count", f"{base_commit}..{head}"])
+    if count != "1":
+        raise PublishFirstError("RAW_REV_LIST_COUNT_NOT_ONE")
+    if _branch_oid(target, branch_ref) != head:
+        raise PublishFirstError("LOCAL_BRANCH_HEAD_MISMATCH")
+    return head, current_payload, branch, branch_ref
+
+
+def _remote_branch_oid(target: Path, branch: str, *, env: dict[str, str]) -> str | None:
+    result = git_run(target, ["ls-remote", "--heads", "origin", f"refs/heads/{branch}"], check=False, env=env)
+    if result.returncode != 0:
+        raise PublishFirstError("REMOTE_BRANCH_CHECK_FAILED")
+    parts = result.stdout.split()
+    if not parts:
+        return None
+    if len(parts) < 2 or parts[1] != f"refs/heads/{branch}":
+        raise PublishFirstError("REMOTE_BRANCH_CHECK_AMBIGUOUS")
+    return parts[0]
+
+
+def _clear_invocation_owned_upstream_config(target: Path, branch: str, expected_merge: str) -> None:
+    remote_key = f"branch.{branch}.remote"
+    merge_key = f"branch.{branch}.merge"
+    remote_value = git_run(target, ["config", "--get", remote_key], check=False).stdout.strip()
+    merge_value = git_run(target, ["config", "--get", merge_key], check=False).stdout.strip()
+    if remote_value == "origin":
+        git_run(target, ["config", "--unset-all", remote_key], check=False)
+    if merge_value == expected_merge:
+        git_run(target, ["config", "--unset-all", merge_key], check=False)
+
+
+def publish_first_reviewed_task(
+    cwd: Path,
+    *,
+    task_key: str,
+    expected_repo: str,
+    env: dict[str, str] | None = None,
+) -> FirstPublicationResult:
+    target = cwd.resolve()
+    active_env = dict(os.environ if env is None else env)
+    mutation_env = _sanitized_push_env(active_env)
+    _require_publish_first_transport_fences(target, expected_repo=expected_repo, env=active_env)
+    head, _current_payload, branch, branch_ref = _validate_publish_first_scope(target, task_key, expected_repo)
+    if _host_config_value(target, f"branch.{branch}.remote") or _host_config_value(target, f"branch.{branch}.merge"):
+        raise PublishFirstError("UPSTREAM_ALREADY_SET")
+    if _remote_branch_oid(target, branch, env=mutation_env) is not None:
+        raise PublishFirstError("REMOTE_TASK_BRANCH_ALREADY_EXISTS")
+    _require_publish_first_transport_fences(target, expected_repo=expected_repo, env=mutation_env)
+    final_head, _final_current, final_branch, final_branch_ref = _validate_publish_first_scope(target, task_key, expected_repo)
+    if final_head != head or final_branch != branch or final_branch_ref != branch_ref:
+        raise PublishFirstError("FINAL_RECHECK_CHANGED")
+    if _host_config_value(target, f"branch.{branch}.remote") or _host_config_value(target, f"branch.{branch}.merge"):
+        raise PublishFirstError("UPSTREAM_ALREADY_SET")
+    if _remote_branch_oid(target, branch, env=mutation_env) is not None:
+        raise PublishFirstError("REMOTE_TASK_BRANCH_ALREADY_EXISTS")
+    refspec = f"{head}:refs/heads/{branch}"
+    lease = f"--force-with-lease=refs/heads/{branch}:"
+    result = _git_raw(
+        target,
+        [
+            "-c",
+            "push.followTags=false",
+            "-c",
+            "push.recurseSubmodules=no",
+            "-c",
+            "push.gpgSign=false",
+            "-c",
+            "core.hooksPath=/dev/null",
+            "push",
+            "--porcelain",
+            lease,
+            "origin",
+            refspec,
+        ],
+        check=False,
+        env=mutation_env,
+    )
+    output = "\n".join(part for part in [result.stdout.strip(), result.stderr.strip()] if part)
+    if result.returncode != 0:
+        raise PublishFirstError(output or "PUBLISH_FIRST_PUSH_FAILED")
+    remote_oid = _remote_branch_oid(target, branch, env=mutation_env)
+    if remote_oid != head:
+        raise PublishFirstError("PUBLISH_FIRST_POST_READ_MISMATCH")
+    merge_ref = f"refs/heads/{branch}"
+    try:
+        git_run(target, ["config", f"branch.{branch}.remote", "origin"])
+        git_run(target, ["config", f"branch.{branch}.merge", merge_ref])
+    except Exception as exc:
+        _clear_invocation_owned_upstream_config(target, branch, merge_ref)
+        raise PublishFirstError(f"REMOTE_CREATED_UPSTREAM_BIND_FAILED: {exc}") from exc
+    return FirstPublicationResult(
+        status="published",
+        repo=expected_repo,
+        task_key=task_key,
+        branch=branch,
+        pushed_oid=head,
+        destination=f"origin/refs/heads/{branch}",
+        output=output,
+    )
 
 
 def git_is_ancestor(target: Path, base_commit: str, implementation_commit: str) -> bool:
@@ -2106,6 +2431,9 @@ def build_parser() -> argparse.ArgumentParser:
     task_bootstrap.add_argument("--visual-review-manifest-path", default="")
     task_bootstrap.add_argument("--text-review-required", action="store_true")
     task_bootstrap.add_argument("--text-review-manifest-path", default="")
+    task_publish_first = task_sub.add_parser("publish-first")
+    task_publish_first.add_argument("--task-key", required=True)
+    task_publish_first.add_argument("--expected-repo", required=True)
 
     transition = sub.add_parser("transition")
     transition_sub = transition.add_subparsers(dest="transition_command")
@@ -2199,6 +2527,21 @@ def main(argv: list[str] | None = None) -> int:
                 text_review_manifest_path=args.text_review_manifest_path,
             ):
                 print(action)
+            return 0
+        if args.command == "task" and args.task_command == "publish-first":
+            result = publish_first_reviewed_task(
+                Path.cwd(),
+                task_key=args.task_key,
+                expected_repo=args.expected_repo,
+            )
+            print(f"status={result.status}")
+            print(f"repo={result.repo}")
+            print(f"task_key={result.task_key}")
+            print(f"branch={result.branch}")
+            print(f"pushed_oid={result.pushed_oid}")
+            print(f"destination={result.destination}")
+            if result.output:
+                print(result.output)
             return 0
         if args.command == "transition" and args.transition_command == "plan":
             print(json.dumps(plan_transition(args.target, args.task_key), ensure_ascii=False, indent=2, sort_keys=True))

@@ -891,6 +891,16 @@ def validate_host_policy(codex_home: Path, cwd: Path | None = None) -> tuple[Hos
         "--expected-base-commit",
         "0" * 40,
     ]
+    publish_first_command = [
+        "ai-bridge",
+        "reviewed-handoff",
+        "task",
+        "publish-first",
+        "--task-key",
+        "repo--feature",
+        "--expected-repo",
+        "YuukiAS/GPT_Codex_AI_Bridge_Kit",
+    ]
     gh_safe_read_checks = [
         ["gh", "auth", "status", "--"],
         ["gh", "pr", "list", "--"],
@@ -962,6 +972,7 @@ def validate_host_policy(codex_home: Path, cwd: Path | None = None) -> tuple[Hos
         (publisher_command, "allow", "direct", True),
         (materializer_command, "allow", "direct", True),
         (bootstrap_command, "allow", "direct", True),
+        (publish_first_command, "allow", "direct", True),
         *[(command, "allow", "direct", False) for command in gh_safe_read_checks],
         *[(command, "prompt", "effective", False) for command in gh_gated_checks],
         *[(command, "allow", "direct", False) for command in slurm_read_only_checks],
@@ -1005,6 +1016,7 @@ def validate_host_policy(codex_home: Path, cwd: Path | None = None) -> tuple[Hos
         (["git", "push", "origin", "--force", "main"], "prompt", "effective", False),
         (["git", "push", "origin", "main", "--force"], "prompt", "effective", False),
         (["git", "push", "origin", "main", "--force-with-lease"], "prompt", "effective", False),
+        (["git", "push", "--force-with-lease", "origin", "main"], "prompt", "effective", False),
         (["git", "push", "origin", "main", "-f"], "prompt", "effective", False),
     ]
     for command, expected, comparison, resolve_host in checks:

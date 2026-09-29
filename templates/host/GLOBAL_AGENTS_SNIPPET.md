@@ -32,10 +32,15 @@ is a project decision controlled by the user.
   integration strategy. If the requested branch does not correspond to the
   current Reviewed Mode task, ask the user.
 - Bridge Kit provides bounded Reviewed Mode worktree materialization only for
-  an exact frozen `reviewed/<task_key>` branch/worktree effect. Other branch
-  creation or first-push choices remain branch-topology decisions and may still
-  surface an approval/user-input interaction. Treat that as a recoverable
-  authorization interaction, not a reason to mark the workflow `BLOCKED`.
+  an exact frozen `reviewed/<task_key>` branch/worktree effect. For a brand-new
+  Reviewed task whose current-user-approved kickoff already names the exact
+  task, branch and worktree, Bridge Kit also provides bounded first publication
+  through `ai-bridge reviewed-handoff task publish-first --task-key ...
+  --expected-repo ...`. That helper may create only the absent same-name
+  `origin` branch from the single first-bootstrap REQUEST/CURRENT commit after
+  raw-object, GitHub HTTPS transport, empty-expect lease and post-read identity
+  checks. Raw `git push -u`, raw force-with-lease and arbitrary first branch
+  publication remain on the approval path.
 - Large scope, many files, incomplete implementation, perceived PR safety, or a
   clean `main` baseline are not independent authorization to invent a branch.
 - If the user explicitly selected an existing branch, continue on that branch

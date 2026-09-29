@@ -91,7 +91,7 @@ memories = true
 
 安装必须非破坏式保留其他 TOML 配置，并在修改已有文件前创建 backup。不要通过 `approval_policy = "never"`、`danger-full-access` 或泛化 shell/python allow 解决审批问题。
 
-全局 Host AGENTS 必须继续维持这些长期行为：用户可见 narrative 默认使用自然简体中文；会实质改变架构、范围、部署、branch 策略、外部行为或科学/产品语义的歧义应询问用户；普通局部实现细节自行完成；当前已选 `main` 分支上的 `git fetch origin main`、clean worktree 下的 `git pull --ff-only origin main`、task-owned 文件的 `git add ...` 和普通 commit 可自动完成；低打扰发布必须使用 bounded `ai-bridge host publish-current-branch --expected-repo <owner/repo> --expected-branch <branch>`；raw `git push origin main` 保持审批路径；同步前检查 working tree，dirty 时先判断 ownership，不得默认 autostash/stash/reset/restore；commit 前检查 staged diff；未经明确授权不得创建、切换、checkout、重命名或删除 branch，不得创建 PR、设置/改变 upstream、创建新远端分支、rebase/autostash pull、force push、删除远端 branch/tag、reset/clean/restore 用户工作或修改 remote。
+全局 Host AGENTS 必须继续维持这些长期行为：用户可见 narrative 默认使用自然简体中文；会实质改变架构、范围、部署、branch 策略、外部行为或科学/产品语义的歧义应询问用户；普通局部实现细节自行完成；当前已选 `main` 分支上的 `git fetch origin main`、clean worktree 下的 `git pull --ff-only origin main`、task-owned 文件的 `git add ...` 和普通 commit 可自动完成；低打扰发布必须使用 bounded `ai-bridge host publish-current-branch --expected-repo <owner/repo> --expected-branch <branch>`；Reviewed 首次远端发布仅能在已授权 exact task/branch/worktree 后通过 bounded `ai-bridge reviewed-handoff task publish-first --task-key <task_key> --expected-repo <owner/repo>` 创建同名 absent `origin` reviewed branch；raw `git push origin main`、raw `git push -u` 和 raw `--force-with-lease` 保持审批路径；同步前检查 working tree，dirty 时先判断 ownership，不得默认 autostash/stash/reset/restore；commit 前检查 staged diff；未经明确授权不得创建、切换、checkout、重命名或删除 branch，不得创建 PR、设置/改变 upstream、创建新远端分支、rebase/autostash pull、force push、删除远端 branch/tag、reset/clean/restore 用户工作或修改 remote。
 
 全局 execpolicy 目前只维护当前分支普通开发所需的低打扰前缀：
 
@@ -101,9 +101,10 @@ git pull --ff-only origin main
 git add ...
 git commit ...
 ai-bridge host publish-current-branch --expected-repo <owner/repo> --expected-branch <branch>
+ai-bridge reviewed-handoff task publish-first --task-key <task_key> --expected-repo <owner/repo>
 ```
 
-这些规则用于跳过当前已选 `main` 分支安全同步、task-owned staging、普通 commit 和 bounded current-branch publisher 的 manual/auto review。其他长期分支如果也需要低打扰发布，应由项目规则或用户明确授权补充，不得靠泛化 `git push origin ...` 猜测。`git pull --rebase ...`、`git pull ... --autostash`、raw `git push origin main`、`git push -u origin ...`、`git push --set-upstream origin ...`、`git push origin <new-branch>`、`git push origin --delete ...`、force push、创建或改变 upstream、创建新远端分支等不是普通同步或 bounded 发布，必须先问用户。它们也不是对危险 Git 行为的授权；危险操作仍受 Host AGENTS 行为规则禁止。
+这些规则用于跳过当前已选 `main` 分支安全同步、task-owned staging、普通 commit、bounded current-branch publisher，以及 exact Reviewed first-bootstrap control metadata 首次发布的 manual/auto review。其他长期分支如果也需要低打扰发布，应由项目规则或用户明确授权补充，不得靠泛化 `git push origin ...` 猜测。`git pull --rebase ...`、`git pull ... --autostash`、raw `git push origin main`、`git push -u origin ...`、`git push --set-upstream origin ...`、`git push origin <new-branch>`、`git push origin --delete ...`、raw `--force-with-lease`、force push、创建或改变 upstream、创建新远端分支等不是普通同步或 bounded 发布，必须先问用户。它们也不是对危险 Git 行为的授权；危险操作仍受 Host AGENTS 行为规则禁止。
 
 0.7.2 起，Host Policy 还维护一个很窄的 Slurm inspection allowlist：直接
 `squeue`、`sinfo`、`sacct`、`sstat`、`sprio`，以及 `scontrol show ...` /

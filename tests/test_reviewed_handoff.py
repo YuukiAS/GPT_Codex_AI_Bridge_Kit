@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 from datetime import datetime, timedelta, timezone
 import io
+import json
 import os
 import subprocess
 import tempfile
@@ -338,6 +339,52 @@ class ReviewedHandoffTests(unittest.TestCase):
         subprocess.check_call(["git", "fetch", "--all", "--prune"], cwd=target, stdout=subprocess.DEVNULL)
         return subprocess.check_output(["git", "rev-parse", "refs/remotes/origin/main"], cwd=target, text=True).strip()
 
+    def make_publish_first_worktree(self, tmp: str, task_key: str = "repo--first-publish") -> tuple[Path, str, str]:
+        target, identity = self.make_remote_review_project(tmp, worktree=Path(tmp) / "unused")
+        base_commit = self.publish_review_install(target)
+        rh.bootstrap_task_worktree(
+            target,
+            task_key,
+            expected_repo=identity,
+            expected_base_commit=base_commit,
+            objective="Publish first reviewed handoff metadata.",
+        )
+        worktree = target.parent / f"{target.name}-{task_key}"
+        subprocess.check_call(["git", "add", f"automation/reviewed_handoff/tasks/{task_key}/REQUEST.md", f"automation/reviewed_handoff/tasks/{task_key}/CURRENT.json"], cwd=worktree)
+        subprocess.check_call(["git", "commit", "-m", "review first metadata"], cwd=worktree, stdout=subprocess.DEVNULL)
+        subprocess.check_call(["git", "remote", "set-url", "origin", "https://github.com/YuukiAS/GPT_Codex_AI_Bridge_Kit.git"], cwd=worktree)
+        return worktree, "YuukiAS/GPT_Codex_AI_Bridge_Kit", base_commit
+
+    def run_publish_first_with_fake_github(self, worktree: Path, callback, *, existing_oid: str | None = None, fail_push: bool = False):
+        real_git_run = rh.git_run
+        head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=worktree, text=True).strip()
+        state = {"pushed": False}
+        network_calls: list[list[str]] = []
+
+        def fake_git_run(target: Path, args: list[str], *, check: bool = True, env=None):
+            normalized = list(args)
+            if normalized[:1] == ["--no-replace-objects"]:
+                normalized = normalized[1:]
+            if normalized[:2] == ["ls-remote", "--heads"]:
+                network_calls.append(list(args))
+                oid = existing_oid if existing_oid is not None and not state["pushed"] else (head if state["pushed"] else None)
+                stdout = f"{oid}\trefs/heads/reviewed/repo--first-publish\n" if oid else ""
+                return subprocess.CompletedProcess(["git", *args], 0, stdout=stdout, stderr="")
+            if "push" in normalized and "--porcelain" in normalized:
+                network_calls.append(list(args))
+                self.assertIn("--force-with-lease=refs/heads/reviewed/repo--first-publish:", normalized)
+                self.assertIn(f"{head}:refs/heads/reviewed/repo--first-publish", normalized)
+                self.assertFalse(any(item.startswith("+") for item in normalized))
+                if fail_push:
+                    return subprocess.CompletedProcess(["git", *args], 1, stdout="", stderr="lease rejected")
+                state["pushed"] = True
+                return subprocess.CompletedProcess(["git", *args], 0, stdout="published\n", stderr="")
+            return real_git_run(target, args, check=check, env=env)
+
+        with mock.patch.object(rh, "git_run", side_effect=fake_git_run):
+            result = callback()
+        return result, network_calls
+
     def test_bridge_cli_routes_reviewed_handoff_without_touching_legacy_cli(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "project"
@@ -643,6 +690,296 @@ class ReviewedHandoffTests(unittest.TestCase):
                     "owner/repo",
                     "--expected-base-commit",
                     "0" * 40,
+                ]
+            )
+
+    def test_publish_first_creates_exact_reviewed_remote_branch_and_upstream(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            worktree, identity, _base_commit = self.make_publish_first_worktree(tmp)
+
+            result, network_calls = self.run_publish_first_with_fake_github(
+                worktree,
+                lambda: rh.publish_first_reviewed_task(
+                    worktree,
+                    task_key="repo--first-publish",
+                    expected_repo=identity,
+                    env={"PATH": os.environ["PATH"]},
+                ),
+            )
+
+            head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=worktree, text=True).strip()
+            self.assertEqual(result.status, "published")
+            self.assertEqual(result.branch, "reviewed/repo--first-publish")
+            self.assertEqual(result.pushed_oid, head)
+            observed_network = [
+                "push" if "push" in call else (call[0] if call[0] != "--no-replace-objects" else call[1])
+                for call in network_calls
+            ]
+            self.assertEqual(observed_network, ["ls-remote", "ls-remote", "push", "ls-remote"])
+            self.assertEqual(
+                subprocess.check_output(["git", "config", "--get", "branch.reviewed/repo--first-publish.remote"], cwd=worktree, text=True).strip(),
+                "origin",
+            )
+            self.assertEqual(
+                subprocess.check_output(["git", "config", "--get", "branch.reviewed/repo--first-publish.merge"], cwd=worktree, text=True).strip(),
+                "refs/heads/reviewed/repo--first-publish",
+            )
+
+    def test_publish_first_rejects_existing_or_concurrently_created_remote_branch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            worktree, identity, base_commit = self.make_publish_first_worktree(tmp)
+            with self.assertRaisesRegex(rh.PublishFirstError, "REMOTE_TASK_BRANCH_ALREADY_EXISTS"):
+                self.run_publish_first_with_fake_github(
+                    worktree,
+                    lambda: rh.publish_first_reviewed_task(
+                        worktree,
+                        task_key="repo--first-publish",
+                        expected_repo=identity,
+                        env={"PATH": os.environ["PATH"]},
+                    ),
+                    existing_oid=base_commit,
+                )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            worktree, identity, _base_commit = self.make_publish_first_worktree(tmp)
+            with self.assertRaisesRegex(rh.PublishFirstError, "lease rejected"):
+                self.run_publish_first_with_fake_github(
+                    worktree,
+                    lambda: rh.publish_first_reviewed_task(
+                        worktree,
+                        task_key="repo--first-publish",
+                        expected_repo=identity,
+                        env={"PATH": os.environ["PATH"]},
+                    ),
+                    fail_push=True,
+                )
+            self.assertEqual(
+                subprocess.run(["git", "config", "--get", "branch.reviewed/repo--first-publish.remote"], cwd=worktree, text=True, stdout=subprocess.PIPE).stdout.strip(),
+                "",
+            )
+
+    def test_publish_first_rejects_non_metadata_commit_scope_before_network(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            worktree, identity, _base_commit = self.make_publish_first_worktree(tmp)
+            (worktree / "src" / "leak.py").write_text("LEAK = True\n", encoding="utf-8")
+            subprocess.check_call(["git", "add", "src/leak.py"], cwd=worktree)
+            subprocess.check_call(["git", "commit", "--amend", "--no-edit"], cwd=worktree, stdout=subprocess.DEVNULL)
+            network_calls: list[list[str]] = []
+            real_git_run = rh.git_run
+
+            def fake_git_run(target: Path, args: list[str], *, check: bool = True, env=None):
+                normalized = args[1:] if args[:1] == ["--no-replace-objects"] else args
+                if normalized[:2] == ["ls-remote", "--heads"] or ("push" in normalized and "--porcelain" in normalized):
+                    network_calls.append(args)
+                    return subprocess.CompletedProcess(["git", *args], 1, stdout="", stderr="network should not run")
+                return real_git_run(target, args, check=check, env=env)
+
+            with mock.patch.object(rh, "git_run", side_effect=fake_git_run):
+                with self.assertRaisesRegex(rh.PublishFirstError, "RAW_FIRST_PUBLICATION_DIFF_OUT_OF_SCOPE"):
+                    rh.publish_first_reviewed_task(
+                        worktree,
+                        task_key="repo--first-publish",
+                        expected_repo=identity,
+                        env={"PATH": os.environ["PATH"]},
+                    )
+            self.assertEqual(network_calls, [])
+
+    def test_publish_first_rejects_two_commit_metadata_branch_before_network(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            worktree, identity, _base_commit = self.make_publish_first_worktree(tmp)
+            subprocess.check_call(["git", "commit", "--allow-empty", "-m", "second metadata step"], cwd=worktree, stdout=subprocess.DEVNULL)
+            network_calls: list[list[str]] = []
+            real_git_run = rh.git_run
+
+            def fake_git_run(target: Path, args: list[str], *, check: bool = True, env=None):
+                normalized = args[1:] if args[:1] == ["--no-replace-objects"] else args
+                if normalized[:2] == ["ls-remote", "--heads"] or ("push" in normalized and "--porcelain" in normalized):
+                    network_calls.append(args)
+                    return subprocess.CompletedProcess(["git", *args], 1, stdout="", stderr="network should not run")
+                return real_git_run(target, args, check=check, env=env)
+
+            with mock.patch.object(rh, "git_run", side_effect=fake_git_run):
+                with self.assertRaisesRegex(rh.PublishFirstError, "RAW_HEAD_NOT_SINGLE_DIRECT_CHILD"):
+                    rh.publish_first_reviewed_task(
+                        worktree,
+                        task_key="repo--first-publish",
+                        expected_repo=identity,
+                        env={"PATH": os.environ["PATH"]},
+                    )
+            self.assertEqual(network_calls, [])
+
+    def test_publish_first_rejects_non_first_publication_current_state_before_network(self) -> None:
+        cases = [
+            ("state", "READY_FOR_GPT_REVIEW", "CURRENT_STATE_NOT_FIRST_PUBLICATION"),
+            ("next_action", "WAIT_FOR_GPT_REVIEW", "CURRENT_NEXT_ACTION_NOT_FIRST_PUBLICATION"),
+            ("review_round", 1, "CURRENT_REVIEW_ROUND_NOT_ZERO"),
+            ("plan_revision", 1, "CURRENT_PLAN_REVISION_NOT_ZERO"),
+            ("implementation_commit", "1" * 40, "CURRENT_IMPLEMENTATION_ALREADY_BOUND"),
+        ]
+        for field, value, error in cases:
+            with self.subTest(field=field):
+                with tempfile.TemporaryDirectory() as tmp:
+                    worktree, identity, _base_commit = self.make_publish_first_worktree(tmp)
+                    current_path = worktree / "automation" / "reviewed_handoff" / "tasks" / "repo--first-publish" / "CURRENT.json"
+                    payload = json.loads(current_path.read_text(encoding="utf-8"))
+                    payload[field] = value
+                    current_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+                    subprocess.check_call(["git", "add", str(current_path.relative_to(worktree))], cwd=worktree)
+                    subprocess.check_call(["git", "commit", "--amend", "--no-edit"], cwd=worktree, stdout=subprocess.DEVNULL)
+                    network_calls: list[list[str]] = []
+                    real_git_run = rh.git_run
+
+                    def fake_git_run(target: Path, args: list[str], *, check: bool = True, env=None):
+                        normalized = args[1:] if args[:1] == ["--no-replace-objects"] else args
+                        if normalized[:2] == ["ls-remote", "--heads"] or ("push" in normalized and "--porcelain" in normalized):
+                            network_calls.append(args)
+                            return subprocess.CompletedProcess(["git", *args], 1, stdout="", stderr="network should not run")
+                        return real_git_run(target, args, check=check, env=env)
+
+                    with mock.patch.object(rh, "git_run", side_effect=fake_git_run):
+                        with self.assertRaisesRegex(rh.PublishFirstError, error):
+                            rh.publish_first_reviewed_task(
+                                worktree,
+                                task_key="repo--first-publish",
+                                expected_repo=identity,
+                                env={"PATH": os.environ["PATH"]},
+                            )
+                    self.assertEqual(network_calls, [])
+
+    def test_publish_first_uses_raw_objects_against_replace_ref_spoofing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            worktree, identity, base_commit = self.make_publish_first_worktree(tmp)
+            bad_head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=worktree, text=True).strip()
+            (worktree / "src" / "leak.py").write_text("LEAK = True\n", encoding="utf-8")
+            subprocess.check_call(["git", "add", "src/leak.py"], cwd=worktree)
+            subprocess.check_call(["git", "commit", "--amend", "--no-edit"], cwd=worktree, stdout=subprocess.DEVNULL)
+            raw_bad = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=worktree, text=True).strip()
+            subprocess.check_call(["git", "replace", raw_bad, bad_head], cwd=worktree)
+            subprocess.check_call(["git", "reset", "--hard", "HEAD"], cwd=worktree, stdout=subprocess.DEVNULL)
+            presented = subprocess.check_output(["git", "diff-tree", "--no-commit-id", "-r", "--name-only", raw_bad], cwd=worktree, text=True)
+            raw = subprocess.check_output(["git", "--no-replace-objects", "diff-tree", "--no-commit-id", "-r", "--name-only", base_commit, raw_bad], cwd=worktree, text=True)
+            self.assertNotIn("src/leak.py", presented)
+            self.assertIn("src/leak.py", raw)
+
+            with self.assertRaisesRegex(rh.PublishFirstError, "RAW_FIRST_PUBLICATION_DIFF_OUT_OF_SCOPE"):
+                rh.publish_first_reviewed_task(
+                    worktree,
+                    task_key="repo--first-publish",
+                    expected_repo=identity,
+                    env={"PATH": os.environ["PATH"]},
+                )
+
+    def test_publish_first_rejects_active_grafts_before_network(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            worktree, identity, base_commit = self.make_publish_first_worktree(tmp)
+            grafts = Path(subprocess.check_output(["git", "rev-parse", "--git-path", "info/grafts"], cwd=worktree, text=True).strip())
+            if not grafts.is_absolute():
+                grafts = worktree / grafts
+            grafts.parent.mkdir(parents=True, exist_ok=True)
+            head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=worktree, text=True).strip()
+            grafts.write_text(f"{head} {base_commit}\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(rh.PublishFirstError, "ACTIVE_GRAFTS_REQUIRE_ORDINARY_APPROVAL"):
+                rh.publish_first_reviewed_task(
+                    worktree,
+                    task_key="repo--first-publish",
+                    expected_repo=identity,
+                    env={"PATH": os.environ["PATH"]},
+                )
+
+    def test_publish_first_allows_comment_only_grafts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            worktree, identity, _base_commit = self.make_publish_first_worktree(tmp)
+            grafts = Path(subprocess.check_output(["git", "rev-parse", "--git-path", "info/grafts"], cwd=worktree, text=True).strip())
+            if not grafts.is_absolute():
+                grafts = worktree / grafts
+            grafts.parent.mkdir(parents=True, exist_ok=True)
+            grafts.write_text("# historical comment only\n\n", encoding="utf-8")
+
+            result, _network_calls = self.run_publish_first_with_fake_github(
+                worktree,
+                lambda: rh.publish_first_reviewed_task(
+                    worktree,
+                    task_key="repo--first-publish",
+                    expected_repo=identity,
+                    env={"PATH": os.environ["PATH"]},
+                ),
+            )
+            self.assertEqual(result.status, "published")
+
+    def test_publish_first_rejects_ssh_transport_before_network(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            worktree, identity, _base_commit = self.make_publish_first_worktree(tmp)
+            subprocess.check_call(["git", "remote", "set-url", "origin", "git@github.com:YuukiAS/GPT_Codex_AI_Bridge_Kit.git"], cwd=worktree)
+            network_calls: list[list[str]] = []
+            real_git_run = rh.git_run
+
+            def fake_git_run(target: Path, args: list[str], *, check: bool = True, env=None):
+                normalized = args[1:] if args[:1] == ["--no-replace-objects"] else args
+                if normalized[:2] == ["ls-remote", "--heads"] or ("push" in normalized and "--porcelain" in normalized):
+                    network_calls.append(args)
+                    return subprocess.CompletedProcess(["git", *args], 1, stdout="", stderr="network should not run")
+                return real_git_run(target, args, check=check, env=env)
+
+            with mock.patch.object(rh, "git_run", side_effect=fake_git_run):
+                with self.assertRaisesRegex(rh.PublishFirstError, "UNSUPPORTED_TRANSPORT_REQUIRES_ORDINARY_APPROVAL"):
+                    rh.publish_first_reviewed_task(
+                        worktree,
+                        task_key="repo--first-publish",
+                        expected_repo=identity,
+                        env={"PATH": os.environ["PATH"]},
+                    )
+            self.assertEqual(network_calls, [])
+
+    def test_publish_first_empty_expect_lease_rejects_existing_bare_remote_branch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            remote = Path(tmp) / "remote.git"
+            subprocess.check_call(["git", "init", "--bare", str(remote)], stdout=subprocess.DEVNULL)
+            worktree = Path(tmp) / "work"
+            subprocess.check_call(["git", "clone", str(remote), str(worktree)], stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "config", "user.email", "test@example.org"], cwd=worktree)
+            subprocess.check_call(["git", "config", "user.name", "Test User"], cwd=worktree)
+            (worktree / "README.md").write_text("base\n", encoding="utf-8")
+            subprocess.check_call(["git", "add", "README.md"], cwd=worktree)
+            subprocess.check_call(["git", "commit", "-m", "base"], cwd=worktree, stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "push", "origin", "HEAD:refs/heads/main"], cwd=worktree, stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "push", "origin", "HEAD:refs/heads/reviewed/repo--lease"], cwd=worktree, stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "checkout", "-b", "reviewed/repo--lease"], cwd=worktree, stdout=subprocess.DEVNULL)
+            (worktree / "REQUEST.md").write_text("metadata\n", encoding="utf-8")
+            subprocess.check_call(["git", "add", "REQUEST.md"], cwd=worktree)
+            subprocess.check_call(["git", "commit", "-m", "metadata"], cwd=worktree, stdout=subprocess.DEVNULL)
+
+            head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=worktree, text=True).strip()
+            result = subprocess.run(
+                [
+                    "git",
+                    "push",
+                    "--porcelain",
+                    "--force-with-lease=refs/heads/reviewed/repo--lease:",
+                    "origin",
+                    f"{head}:refs/heads/reviewed/repo--lease",
+                ],
+                cwd=worktree,
+                check=False,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("stale info", result.stdout + result.stderr)
+
+    def test_publish_first_cli_rejects_selector_arguments(self) -> None:
+        with self.assertRaises(SystemExit):
+            rh.main(
+                [
+                    "task",
+                    "publish-first",
+                    "--task-key",
+                    "repo--feature",
+                    "--expected-repo",
+                    "owner/repo",
+                    "--remote",
+                    "origin",
                 ]
             )
 

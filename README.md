@@ -6,7 +6,7 @@
 
 这个仓库的原则是：**默认保持简单，需要什么再加什么。** 普通项目通常只需要机器级规则和基础交接；只有确实需要时，才启用独立复核、高风险闭环、长期运行、通知、Overleaf 同步或视觉/文本复核。
 
-当前正式分发版本：`0.9.2`。正式 `release` 分支已指向生产候选 `6bbaca5a3af6240fbc88fa54cf78fa9acc147f67`；本仓库的正常机器同步以 `release` 分支为权威来源，不依赖 GitHub Release 或 tag。`main` 可继续包含后续 evidence / docs-only closure 提交，但这些更晚提交不会因此自动成为正式 release target。
+当前源码版本：`0.9.3`。当前正式分发版本仍为 `0.9.2`；正式 `release` 分支已指向生产候选 `6bbaca5a3af6240fbc88fa54cf78fa9acc147f67`。本仓库的正常机器同步以 `release` 分支为权威来源，不依赖 GitHub Release 或 tag。`main` 可继续包含后续候选、evidence / docs-only closure 提交，但这些更晚提交不会因此自动成为正式 release target。
 
 ## 一眼看懂：我到底该装什么
 
@@ -87,6 +87,7 @@ GPT 先规划，Codex 执行，再由 GPT 独立复核
 | `0.9.0` | 低打扰操作收口：当前仓库安全读取、GitHub HTTPS 受边界约束发布器、复核工作树物化器、持久运行进度/预计时间/停滞状态、通知运行层进展。 | 安全原生命令更少被误拦；GitHub HTTPS 普通发布和冻结复核工作树有受边界约束入口；SSH/自定义传输、危险 Git、自动控制和语义通过仍不被放权。 |
 | `0.9.1` | 复核模式首次创建的正常入口。 | 全新复核任务可以通过仓库本地 `ai-bridge reviewed-handoff task bootstrap` 创建确定性的同级工作树和首份 REQUEST/CURRENT；辅助入口要求标准的仅 `origin` 拉取配置、同步后的 `origin/main` OID、首次创建时零网络调用，以及可执行文件/输出路径边界；已有任务恢复继续走绑定证据产物的 `materialize-worktree`，原始 `git worktree add` 仍不作为正常降级路径。 |
 | `0.9.2` | 无人值守执行与持久运行选择语义收窄。 | 过夜、无人值守、多小时先触发启动前授权预检，不自动变成 tmux；调度器批处理或已脱离终端的服务由原生 owner 负责寿命；终端拥有且必须断线存活的 orchestrator 仍可使用 Persistent Run/tmux；进度报告继续来自项目原生证据且可独立于 tmux 使用。 |
+| `0.9.3` | 复核模式首次远端发布的受边界约束入口。 | `task bootstrap` 后，全新复核任务的第一份 REQUEST/CURRENT 元数据提交可以用 `ai-bridge reviewed-handoff task publish-first` 创建同名远端分支并绑定上游；它只支持 GitHub HTTPS、空期望 lease、单个首发元数据提交和原始 Git 对象校验，原始 `git push -u`、SSH/自定义传输、已有远端分支或包含任务内容/生产源码的提交仍走普通审批。 |
 
 本项目采用 `0.x` 迭代方式。每个 `0.x` 小版本通常代表一项可独立使用的能力进入稳定工作流；补丁版本主要用于安全性、兼容性和默认行为修正。这不是严格的语义化版本承诺，而是当前阶段的版本阅读方式。
 
@@ -269,6 +270,16 @@ ai-bridge reviewed-handoff task bootstrap \
 这个入口只作用于当前目录所在的 Git 仓库。它固定派生分支 `reviewed/<task_key>`，把工作树固定为 `<repo-parent>/<repo-dir>-<task_key>`，并把首份 `REQUEST.md` / `CURRENT.json` 只写在新的复核工作树中。它要求 `origin` 是唯一远端、`remote.origin.fetch` 是完整 heads 映射、`skipFetchAll` / `skipDefaultUpdate` 没有跳过 `origin`、`expected-base-commit` 等于本地同步后的 `origin/main`，并且首次创建内部不做 fetch、ls-remote、push 或调用外部服务。可触发外部命令的 hook/filter/fsmonitor、以及 task/results 输出路径为符号链接或非目录重定向时都会默认失败。
 
 这个入口是加固过的仓库本地固定授权，不是通用 `git worktree` 包装器，也不会替用户选择新分支、改远端或规范化 Git 配置。
+
+完成第一次本地 REQUEST/CURRENT 后，如果需要把这个全新的复核任务分支发布到 GitHub，先只提交这两份元数据文件，然后在该复核工作树中使用：
+
+```bash
+ai-bridge reviewed-handoff task publish-first \
+  --task-key repo--example \
+  --expected-repo owner/name
+```
+
+这个入口只负责首次创建同名远端分支 `reviewed/<task_key>` 并在成功后绑定上游。它会重新读取当前仓库、分支、工作树、REQUEST/CURRENT、base commit 和远端配置；要求当前 HEAD 是 base 的唯一直接子提交，原始 Git diff 只包含首份 REQUEST/CURRENT，忽略 replace ref 并拒绝启用的 grafts。远端必须是 GitHub HTTPS，且远端分支尚不存在；实际发布使用空期望 lease，发布后还会回读远端 OID。原始 `git push -u`、SSH/scp/自定义传输、已有远端分支、包含生产源码或任务内容的提交，都仍然走普通审批路径。
 
 已经存在任务证据产物后，恢复或重新物化精确工作树继续使用：
 
@@ -762,6 +773,7 @@ ai-bridge reviewed-handoff install --target /path/to/project
 ai-bridge reviewed-handoff validate --target /path/to/project
 git fetch --all --prune
 ai-bridge reviewed-handoff task bootstrap --task-key repo--example --expected-repo owner/name --expected-base-commit <post-sync-origin-main-oid> --objective "这里写任务目标"
+ai-bridge reviewed-handoff task publish-first --task-key repo--example --expected-repo owner/name
 ai-bridge reviewed-handoff materialize-worktree ...
 
 # 高风险闭环

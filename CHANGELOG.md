@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+## 0.9.3 - 2026-09-29
+
+- Add the bounded `ai-bridge reviewed-handoff task publish-first` operation for
+  the first remote publication of a brand-new Reviewed task branch after
+  `task bootstrap` and the exact first REQUEST/CURRENT commit.
+- Keep that first-publication path narrow: require the current
+  `reviewed/<task_key>` worktree, clean state, no existing upstream, no remote
+  branch yet, GitHub HTTPS transport, safe existing credential helpers, no active
+  hooks or dangerous push config, and raw Git object validation that ignores
+  replace refs and rejects active grafts.
+- Publish through an empty-expect lease and bind upstream only after the remote
+  branch post-read matches the captured local commit. Raw `git push -u`, raw
+  force-with-lease, SSH/scp/custom transports, existing remote branches, and any
+  production-source/task-content commit remain on the ordinary approval path.
 - Synchronize README / Quickstart wording with the 0.9.0 final closure so users
   can see the concrete low-friction Git/GitHub, publisher, Reviewed Mode,
   Persistent Run, and Notifications behavior without reading internal gate

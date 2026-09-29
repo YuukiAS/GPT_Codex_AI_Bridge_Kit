@@ -51,6 +51,21 @@ ai-bridge reviewed-handoff materialize-worktree ...
 
 raw `git worktree add` 不是正常 fallback，仍走普通审批路径。
 
+brand-new Reviewed task 在 reviewed worktree 中只提交首份 `REQUEST.md` /
+`CURRENT.json` 后，首次发布同名远端分支使用：
+
+```bash
+ai-bridge reviewed-handoff task publish-first \
+  --task-key repo--example \
+  --expected-repo owner/name
+```
+
+这个入口只允许当前 `reviewed/<task_key>` 工作树的第一份元数据提交创建
+`origin/reviewed/<task_key>` 并在成功后绑定上游。它要求 GitHub HTTPS、clean
+worktree、无既有上游、远端分支不存在、原始 Git 对象校验通过，并用空期望 lease
+防止竞态。raw `git push -u`、SSH/scp/custom transport、已有远端分支、或包含生产源码/
+任务内容的提交仍走普通审批路径。
+
 机器上长期运行 watcher：
 
 ```bash
