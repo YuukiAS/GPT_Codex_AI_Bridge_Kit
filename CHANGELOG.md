@@ -10,6 +10,9 @@
   cannot observe truncated `watcher.json` during updates.
 - Skip the full Tests workflow for pure `docs/design/**` and `results/**`
   metadata/evidence pushes, and cancel superseded in-progress main CI runs.
+- Extend the Tests workflow path filter to pure Markdown, docs, and results
+  updates while preserving full CI for source, tests, workflow, and config
+  changes.
 
 ## 0.9.2 - 2026-09-25
 
