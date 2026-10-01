@@ -159,8 +159,15 @@ decision explicit:
   normal `workspace-write` path;
 - do not request escalation merely because the command is Python, TeX, a build script,
   or produces generated files;
-- only an observed sandbox-boundary failure can justify reconsidering execution
-  authority;
+- ordinary workspace-contained work should use the normal sandbox path without
+  pre-emptive escalation;
+- a real authority boundary may be established either by observed runtime evidence
+  **or before execution** by trustworthy static effect analysis, the frozen
+  Goal/Plan/contract, or an existing authorization contract; do not intentionally
+  trigger a forbidden effect just to prove that it crosses the boundary;
+- preserve the existing upfront-authorization semantics for known private transfer,
+  paid/external calls, deployment, resource allocation, Persistent Run launch and
+  similar declared effects;
 - do not solve this by globally allowing generic shell/Python.
 
 This must be validated through real normal Codex behavior, not only source wording.
@@ -200,6 +207,11 @@ Required properties:
   helper injection, `GIT_SSH`, `GIT_SSH_COMMAND`, custom Git config, hook, wrong
   destination, force, tag, delete, upstream and transport-expansion negatives remain
   fail-closed;
+- the custom-config fence must include the documented `GIT_CONFIG` variable as well
+  as `GIT_CONFIG_GLOBAL`, `GIT_CONFIG_SYSTEM`, `GIT_CONFIG_NOSYSTEM`,
+  `GIT_CONFIG_COUNT` / `GIT_CONFIG_KEY_*` / `GIT_CONFIG_VALUE_*`; security
+  inspection must use a stable environment so `git config` cannot be redirected to
+  a clean substitute while later Git operations see unsafe repository config;
 - no raw-push fallback is silently executed when the bounded helper rejects the
   environment.
 
@@ -264,8 +276,15 @@ At minimum design same-final-candidate gates for:
 9. runtime identity validation correctly accepts the formal release target even when
    `main` has later evidence-only commits, and diagnoses an actually stale/wrong
    runtime;
-10. at least one real consumer repository reproduces the original STAT5060-shaped
-    path end-to-end on the final candidate.
+10. at least one fresh real consumer repository reproduces the original
+    STAT5060-shaped path end-to-end on the **same final candidate, same installed
+    Machine Policy, and the user's unchanged `codex-cli 0.142.0` identity**;
+11. that final end-to-end gate must include a **real normal Codex approval/Auto-review
+    refusal event**, not only a classifier fixture or prewritten rejection, and then
+    continue through required build/QA, ordinary commit, bounded existing-branch
+    publication and remote-SHA verification; if the platform cannot safely and
+    repeatably produce the refusal, the capability remains explicitly unverified
+    rather than being awarded PASS.
 
 Gate design should prefer a small number of capability gates that each correspond to
 a real user capability/failure mode. Do not inflate the matrix with source-presence
@@ -352,3 +371,29 @@ The final closure must state:
 A future unrelated platform change or genuinely new capability may still require
 another release. The objective here is to avoid another release for a nearby variant
 of the same known execution/approval reliability class.
+
+
+## Critic round 1 design refinements
+
+The independent v0.1 design review is archived at:
+
+`docs/design/0.10.0_execution_reliability_closure_critic_review_v0.1_2026-10-01.md`
+
+It returned `REVISE` with three blockers that the next Planner proposal must close:
+
+1. `BR-ER-F01-GIT-CONFIG-INSPECTION-BYPASS`: `GIT_CONFIG` can redirect
+   `git config` preflight inspection while leaving later Git commands unaffected,
+   so the publisher must reject that override and perform security inspection in a
+   stable config environment. A specific hidden-`core.askPass` /
+   `credential.helper=!canary` regression is required.
+2. `BR-ER-F02-SANDBOX-FIRST-AUTHORITY-PREFLIGHT`: sandbox-first applies to
+   ordinary workspace execution, but known authority-sensitive effects may and should
+   be identified before execution from frozen scope/effect analysis; intentional
+   failure is not required.
+3. `BR-ER-F03-REAL-NORMAL-ENTRY-GATE-BINDING`: the final fresh consumer gate must
+   bind the real refusal-recovery chain to `codex-cli 0.142.0` and the same final
+   Bridge/Machine Policy candidate.
+
+These are refinements to the same convergence release. They do not reopen the release
+split, add a workflow/state machine, broaden Git/Python/shell authority, or authorize
+implementation.
