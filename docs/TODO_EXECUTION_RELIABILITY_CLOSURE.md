@@ -209,8 +209,10 @@ Required properties:
   fail-closed;
 - the custom-config fence must include the documented `GIT_CONFIG` variable as well
   as `GIT_CONFIG_GLOBAL`, `GIT_CONFIG_SYSTEM`, `GIT_CONFIG_NOSYSTEM`,
-  `GIT_CONFIG_COUNT` / `GIT_CONFIG_KEY_*` / `GIT_CONFIG_VALUE_*`; security
-  inspection must use a stable environment so `git config` cannot be redirected to
+  `GIT_CONFIG_COUNT` / `GIT_CONFIG_KEY_*` / `GIT_CONFIG_VALUE_*` /
+  `GIT_CONFIG_PARAMETERS`; security
+  inspection and sanitized remote/push execution environments must not inherit these
+  caller-controlled config overrides, so `git config` cannot be redirected to
   a clean substitute while later Git operations see unsafe repository config;
 - no raw-push fallback is silently executed when the bounded helper rejects the
   environment.
@@ -397,3 +399,28 @@ It returned `REVISE` with three blockers that the next Planner proposal must clo
 These are refinements to the same convergence release. They do not reopen the release
 split, add a workflow/state machine, broaden Git/Python/shell authority, or authorize
 implementation.
+
+
+## Critic round 2 design refinement
+
+The independent v0.2 design review is archived at:
+
+`docs/design/0.10.0_execution_reliability_closure_critic_review_v0.2_2026-10-01.md`
+
+It returned `REVISE` with one new blocker after closing all R1 blockers:
+
+`BR-ER-F04-GIT-CONFIG-PARAMETERS-COMMAND-SCOPE`
+
+Required closure for the next Proposal:
+
+- explicitly fence `GIT_CONFIG_PARAMETERS` together with the already-frozen
+  config-source / command-scope environment inputs;
+- stable security-inspection and sanitized remote/push environments must not inherit
+  it;
+- ER-G4 must include a command-scope canary, such as executable
+  `credential.helper`, that proves fail-closed behavior before network/mutation and
+  canary execution count = 0;
+- do not broaden into an audit of every `GIT_*` variable.
+
+All R1 blockers remain closed. The 0.10.0 release direction, P1/P2/P3, runtime
+identity severity and ER-G8 real 0.142.0 refusal gate remain unchanged.
