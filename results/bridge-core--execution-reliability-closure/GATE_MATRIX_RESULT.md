@@ -101,3 +101,69 @@ COMPLETE=NO
 READY_FOR_PRE_FINAL_CRITIC=NO
 DEPENDENT_EXECUTION_BLOCKED=YES
 ```
+
+## Stage B Local Wheel Recovery Update
+
+The bounded local-only build recovery authorized on 2026-10-02 closed the previous
+fresh-runtime-venv build-tooling blocker.
+
+Build recovery evidence:
+
+```text
+BUILD_PYTHON=/users/a/e/aereinh/bin/python3
+BUILD_PYTHON_EXECUTABLE=/users/a/e/aereinh/scientific-runtime/python/releases/python-3.12.4-source-b883db4-20261001T144549Z/.venv/bin/python
+BUILD_PIP_VERSION=24.0
+BUILD_SETUPTOOLS_VERSION=84.0.0
+WHEEL=/users/a/e/aereinh/.ai-bridge/candidates/bridge-core--execution-reliability-closure/9db19b0409816c22042a246b35a33e1d34fedd0a/wheelhouse/gpt_codex_ai_bridge_kit-0.10.0-py3-none-any.whl
+WHEEL_SHA256=cac5c13e66d1b2127d2189215ca6adeb270074633202b01475f81817f3e020a3
+WHEEL_PACKAGE=gpt-codex-ai-bridge-kit
+WHEEL_VERSION=0.10.0
+RUNTIME_VENV_INSTALL=PASS
+CANDIDATE_IDENTITY_GATE=PASS
+```
+
+The wheel build transiently created source-local `build/` and
+`gpt_codex_ai_bridge_kit.egg-info/` artifacts. Those task-created transient
+artifacts were removed, and the candidate source was re-verified byte-for-byte
+against a fresh archive of `9db19b0409816c22042a246b35a33e1d34fedd0a`.
+
+Execution then reached the candidate Machine Policy install and stopped with a new
+candidate packaging/runtime-data blocker:
+
+```text
+RESULT=STAGE_B_CANDIDATE_RUNTIME_DATA_MISSING
+```
+
+Observed failure:
+
+```text
+FileNotFoundError: /users/a/e/aereinh/.ai-bridge/candidates/bridge-core--execution-reliability-closure/9db19b0409816c22042a246b35a33e1d34fedd0a/venv/lib/python3.12/site-packages/templates/host/GLOBAL_AGENTS_SNIPPET.md
+```
+
+The verified wheel contains `ai_bridge_kit/*.py` and dist-info metadata, but no
+`templates/host/GLOBAL_AGENTS_SNIPPET.md`. Therefore candidate `ai-bridge host
+install` cannot complete from the isolated runtime venv. This occurred before fresh
+Codex child launch.
+
+Updated live-gate matrix after recovery:
+
+| Gate | Stage B Recovery Result | Evidence |
+| --- | --- | --- |
+| `ER-G1` | `NOT RUN` | Candidate Machine Policy install could not complete due missing runtime template data. |
+| `ER-G2` | `DETERMINISTIC PASS / LIVE NOT RUN` | Live refusal child did not launch. |
+| `ER-G3` | `DETERMINISTIC PASS / LIVE NOT RUN` | Affected-identity publisher proof did not run. |
+| `ER-G4` | `PASS` | Stage A deterministic matrix remains valid for the same source candidate. |
+| `ER-G5` | `DETERMINISTIC PASS / LIVE NOT RUN` | Live bounded-failure fixture did not run. |
+| `ER-G6` | `PARTIAL PASS` | Wheel install and identity gate passed; candidate Host install failed before validation. |
+| `ER-G7` | `PASS` | Stage A focused/full/CI regression evidence remains valid. |
+| `ER-G8` | `NOT RUN` | Fresh Codex child did not launch. |
+
+Updated status after recovery:
+
+```text
+RESULT=STAGE_B_CANDIDATE_RUNTIME_DATA_MISSING
+GOAL_ACHIEVED=NO
+COMPLETE=NO
+READY_FOR_PRE_FINAL_CRITIC=NO
+DEPENDENT_EXECUTION_BLOCKED=YES
+```
