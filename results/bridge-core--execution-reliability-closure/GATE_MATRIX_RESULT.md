@@ -61,3 +61,43 @@ COMPLETE=NO
 READY_FOR_PRE_FINAL_CRITIC=NO
 DEPENDENT_EXECUTION_BLOCKED=YES
 ```
+
+## Stage B Update
+
+Stage B resumed on 2026-10-02 with explicit user authorization for exact candidate
+`9db19b0409816c22042a246b35a33e1d34fedd0a`.
+
+Execution reached the isolated local build tooling gate and stopped with:
+
+```text
+STAGE_B_LOCAL_BUILD_TOOLING_UNAVAILABLE
+```
+
+Reason: the fresh candidate venv contained `pip==24.0` but did not contain
+`setuptools`; the candidate `pyproject.toml` requires `setuptools>=68` and
+`build-backend = "setuptools.build_meta"`. The frozen contract forbids PyPI/index
+or build-dependency network acquisition and forbids using the production Bridge
+environment to make this gate pass.
+
+Updated live-gate matrix:
+
+| Gate | Stage B Result | Evidence |
+| --- | --- | --- |
+| `ER-G1` | `NOT RUN` | Candidate Machine Policy was not installed because the venv build tooling gate failed first. |
+| `ER-G2` | `DETERMINISTIC PASS / LIVE NOT RUN` | Live refusal child did not launch. |
+| `ER-G3` | `DETERMINISTIC PASS / LIVE NOT RUN` | Affected-identity publisher proof did not run. |
+| `ER-G4` | `PASS` | Stage A deterministic matrix remains valid for the same source candidate. |
+| `ER-G5` | `DETERMINISTIC PASS / LIVE NOT RUN` | Live bounded-failure fixture did not run. |
+| `ER-G6` | `PARTIAL PASS` | Candidate source identity and version were verified; candidate install/import identity could not be completed. |
+| `ER-G7` | `PASS` | Stage A focused/full/CI regression evidence remains valid. |
+| `ER-G8` | `NOT RUN` | Fresh Codex child did not launch because candidate install was stopped. |
+
+Updated status:
+
+```text
+RESULT=STAGE_B_LOCAL_BUILD_TOOLING_UNAVAILABLE
+GOAL_ACHIEVED=NO
+COMPLETE=NO
+READY_FOR_PRE_FINAL_CRITIC=NO
+DEPENDENT_EXECUTION_BLOCKED=YES
+```
