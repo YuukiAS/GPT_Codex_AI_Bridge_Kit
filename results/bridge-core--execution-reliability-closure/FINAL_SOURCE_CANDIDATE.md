@@ -13,7 +13,7 @@ GIT_VERSION=git version 2.47.3
 SOURCE_PUBLISH_RESULT=published
 GITHUB_CI_RUN=36958121758
 GITHUB_CI_STATUS=success
-READY_FOR_PRE_FINAL_CRITIC=NO
+READY_FOR_PRE_FINAL_CRITIC=YES
 FORMAL_RELEASE_DONE=NO
 RELEASE_REF_ADVANCED=NO
 CODEX_CLI_UPGRADED=NO
@@ -37,3 +37,6 @@ jobs=Python 3.x success; Python 3.9 success
 ```
 
 Evidence-only commits after this SHA do not change `FINAL_SOURCE_CANDIDATE`.
+
+Stage B live-gate evidence was later completed for this same source candidate.
+The source candidate SHA remains unchanged.

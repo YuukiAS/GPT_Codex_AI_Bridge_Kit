@@ -4,7 +4,7 @@ Task: `bridge-core--execution-reliability-closure`
 
 Stage: `A`
 
-Result: `AWAITING_LIVE_GATE_AUTHORIZATION`
+Result: `STAGE_A_SOURCE_CANDIDATE_PUBLISHED_STAGE_B_LIVE_GATE_COMPLETE`
 
 Evidence timestamp: 2026-10-02
 
@@ -29,6 +29,11 @@ Evidence timestamp: 2026-10-02
 - `GIT_VERSION`: `git version 2.47.3`
 
 Evidence files in this directory are evidence-only artifacts after `FINAL_SOURCE_CANDIDATE`; they are not the 0.10.0 source candidate or formal release target.
+
+Stage B was later completed for the same exact source candidate without rerunning
+Stage A or changing production source. Current closure status is recorded in
+`LIVE_GATE_RESULT.md`, `RUNTIME_IDENTITY_RESULT.md`, `GATE_MATRIX_RESULT.md`, and
+`FINAL_EXECUTION_REPORT.md`.
 
 ## Implementation Summary
 

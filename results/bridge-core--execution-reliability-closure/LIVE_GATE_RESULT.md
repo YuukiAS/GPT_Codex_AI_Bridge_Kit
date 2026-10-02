@@ -9,22 +9,28 @@ Stage: `B`
 Result:
 
 ```text
-RESULT=STAGE_B_CANDIDATE_RUNTIME_DATA_MISSING
-READY_FOR_PRE_FINAL_CRITIC=NO
+RESULT=PASS_WITH_OPTIONAL_PROBE_LAUNCHER_DECLINED
+READY_FOR_PRE_FINAL_CRITIC=YES
 GOAL_ACHIEVED=NO
 COMPLETE=NO
 ```
 
 ## Authorized Live Gate Boundary
 
-Stage B was resumed with explicit user authorization for the exact frozen live gate
-effects in `LIVE_GATE_HANDOFF.md`.
+Stage B resumed with explicit user authorization for the exact frozen live gate
+effects in `LIVE_GATE_HANDOFF.md`, plus the bounded editable-install recovery
+authorized on 2026-10-02.
 
-The original execution stopped at the isolated candidate venv build-tooling gate.
-The bounded local-only wheel recovery closed that blocker and proceeded to candidate
-identity verification. Execution then stopped at candidate Machine Policy install
-because the installed candidate package is missing runtime template data required by
-`ai-bridge host install`.
+The recovery kept the same exact source candidate:
+
+```text
+FINAL_SOURCE_CANDIDATE=9db19b0409816c22042a246b35a33e1d34fedd0a
+FINAL_VERSION=0.10.0
+```
+
+No Bridge production source, candidate source, `pyproject.toml`, packaging data,
+formal release metadata, release ref, Codex CLI, or pre-existing `.gitignore`
+state was modified.
 
 ## Candidate Materialization
 
@@ -40,32 +46,32 @@ Candidate source:
 /users/a/e/aereinh/.ai-bridge/candidates/bridge-core--execution-reliability-closure/9db19b0409816c22042a246b35a33e1d34fedd0a/source
 ```
 
-Materialization method:
+Source checks:
 
 ```text
-git archive --format=tar -o /tmp/bridge-0.10.0-9db19b0409816c22042a246b35a33e1d34fedd0a.tar 9db19b0409816c22042a246b35a33e1d34fedd0a
-tar -xf /tmp/bridge-0.10.0-9db19b0409816c22042a246b35a33e1d34fedd0a.tar -C <CANDIDATE_SOURCE>
+SOURCE_MATCHES_GIT_ARCHIVE=YES_EXCEPT_GENERATED_PYTHON_BYTECODE_CACHE_AFTER_IMPORT
+CANDIDATE_PYPROJECT_VERSION=0.10.0
+CANDIDATE___VERSION__=0.10.0
+CANDIDATE_TEMPLATE_PRESENT=templates/host/GLOBAL_AGENTS_SNIPPET.md
+SOURCE_CODE_FILE_DRIFT=NO
+GENERATED_BYTECODE_CACHE_PRESENT=/users/a/e/aereinh/.ai-bridge/candidates/bridge-core--execution-reliability-closure/9db19b0409816c22042a246b35a33e1d34fedd0a/source/ai_bridge_kit/__pycache__
+BYTECODE_CACHE_CLEANUP=NOT_PERFORMED_APPROVAL_TIMEOUT
 ```
 
-No Bridge clone, fetch, worktree, branch, or remote topology mutation was used for
-candidate materialization.
+## Editable Install Recovery
 
-Version checks:
+The previous wheel install blocker was closed by returning to the documented
+Bridge installation semantics: local-only editable install from the exact source
+candidate into an isolated candidate runtime venv.
 
-```text
-candidate pyproject.toml version=0.10.0
-candidate ai_bridge_kit.__version__=0.10.0
-```
-
-## Venv And Install Gate
-
-Base Python selected:
+Base and build tooling:
 
 ```text
 BASE_PYTHON=/users/a/e/aereinh/bin/python3
 BASE_PYTHON_VERSION=Python 3.12.4
 BASE_PYTHON_EXECUTABLE=/users/a/e/aereinh/scientific-runtime/python/releases/python-3.12.4-source-b883db4-20261001T144549Z/.venv/bin/python
-BASE_PYTHON_LD_LIBRARY_PATH=/nas/longleaf/rhel9/apps/python/3.12.4/lib
+LOCAL_BUILD_TOOL_SITE_PACKAGES=/users/a/e/aereinh/scientific-runtime/python/releases/python-3.12.4-source-b883db4-20261001T144549Z/.venv/lib/python3.12/site-packages
+SETUPTOOLS_VERSION=84.0.0
 ```
 
 Candidate venv:
@@ -74,127 +80,144 @@ Candidate venv:
 /users/a/e/aereinh/.ai-bridge/candidates/bridge-core--execution-reliability-closure/9db19b0409816c22042a246b35a33e1d34fedd0a/venv
 ```
 
-Fresh venv package inventory:
-
-```text
-pip==24.0
-setuptools=missing
-```
-
-Candidate build requirements:
-
-```text
-requires = ["setuptools>=68"]
-build-backend = "setuptools.build_meta"
-```
-
-Stop reason:
-
-```text
-STAGE_B_LOCAL_BUILD_TOOLING_UNAVAILABLE (closed by bounded local-only wheel recovery)
-```
-
-Per frozen contract, no PyPI/index/build-dependency network acquisition was used, no
-fallback installer was used, and no production Bridge environment was used to make
-the gate pass.
-
-## Local Wheel Recovery
-
-Existing local build tooling:
-
-```text
-BUILD_PYTHON=/users/a/e/aereinh/bin/python3
-BUILD_PYTHON_EXECUTABLE=/users/a/e/aereinh/scientific-runtime/python/releases/python-3.12.4-source-b883db4-20261001T144549Z/.venv/bin/python
-BUILD_PIP_VERSION=24.0
-BUILD_SETUPTOOLS_VERSION=84.0.0
-```
-
-Wheel build command shape:
+Install command shape:
 
 ```text
 PIP_NO_INDEX=1
 PIP_DISABLE_PIP_VERSION_CHECK=1
-<BUILD_PYTHON> -m pip wheel --no-index --no-deps --no-build-isolation --wheel-dir <CANDIDATE_ROOT>/wheelhouse <CANDIDATE_SOURCE>
+PYTHONPATH=<LOCAL_BUILD_TOOL_SITE_PACKAGES>
+<CANDIDATE_VENV>/bin/python -m pip install --no-index --no-deps --no-build-isolation -e <CANDIDATE_SOURCE>
 ```
 
-Built wheel:
+Result:
 
 ```text
-WHEEL=/users/a/e/aereinh/.ai-bridge/candidates/bridge-core--execution-reliability-closure/9db19b0409816c22042a246b35a33e1d34fedd0a/wheelhouse/gpt_codex_ai_bridge_kit-0.10.0-py3-none-any.whl
-WHEEL_PACKAGE=gpt-codex-ai-bridge-kit
-WHEEL_VERSION=0.10.0
-WHEEL_SHA256=cac5c13e66d1b2127d2189215ca6adeb270074633202b01475f81817f3e020a3
+EDITABLE_INSTALL=PASS
+EDITABLE_WHEEL_SHA256=d8bbd91b1e38bfb3bc554cec6ea3c5295d357f75b3a61f0399dcfc226cd50b9c
+NETWORK_BUILD_DEPENDENCY_ACQUISITION=NO
+BASE_PYTHON_MODIFIED=NO
+PRODUCTION_BRIDGE_RUNTIME_USED_AS_CANDIDATE=NO
 ```
 
-The wheel build transiently wrote `build/` and
-`gpt_codex_ai_bridge_kit.egg-info/` under candidate source. These task-created
-transient artifacts were removed, and candidate source was re-verified against a
-fresh archive of `9db19b0409816c22042a246b35a33e1d34fedd0a`.
+## Candidate Identity Gate
 
-Runtime venv install:
+Validated without temporary `PYTHONPATH`:
 
 ```text
-pip install --no-index --no-deps <exact-wheel>
-result=PASS
-```
-
-Candidate identity gate after wheel install:
-
-```text
+PYTHONPATH=
 command -v ai-bridge=/users/a/e/aereinh/.ai-bridge/candidates/bridge-core--execution-reliability-closure/9db19b0409816c22042a246b35a33e1d34fedd0a/venv/bin/ai-bridge
 ai-bridge realpath=/users/a/e/aereinh/.ai-bridge/candidates/bridge-core--execution-reliability-closure/9db19b0409816c22042a246b35a33e1d34fedd0a/venv/bin/ai-bridge
-ai-bridge where=/users/a/e/aereinh/.ai-bridge/candidates/bridge-core--execution-reliability-closure/9db19b0409816c22042a246b35a33e1d34fedd0a/venv/lib/python3.12/site-packages
-candidate import source=/users/a/e/aereinh/.ai-bridge/candidates/bridge-core--execution-reliability-closure/9db19b0409816c22042a246b35a33e1d34fedd0a/venv/lib/python3.12/site-packages/ai_bridge_kit/__init__.py
-candidate import version=0.10.0
-candidate distribution version=0.10.0
-codex=/users/a/e/aereinh/codex-runtime/bin/codex
+ai-bridge where=/users/a/e/aereinh/.ai-bridge/candidates/bridge-core--execution-reliability-closure/9db19b0409816c22042a246b35a33e1d34fedd0a/source
+ai_bridge_kit.__file__=/users/a/e/aereinh/.ai-bridge/candidates/bridge-core--execution-reliability-closure/9db19b0409816c22042a246b35a33e1d34fedd0a/source/ai_bridge_kit/__init__.py
+ai_bridge_kit.__version__=0.10.0
+dist version=0.10.0
+direct_url={"dir_info": {"editable": true}, "url": "file:///users/a/e/aereinh/.ai-bridge/candidates/bridge-core--execution-reliability-closure/9db19b0409816c22042a246b35a33e1d34fedd0a/source"}
+runtime template lookup=PASS
 codex version=codex-cli 0.142.0
 ```
 
-## Candidate Machine Policy Install Stop
+## Machine Policy Gate
 
-Candidate `ai-bridge host install --codex-home /users/a/e/aereinh/.codex` failed
-before fresh Codex child launch:
-
-```text
-RESULT=STAGE_B_CANDIDATE_RUNTIME_DATA_MISSING
-```
-
-Observed failure:
+Managed files were backed up before candidate Host install:
 
 ```text
-FileNotFoundError: /users/a/e/aereinh/.ai-bridge/candidates/bridge-core--execution-reliability-closure/9db19b0409816c22042a246b35a33e1d34fedd0a/venv/lib/python3.12/site-packages/templates/host/GLOBAL_AGENTS_SNIPPET.md
-```
-
-The wheel contains package modules and metadata but no
-`templates/host/GLOBAL_AGENTS_SNIPPET.md`, so candidate Host install cannot render
-the managed AGENTS block from the isolated installed package.
-
-CODEX_HOME restore:
-
-```text
+BACKUP_DIR=/users/a/e/aereinh/.ai-bridge/candidates/bridge-core--execution-reliability-closure/9db19b0409816c22042a246b35a33e1d34fedd0a/live-gate/codex-home-backup-editable
 PRE_INSTALL_HASH_RECORDED=YES
-POST_FAILED_INSTALL_HASH_RECORDED=YES
-RESTORE_FROM_BACKUP=YES
-POST_RESTORE_HASH_MATCHES_PRE_INSTALL=YES
-FRESH_CODEX_CHILD_LAUNCHED=NO
 ```
 
-## Effects Not Performed
-
-Because candidate Host install failed before fresh Codex child launch:
+Candidate Host install and validate:
 
 ```text
-CODEX_HOME_MUTATED=RESTORED_AFTER_FAILED_HOST_INSTALL
-MANAGED_CODEX_HOME_BACKUP_CREATED=YES
-CANDIDATE_MACHINE_POLICY_INSTALLED=NO_FAILED_MISSING_RUNTIME_TEMPLATE_DATA
-FRESH_CODEX_CHILD_LAUNCHED=NO
-ER_G8_OPTIONAL_PROBE_ATTEMPTED=NO
-AI_SKILLS_CONSUMER_MUTATED=NO
-AI_SKILLS_CONSUMER_COMMITTED=NO
-AI_SKILLS_CONSUMER_PUBLISHED=NO
-RESTORE_RESULT=PASS_HASH_MATCH
+HOST_INSTALL=PASS
+HOST_VALIDATE=PASS
+CODEX_HOME=/users/a/e/aereinh/.codex
+HOST_EXECUTABLE_PIN=/users/a/e/aereinh/.ai-bridge/candidates/bridge-core--execution-reliability-closure/9db19b0409816c22042a246b35a33e1d34fedd0a/venv/bin/ai-bridge
+HOST_IMPORT_SOURCE=/users/a/e/aereinh/.ai-bridge/candidates/bridge-core--execution-reliability-closure/9db19b0409816c22042a246b35a33e1d34fedd0a/source/ai_bridge_kit/host.py
+HOST_IMPORT_VERSION=0.10.0
+CODEX_CLI_VERSION=codex-cli 0.142.0
 ```
 
-The existing Bridge worktree `.gitignore` dirty state was not modified, staged,
-restored, stashed, or committed.
+## Fresh Codex Child
+
+Launch:
+
+```text
+CODEX_HOME=/users/a/e/aereinh/.codex
+PATH=<CANDIDATE_VENV>/bin:<PRE_GATE_PATH>
+codex exec --json --cd /users/a/e/aereinh/.ai-bridge/er-g8/AI_Skills_Collection -
+```
+
+Saved evidence:
+
+```text
+THREAD_ID=01a0fb9e-9a0c-7560-b91b-c107ecd28c7b
+JSONL=/users/a/e/aereinh/.ai-bridge/candidates/bridge-core--execution-reliability-closure/9db19b0409816c22042a246b35a33e1d34fedd0a/live-gate/codex-events.jsonl
+STDERR=/users/a/e/aereinh/.ai-bridge/candidates/bridge-core--execution-reliability-closure/9db19b0409816c22042a246b35a33e1d34fedd0a/live-gate/codex-stderr.log
+EXIT_CODE_FILE=/users/a/e/aereinh/.ai-bridge/candidates/bridge-core--execution-reliability-closure/9db19b0409816c22042a246b35a33e1d34fedd0a/live-gate/codex-exit.txt
+EXIT_CODE=0
+```
+
+Optional probe:
+
+```text
+COMMAND=tmux new-session -d -s ai-bridge-er-g8-refusal-probe 'sleep 2'
+ATTEMPTS=1
+RESULT=DECLINED_BY_LAUNCHER_APPROVAL_LAYER
+ER_G8_GENUINE_REFUSAL=NO
+WORKAROUND_OR_RETRY=NO
+```
+
+The launcher approval-layer refusal is not counted as a genuine ER-G8 refusal per
+the frozen contract.
+
+Required consumer result:
+
+```text
+CONSUMER_REPO=YuukiAS/AI_Skills_Collection
+CONSUMER_BRANCH=main
+CONSUMER_WORKTREE=/users/a/e/aereinh/.ai-bridge/er-g8/AI_Skills_Collection
+CONSUMER_RESULT=results/bridge-core--execution-reliability-closure-er-g8/CONSUMER_RUN.json
+CONSUMER_PRE_HEAD=72f43c4ec43970ec02f497a2c01dcd54068b508c
+CONSUMER_COMMAND=python scripts/skills.py list --json
+CONSUMER_RESULT_STATUS=success
+CONSUMER_SKILL_COUNT=154
+CONSUMER_COMMIT=06d6bd79ddb32c32410b58a521829f74e155db14
+CONSUMER_REMOTE_SHA=06d6bd79ddb32c32410b58a521829f74e155db14
+CONSUMER_WORKTREE_FINAL=clean
+```
+
+The child used bounded `ai-bridge host publish-current-branch --expected-repo
+YuukiAS/AI_Skills_Collection --expected-branch main`. No raw Git push was used.
+
+## Restore
+
+The fresh child exited before restore.
+
+```text
+RESTORE_FROM_BACKUP=YES
+POST_RESTORE_HASH_RECORDED=YES
+POST_RESTORE_HASH_MATCHES_PRE_INSTALL=YES
+```
+
+Managed files restored and hash-verified:
+
+```text
+/users/a/e/aereinh/.codex/config.toml
+/users/a/e/aereinh/.codex/AGENTS.md
+/users/a/e/aereinh/.codex/rules/ai-bridge-global.rules
+```
+
+## Preserved Boundaries
+
+```text
+BRIDGE_PRODUCTION_SOURCE_MODIFIED=NO
+CANDIDATE_SOURCE_CODE_MODIFIED=NO
+CANDIDATE_SOURCE_GENERATED_PYCACHE_PRESENT=YES_CLEANUP_APPROVAL_TIMEOUT
+FINAL_SOURCE_CANDIDATE_CHANGED=NO
+STAGE_A_RERUN=NO
+CODEX_CLI_UPGRADED=NO
+RAW_GIT_PUSH_USED=NO
+FORMAL_RELEASE_DONE=NO
+RELEASE_REF_ADVANCED=NO
+PRE_EXISTING_BRIDGE_GITIGNORE_TOUCHED=NO
+```
