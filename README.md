@@ -6,7 +6,7 @@
 
 这个仓库的原则是：**默认保持简单，需要什么再加什么。** 普通项目通常只需要机器级规则和基础交接；只有确实需要时，才启用独立复核、高风险闭环、长期运行、通知、Overleaf 同步或视觉/文本复核。
 
-当前源码版本：`0.9.3`。当前正式分发版本为 `0.9.3`；正式 `release` 分支已指向生产候选 `9dad0ba4bfa54e251f345091c5151ae991251ec9`。本仓库的正常机器同步以 `release` 分支为权威来源，不依赖 GitHub Release 或 tag。`main` 可继续包含后续候选、evidence / docs-only closure 提交，但这些更晚提交不会因此自动成为正式 release target。
+当前源码版本：`0.10.0` source candidate。当前正式分发版本仍为 `0.9.3`；正式 `release` 分支已指向生产候选 `9dad0ba4bfa54e251f345091c5151ae991251ec9`。本仓库的正常机器同步以 `release` 分支为权威来源，不依赖 GitHub Release 或 tag。`main` 可继续包含后续候选、evidence / docs-only closure 提交，但这些更晚提交不会因此自动成为正式 release target。
 
 ## 一眼看懂：我到底该装什么
 
@@ -88,6 +88,7 @@ GPT 先规划，Codex 执行，再由 GPT 独立复核
 | `0.9.1` | 复核模式首次创建的正常入口。 | 全新复核任务可以通过仓库本地 `ai-bridge reviewed-handoff task bootstrap` 创建确定性的同级工作树和首份 REQUEST/CURRENT；辅助入口要求标准的仅 `origin` 拉取配置、同步后的 `origin/main` OID、首次创建时零网络调用，以及可执行文件/输出路径边界；已有任务恢复继续走绑定证据产物的 `materialize-worktree`，原始 `git worktree add` 仍不作为正常降级路径。 |
 | `0.9.2` | 无人值守执行与持久运行选择语义收窄。 | 过夜、无人值守、多小时先触发启动前授权预检，不自动变成 tmux；调度器批处理或已脱离终端的服务由原生 owner 负责寿命；终端拥有且必须断线存活的 orchestrator 仍可使用 Persistent Run/tmux；进度报告继续来自项目原生证据且可独立于 tmux 使用。 |
 | `0.9.3` | 复核模式首次远端发布的受边界约束入口。 | `task bootstrap` 后，全新复核任务的第一份 REQUEST/CURRENT 元数据提交可以用 `ai-bridge reviewed-handoff task publish-first` 创建同名远端分支并绑定上游；它只支持 GitHub HTTPS、空期望 lease、单个首发元数据提交和原始 Git 对象校验，原始 `git push -u`、SSH/自定义传输、已有远端分支或包含任务内容/生产源码的提交仍走普通审批。 |
+| `0.10.0` | 执行可靠性与运行身份诊断闭环。 | 机器策略明确普通 workspace 工作先走 sandbox，拒绝后先分类再恢复；`publish-current-branch` 使用稳定 Git inspection view 和清洗后的网络/push 环境，ambient `SSH_ASKPASS` 不再导致 GitHub HTTPS 正例误拒绝但也不会被执行；`host validate/status` 会报告可执行文件、import source/version、source HEAD/dirty、local release ref 和 distribution metadata。 |
 
 本项目采用 `0.x` 迭代方式。每个 `0.x` 小版本通常代表一项可独立使用的能力进入稳定工作流；补丁版本主要用于安全性、兼容性和默认行为修正。这不是严格的语义化版本承诺，而是当前阶段的版本阅读方式。
 

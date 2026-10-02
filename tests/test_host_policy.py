@@ -296,6 +296,12 @@ memories = false
 
             self.assertIn("narrative_language: zh-CN (configured)", status_text)
             self.assertIn("artifact_language_policy: repository/task controlled", status_text)
+            self.assertIn("imported ai_bridge_kit source:", status_text)
+            self.assertIn("imported ai_bridge_kit version:", status_text)
+            self.assertIn("editable source Git HEAD:", status_text)
+            self.assertIn("active source dirty state:", status_text)
+            self.assertIn("local formal release ref:", status_text)
+            self.assertIn("distribution metadata:", status_text)
 
     def test_validate_reports_drift_when_narrative_policy_is_removed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -673,10 +679,11 @@ memories = false
                 ({"GIT_SSH_COMMAND": str(ssh)}, "CUSTOM_SSH_TRANSPORT_REQUIRES_APPROVAL", ssh_marker),
                 ({"GIT_SSH": str(ssh)}, "CUSTOM_SSH_TRANSPORT_REQUIRES_APPROVAL", ssh_marker),
                 ({"GIT_ASKPASS": str(askpass)}, "ASKPASS_REQUIRES_APPROVAL", askpass_marker),
-                ({"SSH_ASKPASS": str(askpass)}, "ASKPASS_REQUIRES_APPROVAL", askpass_marker),
+                ({"GIT_CONFIG": str(Path(tmp) / "gitconfig")}, "CUSTOM_GIT_CONFIG_REQUIRES_APPROVAL", ssh_marker),
                 ({"GIT_CONFIG_GLOBAL": str(Path(tmp) / "gitconfig")}, "CUSTOM_GIT_CONFIG_REQUIRES_APPROVAL", ssh_marker),
                 ({"GIT_CONFIG_SYSTEM": str(Path(tmp) / "gitconfig")}, "CUSTOM_GIT_CONFIG_REQUIRES_APPROVAL", ssh_marker),
                 ({"GIT_CONFIG_NOSYSTEM": "1"}, "CUSTOM_GIT_CONFIG_REQUIRES_APPROVAL", ssh_marker),
+                ({"GIT_CONFIG_PARAMETERS": "'credential.helper=!canary'"}, "CUSTOM_GIT_CONFIG_REQUIRES_APPROVAL", ssh_marker),
                 (
                     {"GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "credential.helper", "GIT_CONFIG_VALUE_0": f"!{ssh}"},
                     "CUSTOM_GIT_CONFIG_REQUIRES_APPROVAL",
@@ -696,23 +703,88 @@ memories = false
                         marker=marker,
                     )
 
+    def test_publish_current_branch_allows_ambient_ssh_askpass_but_never_exports_it_to_network(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo, identity = self.make_github_https_publish_repo(tmp)
+            askpass, askpass_marker = self.make_canary(tmp, "ambient-ssh-askpass")
+            real_git = host_module._git
+            remote_oid = subprocess.check_output(["git", "rev-parse", "HEAD^"], cwd=repo, text=True).strip()
+            network_envs: list[dict[str, str]] = []
+
+            def fake_git(cwd, args, *, env=None, check=True):
+                if args[:2] == ["ls-remote", "--heads"]:
+                    network_envs.append(dict(env or {}))
+                    return subprocess.CompletedProcess(
+                        ["git", *args],
+                        0,
+                        stdout=f"{remote_oid}\trefs/heads/main\n",
+                        stderr="",
+                    )
+                if "push" in args and "--porcelain" in args:
+                    network_envs.append(dict(env or {}))
+                    return subprocess.CompletedProcess(["git", *args], 0, stdout="", stderr="")
+                return real_git(cwd, args, env=env, check=check)
+
+            with mock.patch("ai_bridge_kit.host._git", side_effect=fake_git):
+                result = publish_current_branch(
+                    repo,
+                    expected_repo=identity,
+                    expected_branch="main",
+                    env={"PATH": os.environ["PATH"], "SSH_ASKPASS": str(askpass)},
+                )
+
+            self.assertEqual(result.status, "published")
+            self.assertFalse(askpass_marker.exists())
+            self.assertGreaterEqual(len(network_envs), 2)
+            for env in network_envs:
+                self.assertNotIn("SSH_ASKPASS", env)
+                self.assertNotIn("GIT_ASKPASS", env)
+                self.assertNotIn("GIT_CONFIG_PARAMETERS", env)
+                self.assertEqual(env.get("GIT_TERMINAL_PROMPT"), "0")
+
+    def test_publish_current_branch_allows_local_builtin_credential_helper(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo, identity = self.make_github_https_publish_repo(tmp)
+            helper_store = Path(tmp) / "github.credentials"
+            subprocess.check_call(["git", "config", "--local", "credential.helper", f"store --file {helper_store}"], cwd=repo)
+
+            result, network_calls = self.run_with_fake_github_network(
+                repo,
+                lambda: publish_current_branch(
+                    repo,
+                    expected_repo=identity,
+                    expected_branch="main",
+                    env={"PATH": os.environ["PATH"]},
+                ),
+            )
+
+            self.assertEqual(result.status, "published")
+            self.assertEqual([call[0] for call in network_calls], ["ls-remote", "ls-remote", "-c"])
+
     def test_publish_current_branch_rejects_repo_config_injection_and_hook(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             ssh, ssh_marker = self.make_canary(tmp, "ssh-config-canary")
             askpass, askpass_marker = self.make_canary(tmp, "askpass-config-canary")
             cred, cred_marker = self.make_canary(tmp, "credential-canary")
             config_cases = [
-                ("core.sshCommand", str(ssh), "CUSTOM_SSH_TRANSPORT_REQUIRES_APPROVAL", ssh_marker),
-                ("credential.helper", f"!{cred}", "REPO_CREDENTIAL_HELPER_REQUIRES_APPROVAL", cred_marker),
-                ("core.askPass", str(askpass), "ASKPASS_REQUIRES_APPROVAL", askpass_marker),
-                ("push.followTags", "true", "FOLLOW_TAGS_REQUIRES_APPROVAL", ssh_marker),
-                ("push.recurseSubmodules", "on-demand", "RECURSIVE_SUBMODULE_PUSH_REQUIRES_APPROVAL", ssh_marker),
-                ("push.pushOption", "ci.skip", "PUSH_OPTIONS_REQUIRE_APPROVAL", ssh_marker),
-                ("push.gpgSign", "true", "SIGNED_PUSH_REQUIRES_APPROVAL", ssh_marker),
+                ("core-ssh-command", "core.sshCommand", str(ssh), "CUSTOM_SSH_TRANSPORT_REQUIRES_APPROVAL", ssh_marker),
+                ("credential-shell-helper", "credential.helper", f"!{cred}", "REPO_CREDENTIAL_HELPER_REQUIRES_APPROVAL", cred_marker),
+                ("credential-path-helper", "credential.helper", str(cred), "REPO_CREDENTIAL_HELPER_REQUIRES_APPROVAL", cred_marker),
+                ("core-ask-pass", "core.askPass", str(askpass), "ASKPASS_REQUIRES_APPROVAL", askpass_marker),
+                ("push-follow-tags", "push.followTags", "true", "FOLLOW_TAGS_REQUIRES_APPROVAL", ssh_marker),
+                (
+                    "push-recurse-submodules",
+                    "push.recurseSubmodules",
+                    "on-demand",
+                    "RECURSIVE_SUBMODULE_PUSH_REQUIRES_APPROVAL",
+                    ssh_marker,
+                ),
+                ("push-option", "push.pushOption", "ci.skip", "PUSH_OPTIONS_REQUIRE_APPROVAL", ssh_marker),
+                ("push-signing", "push.gpgSign", "true", "SIGNED_PUSH_REQUIRES_APPROVAL", ssh_marker),
             ]
-            for key, value, message, marker in config_cases:
-                with self.subTest(key=key):
-                    case_root = Path(tmp) / key.replace(".", "-")
+            for label, key, value, message, marker in config_cases:
+                with self.subTest(label=label):
+                    case_root = Path(tmp) / label
                     case_root.mkdir()
                     repo, identity = self.make_publish_repo(str(case_root))
                     marker.unlink(missing_ok=True)

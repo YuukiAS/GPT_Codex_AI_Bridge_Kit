@@ -3,11 +3,13 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from importlib import metadata as importlib_metadata
 from pathlib import Path
 
 from . import __version__
@@ -30,6 +32,18 @@ EXTERNAL_WAIT_POLICY_MARKERS = [
     "Stale Planner/Reviewer/Critic artifacts are not new decisions",
     "must not consume `review_round`, `repair_round`",
 ]
+REJECTED_GIT_ENV_EXACT = {
+    "GIT_CONFIG",
+    "GIT_CONFIG_GLOBAL",
+    "GIT_CONFIG_SYSTEM",
+    "GIT_CONFIG_NOSYSTEM",
+    "GIT_CONFIG_COUNT",
+    "GIT_CONFIG_PARAMETERS",
+    "GIT_SSH",
+    "GIT_SSH_COMMAND",
+    "GIT_ASKPASS",
+}
+REJECTED_GIT_ENV_PREFIXES = ("GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_", "GIT_PUSH_OPTION")
 
 REQUIRED_CONFIG = {
     ("", "approval_policy"): '"on-request"',
@@ -87,6 +101,15 @@ class HostStatus:
     artifact_language_policy: str
     rules_state: str
     trusted_ai_bridge_executable: Path | None
+    imported_package_source: Path
+    imported_package_version: str
+    editable_source_head: str | None
+    editable_source_dirty_state: str
+    formal_release_ref: str
+    formal_release_target: str | None
+    formal_release_version: str | None
+    distribution_metadata_state: str
+    distribution_metadata_locations: list[str]
     project_overrides: list[Path]
     overall_state: str
 
@@ -385,6 +408,86 @@ def _rules_state(path: Path, ai_bridge_executable: Path | None = None) -> str:
     return "configured" if read_text(path) == desired_rules_text(ai_bridge_executable) else "drifted"
 
 
+def _parse_project_version(text: str) -> str | None:
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("version = "):
+            return stripped.split("=", 1)[1].strip().strip('"')
+    return None
+
+
+def _version_tuple(version: str) -> tuple[int, ...]:
+    parts: list[int] = []
+    for part in version.split("."):
+        if not part.isdigit():
+            break
+        parts.append(int(part))
+    return tuple(parts)
+
+
+def _git_quiet(cwd: Path, args: list[str]) -> tuple[int, str]:
+    try:
+        result = subprocess.run(
+            ["git", *args],
+            cwd=cwd,
+            check=False,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+    except OSError as exc:
+        return 1, str(exc)
+    return result.returncode, result.stdout.strip()
+
+
+def _editable_source_identity(root: Path) -> tuple[str | None, str]:
+    code, head = _git_quiet(root, ["rev-parse", "HEAD"])
+    if code != 0:
+        return None, "not-a-git-worktree"
+    dirty_code, dirty = _git_quiet(root, ["status", "--short"])
+    if dirty_code != 0:
+        return head, "unknown"
+    return head, "dirty" if dirty else "clean"
+
+
+def _formal_release_identity(root: Path) -> tuple[str, str | None, str | None]:
+    refs = ["refs/heads/release", "refs/remotes/origin/release"]
+    for ref in refs:
+        code, target = _git_quiet(root, ["show-ref", "--verify", "--hash", ref])
+        if code != 0 or not target:
+            continue
+        show_code, pyproject = _git_quiet(root, ["show", f"{target}:pyproject.toml"])
+        version = _parse_project_version(pyproject) if show_code == 0 else None
+        return ref, target, version
+    return "absent", None, None
+
+
+def _distribution_metadata_diagnostics() -> tuple[str, list[str]]:
+    locations: list[str] = []
+    versions: set[str] = set()
+    for dist in importlib_metadata.distributions():
+        name = (dist.metadata.get("Name") or "").lower().replace("_", "-")
+        if name != "gpt-codex-ai-bridge-kit":
+            continue
+        version = dist.version
+        versions.add(version)
+        location = "unknown"
+        if dist.files:
+            try:
+                located = dist.locate_file(next(iter(dist.files)))
+                location = str(Path(located).resolve())
+            except Exception:
+                location = str(next(iter(dist.files)))
+        locations.append(f"{version} @ {location}")
+    if not locations:
+        return "not-found", []
+    if len(locations) == 1:
+        return "single", locations
+    if len(versions) == 1:
+        return "duplicate-warning", locations
+    return "conflicting-warning", locations
+
+
 def detect_project_overrides(cwd: Path | None = None) -> list[Path]:
     cwd = Path.cwd() if cwd is None else cwd
     candidates = [cwd / ".codex" / "config.toml", cwd / ".codex" / "rules"]
@@ -394,6 +497,10 @@ def detect_project_overrides(cwd: Path | None = None) -> list[Path]:
 def inspect_host_policy(codex_home: Path, cwd: Path | None = None) -> HostStatus:
     config_path = codex_home / "config.toml"
     trusted_executable = resolve_ai_bridge_executable()
+    source_root = kit_root()
+    editable_head, editable_dirty = _editable_source_identity(source_root)
+    release_ref, release_target, release_version = _formal_release_identity(source_root)
+    metadata_state, metadata_locations = _distribution_metadata_diagnostics()
     config_checks = _check_config(config_path)
     config_state = _state_from_checks(config_checks) if config_path.exists() else "missing"
     agents_state = _agents_state(codex_home / "AGENTS.md")
@@ -416,6 +523,15 @@ def inspect_host_policy(codex_home: Path, cwd: Path | None = None) -> HostStatus
         artifact_language_policy="repository/task controlled",
         rules_state=rules_state,
         trusted_ai_bridge_executable=trusted_executable,
+        imported_package_source=Path(__file__).resolve(),
+        imported_package_version=__version__,
+        editable_source_head=editable_head,
+        editable_source_dirty_state=editable_dirty,
+        formal_release_ref=release_ref,
+        formal_release_target=release_target,
+        formal_release_version=release_version,
+        distribution_metadata_state=metadata_state,
+        distribution_metadata_locations=metadata_locations,
         project_overrides=detect_project_overrides(cwd),
         overall_state=overall,
     )
@@ -457,8 +573,8 @@ def _git_text(cwd: Path, args: list[str], *, env: dict[str, str] | None = None) 
     return _git(cwd, args, env=env).stdout.strip()
 
 
-def _git_lines(cwd: Path, args: list[str]) -> list[str]:
-    text = _git_text(cwd, args)
+def _git_lines(cwd: Path, args: list[str], *, env: dict[str, str] | None = None) -> list[str]:
+    text = _git_text(cwd, args, env=env)
     return [line.strip() for line in text.splitlines() if line.strip()]
 
 
@@ -489,8 +605,8 @@ def _publisher_github_https_identity(url: str) -> str:
     return f"{match.group(1)}/{match.group(2)}"
 
 
-def _single_remote_url(cwd: Path, args: list[str], reason: str) -> str:
-    urls = _git_lines(cwd, args)
+def _single_remote_url(cwd: Path, args: list[str], reason: str, *, env: dict[str, str] | None = None) -> str:
+    urls = _git_lines(cwd, args, env=env)
     if len(urls) != 1:
         raise HostPublishError(reason)
     return urls[0]
@@ -500,13 +616,21 @@ def _is_true(value: str) -> bool:
     return value.strip().lower() in {"true", "1", "yes", "on"}
 
 
-def _config_value(cwd: Path, key: str) -> str:
-    result = _git(cwd, ["config", "--get", key], check=False)
+def _stable_git_security_env(source: dict[str, str]) -> dict[str, str]:
+    env = dict(source)
+    for key in list(env):
+        if key in REJECTED_GIT_ENV_EXACT or key.startswith(REJECTED_GIT_ENV_PREFIXES):
+            env.pop(key, None)
+    return env
+
+
+def _config_value(cwd: Path, key: str, *, env: dict[str, str] | None = None) -> str:
+    result = _git(cwd, ["config", "--get", key], env=env, check=False)
     return result.stdout.strip() if result.returncode == 0 else ""
 
 
-def _config_entries_with_scope(cwd: Path) -> list[tuple[str, str, str]]:
-    result = _git(cwd, ["config", "--show-scope", "--show-origin", "--list"], check=False)
+def _config_entries_with_scope(cwd: Path, *, env: dict[str, str] | None = None) -> list[tuple[str, str, str]]:
+    result = _git(cwd, ["config", "--show-scope", "--show-origin", "--list"], env=env, check=False)
     if result.returncode != 0:
         raise HostPublishError("GIT_CONFIG_INSPECTION_FAILED")
     entries: list[tuple[str, str, str]] = []
@@ -520,24 +644,26 @@ def _config_entries_with_scope(cwd: Path) -> list[tuple[str, str, str]]:
     return entries
 
 
-def _has_config_key(cwd: Path, key: str) -> bool:
-    return _git(cwd, ["config", "--get-all", key], check=False).returncode == 0
+def _has_config_key(cwd: Path, key: str, *, env: dict[str, str] | None = None) -> bool:
+    return _git(cwd, ["config", "--get-all", key], env=env, check=False).returncode == 0
 
 
 def _reject_process_transport_env(env: dict[str, str]) -> None:
     for key in ["GIT_SSH", "GIT_SSH_COMMAND"]:
         if env.get(key):
             raise HostPublishError("CUSTOM_SSH_TRANSPORT_REQUIRES_APPROVAL")
-    for key in ["GIT_ASKPASS", "SSH_ASKPASS"]:
+    for key in ["GIT_ASKPASS"]:
         if env.get(key):
             raise HostPublishError("ASKPASS_REQUIRES_APPROVAL")
     if any(
         key in env
         for key in [
+            "GIT_CONFIG",
             "GIT_CONFIG_COUNT",
             "GIT_CONFIG_GLOBAL",
             "GIT_CONFIG_SYSTEM",
             "GIT_CONFIG_NOSYSTEM",
+            "GIT_CONFIG_PARAMETERS",
         ]
     ) or any(key.startswith(("GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_")) for key in env):
         raise HostPublishError("CUSTOM_GIT_CONFIG_REQUIRES_APPROVAL")
@@ -545,20 +671,41 @@ def _reject_process_transport_env(env: dict[str, str]) -> None:
         raise HostPublishError("PUSH_OPTIONS_REQUIRE_APPROVAL")
 
 
-def _reject_repository_transport_config(cwd: Path) -> None:
-    if _has_config_key(cwd, "core.sshCommand"):
+def _git_security_env_or_default(env: dict[str, str] | None) -> dict[str, str]:
+    return _stable_git_security_env(dict(os.environ if env is None else env))
+
+
+def _credential_helper_is_executable(value: str) -> bool:
+    stripped = value.strip()
+    if not stripped:
+        return False
+    if stripped.startswith("!"):
+        return True
+    try:
+        first = shlex.split(stripped)[0]
+    except ValueError:
+        first = stripped.split()[0]
+    if first.startswith(("/", "./", "../", "~")):
+        return True
+    return "/" in first or "\\" in first
+
+
+def _reject_repository_transport_config(cwd: Path, *, env: dict[str, str] | None = None) -> None:
+    stable_env = _git_security_env_or_default(env)
+    if _has_config_key(cwd, "core.sshCommand", env=stable_env):
         raise HostPublishError("CUSTOM_SSH_TRANSPORT_REQUIRES_APPROVAL")
-    if _has_config_key(cwd, "core.askPass"):
+    if _has_config_key(cwd, "core.askPass", env=stable_env):
         raise HostPublishError("ASKPASS_REQUIRES_APPROVAL")
-    for scope, key, _value in _config_entries_with_scope(cwd):
+    for scope, key, value in _config_entries_with_scope(cwd, env=stable_env):
         if key == "credential.helper" or (key.startswith("credential.") and key.endswith(".helper")):
-            if scope in {"local", "worktree", "command"}:
+            if scope in {"local", "worktree", "command"} and _credential_helper_is_executable(value):
                 raise HostPublishError("REPO_CREDENTIAL_HELPER_REQUIRES_APPROVAL")
 
 
-def _pre_push_hook_path(cwd: Path) -> Path:
-    hooks_path = _config_value(cwd, "core.hooksPath")
-    git_dir = Path(_git_text(cwd, ["rev-parse", "--git-dir"]))
+def _pre_push_hook_path(cwd: Path, *, env: dict[str, str] | None = None) -> Path:
+    stable_env = _git_security_env_or_default(env)
+    hooks_path = _config_value(cwd, "core.hooksPath", env=stable_env)
+    git_dir = Path(_git_text(cwd, ["rev-parse", "--git-dir"], env=stable_env))
     if not git_dir.is_absolute():
         git_dir = cwd / git_dir
     if hooks_path:
@@ -569,8 +716,8 @@ def _pre_push_hook_path(cwd: Path) -> Path:
     return git_dir / "hooks" / "pre-push"
 
 
-def _reject_active_hook(cwd: Path) -> None:
-    hook = _pre_push_hook_path(cwd)
+def _reject_active_hook(cwd: Path, *, env: dict[str, str] | None = None) -> None:
+    hook = _pre_push_hook_path(cwd, env=env)
     if hook.exists() and os.access(hook, os.X_OK):
         raise HostPublishError("PRE_PUSH_HOOK_REQUIRES_APPROVAL")
 
@@ -584,10 +731,12 @@ def _sanitized_push_env(source: dict[str, str]) -> dict[str, str]:
             "GIT_SSH_VARIANT",
             "GIT_ASKPASS",
             "SSH_ASKPASS",
+            "GIT_CONFIG",
             "GIT_CONFIG_COUNT",
             "GIT_CONFIG_GLOBAL",
             "GIT_CONFIG_SYSTEM",
             "GIT_CONFIG_NOSYSTEM",
+            "GIT_CONFIG_PARAMETERS",
         } or key.startswith(("GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_", "GIT_PUSH_OPTION")):
             env.pop(key, None)
     env["GIT_TERMINAL_PROMPT"] = "0"
@@ -602,33 +751,34 @@ def _assert_publisher_preconditions(
     env: dict[str, str],
 ) -> tuple[str, str]:
     _reject_process_transport_env(env)
+    stable_env = _stable_git_security_env(env)
     if env.get("AI_BRIDGE_REVIEWED_RUNNER_PUSH_GUARD") or env.get("AI_BRIDGE_REVIEWED_EXECUTOR"):
         raise HostPublishError("REVIEW_EXECUTOR_GUARD_REQUIRES_REVIEWED_RUNNER")
-    top = Path(_git_text(cwd, ["rev-parse", "--show-toplevel"])).resolve()
-    branch = _git_text(top, ["symbolic-ref", "--quiet", "--short", "HEAD"])
+    top = Path(_git_text(cwd, ["rev-parse", "--show-toplevel"], env=stable_env)).resolve()
+    branch = _git_text(top, ["symbolic-ref", "--quiet", "--short", "HEAD"], env=stable_env)
     if branch != expected_branch:
         raise HostPublishError("BRANCH_ASSERTION_FAILED")
-    if _config_value(top, f"branch.{branch}.remote") != "origin":
+    if _config_value(top, f"branch.{branch}.remote", env=stable_env) != "origin":
         raise HostPublishError("UPSTREAM_REMOTE_MISMATCH")
-    if _config_value(top, f"branch.{branch}.merge") != f"refs/heads/{branch}":
+    if _config_value(top, f"branch.{branch}.merge", env=stable_env) != f"refs/heads/{branch}":
         raise HostPublishError("UPSTREAM_MERGE_MISMATCH")
-    if _is_true(_config_value(top, "remote.origin.mirror")):
+    if _is_true(_config_value(top, "remote.origin.mirror", env=stable_env)):
         raise HostPublishError("MIRROR_PUSH_REQUIRES_APPROVAL")
-    if _is_true(_config_value(top, "push.followTags")):
+    if _is_true(_config_value(top, "push.followTags", env=stable_env)):
         raise HostPublishError("FOLLOW_TAGS_REQUIRES_APPROVAL")
-    recurse = _config_value(top, "push.recurseSubmodules").lower()
+    recurse = _config_value(top, "push.recurseSubmodules", env=stable_env).lower()
     if recurse and recurse not in {"no", "false", "off"}:
         raise HostPublishError("RECURSIVE_SUBMODULE_PUSH_REQUIRES_APPROVAL")
-    if _has_config_key(top, "push.pushOption"):
+    if _has_config_key(top, "push.pushOption", env=stable_env):
         raise HostPublishError("PUSH_OPTIONS_REQUIRE_APPROVAL")
-    signing = _config_value(top, "push.gpgSign").lower()
+    signing = _config_value(top, "push.gpgSign", env=stable_env).lower()
     if signing and signing not in {"false", "no", "off"}:
         raise HostPublishError("SIGNED_PUSH_REQUIRES_APPROVAL")
-    captured_head = _git_text(top, ["rev-parse", "HEAD"])
-    _reject_repository_transport_config(top)
-    _reject_active_hook(top)
-    fetch_url = _single_remote_url(top, ["remote", "get-url", "--all", "origin"], "REMOTE_URL_AMBIGUOUS")
-    push_url = _single_remote_url(top, ["remote", "get-url", "--push", "--all", "origin"], "REMOTE_PUSH_URL_AMBIGUOUS")
+    captured_head = _git_text(top, ["rev-parse", "HEAD"], env=stable_env)
+    _reject_repository_transport_config(top, env=stable_env)
+    _reject_active_hook(top, env=stable_env)
+    fetch_url = _single_remote_url(top, ["remote", "get-url", "--all", "origin"], "REMOTE_URL_AMBIGUOUS", env=stable_env)
+    push_url = _single_remote_url(top, ["remote", "get-url", "--push", "--all", "origin"], "REMOTE_PUSH_URL_AMBIGUOUS", env=stable_env)
     repo = _publisher_github_https_identity(fetch_url)
     push_repo = _publisher_github_https_identity(push_url)
     if repo != push_repo or repo != expected_repo:
@@ -639,7 +789,7 @@ def _assert_publisher_preconditions(
     if len(remote_parts) < 2:
         raise HostPublishError("REMOTE_SAME_NAME_BRANCH_REQUIRED")
     remote_oid = remote_parts[0]
-    if _git(top, ["merge-base", "--is-ancestor", remote_oid, "HEAD"], check=False).returncode != 0:
+    if _git(top, ["merge-base", "--is-ancestor", remote_oid, "HEAD"], env=stable_env, check=False).returncode != 0:
         raise HostPublishError("REMOTE_AHEAD_REQUIRES_PULL")
     return top.as_posix(), captured_head
 
@@ -797,6 +947,15 @@ def _with_incompatible(status: HostStatus) -> HostStatus:
         status.artifact_language_policy,
         status.rules_state,
         status.trusted_ai_bridge_executable,
+        status.imported_package_source,
+        status.imported_package_version,
+        status.editable_source_head,
+        status.editable_source_dirty_state,
+        status.formal_release_ref,
+        status.formal_release_target,
+        status.formal_release_version,
+        status.distribution_metadata_state,
+        status.distribution_metadata_locations,
         status.project_overrides,
         "incompatible",
     )
@@ -840,6 +999,46 @@ def validate_host_policy(codex_home: Path, cwd: Path | None = None) -> tuple[Hos
         exit_code = 1
         status = _with_incompatible(status)
         lines.append("Incompatible: ai-bridge executable not found for host_executable pinning")
+    lines.append(f"Imported ai_bridge_kit source: {status.imported_package_source}")
+    lines.append(f"Imported ai_bridge_kit version: {status.imported_package_version}")
+    if status.editable_source_head:
+        lines.append(f"Editable source Git HEAD: {status.editable_source_head}")
+    else:
+        lines.append("Editable source Git HEAD: unavailable")
+    lines.append(f"Active source dirty state: {status.editable_source_dirty_state}")
+    if status.editable_source_dirty_state == "dirty":
+        lines.append("Warning: active editable source is dirty; current bytes may differ from committed HEAD")
+    lines.append(
+        "Local formal release ref: "
+        f"{status.formal_release_ref}"
+        + (f" -> {status.formal_release_target}" if status.formal_release_target else " (not locally available; freshness unknown)")
+    )
+    if status.formal_release_version:
+        lines.append(f"Formal release version: {status.formal_release_version}")
+    elif status.formal_release_target is None:
+        lines.append("Warning: local formal release ref is absent or freshness is unknown; host validate did not fetch")
+    if status.distribution_metadata_locations:
+        lines.append(f"Distribution metadata: {status.distribution_metadata_state}")
+        for location in status.distribution_metadata_locations:
+            lines.append(f"Distribution metadata entry: {location}")
+    else:
+        lines.append("Distribution metadata: not-found")
+    if (
+        status.formal_release_version
+        and status.imported_package_version == status.formal_release_version
+        and status.formal_release_target
+        and status.editable_source_head
+        and status.editable_source_head != status.formal_release_target
+    ):
+        lines.append(
+            "Warning: imported version matches local formal release version but active source HEAD differs from "
+            "the release target; this may be a development checkout or later main evidence commit"
+        )
+    if (
+        status.formal_release_version
+        and _version_tuple(status.imported_package_version) > _version_tuple(status.formal_release_version)
+    ):
+        lines.append("Warning: imported version is ahead of local formal release; exact candidate binding is required for release gates")
     replay_command = [
         "ai-bridge",
         "plugin-replay",
@@ -1059,6 +1258,21 @@ def format_status(status: HostStatus) -> str:
         lines.append(f"trusted ai-bridge executable: {status.trusted_ai_bridge_executable}")
     else:
         lines.append("trusted ai-bridge executable: unresolved")
+    lines.extend(
+        [
+            f"imported ai_bridge_kit source: {status.imported_package_source}",
+            f"imported ai_bridge_kit version: {status.imported_package_version}",
+            f"editable source Git HEAD: {status.editable_source_head or 'unavailable'}",
+            f"active source dirty state: {status.editable_source_dirty_state}",
+            "local formal release ref: "
+            + status.formal_release_ref
+            + (f" -> {status.formal_release_target}" if status.formal_release_target else " (not locally available; freshness unknown)"),
+            f"formal release version: {status.formal_release_version or 'unknown'}",
+            f"distribution metadata: {status.distribution_metadata_state}",
+        ]
+    )
+    for location in status.distribution_metadata_locations:
+        lines.append(f"distribution metadata entry: {location}")
     if status.project_overrides:
         lines.append("project override awareness:")
         for path in status.project_overrides:

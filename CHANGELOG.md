@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+## 0.10.0 - 2026-10-01
+
+- Make Machine Policy guidance explicitly sandbox-first for ordinary
+  workspace-contained build, test, render, QA, deterministic scripts, and
+  task-owned generated output while preserving upfront approval gates for real
+  authority-sensitive effects.
+- Add refusal-recovery guidance that classifies optional, sandbox-capable,
+  bounded-entry, and true-authority failures before trying another route; bounded
+  publisher failure remains not permission for raw `git push`.
+- Harden the bounded current-branch publisher so security-sensitive Git
+  config/remote/hook inspection uses one stable sanitized view, rejects
+  caller-controlled Git config and transport overrides, and strips credential-capable
+  environment from the remote read and push path.
+- Allow inherited ambient `SSH_ASKPASS` on the approved GitHub HTTPS publication
+  path only by proving it is not exported to any authentication-capable Git
+  operation; `GIT_ASKPASS`, custom SSH transports, Git config overrides,
+  executable repo/worktree credential helpers, active hooks, and unsafe push
+  expansion still fail closed before network or mutation.
+- Extend `ai-bridge host validate` / `status` diagnostics with executable,
+  import source/version, editable source HEAD/dirty state, local formal release
+  ref/version, and installed distribution metadata reporting without fetching or
+  updating the runtime.
+
 ## 0.9.3 - 2026-09-29
 
 - Add the bounded `ai-bridge reviewed-handoff task publish-first` operation for

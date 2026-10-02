@@ -239,6 +239,39 @@ should close truthfully with evidence; optional work should not block the frozen
 objective; safety or authority blockers should use the existing Planner/STOP or
 approval route.
 
+## Execution Authority and Refusal Recovery
+
+For ordinary repository/workspace-contained build, test, lint, render, QA,
+deterministic scripts, and task-owned generated output, start in normal
+`workspace-write`. Python, TeX, shell-script, compiler, or build-tool identity is
+not by itself a reason to request `require_escalated`; writing inside the allowed
+workspace is not by itself an authority boundary.
+
+Preserve upfront authority gates when a real future effect is known from current
+user authorization, a frozen Goal/Plan/contract, an existing authority contract, or
+trustworthy static effect analysis. Known private transfers, paid/external calls,
+deployments, migrations, scheduler/resource allocation, Persistent Run launches,
+destructive actions, or changed provider/artifact/recipient/purpose/resource/cost/
+backend scope still use the existing approval or `HUMAN_ONLY` route.
+
+After a refusal or unavailable effect, classify before trying another authority
+path:
+
+```text
+OPTIONAL_NOT_REQUIRED
+SANDBOX_CAPABLE_BUT_ESCALATED
+BOUNDED_NORMAL_ENTRY_BLOCKER
+TRUE_AUTHORITY_OR_SAFETY_BOUNDARY
+```
+
+Optional work may be skipped while required work continues. A sandbox-capable
+effect that was mistakenly escalated may return only to the ordinary sandbox route
+if the effect has not happened. A bounded normal-entry blocker preserves completed
+work and must not widen to the raw operation; for example,
+`ai-bridge host publish-current-branch` failure is not permission to run raw
+`git push`. A true authority or safety boundary continues through the existing
+approval, `HUMAN_ONLY`, Planner, or STOP route.
+
 ## External Planner / Reviewer Waiting
 
 When a repository-controlled workflow says the next action belongs to an
