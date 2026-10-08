@@ -101,15 +101,18 @@ The package task itself was not the root cause; missing mandatory control contex
 
 ## Product requirement
 
-A normal authorized task must preserve three invariants:
+A normal authorized task must preserve four invariants:
 
-1. **Execution location continuity**  
-   Unless the user or frozen Goal explicitly selects another worktree, the checkout from which the task starts is the canonical execution worktree. Discovery of another candidate worktree does not transfer execution ownership to it.
+1. **Per-task execution location continuity**  
+   Unless the user or frozen Goal explicitly selects another worktree, the checkout from which that task starts is the canonical execution worktree for that task. Discovery of another candidate worktree does not transfer execution ownership to it.
 
-2. **One user decision must not fragment into repeated low-level approvals**  
-   When the user has already selected an exact repository + current checkout + target branch, Bridge must not require separate user decisions for move/detach/switch merely to realize that already-approved execution topology.
+2. **Intentional parallel worktrees are a supported normal case**  
+   One repository may legitimately have multiple long-lived worktrees for concurrent branch development, for example one stable `tutorial` worktree and one stable `hw` worktree. Bridge must not treat the existence of another worktree on a different branch as a conflict to collapse, detach, move, or delete. The invariant is one task -> one bound worktree/branch, not one repository -> one worktree.
 
-3. **Mandatory controller context is a hard precondition**  
+3. **One user decision must not fragment into repeated low-level approvals**  
+   When the user has already selected an exact repository + task worktree + target branch, Bridge must not require separate user decisions for move/detach/switch merely to realize that already-approved execution topology.
+
+4. **Mandatory controller context is a hard precondition**  
    If the active Goal/authority/runtime contract is declared mandatory, substantive execution must not begin until it has actually been read. Prompt excerpts or remembered summaries may not silently substitute for an unread required source.
 
 ## Proposed direction
@@ -122,7 +125,7 @@ At task start, resolve and freeze:
 
 ```text
 CANONICAL_REPO_ROOT
-CANONICAL_WORKTREE
+TASK_WORKTREE
 CURRENT_BRANCH
 TARGET_BRANCH
 CURRENT_HEAD
@@ -133,15 +136,36 @@ WORKTREE_INVENTORY
 Default rule:
 
 ```text
-current checkout = canonical execution worktree
-alternate worktree execution = forbidden unless explicitly authorized
+current checkout = TASK_WORKTREE for this task
+task remains on that worktree/branch until an explicit task-level relocation decision
+other valid worktrees in the same repository remain independent
 ```
 
-Before substantive work, detect whether the target branch is already owned by another worktree.
+The binding is **per task**, not repository-global. A repository may intentionally keep multiple stable worktrees, for example:
 
-Do not create or adopt a `/tmp`, sibling, or second checkout merely because an older candidate exists.
+```text
+/users/.../STAT5060-TA--tutorial  -> tutorial
+/users/.../STAT5060-TA--hw        -> hw
+```
 
-### B. Bounded worktree normalization only for real conflict recovery
+Two Codex tasks may run concurrently in those two worktrees. Each task must remain in its own bound worktree and must not switch to the other branch or adopt the other worktree merely because it exists.
+
+Before substantive work, inspect the worktree inventory:
+
+- another worktree on a different branch is normal parallel-development state;
+- another worktree already owning this task's target branch is a real ownership conflict;
+- a temporary or stale candidate worktree is not automatically authoritative merely because it contains useful uncommitted work.
+
+Do not create or adopt a `/tmp`, sibling, or second checkout merely because an older candidate exists. Creating a new long-lived worktree is a distinct user/project decision unless a frozen project contract already defines that branch/worktree topology.
+
+Task-local environments and generated state belong to the task's own worktree when the repository contract says so. One worktree's `.venv`, `.r-lib`, generated outputs, or dirty files must not be silently reused as another worktree's runtime merely because both share the same Git repository.
+
+### B. Parallel-development semantics and bounded normalization only for real conflict recovery
+
+Valid parallel state such as `tutorial` in one stable worktree and `hw` in another must be preserved. Normalization is **not** a command to collapse all worktrees into one checkout.
+
+A recovery is required only when the frozen task binding cannot be satisfied, for example the same target branch is already owned by another worktree, or the user explicitly decides to relocate an existing branch/candidate into another worktree.
+
 
 If a real pre-existing conflict exists, such as:
 
@@ -261,6 +285,25 @@ PASS requires:
 - execution remains in A unless the frozen task explicitly selected B;
 - discovery of B does not silently change execution worktree;
 - no `/tmp` or sibling worktree is created/adopted as a workaround.
+
+### Gate 1B — intentional parallel branch development
+
+Prepare one repository with two stable worktrees:
+
+```text
+worktree A -> branch tutorial
+worktree B -> branch hw
+```
+
+Run independent normal Codex tasks in both.
+
+PASS requires:
+
+- each task binds to the worktree from which it was launched;
+- neither task attempts to switch to or normalize away the other worktree;
+- dirty/generated/task-local environment state remains isolated per worktree;
+- a worktree on a different branch is not reported as a branch-ownership conflict;
+- both tasks can make progress concurrently without requiring a repository-global worktree lock or new registry/state machine.
 
 ### Gate 2 — dirty dual-worktree normalization
 
