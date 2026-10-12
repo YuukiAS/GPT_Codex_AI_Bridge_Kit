@@ -25,6 +25,11 @@
 - Ensure `AGENTS.md`, README, CHANGELOG, workflow, source, and test changes
   trigger the test workflow, and keep a controlled `workflow_dispatch` entry for
   manual CI evidence on frozen candidates.
+- Harden the source candidate after pre-final review: worktree exchanges now
+  persist a machine-local recovery journal, instruction discovery follows the
+  current Codex `project_doc_fallback_filenames` and trust/root-marker model,
+  isolated control-file reads preserve raw Git blob bytes, and Reviewed launch
+  rechecks mandatory preflight at the final spawn boundary.
 - Update Host Policy templates with the new bounded sync and worktree-exchange
   entry rules while keeping raw dangerous Git, arbitrary branch topology,
   release movement, CODEX_HOME mutation, SMTP, and external paid calls gated.

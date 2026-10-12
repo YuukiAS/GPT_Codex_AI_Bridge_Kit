@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import ast
 import json
 import os
 import re
@@ -10,6 +11,11 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
+
+try:
+    import tomllib  # type: ignore[import-not-found]
+except ModuleNotFoundError:  # pragma: no cover - exercised on Python 3.9 CI
+    tomllib = None  # type: ignore[assignment]
 
 from .host import (
     REJECTED_GIT_ENV_EXACT,
@@ -23,7 +29,7 @@ from .host import (
 
 DEFAULT_PROJECT_DOC_MAX_BYTES = 32768
 INSTRUCTION_FILE_NAMES = ("AGENTS.override.md", "AGENTS.md")
-FALLBACK_INSTRUCTION_FILE_NAMES = ("AGENTS.override.md", "AGENTS.md", "INSTRUCTIONS.md")
+DEFAULT_PROJECT_ROOT_MARKERS = (".git",)
 
 
 class ReadinessError(ValueError):
@@ -65,6 +71,27 @@ def _git(
     )
     if check and result.returncode != 0:
         raise ReadinessError("GIT_COMMAND_FAILED", (result.stderr or result.stdout or "git failed").strip())
+    return result
+
+
+def _git_bytes(
+    cwd: Path,
+    args: list[str],
+    *,
+    env: dict[str, str] | None = None,
+    check: bool = True,
+) -> subprocess.CompletedProcess[bytes]:
+    result = subprocess.run(
+        ["git", *args],
+        cwd=cwd,
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=env,
+    )
+    if check and result.returncode != 0:
+        detail = (result.stderr or result.stdout or b"git failed").decode("utf-8", errors="replace").strip()
+        raise ReadinessError("GIT_COMMAND_FAILED", detail)
     return result
 
 
@@ -112,82 +139,237 @@ def _read_bound_text(path: Path, *, root: Path, label: str) -> BoundText:
     )
 
 
-def _read_config_text(config: Path) -> str | None:
-    if not config.exists():
+def _minimal_toml_loads(text: str) -> dict[str, Any]:
+    data: dict[str, Any] = {}
+    current: dict[str, Any] = data
+    for raw in text.splitlines():
+        stripped = raw.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if stripped.startswith("[") and stripped.endswith("]") and not stripped.startswith("[["):
+            section = stripped.strip("[]").strip()
+            current = data
+            for part in _split_toml_dotted_key(section):
+                current = current.setdefault(part, {})
+            continue
+        key, sep, value = stripped.partition("=")
+        if not sep:
+            continue
+        key = key.strip()
+        value = value.strip()
+        if "#" in value:
+            value = value.split("#", 1)[0].rstrip()
+        try:
+            parsed = ast.literal_eval(value)
+        except Exception:
+            try:
+                parsed = int(value)
+            except ValueError:
+                parsed = value
+        current[key] = parsed
+    return data
+
+
+def _split_toml_dotted_key(value: str) -> list[str]:
+    parts: list[str] = []
+    current = ""
+    quote: str | None = None
+    escaped = False
+    for char in value:
+        if quote:
+            current += char
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+            continue
+        if char in {"'", '"'}:
+            quote = char
+            current += char
+        elif char == ".":
+            parts.append(_toml_key_part(current.strip()))
+            current = ""
+        else:
+            current += char
+    if current.strip():
+        parts.append(_toml_key_part(current.strip()))
+    return parts
+
+
+def _toml_key_part(value: str) -> str:
+    if len(value) >= 2 and value[0] in {"'", '"'} and value[-1] == value[0]:
+        try:
+            return str(ast.literal_eval(value))
+        except Exception:
+            return value[1:-1]
+    return value
+
+
+def _load_toml_config(path: Path) -> dict[str, Any] | None:
+    if not path.exists():
+        return {}
+    if not path.is_file():
         return None
     try:
-        return config.read_text(encoding="utf-8")
+        raw = path.read_bytes()
     except OSError:
         return None
-
-
-def _parse_project_doc_max_bytes(config: Path) -> int | None:
-    text = _read_config_text(config)
-    if text is None:
+    try:
+        if tomllib is not None:
+            return tomllib.loads(raw.decode("utf-8"))
+        return _minimal_toml_loads(raw.decode("utf-8"))
+    except Exception:
         return None
-    match = re.search(r"(?m)^\s*project_doc_max_bytes\s*=\s*(\d+)\s*$", text)
-    if not match:
-        return None
-    return int(match.group(1))
 
 
-def _parse_project_doc_fallback_file(config: Path) -> str | None:
-    text = _read_config_text(config)
-    if text is None:
-        return None
-    match = re.search(r"(?m)^\s*project_doc_fallback_file\s*=\s*[\"']([^\"']+)[\"']\s*$", text)
-    return match.group(1).strip() if match and match.group(1).strip() else None
+def _candidate_filenames(config: dict[str, Any]) -> list[str]:
+    names = list(INSTRUCTION_FILE_NAMES)
+    fallback = config.get("project_doc_fallback_filenames", [])
+    if not isinstance(fallback, list):
+        return names
+    for item in fallback:
+        if not isinstance(item, str) or not item:
+            continue
+        if item in {".", ".."} or "/" in item or "\0" in item or "\\" in item or ":" in item:
+            continue
+        if item not in names:
+            names.append(item)
+    return names
 
 
-def effective_instruction_config(root: Path, *, env: dict[str, str] | None = None) -> dict[str, Any]:
+def _project_root_markers(config: dict[str, Any]) -> tuple[str, ...] | None:
+    raw = config.get("project_root_markers")
+    if raw is None:
+        return DEFAULT_PROJECT_ROOT_MARKERS
+    if isinstance(raw, list) and all(isinstance(item, str) for item in raw):
+        return tuple(item for item in raw if item)
+    return None
+
+
+def _find_instruction_root(cwd: Path, markers: tuple[str, ...]) -> Path:
+    cwd = cwd.resolve()
+    if not markers:
+        return cwd
+    cursor = cwd
+    while True:
+        if any((cursor / marker).exists() for marker in markers):
+            return cursor
+        if cursor.parent == cursor:
+            return cwd
+        cursor = cursor.parent
+
+
+def _project_trust_state(config: dict[str, Any], root: Path) -> str:
+    projects = config.get("projects")
+    if not isinstance(projects, dict):
+        return "UNKNOWN"
+    root_resolved = root.resolve()
+    best: tuple[int, str] | None = None
+    for raw_path, value in projects.items():
+        if not isinstance(raw_path, str) or not isinstance(value, dict):
+            continue
+        try:
+            project_path = Path(raw_path).expanduser().resolve()
+            root_resolved.relative_to(project_path)
+        except Exception:
+            continue
+        trust = value.get("trust_level") or value.get("trusted")
+        trust_text = str(trust).lower()
+        if trust_text in {"trusted", "true", "yes"}:
+            state = "TRUSTED"
+        elif trust_text in {"untrusted", "false", "no"}:
+            state = "UNTRUSTED"
+        else:
+            state = "UNKNOWN"
+        score = len(project_path.parts)
+        if best is None or score > best[0]:
+            best = (score, state)
+    return best[1] if best else "UNKNOWN"
+
+
+def _merge_config(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(base)
+    for key, value in overlay.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _merge_config(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def effective_instruction_config(root: Path, *, cwd: Path | None = None, env: dict[str, str] | None = None) -> dict[str, Any]:
     active_env = os.environ if env is None else env
     codex_home = resolve_codex_home(None, active_env)
-    sources = [
-        ("codex_home", codex_home / "config.toml"),
-        ("project", root / ".codex" / "config.toml"),
-    ]
-    max_bytes = DEFAULT_PROJECT_DOC_MAX_BYTES
+    codex_config_path = codex_home / "config.toml"
+    project_config_path = root / ".codex" / "config.toml"
+    codex_config = _load_toml_config(codex_config_path)
+    project_config = _load_toml_config(project_config_path)
+    if codex_config is None:
+        return {
+            "state": "UNKNOWN",
+            "reason": f"CONFIG_SOURCE_UNREADABLE_OR_INVALID: {codex_config_path}",
+            "codex_home": codex_home.as_posix(),
+            "max_bytes": None,
+            "max_bytes_source": None,
+            "instruction_file_names": list(INSTRUCTION_FILE_NAMES),
+        }
+    if project_config is None:
+        return {
+            "state": "UNKNOWN",
+            "reason": f"CONFIG_SOURCE_UNREADABLE_OR_INVALID: {project_config_path}",
+            "codex_home": codex_home.as_posix(),
+            "max_bytes": None,
+            "max_bytes_source": None,
+            "instruction_file_names": list(INSTRUCTION_FILE_NAMES),
+        }
+    trust_state = _project_trust_state(codex_config, root)
+    if trust_state != "TRUSTED":
+        return {
+            "state": "UNKNOWN",
+            "reason": f"PROJECT_TRUST_NOT_VERIFIED: {trust_state}",
+            "codex_home": codex_home.as_posix(),
+            "project_trust_state": trust_state,
+            "max_bytes": None,
+            "max_bytes_source": None,
+            "instruction_file_names": list(INSTRUCTION_FILE_NAMES),
+        }
+    root_markers = _project_root_markers(codex_config)
+    if root_markers is None:
+        return {
+            "state": "UNKNOWN",
+            "reason": "PROJECT_ROOT_MARKERS_INVALID",
+            "codex_home": codex_home.as_posix(),
+            "max_bytes": None,
+            "max_bytes_source": None,
+            "instruction_file_names": list(INSTRUCTION_FILE_NAMES),
+        }
+    merged = _merge_config(codex_config, project_config)
+    max_bytes = merged.get("project_doc_max_bytes", DEFAULT_PROJECT_DOC_MAX_BYTES)
+    if not isinstance(max_bytes, int) or max_bytes <= 0:
+        return {
+            "state": "UNKNOWN",
+            "reason": "CONFIG_PROJECT_DOC_MAX_BYTES_INVALID",
+            "codex_home": codex_home.as_posix(),
+            "max_bytes": None,
+            "max_bytes_source": None,
+            "instruction_file_names": list(INSTRUCTION_FILE_NAMES),
+        }
     max_source = "default"
-    fallback_names = list(FALLBACK_INSTRUCTION_FILE_NAMES)
-    for label, path in sources:
-        if path.exists() and not path.is_file():
-            return {
-                "state": "UNKNOWN",
-                "reason": f"CONFIG_SOURCE_NOT_FILE: {path}",
-                "codex_home": codex_home.as_posix(),
-                "max_bytes": None,
-                "max_bytes_source": None,
-                "instruction_file_names": fallback_names,
-            }
-        if path.exists() and _read_config_text(path) is None:
-            return {
-                "state": "UNKNOWN",
-                "reason": f"CONFIG_SOURCE_UNREADABLE: {path}",
-                "codex_home": codex_home.as_posix(),
-                "max_bytes": None,
-                "max_bytes_source": None,
-                "instruction_file_names": fallback_names,
-            }
-        configured = _parse_project_doc_max_bytes(path)
-        if configured is not None:
-            if configured <= 0:
-                return {
-                    "state": "UNKNOWN",
-                    "reason": f"CONFIG_PROJECT_DOC_MAX_BYTES_INVALID: {path}",
-                    "codex_home": codex_home.as_posix(),
-                    "max_bytes": None,
-                    "max_bytes_source": None,
-                    "instruction_file_names": fallback_names,
-                }
-            max_bytes = configured
-            max_source = f"{label}:{path.as_posix()}"
-        fallback = _parse_project_doc_fallback_file(path)
-        if fallback and fallback not in fallback_names:
-            fallback_names.append(fallback)
+    if "project_doc_max_bytes" in project_config:
+        max_source = f"project:{project_config_path.as_posix()}"
+    elif "project_doc_max_bytes" in codex_config:
+        max_source = f"codex_home:{codex_config_path.as_posix()}"
+    fallback_names = _candidate_filenames(merged)
+    instruction_root = _find_instruction_root(cwd or root, root_markers)
     return {
         "state": "VERIFIED",
         "reason": "",
         "codex_home": codex_home.as_posix(),
+        "project_trust_state": trust_state,
+        "project_root": instruction_root.as_posix(),
+        "project_root_markers": list(root_markers),
         "max_bytes": max_bytes,
         "max_bytes_source": max_source,
         "instruction_file_names": fallback_names,
@@ -219,10 +401,11 @@ def _ancestor_dirs(root: Path, cwd: Path) -> list[Path]:
 def discover_instruction_files(target: Path, *, cwd: Path | None = None) -> list[Path]:
     root = repo_root_or_target(target)
     effective_cwd = (cwd or target).resolve()
-    config = effective_instruction_config(root)
+    config = effective_instruction_config(root, cwd=effective_cwd)
     names = tuple(config["instruction_file_names"]) if config.get("state") == "VERIFIED" else INSTRUCTION_FILE_NAMES
+    instruction_root = Path(config.get("project_root") or root)
     files: list[Path] = []
-    for directory in _ancestor_dirs(root, effective_cwd):
+    for directory in _ancestor_dirs(instruction_root, effective_cwd):
         for name in names:
             candidate = directory / name
             if candidate.is_file():
@@ -238,13 +421,15 @@ def audit_instruction_budget(
     max_bytes: int | None = None,
 ) -> dict[str, Any]:
     root = repo_root_or_target(target)
-    config = effective_instruction_config(root)
+    config = effective_instruction_config(root, cwd=cwd or target)
     if config.get("state") != "VERIFIED":
         return {
             "schema": "ai-bridge.readiness.instruction_budget.v1",
             "state": "UNKNOWN",
             "reason": config.get("reason") or "PROJECT_INSTRUCTION_CONFIG_UNVERIFIED",
             "codex_home": config.get("codex_home"),
+            "project_trust_state": config.get("project_trust_state"),
+            "project_root": config.get("project_root"),
             "max_bytes": None,
             "max_bytes_source": None,
             "total_bytes": None,
@@ -269,6 +454,8 @@ def audit_instruction_budget(
         "max_bytes": limit,
         "max_bytes_source": config["max_bytes_source"],
         "codex_home": config["codex_home"],
+        "project_trust_state": config["project_trust_state"],
+        "project_root": config["project_root"],
         "total_bytes": total,
         "truncated_at": truncated_at,
         "files": [
@@ -320,13 +507,17 @@ def bind_repo_texts(target: Path, specs: list[tuple[str, str]]) -> list[BoundTex
     return bound
 
 
-def bind_repo_texts_isolated(target: Path, specs: list[tuple[str, str]]) -> list[BoundText]:
+def bind_repo_texts_isolated(
+    target: Path,
+    specs: list[tuple[str, str]],
+    *,
+    require_github_https: bool = True,
+) -> list[BoundText]:
     root = repo_root(target)
     commit = git_text(root, ["rev-parse", "HEAD"])
     expected_repo = _origin_identity(root)
     if expected_repo == "UNKNOWN":
         raise ReadinessError("CONTROL_ORIGIN_IDENTITY_UNVERIFIED")
-    require_github_https = not expected_repo.startswith("local:/tmp/")
     bound: list[BoundText] = []
     for label, rel in specs:
         result = read_control_file_isolated(
@@ -337,19 +528,17 @@ def bind_repo_texts_isolated(target: Path, specs: list[tuple[str, str]]) -> list
             require_github_https=require_github_https,
         )
         text = str(result["text"])
-        raw = text.encode("utf-8")
+        raw_sha = str(result["sha256"])
         bound.append(
             BoundText(
                 label=label,
                 path=(root / rel).resolve(),
                 relative_path=result["path"],
                 size_bytes=int(result["size_bytes"]),
-                sha256=str(result["sha256"]),
+                sha256=raw_sha,
                 text=text,
             )
         )
-        if result["sha256"] != _sha256_bytes(raw):
-            raise ReadinessError("CONTROL_TEXT_SHA_MISMATCH", rel)
     return bound
 
 
@@ -449,6 +638,7 @@ def preflight_reviewed_event(
     branch: str,
     codex_bin: str = "codex",
     require_host_ready: bool = True,
+    require_github_https: bool = True,
 ) -> dict[str, Any]:
     common = preflight_common(
         target,
@@ -470,7 +660,7 @@ def preflight_reviewed_event(
     ])
     if common["instruction_budget"]["state"] != "PASS":
         raise ReadinessError("PROJECT_INSTRUCTION_BUDGET_EXCEEDED")
-    bound = bind_repo_texts_isolated(target, specs)
+    bound = bind_repo_texts_isolated(target, specs, require_github_https=require_github_https)
     try:
         current_from_disk = json.loads(bound[-1].text)
     except json.JSONDecodeError as exc:
@@ -488,6 +678,7 @@ def preflight_lite_task(
     *,
     codex_bin: str = "codex",
     require_host_ready: bool = True,
+    require_github_https: bool = True,
 ) -> dict[str, Any]:
     common = preflight_common(target, codex_bin=codex_bin, require_host_ready=require_host_ready)
     specs = [
@@ -497,7 +688,7 @@ def preflight_lite_task(
     ]
     if common["instruction_budget"]["state"] != "PASS":
         raise ReadinessError("PROJECT_INSTRUCTION_BUDGET_EXCEEDED")
-    bound = bind_repo_texts_isolated(target, specs)
+    bound = bind_repo_texts_isolated(target, specs, require_github_https=require_github_https)
     return {**common, "task_key": task_key, "source_bindings": _binding_records(bound), "source_texts": bound}
 
 
@@ -554,6 +745,23 @@ def protected_git_state(root: Path) -> dict[str, str | None]:
     else:
         state["refs"] = None
     return state
+
+
+def protected_git_objects_state(root: Path) -> dict[str, str | None]:
+    objects = git_text(root, ["rev-parse", "--git-path", "objects"])
+    objects_path = Path(objects)
+    if not objects_path.is_absolute():
+        objects_path = root / objects_path
+    if not objects_path.exists():
+        return {"objects": None}
+    digest = hashlib.sha256()
+    for path in sorted(item for item in objects_path.rglob("*") if item.is_file()):
+        rel = path.relative_to(objects_path).as_posix()
+        digest.update(rel.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(_sha256_bytes(path.read_bytes()).encode("ascii"))
+        digest.update(b"\0")
+    return {"objects": digest.hexdigest()}
 
 
 def _active_replace_refs(root: Path) -> list[str]:
@@ -621,6 +829,7 @@ def read_control_file_isolated(
     commit: str,
     path: str,
     require_github_https: bool = True,
+    isolated_state_root: Path | None = None,
 ) -> dict[str, Any]:
     root = repo_root(target)
     safe_path = _safe_repo_rel(path)
@@ -629,16 +838,23 @@ def read_control_file_isolated(
     _reject_control_git_environment(os.environ)
     _reject_control_git_config(root)
     fetch_url = git_text(root, ["remote", "get-url", "origin"])
-    identity = _publisher_github_https_identity(fetch_url) if require_github_https else _canonical_repo_identity(fetch_url)
+    try:
+        identity = _publisher_github_https_identity(fetch_url) if require_github_https else _canonical_repo_identity(fetch_url)
+    except Exception as exc:
+        raise ReadinessError("CONTROL_REPO_IDENTITY_UNVERIFIED", str(exc)) from exc
     if identity != expected_repo:
         raise ReadinessError("CONTROL_REPO_IDENTITY_MISMATCH", identity)
     _reject_control_rewrite_refs(root)
     before = protected_git_state(root)
+    before_objects = protected_git_objects_state(root)
     original_objects = git_text(root, ["rev-parse", "--git-path", "objects"])
     original_objects_path = Path(original_objects)
     if not original_objects_path.is_absolute():
         original_objects_path = root / original_objects_path
-    with tempfile.TemporaryDirectory(prefix="ai-bridge-objects-") as tmp:
+    state_root = isolated_state_root or Path(os.environ.get("AI_BRIDGE_STATE_HOME", "~/.ai-bridge")).expanduser() / "readiness" / "objects"
+    state_root = state_root.resolve()
+    state_root.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="ai-bridge-objects-", dir=state_root) as tmp:
         env = os.environ.copy()
         env["GIT_CONFIG_GLOBAL"] = "/dev/null"
         env["GIT_CONFIG_NOSYSTEM"] = "1"
@@ -650,12 +866,22 @@ def read_control_file_isolated(
         blob_type = git_text(root, ["cat-file", "-t", blob_oid], env=env)
         if blob_type != "blob":
             raise ReadinessError("CONTROL_PATH_NOT_BLOB", safe_path)
-        result = _git(root, ["cat-file", "-p", blob_oid], env=env)
-        content = result.stdout.encode("utf-8")
+        expected_size = int(git_text(root, ["cat-file", "-s", blob_oid], env=env))
+        result = _git_bytes(root, ["cat-file", "-p", blob_oid], env=env)
+        content = result.stdout
+        if len(content) != expected_size:
+            raise ReadinessError("CONTROL_BLOB_SIZE_MISMATCH", safe_path)
         object_files = sorted(str(path.relative_to(tmp)) for path in Path(tmp).rglob("*") if path.is_file())
     after = protected_git_state(root)
     if before != after:
         raise ReadinessError("PROTECTED_GIT_STATE_CHANGED")
+    after_objects = protected_git_objects_state(root)
+    if before_objects != after_objects:
+        raise ReadinessError("PROTECTED_GIT_OBJECTS_CHANGED")
+    try:
+        text = content.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ReadinessError("CONTROL_TEXT_NOT_UTF8", safe_path) from exc
     return {
         "schema": "ai-bridge.readiness.control_file.v1",
         "repo": identity,
@@ -664,7 +890,8 @@ def read_control_file_isolated(
         "blob_oid": blob_oid,
         "sha256": _sha256_bytes(content),
         "size_bytes": len(content),
-        "text": content.decode("utf-8"),
+        "text": text,
         "protected_git_state_unchanged": True,
+        "protected_git_objects_unchanged": True,
         "isolated_object_file_count": len(object_files),
     }

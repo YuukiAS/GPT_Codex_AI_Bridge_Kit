@@ -6,6 +6,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -947,6 +948,17 @@ def _reject_path_symlinks(path: Path) -> None:
             raise WorktreeExchangeError("WORKTREE_EXCHANGE_SYMLINK_UNSUPPORTED")
 
 
+def _reject_lexical_path_symlinks(path: Path) -> None:
+    expanded = path.expanduser()
+    absolute = expanded if expanded.is_absolute() else Path.cwd() / expanded
+    current = Path(absolute.anchor)
+    parts = absolute.parts[1:] if absolute.anchor else absolute.parts
+    for part in parts:
+        current = current / part
+        if current.is_symlink():
+            raise WorktreeExchangeError("WORKTREE_EXCHANGE_SYMLINK_UNSUPPORTED")
+
+
 def _worktree_status_fingerprint(path: Path) -> dict[str, str]:
     index_path = Path(git_output(path, ["rev-parse", "--git-path", "index"]))
     if not index_path.is_absolute():
@@ -1044,6 +1056,155 @@ def _rollback_exchange(
     return recovery
 
 
+EXCHANGE_JOURNAL_SCHEMA = "ai-bridge.reviewed_handoff.worktree_exchange_journal.v1"
+
+
+def _machine_state_home(env: dict[str, str] | None = None) -> Path:
+    source = os.environ if env is None else env
+    override = source.get("AI_BRIDGE_STATE_HOME")
+    return Path(override).expanduser().resolve() if override else (Path.home() / ".ai-bridge").resolve()
+
+
+def _exchange_journal_path(target: Path, path_a: Path, path_b: Path, temp_path: Path) -> Path:
+    raw = "\0".join(
+        [
+            target.resolve().as_posix(),
+            path_a.as_posix(),
+            path_b.as_posix(),
+            temp_path.as_posix(),
+        ]
+    ).encode("utf-8")
+    digest = sha256_bytes(raw)[:24]
+    return _machine_state_home() / "reviewed-handoff" / "worktree-exchange" / f"{digest}.json"
+
+
+def _write_exchange_journal(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        dir=path.parent,
+        prefix=f"{path.name}.",
+        suffix=".tmp",
+        delete=False,
+    ) as handle:
+        temp = Path(handle.name)
+        json.dump(payload, handle, ensure_ascii=False, indent=2, sort_keys=True)
+        handle.write("\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(temp, path)
+
+
+def _load_exchange_journal(path: Path) -> dict[str, Any] | None:
+    if not path.exists():
+        return None
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if data.get("schema") != EXCHANGE_JOURNAL_SCHEMA:
+        raise WorktreeExchangeError("WORKTREE_EXCHANGE_JOURNAL_SCHEMA_MISMATCH")
+    return data
+
+
+def _current_exchange_state(
+    *,
+    path_a: Path,
+    path_b: Path,
+    temp_path: Path,
+    before_a: dict[str, Any],
+    before_b: dict[str, Any],
+) -> str:
+    exists_a = path_a.exists()
+    exists_b = path_b.exists()
+    exists_t = temp_path.exists()
+    if exists_a and exists_b and not exists_t:
+        actual_a = _exchange_evidence(path_a)
+        actual_b = _exchange_evidence(path_b)
+        if actual_a == before_a and actual_b == before_b:
+            return "ORIGINAL"
+        if actual_a == before_b and actual_b == before_a:
+            return "SWAPPED"
+    if exists_t and exists_b and not exists_a:
+        if _exchange_evidence(temp_path) == before_a and _exchange_evidence(path_b) == before_b:
+            return "A_TO_TEMP"
+    if exists_t and exists_a and not exists_b:
+        if _exchange_evidence(temp_path) == before_a and _exchange_evidence(path_a) == before_b:
+            return "B_TO_A"
+    raise WorktreeExchangeError("WORKTREE_EXCHANGE_RECOVERY_STATE_MISMATCH")
+
+
+def _rollback_exchange_state(
+    target: Path,
+    *,
+    state: str,
+    path_a: Path,
+    path_b: Path,
+    temp_path: Path,
+    before_a: dict[str, Any],
+    before_b: dict[str, Any],
+) -> list[str]:
+    if state == "ORIGINAL":
+        _assert_exchange_state(path_a, before_a, "path_a_original")
+        _assert_exchange_state(path_b, before_b, "path_b_original")
+        return ["NOOP"]
+    if state == "A_TO_TEMP":
+        return _rollback_exchange(
+            target,
+            path_a=path_a,
+            path_b=path_b,
+            temp_path=temp_path,
+            before_a=before_a,
+            before_b=before_b,
+            completed=["A_TO_TEMP"],
+        )
+    if state == "B_TO_A":
+        return _rollback_exchange(
+            target,
+            path_a=path_a,
+            path_b=path_b,
+            temp_path=temp_path,
+            before_a=before_a,
+            before_b=before_b,
+            completed=["A_TO_TEMP", "B_TO_A"],
+        )
+    if state == "SWAPPED":
+        _assert_exchange_state(path_a, before_b, "path_a_swapped_before_b")
+        _assert_exchange_state(path_b, before_a, "path_b_swapped_before_a")
+        git_run(target, ["worktree", "move", str(path_b), str(temp_path)])
+        git_run(target, ["worktree", "move", str(path_a), str(path_b)])
+        git_run(target, ["worktree", "move", str(temp_path), str(path_a)])
+        _assert_exchange_state(path_a, before_a, "path_a_restored")
+        _assert_exchange_state(path_b, before_b, "path_b_restored")
+        return ["B_TO_TEMP", "A_TO_B", "TEMP_TO_A"]
+    raise WorktreeExchangeError("WORKTREE_EXCHANGE_RECOVERY_UNSUPPORTED_STATE:" + state)
+
+
+def _recover_exchange_journal(target: Path, journal_path: Path, expected: dict[str, Any]) -> dict[str, Any] | None:
+    journal = _load_exchange_journal(journal_path)
+    if journal is None:
+        return None
+    if any(journal.get(key) != expected.get(key) for key in ["target", "path_a", "path_b", "temp_path", "common_dir"]):
+        raise WorktreeExchangeError("WORKTREE_EXCHANGE_JOURNAL_SCOPE_MISMATCH")
+    before_a = journal.get("before", {}).get("A")
+    before_b = journal.get("before", {}).get("B")
+    if not isinstance(before_a, dict) or not isinstance(before_b, dict):
+        raise WorktreeExchangeError("WORKTREE_EXCHANGE_JOURNAL_EVIDENCE_MISSING")
+    path_a = Path(journal["path_a"])
+    path_b = Path(journal["path_b"])
+    temp_path = Path(journal["temp_path"])
+    state = _current_exchange_state(path_a=path_a, path_b=path_b, temp_path=temp_path, before_a=before_a, before_b=before_b)
+    recovery = _rollback_exchange_state(
+        target,
+        state=state,
+        path_a=path_a,
+        path_b=path_b,
+        temp_path=temp_path,
+        before_a=before_a,
+        before_b=before_b,
+    )
+    journal_path.unlink()
+    return {"status": "recovered_journal", "state": state, "recovery": recovery, "journal": journal_path.as_posix()}
+
+
 def exchange_linked_worktrees(
     target: Path,
     *,
@@ -1054,6 +1215,8 @@ def exchange_linked_worktrees(
     expected_branch_b: str,
     dry_run: bool = False,
 ) -> dict[str, Any]:
+    for raw_path in [target, path_a, path_b, temp_path]:
+        _reject_lexical_path_symlinks(raw_path)
     target = target.resolve()
     path_a = path_a.expanduser().resolve()
     path_b = path_b.expanduser().resolve()
@@ -1066,6 +1229,22 @@ def exchange_linked_worktrees(
         raise WorktreeExchangeError("MAIN_WORKTREE_EXCHANGE_UNSUPPORTED")
     if path_a == path_b or path_a in path_b.parents or path_b in path_a.parents:
         raise WorktreeExchangeError("WORKTREE_EXCHANGE_PATH_OVERLAP")
+    journal_path = _exchange_journal_path(target, path_a, path_b, temp_path)
+    expected_scope = {
+        "target": target.as_posix(),
+        "common_dir": common.as_posix(),
+        "path_a": path_a.as_posix(),
+        "path_b": path_b.as_posix(),
+        "temp_path": temp_path.as_posix(),
+    }
+    recovered = _recover_exchange_journal(target, journal_path, expected_scope)
+    if recovered is not None:
+        raise WorktreeExchangeError(
+            "WORKTREE_EXCHANGE_JOURNAL_RECOVERED: "
+            + recovered["state"]
+            + "; recovery="
+            + ",".join(recovered["recovery"])
+        )
     if temp_path.exists() and any(temp_path.iterdir()):
         raise WorktreeExchangeError("TEMP_PATH_OCCUPIED")
     if path_a.stat().st_dev != path_b.stat().st_dev or path_a.stat().st_dev != temp_path.parent.stat().st_dev:
@@ -1097,25 +1276,59 @@ def exchange_linked_worktrees(
     }
     if dry_run:
         return {"status": "dry_run", **evidence}
+    journal_payload = {
+        "schema": EXCHANGE_JOURNAL_SCHEMA,
+        "created_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "phase": "READY",
+        "completed": [],
+        "target": target.as_posix(),
+        "common_dir": common.as_posix(),
+        "path_a": path_a.as_posix(),
+        "path_b": path_b.as_posix(),
+        "temp_path": temp_path.as_posix(),
+        "expected_branch_a": expected_branch_a,
+        "expected_branch_b": expected_branch_b,
+        "entry_a": entry_a,
+        "entry_b": entry_b,
+        "before": {"A": before_a, "B": before_b},
+    }
+    _write_exchange_journal(journal_path, journal_payload)
     completed: list[str] = []
     try:
         git_run(target, ["worktree", "move", str(path_a), str(temp_path)])
         completed.append("A_TO_TEMP")
+        journal_payload["phase"] = "A_TO_TEMP"
+        journal_payload["completed"] = list(completed)
+        _write_exchange_journal(journal_path, journal_payload)
         git_run(target, ["worktree", "move", str(path_b), str(path_a)])
         completed.append("B_TO_A")
+        journal_payload["phase"] = "B_TO_A"
+        journal_payload["completed"] = list(completed)
+        _write_exchange_journal(journal_path, journal_payload)
         git_run(target, ["worktree", "move", str(temp_path), str(path_b)])
         completed.append("TEMP_TO_B")
+        journal_payload["phase"] = "TEMP_TO_B"
+        journal_payload["completed"] = list(completed)
+        _write_exchange_journal(journal_path, journal_payload)
     except Exception as exc:
         try:
-            recovery = _rollback_exchange(
-                target,
+            state = _current_exchange_state(
                 path_a=path_a,
                 path_b=path_b,
                 temp_path=temp_path,
                 before_a=before_a,
                 before_b=before_b,
-                completed=completed,
             )
+            recovery = _rollback_exchange_state(
+                target,
+                state=state,
+                path_a=path_a,
+                path_b=path_b,
+                temp_path=temp_path,
+                before_a=before_a,
+                before_b=before_b,
+            )
+            journal_path.unlink(missing_ok=True)
         except Exception as recovery_exc:
             raise WorktreeExchangeError(
                 "WORKTREE_EXCHANGE_INTERRUPTED_RECOVERY_STOPPED: "
@@ -1132,7 +1345,28 @@ def exchange_linked_worktrees(
     after_a = _exchange_evidence(path_a)
     after_b = _exchange_evidence(path_b)
     if after_a != before_b or after_b != before_a:
-        raise WorktreeExchangeError("WORKTREE_EXCHANGE_POSTCHECK_MISMATCH")
+        try:
+            state = _current_exchange_state(
+                path_a=path_a,
+                path_b=path_b,
+                temp_path=temp_path,
+                before_a=before_a,
+                before_b=before_b,
+            )
+            recovery = _rollback_exchange_state(
+                target,
+                state=state,
+                path_a=path_a,
+                path_b=path_b,
+                temp_path=temp_path,
+                before_a=before_a,
+                before_b=before_b,
+            )
+            journal_path.unlink(missing_ok=True)
+        except Exception as recovery_exc:
+            raise WorktreeExchangeError(f"WORKTREE_EXCHANGE_POSTCHECK_RECOVERY_STOPPED: {recovery_exc}") from recovery_exc
+        raise WorktreeExchangeError("WORKTREE_EXCHANGE_POSTCHECK_RECOVERED: " + ",".join(recovery))
+    journal_path.unlink(missing_ok=True)
     return {"status": "exchanged", **evidence, "after": {"A": after_a, "B": after_b}}
 
 

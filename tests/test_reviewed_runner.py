@@ -44,6 +44,8 @@ class ReviewedRunnerTests(unittest.TestCase):
         subprocess.check_call(["git", "init", "--initial-branch", "main"], cwd=target, stdout=subprocess.DEVNULL)
         subprocess.check_call(["git", "config", "user.email", "test@example.org"], cwd=target)
         subprocess.check_call(["git", "config", "user.name", "Test User"], cwd=target)
+        with (codex_home / "config.toml").open("a", encoding="utf-8") as handle:
+            handle.write(f'\n[projects."{target.resolve().as_posix()}"]\ntrust_level = "trusted"\n')
         status, _ = rh.install_reviewed_handoff(target)
         self.assertTrue(status.installed)
         rh.init_task(target, "repo--feature", objective="runner test")
@@ -318,6 +320,27 @@ class ReviewedRunnerTests(unittest.TestCase):
             local = runner.load_local_state(target)
             self.assertEqual(local.get("events"), {})
 
+    def test_run_codex_event_rechecks_even_with_supplied_preflight(self) -> None:
+        tmp, target, state_home = self.make_project()
+        with tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(state_home)}):
+            current = rh.load_json(rh.task_root(target, "repo--feature") / "CURRENT.json")
+            stale_preflight = {"source_texts": [], "source_bindings": [{"path": "stale"}]}
+            with mock.patch(
+                "ai_bridge_kit.reviewed_runner.readiness.preflight_reviewed_event",
+                side_effect=runner.readiness.ReadinessError("CURRENT_STATE_CHANGED_BEFORE_LAUNCH"),
+            ), mock.patch("subprocess.run") as launched:
+                result = runner.run_codex_event(
+                    target,
+                    "repo--feature",
+                    current,
+                    branch="main",
+                    preflight=stale_preflight,
+                )
+
+            self.assertEqual(result["status"], "prelaunch_not_ready")
+            self.assertEqual(result["readiness_error"], "CURRENT_STATE_CHANGED_BEFORE_LAUNCH")
+            launched.assert_not_called()
+
     def test_watcher_status_reports_executor_runtime_and_wait_owner(self) -> None:
         tmp, target, state_home = self.make_project()
         with tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(state_home)}):
@@ -413,6 +436,8 @@ class ReviewedRunnerTests(unittest.TestCase):
             launches = []
 
             def executor_progress(*args, **kwargs):
+                if kwargs.get("on_prelaunch_ready"):
+                    kwargs["on_prelaunch_ready"]({})
                 launches.append(args)
                 pre_head = runner.git_output(target, ["rev-parse", "HEAD"])
                 current = rh.load_json(current_path)
@@ -445,7 +470,7 @@ class ReviewedRunnerTests(unittest.TestCase):
                 "time.sleep",
                 side_effect=sleep_side_effect,
             ), mock.patch("ai_bridge_kit.reviewed_runner.run_codex_event", side_effect=executor_progress):
-                code = runner.watcher_run(target, branch="main", interval_seconds=1, max_cycles=3)
+                code = runner.watcher_run(target, branch="main", interval_seconds=1, max_cycles=3, require_github_https=False)
 
             lines = [json.loads(line) for line in output.getvalue().splitlines() if line.strip()]
             self.assertEqual(code, 0)
@@ -484,6 +509,8 @@ class ReviewedRunnerTests(unittest.TestCase):
             current_path = rh.task_root(target, "repo--feature") / "CURRENT.json"
 
             def executor_progress(*args, **kwargs):
+                if kwargs.get("on_prelaunch_ready"):
+                    kwargs["on_prelaunch_ready"]({})
                 launches.append(args)
                 pre_head = runner.git_output(target, ["rev-parse", "HEAD"])
                 current = rh.load_json(current_path)
@@ -516,7 +543,7 @@ class ReviewedRunnerTests(unittest.TestCase):
                 "time.sleep",
                 side_effect=sleep_side_effect,
             ), mock.patch("ai_bridge_kit.reviewed_runner.run_codex_event", side_effect=executor_progress):
-                code = runner.watcher_run(target, branch="main", interval_seconds=1, max_cycles=3)
+                code = runner.watcher_run(target, branch="main", interval_seconds=1, max_cycles=3, require_github_https=False)
 
             lines = [json.loads(line) for line in output.getvalue().splitlines() if line.strip()]
             self.assertEqual(code, 0)

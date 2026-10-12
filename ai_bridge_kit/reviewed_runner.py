@@ -13,7 +13,7 @@ import time
 from datetime import datetime, timezone
 from importlib import metadata as importlib_metadata
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from . import readiness
 from . import reviewed_handoff as rh
@@ -804,15 +804,20 @@ def run_codex_event(
     codex_bin: str = "codex",
     dry_run: bool = False,
     preflight: dict[str, Any] | None = None,
+    on_prelaunch_ready: Callable[[dict[str, Any]], None] | None = None,
+    require_github_https: bool = True,
 ) -> dict[str, Any]:
     try:
-        preflight = preflight or readiness.preflight_reviewed_event(
+        # Always recompute readiness at the launch boundary. A caller-supplied
+        # preflight is useful diagnostic context, but it must not be a bypass.
+        preflight = readiness.preflight_reviewed_event(
             target,
             task_key,
             current,
             branch=branch,
             codex_bin=codex_bin,
             require_host_ready=not dry_run,
+            require_github_https=require_github_https,
         )
     except readiness.ReadinessError as exc:
         return {
@@ -836,6 +841,8 @@ def run_codex_event(
         }
 
     event = event_identity(task_key, current)
+    if on_prelaunch_ready is not None:
+        on_prelaunch_ready(preflight)
     pre_head = git_output(target, ["rev-parse", "HEAD"])
     log_dir = log_root(target) / task_key
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -934,9 +941,25 @@ def watcher_once(
     sync: bool = True,
     dry_run: bool = False,
     max_attempts_per_event: int = 2,
+    require_github_https: bool = True,
 ) -> dict[str, Any]:
     target = target.resolve()
     selected_branch = resolve_branch(target, branch)
+    try:
+        readiness.preflight_common(
+            target,
+            expected_branch=selected_branch,
+            codex_bin=codex_bin,
+            require_host_ready=True,
+        )
+    except readiness.ReadinessError as exc:
+        record_watcher_status(target, "prelaunch_not_ready", branch=selected_branch, errors=[str(exc)])
+        return {
+            "status": "prelaunch_not_ready",
+            "branch": selected_branch,
+            "readiness_error": exc.code,
+            "reason": str(exc),
+        }
     if sync:
         recovery = recover_unpublished_executor_progress(target, selected_branch)
         if recovery.get("status") == "recovered_unpublished_progress":
@@ -985,6 +1008,7 @@ def watcher_once(
                 branch=selected_branch,
                 codex_bin=codex_bin,
                 require_host_ready=True,
+                require_github_https=require_github_https,
             )
         except readiness.ReadinessError as exc:
             record_watcher_status(target, "prelaunch_not_ready", branch=selected_branch, errors=[str(exc)])
@@ -996,16 +1020,35 @@ def watcher_once(
                 "readiness_error": exc.code,
                 "reason": str(exc),
             }
-        record_event_start(
+        recorded_start = False
+
+        def record_ready(_: dict[str, Any]) -> None:
+            nonlocal recorded_start
+            record_event_start(
+                target,
+                branch=selected_branch,
+                task_key=task_key,
+                current=current,
+                event=event,
+                attempts=attempts + 1,
+            )
+            recorded_start = True
+
+        result = run_codex_event(
             target,
+            task_key,
+            current,
             branch=selected_branch,
-            task_key=task_key,
-            current=current,
-            event=event,
-            attempts=attempts + 1,
+            codex_bin=codex_bin,
+            preflight=preflight,
+            on_prelaunch_ready=record_ready,
+            require_github_https=require_github_https,
         )
-        result = run_codex_event(target, task_key, current, branch=selected_branch, codex_bin=codex_bin, preflight=preflight)
-        attempts += 1
+        if recorded_start:
+            attempts += 1
+        elif result.get("status") == "prelaunch_not_ready":
+            record_watcher_status(target, "prelaunch_not_ready", branch=selected_branch, errors=[str(result.get("reason") or "")])
+            return {"status": "prelaunch_not_ready", "branch": selected_branch, **result}
         post_current_path = rh.task_root(target, task_key) / "CURRENT.json"
         post_current = rh.load_json(post_current_path) if post_current_path.exists() else {}
         dirty_after = working_tree_dirty(target)
@@ -1195,6 +1238,7 @@ def watcher_run(
     codex_bin: str = "codex",
     interval_seconds: int = 60,
     max_cycles: int | None = None,
+    require_github_https: bool = True,
 ) -> int:
     target = target.resolve()
     selected_branch = resolve_branch(target, branch)
@@ -1218,7 +1262,14 @@ def watcher_run(
             result: dict[str, Any] = {}
             try:
                 update_watcher_process(target, selected_branch, last_status="checking")
-                result = watcher_once(target, branch=selected_branch, codex_bin=codex_bin, sync=True, dry_run=False)
+                result = watcher_once(
+                    target,
+                    branch=selected_branch,
+                    codex_bin=codex_bin,
+                    sync=True,
+                    dry_run=False,
+                    require_github_https=require_github_https,
+                )
                 update_watcher_process(
                     target,
                     selected_branch,
