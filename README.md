@@ -6,7 +6,7 @@
 
 这个仓库的原则是：**默认保持简单，需要什么再加什么。** 普通项目通常只需要机器级规则和基础交接；只有确实需要时，才启用独立复核、高风险闭环、长期运行、通知、Overleaf 同步或视觉/文本复核。
 
-当前主干源码版本：`0.10.0`（`main` 在正式生产候选后还包含设计与证据文档提交）。当前正式分发版本为 `0.10.0`；正式 `release` 分支实际指向生产候选 `9db19b0409816c22042a246b35a33e1d34fedd0a`。本仓库的正常机器同步以 `release` 分支为权威来源，不依赖 GitHub Release 或 tag。`main` 可继续包含后续候选、evidence / docs-only closure 提交，但这些更晚提交不会因此自动成为正式 release target。
+当前主干源码候选版本：`0.11.0`。这只是 `main` 上的源码候选身份，不等于正式分发完成。当前正式分发仍以远端 `refs/heads/release` 及对应发行证据为准；在 0.11.0 正式发行授权完成前，上一正式分发版本仍为 `0.10.0`，正式 `release` 分支指向 `9db19b0409816c22042a246b35a33e1d34fedd0a`。本仓库的正常机器同步以 `release` 分支为权威来源，不依赖 GitHub Release 或 tag。`main` 可继续包含后续候选、evidence / docs-only closure 提交，但这些更晚提交不会因此自动成为正式 release target。
 
 ## 一眼看懂：我到底该装什么
 
@@ -89,6 +89,7 @@ GPT 先规划，Codex 执行，再由 GPT 独立复核
 | `0.9.2` | 无人值守执行与持久运行选择语义收窄。 | 过夜、无人值守、多小时先触发启动前授权预检，不自动变成 tmux；调度器批处理或已脱离终端的服务由原生 owner 负责寿命；终端拥有且必须断线存活的 orchestrator 仍可使用 Persistent Run/tmux；进度报告继续来自项目原生证据且可独立于 tmux 使用。 |
 | `0.9.3` | 复核模式首次远端发布的受边界约束入口。 | `task bootstrap` 后，全新复核任务的第一份 REQUEST/CURRENT 元数据提交可以用 `ai-bridge reviewed-handoff task publish-first` 创建同名远端分支并绑定上游；它只支持 GitHub HTTPS、空期望 lease、单个首发元数据提交和原始 Git 对象校验，原始 `git push -u`、SSH/自定义传输、已有远端分支或包含任务内容/生产源码的提交仍走普通审批。 |
 | `0.10.0` | 执行可靠性与运行身份诊断闭环。 | 机器策略明确普通 workspace 工作先走 sandbox，拒绝后先分类再恢复；`publish-current-branch` 使用稳定 Git inspection view 和清洗后的网络/push 环境，ambient `SSH_ASKPASS` 不再导致 GitHub HTTPS 正例误拒绝但也不会被执行；`host validate/status` 会报告可执行文件、import source/version、source HEAD/dirty、local release ref 和 distribution metadata。 |
+| `0.11.0` | 上下文与启动就绪可靠性收口（源码候选，正式分发待 `release` 授权）。 | `validate --strict` 增加有效项目规则字节预算诊断；Reviewed watcher 和 Lite `task run` 在启动 Codex 前绑定必读控制文件；新增隔离对象目录控制文件读取、当前非 main 同名分支严格快进、受限双工作树交换入口；Persistent Run 仅在明确授权时通过既有 Notifier 投递运行层进度。 |
 
 本项目采用 `0.x` 迭代方式。每个 `0.x` 小版本通常代表一项可独立使用的能力进入稳定工作流；补丁版本主要用于安全性、兼容性和默认行为修正。这不是严格的语义化版本承诺，而是当前阶段的版本阅读方式。
 
@@ -138,6 +139,16 @@ ai-bridge host publish-current-branch \
 ```
 
 这两个参数只是等值断言；真实仓库、分支、上游关系、远端引用、传输方式、凭据和钩子边界都由辅助入口从当前 Git 状态重新读取。
+
+当前已有、已追踪、非 `main` 的同名远端分支需要入站同步时，使用对应的受边界约束入口：
+
+```bash
+ai-bridge host sync-current-branch \
+  --expected-repo <owner/repo> \
+  --expected-branch <branch>
+```
+
+它只做 clean 工作树上的 fast-forward-only 同步；dirty、diverged、错误 upstream、错误 repo 或危险 Git 配置都会 fail closed。
 
 可信低打扰路径只包括：
 

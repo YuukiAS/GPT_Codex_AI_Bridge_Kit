@@ -16,9 +16,21 @@ prefix_rule(
 )
 
 prefix_rule(
+    pattern = ["ai-bridge", "host", "sync-current-branch"],
+    decision = "allow",
+    justification = "The user permanently authorizes Bridge Kit's bounded current non-main branch synchronizer; the helper must prove the exact repo, current branch, same-name origin upstream, clean worktree, fast-forward ancestry, safe transport/config boundary, and post-sync OID before changing the working tree.",
+)
+
+prefix_rule(
     pattern = ["ai-bridge", "reviewed-handoff", "materialize-worktree"],
     decision = "allow",
     justification = "The user permanently authorizes Bridge Kit's bounded Reviewed Mode worktree materializer; the helper must derive the reviewed task branch from existing artifacts, compare repo/base/worktree assertions to frozen task state, and fail closed on ambiguity or drift.",
+)
+
+prefix_rule(
+    pattern = ["ai-bridge", "reviewed-handoff", "exchange-worktrees"],
+    decision = "allow",
+    justification = "The user may authorize Bridge Kit's bounded two-linked-worktree exchange helper for exact A/B/T paths; the helper must reject main worktrees, symlink/path overlap, locks, submodules, wrong branches, unsupported topology, and must verify HEAD/index/dirty fingerprints after the three native git worktree move steps.",
 )
 
 prefix_rule(

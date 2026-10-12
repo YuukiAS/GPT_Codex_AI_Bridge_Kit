@@ -288,6 +288,19 @@ class ReviewedRunnerTests(unittest.TestCase):
             self.assertFalse(local["events"][event]["completed"])
             self.assertEqual(local["events"][event]["attempts"], 1)
 
+    def test_prelaunch_not_ready_does_not_record_executor_attempt(self) -> None:
+        tmp, target, state_home = self.make_project()
+        with tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(state_home)}):
+            with mock.patch(
+                "ai_bridge_kit.reviewed_runner.readiness.preflight_reviewed_event",
+                side_effect=runner.readiness.ReadinessError("PROJECT_INSTRUCTION_BUDGET_EXCEEDED"),
+            ):
+                result = runner.watcher_once(target, branch="main", sync=False)
+
+            self.assertEqual(result["status"], "prelaunch_not_ready")
+            local = runner.load_local_state(target)
+            self.assertEqual(local.get("events"), {})
+
     def test_watcher_status_reports_executor_runtime_and_wait_owner(self) -> None:
         tmp, target, state_home = self.make_project()
         with tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(state_home)}):

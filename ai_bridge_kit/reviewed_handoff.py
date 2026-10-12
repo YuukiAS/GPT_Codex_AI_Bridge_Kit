@@ -131,6 +131,10 @@ class WorktreeMaterializeError(ValueError):
     pass
 
 
+class WorktreeExchangeError(ValueError):
+    pass
+
+
 class PublishFirstError(ValueError):
     pass
 
@@ -196,6 +200,16 @@ def load_json(path: Path) -> dict[str, Any]:
 
 def write_json(path: Path, payload: dict[str, Any]) -> None:
     write_text(path, json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+
+
+def sha256_bytes(data: bytes) -> str:
+    import hashlib
+
+    return hashlib.sha256(data).hexdigest()
+
+
+def file_sha256(path: Path) -> str:
+    return sha256_bytes(path.read_bytes())
 
 
 def utc_now() -> str:
@@ -911,6 +925,105 @@ def materialize_worktree(
         ) from exc
     actions.append(f"CREATE worktree {scope.frozen_worktree} at {branch}")
     return actions
+
+
+def _registered_worktree_entry_by_path(target: Path, path: Path) -> dict[str, str]:
+    entry = _path_registered_worktree(target, path.resolve())
+    if not entry:
+        raise WorktreeExchangeError(f"WORKTREE_NOT_REGISTERED: {path}")
+    if entry.get("worktree") == git_output(target, ["rev-parse", "--show-toplevel"]):
+        raise WorktreeExchangeError("MAIN_WORKTREE_EXCHANGE_UNSUPPORTED")
+    if entry.get("locked"):
+        raise WorktreeExchangeError("LOCKED_WORKTREE_EXCHANGE_UNSUPPORTED")
+    return entry
+
+
+def _reject_path_symlinks(path: Path) -> None:
+    current = Path(path.anchor)
+    parts = path.parts[1:] if path.anchor else path.parts
+    for part in parts:
+        current = current / part
+        if current.is_symlink():
+            raise WorktreeExchangeError("WORKTREE_EXCHANGE_SYMLINK_UNSUPPORTED")
+
+
+def _worktree_status_fingerprint(path: Path) -> dict[str, str]:
+    index_path = Path(git_output(path, ["rev-parse", "--git-path", "index"]))
+    if not index_path.is_absolute():
+        index_path = path / index_path
+    return {
+        "head": git_output(path, ["rev-parse", "HEAD"]),
+        "branch": git_output(path, ["symbolic-ref", "--quiet", "--short", "HEAD"]),
+        "status_z_sha256": sha256_bytes(
+            subprocess.check_output(["git", "status", "--porcelain=v1", "-z", "-uall"], cwd=path)
+        ),
+        "index_sha256": file_sha256(index_path),
+    }
+
+
+def exchange_linked_worktrees(
+    target: Path,
+    *,
+    path_a: Path,
+    path_b: Path,
+    temp_path: Path,
+    expected_branch_a: str,
+    expected_branch_b: str,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    target = target.resolve()
+    path_a = path_a.expanduser().resolve()
+    path_b = path_b.expanduser().resolve()
+    temp_path = temp_path.expanduser().resolve()
+    top = Path(git_output(target, ["rev-parse", "--show-toplevel"])).resolve()
+    common = Path(git_output(target, ["rev-parse", "--git-common-dir"]))
+    if not common.is_absolute():
+        common = top / common
+    if path_a == top or path_b == top:
+        raise WorktreeExchangeError("MAIN_WORKTREE_EXCHANGE_UNSUPPORTED")
+    if path_a == path_b or path_a in path_b.parents or path_b in path_a.parents:
+        raise WorktreeExchangeError("WORKTREE_EXCHANGE_PATH_OVERLAP")
+    if temp_path.exists() and any(temp_path.iterdir()):
+        raise WorktreeExchangeError("TEMP_PATH_OCCUPIED")
+    if temp_path in path_a.parents or temp_path in path_b.parents or path_a in temp_path.parents or path_b in temp_path.parents:
+        raise WorktreeExchangeError("WORKTREE_EXCHANGE_PATH_OVERLAP")
+    for path in [path_a, path_b, temp_path]:
+        _reject_path_symlinks(path)
+    entry_a = _registered_worktree_entry_by_path(target, path_a)
+    entry_b = _registered_worktree_entry_by_path(target, path_b)
+    if entry_a.get("branch") != f"refs/heads/{expected_branch_a}":
+        raise WorktreeExchangeError("WORKTREE_A_BRANCH_MISMATCH")
+    if entry_b.get("branch") != f"refs/heads/{expected_branch_b}":
+        raise WorktreeExchangeError("WORKTREE_B_BRANCH_MISMATCH")
+    if (path_a / ".gitmodules").exists() or (path_b / ".gitmodules").exists():
+        raise WorktreeExchangeError("SUBMODULE_WORKTREE_EXCHANGE_UNSUPPORTED")
+    before_a = _worktree_status_fingerprint(path_a)
+    before_b = _worktree_status_fingerprint(path_b)
+    evidence = {
+        "schema": "ai-bridge.reviewed_handoff.worktree_exchange.v1",
+        "common_dir": common.as_posix(),
+        "path_a": path_a.as_posix(),
+        "path_b": path_b.as_posix(),
+        "temp_path": temp_path.as_posix(),
+        "before": {"A": before_a, "B": before_b},
+    }
+    if dry_run:
+        return {"status": "dry_run", **evidence}
+    completed: list[str] = []
+    try:
+        git_run(target, ["worktree", "move", str(path_a), str(temp_path)])
+        completed.append("A_TO_TEMP")
+        git_run(target, ["worktree", "move", str(path_b), str(path_a)])
+        completed.append("B_TO_A")
+        git_run(target, ["worktree", "move", str(temp_path), str(path_b)])
+        completed.append("TEMP_TO_B")
+    except Exception as exc:
+        raise WorktreeExchangeError("WORKTREE_EXCHANGE_INTERRUPTED: " + ",".join(completed) + f"; {exc}") from exc
+    after_a = _worktree_status_fingerprint(path_a)
+    after_b = _worktree_status_fingerprint(path_b)
+    if after_a != before_b or after_b != before_a:
+        raise WorktreeExchangeError("WORKTREE_EXCHANGE_POSTCHECK_MISMATCH")
+    return {"status": "exchanged", **evidence, "after": {"A": after_a, "B": after_b}}
 
 
 def bootstrap_task_worktree(
@@ -2477,6 +2590,15 @@ def build_parser() -> argparse.ArgumentParser:
     materialize.add_argument("--expected-base-ref", required=True)
     materialize.add_argument("--mode", choices=["bootstrap", "resume"], required=True)
 
+    exchange = sub.add_parser("exchange-worktrees")
+    exchange.add_argument("--target", type=Path, default=Path.cwd())
+    exchange.add_argument("--path-a", type=Path, required=True)
+    exchange.add_argument("--path-b", type=Path, required=True)
+    exchange.add_argument("--temp-path", type=Path, required=True)
+    exchange.add_argument("--expected-branch-a", required=True)
+    exchange.add_argument("--expected-branch-b", required=True)
+    exchange.add_argument("--dry-run", action="store_true")
+
     prompt = sub.add_parser("prompt")
     prompt.add_argument("--target", type=Path, default=Path.cwd())
     prompt.add_argument("name", choices=["planner", "reviewer-scheduled-task", "codex"])
@@ -2570,6 +2692,24 @@ def main(argv: list[str] | None = None) -> int:
                 mode=args.mode,
             ):
                 print(action)
+            return 0
+        if args.command == "exchange-worktrees":
+            print(
+                json.dumps(
+                    exchange_linked_worktrees(
+                        args.target,
+                        path_a=args.path_a,
+                        path_b=args.path_b,
+                        temp_path=args.temp_path,
+                        expected_branch_a=args.expected_branch_a,
+                        expected_branch_b=args.expected_branch_b,
+                        dry_run=args.dry_run,
+                    ),
+                    ensure_ascii=False,
+                    indent=2,
+                    sort_keys=True,
+                )
+            )
             return 0
     except ValueError as exc:
         parser.error(str(exc))

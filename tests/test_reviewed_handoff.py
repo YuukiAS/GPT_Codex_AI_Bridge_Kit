@@ -1185,6 +1185,45 @@ class ReviewedHandoffTests(unittest.TestCase):
                     )
             self.assertIsNone(rh._branch_oid(target, "refs/heads/reviewed/repo--feature"))
 
+    def test_exchange_linked_worktrees_preserves_dirty_state(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo = root / "repo"
+            repo.mkdir()
+            subprocess.check_call(["git", "init", "--initial-branch", "main"], cwd=repo, stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "config", "user.email", "test@example.org"], cwd=repo)
+            subprocess.check_call(["git", "config", "user.name", "Test User"], cwd=repo)
+            (repo / "tracked.txt").write_text("base\n", encoding="utf-8")
+            subprocess.check_call(["git", "add", "tracked.txt"], cwd=repo)
+            subprocess.check_call(["git", "commit", "-m", "base"], cwd=repo, stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "branch", "tutorial"], cwd=repo)
+            subprocess.check_call(["git", "branch", "hw"], cwd=repo)
+            path_a = root / "tutorial-tree"
+            path_b = root / "hw-tree"
+            temp_path = root / "swap-temp"
+            subprocess.check_call(["git", "worktree", "add", str(path_a), "tutorial"], cwd=repo, stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "worktree", "add", str(path_b), "hw"], cwd=repo, stdout=subprocess.DEVNULL)
+            (path_a / "tracked.txt").write_text("tutorial dirty\n", encoding="utf-8")
+            (path_a / "a-untracked.txt").write_text("a\n", encoding="utf-8")
+            (path_b / "tracked.txt").write_text("hw staged\n", encoding="utf-8")
+            subprocess.check_call(["git", "add", "tracked.txt"], cwd=path_b)
+            (path_b / "b-untracked.txt").write_text("b\n", encoding="utf-8")
+
+            result = rh.exchange_linked_worktrees(
+                repo,
+                path_a=path_a,
+                path_b=path_b,
+                temp_path=temp_path,
+                expected_branch_a="tutorial",
+                expected_branch_b="hw",
+            )
+
+            self.assertEqual(result["status"], "exchanged")
+            self.assertEqual(subprocess.check_output(["git", "branch", "--show-current"], cwd=path_a, text=True).strip(), "hw")
+            self.assertEqual(subprocess.check_output(["git", "branch", "--show-current"], cwd=path_b, text=True).strip(), "tutorial")
+            self.assertEqual((path_a / "tracked.txt").read_text(encoding="utf-8"), "hw staged\n")
+            self.assertEqual((path_b / "tracked.txt").read_text(encoding="utf-8"), "tutorial dirty\n")
+
     def test_install_and_task_init_are_additive_and_branch_free(self) -> None:
         tmp, target = self.make_project(git=True)
         with tmp:

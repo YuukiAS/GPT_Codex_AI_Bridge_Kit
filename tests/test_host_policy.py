@@ -32,6 +32,7 @@ from ai_bridge_kit.host import (
     publish_current_branch,
     resolve_ai_bridge_executable,
     resolve_codex_home,
+    sync_current_branch,
     validate_host_policy,
 )
 
@@ -242,6 +243,7 @@ memories = false
             self.assertIn("host_executable(", rules_path.read_text(encoding="utf-8"))
             self.assertIn('pattern = ["ai-bridge", "plugin-replay"]', rules_path.read_text(encoding="utf-8"))
             self.assertIn('pattern = ["ai-bridge", "host", "publish-current-branch"]', rules_path.read_text(encoding="utf-8"))
+            self.assertIn('pattern = ["ai-bridge", "host", "sync-current-branch"]', rules_path.read_text(encoding="utf-8"))
             self.assertIn('pattern = ["ai-bridge", "reviewed-handoff", "materialize-worktree"]', rules_path.read_text(encoding="utf-8"))
             self.assertIn('pattern = ["ai-bridge", "reviewed-handoff", "task", "bootstrap"]', rules_path.read_text(encoding="utf-8"))
             self.assertIn('pattern = ["ai-bridge", "reviewed-handoff", "task", "publish-first"]', rules_path.read_text(encoding="utf-8"))
@@ -251,6 +253,53 @@ memories = false
             self.assertIn('pattern = ["tmux", ["ls", "list-sessions", "has-session"]]', rules_path.read_text(encoding="utf-8"))
             _, actions = install_host_policy(codex_home)
             self.assertEqual(actions, ["No changes needed; host policy is already configured."])
+
+    def test_sync_current_branch_fast_forwards_existing_non_main_branch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            remote = root / "remote.git"
+            repo = root / "repo"
+            peer = root / "peer"
+            subprocess.check_call(["git", "init", "--bare", "--initial-branch", "main", str(remote)], stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "init", "--initial-branch", "main", str(repo)], stdout=subprocess.DEVNULL)
+            for worktree in [repo]:
+                subprocess.check_call(["git", "config", "user.email", "test@example.org"], cwd=worktree)
+                subprocess.check_call(["git", "config", "user.name", "Test User"], cwd=worktree)
+            (repo / "README.md").write_text("initial\n", encoding="utf-8")
+            subprocess.check_call(["git", "add", "README.md"], cwd=repo)
+            subprocess.check_call(["git", "commit", "-m", "initial"], cwd=repo, stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "remote", "add", "origin", str(remote)], cwd=repo)
+            subprocess.check_call(["git", "push", "-u", "origin", "main"], cwd=repo, stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "checkout", "-b", "feature"], cwd=repo, stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "push", "-u", "origin", "feature"], cwd=repo, stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "clone", str(remote), str(peer)], stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "checkout", "feature"], cwd=peer, stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "config", "user.email", "test@example.org"], cwd=peer)
+            subprocess.check_call(["git", "config", "user.name", "Test User"], cwd=peer)
+            (peer / "README.md").write_text("initial\nremote\n", encoding="utf-8")
+            subprocess.check_call(["git", "commit", "-am", "remote change"], cwd=peer, stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "push", "origin", "feature"], cwd=peer, stdout=subprocess.DEVNULL)
+
+            result = sync_current_branch(
+                repo,
+                expected_repo="local:" + remote.resolve().as_posix(),
+                expected_branch="feature",
+                env={"PATH": os.environ["PATH"]},
+            )
+
+            self.assertEqual(result.status, "fast_forwarded")
+            self.assertEqual(result.new_oid, result.remote_oid)
+
+    def test_sync_current_branch_rejects_main_and_dirty_tree(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo, identity = self.make_publish_repo(tmp)
+            with self.assertRaisesRegex(HostPublishError, "SYNC_CURRENT_BRANCH_EXCLUDES_MAIN"):
+                sync_current_branch(repo, expected_repo=identity, expected_branch="main", env={"PATH": os.environ["PATH"]})
+            subprocess.check_call(["git", "checkout", "-b", "feature"], cwd=repo, stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "push", "-u", "origin", "feature"], cwd=repo, stdout=subprocess.DEVNULL)
+            (repo / "dirty.txt").write_text("dirty\n", encoding="utf-8")
+            with self.assertRaisesRegex(HostPublishError, "DIRTY_WORKTREE"):
+                sync_current_branch(repo, expected_repo=identity, expected_branch="feature", env={"PATH": os.environ["PATH"]})
 
     def test_existing_managed_block_updates_narrative_policy_and_preserves_user_content(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

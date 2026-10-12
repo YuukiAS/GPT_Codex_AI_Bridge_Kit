@@ -14,6 +14,11 @@ is a project decision controlled by the user.
   --expected-branch ...` helper, which must prove the exact repo, branch,
   destination, ref update, and transport boundary before mutation. Raw
   `git push origin main` remains on the approval path.
+  Existing, already-selected non-main branches may be synchronized only through
+  `ai-bridge host sync-current-branch --expected-repo ...
+  --expected-branch ...`, and only when the helper proves same-name origin
+  upstream, clean worktree, fast-forward ancestry, transport/config safety, and
+  post-sync OID identity.
 - Check the working tree before synchronization. If it is dirty, determine
   ownership first. Do not default to `git pull --ff-only --autostash ...`,
   `git stash`, `git reset --hard`, or `git restore ...`.
@@ -41,6 +46,10 @@ is a project decision controlled by the user.
   raw-object, GitHub HTTPS transport, empty-expect lease and post-read identity
   checks. Raw `git push -u`, raw force-with-lease and arbitrary first branch
   publication remain on the approval path.
+- Bridge Kit's bounded two-linked-worktree exchange helper may be used only
+  for an exact current-user-authorized A/B/T path effect and must reject main
+  worktrees, locks, symlink/path overlap, submodules, wrong branches, and
+  unsupported topology. It is not a general `git worktree` allowance.
 - Large scope, many files, incomplete implementation, perceived PR safety, or a
   clean `main` baseline are not independent authorization to invent a branch.
 - If the user explicitly selected an existing branch, continue on that branch

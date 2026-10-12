@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+## 0.11.0 - 2026-10-12 (source candidate; formal release pending)
+
+- Add a shared startup-readiness core for Bridge-managed entries: effective
+  project instruction byte-budget diagnostics, bound mandatory source metadata,
+  Lite task preflight, Reviewed executor preflight, and isolated control-file
+  reading through a task-local object directory with protected Git state checks.
+- Add `ai-bridge task run` as the thin Lite normal entry. It reads the existing
+  Lite task and required repository sources before launching `codex exec -C`.
+- Move Reviewed watcher readiness checks ahead of `record_event_start` and make
+  direct `run_codex_event` fail closed when mandatory sources, branch identity,
+  or instruction budget are not ready, without consuming Executor attempts.
+- Add `ai-bridge host sync-current-branch` for clean, existing, tracked,
+  non-main branches that can fast-forward from the same-name `origin` branch.
+- Add a bounded `reviewed-handoff exchange-worktrees` helper for explicitly
+  authorized A/B/T linked-worktree swaps, with branch, path, topology, dirty
+  fingerprint, and post-move checks.
+- Allow Persistent Run progress reports to project an `operational_progress`
+  notification through the existing Generic Notifier only when the progress
+  evidence explicitly sets `notification_authorized=true`; otherwise the report
+  remains local and says notification delivery is unverified.
+- Update Host Policy templates with the new bounded sync and worktree-exchange
+  entry rules while keeping raw dangerous Git, arbitrary branch topology,
+  release movement, CODEX_HOME mutation, SMTP, and external paid calls gated.
+
 ## 0.10.0 - 2026-10-01
 
 - Make Machine Policy guidance explicitly sandbox-first for ordinary

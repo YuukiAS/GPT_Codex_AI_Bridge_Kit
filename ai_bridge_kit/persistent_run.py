@@ -231,8 +231,39 @@ def report_progress_file(
     previous_report = previous_latest.get("normalized") if previous_latest else None
     decision, reason = _delivery_decision(previous_report if isinstance(previous_report, dict) else None, normalized, interval_seconds=interval_seconds)
     notification = "not_requested"
+    notification_result: dict[str, Any] | None = None
     if delivery_mode == "notifications":
-        notification = "unavailable_existing_configuration_not_verified"
+        if decision != "deliver":
+            notification = "suppressed"
+        elif raw.get("notification_authorized") is True:
+            from . import notifier
+
+            brief_path = report_dir / "notification_brief.json"
+            brief = {
+                "schema": "ai-bridge.notification_brief.v2",
+                "project": str(raw.get("project") or "Persistent Run"),
+                "task_key": str(raw.get("task_key") or normalized.get("run_locator") or "persistent_run"),
+                "event_type": "operational_progress",
+                "decision_authority": str(raw.get("decision_authority") or "Watcher"),
+                "status": normalized.get("status"),
+                "key_conclusion": normalized.get("progress_summary") or f"Persistent Run stage {normalized.get('stage')} progress update.",
+                "evidence_paths": [path.expanduser().resolve().as_posix(), (report_dir / "latest.json").as_posix()],
+                "next_step": "Continue monitoring existing project-native progress evidence.",
+            }
+            brief_path.write_text(json.dumps(brief, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            notification_result = notifier.send_brief(
+                brief_path,
+                state_path=report_dir / "notifier_state.json",
+                dry_run=bool(raw.get("notification_dry_run")),
+            )
+            notification = str(getattr(notification_result, "status", "unknown"))
+            notification_result = {
+                "status": getattr(notification_result, "status", "unknown"),
+                "event_key": getattr(notification_result, "event_key", ""),
+                "message": getattr(notification_result, "message", ""),
+            }
+        else:
+            notification = "unavailable_existing_configuration_not_verified"
     elif delivery_mode not in {"local", "none"}:
         notification = "unsupported_delivery_mode"
     entry = {
@@ -244,6 +275,7 @@ def report_progress_file(
         "delivery_decision": decision,
         "delivery_reason": reason,
         "notification_projection": notification,
+        "notification_result": notification_result,
         "normalized": normalized,
     }
     latest_path.write_text(json.dumps(entry, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")

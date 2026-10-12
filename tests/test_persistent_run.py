@@ -309,6 +309,40 @@ class PersistentRunTests(unittest.TestCase):
             latest = persistent_run.latest_report_for_progress(progress, state_root=state)
             self.assertEqual(latest["normalized"]["stage"], "fit")
 
+    def test_report_notifications_require_explicit_authorization(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            progress = Path(tmp) / "progress.json"
+            state = Path(tmp) / "state"
+            progress.write_text(
+                json.dumps(
+                    {
+                        "run_locator": "repo/run",
+                        "task_key": "repo--run",
+                        "stage": "stage-a",
+                        "observed_at": "2026-09-23T01:00:00+00:00",
+                        "progress_since_previous": "one step",
+                        "delivery_mode": "notifications",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            report = persistent_run.report_progress_file(progress, state_root=state)
+            self.assertEqual(report["notification_projection"], "unavailable_existing_configuration_not_verified")
+            self.assertIsNone(report["notification_result"])
+
+            payload = json.loads(progress.read_text(encoding="utf-8"))
+            payload["notification_authorized"] = True
+            payload["notification_dry_run"] = True
+            payload["observed_at"] = "2026-09-23T01:20:00+00:00"
+            payload["stage"] = "stage-b"
+            payload["progress_since_previous"] = "two steps"
+            progress.write_text(json.dumps(payload), encoding="utf-8")
+
+            authorized = persistent_run.report_progress_file(progress, state_root=state)
+            self.assertEqual(authorized["notification_projection"], "dry_run")
+            self.assertEqual(authorized["notification_result"]["status"], "dry_run")
+
     def test_report_unknown_eta_and_stall_without_intervention(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             progress = Path(tmp) / "progress.json"

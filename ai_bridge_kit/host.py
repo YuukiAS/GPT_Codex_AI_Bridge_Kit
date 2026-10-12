@@ -69,6 +69,16 @@ class PublishResult:
     output: str
 
 
+@dataclass(frozen=True)
+class SyncResult:
+    status: str
+    repo: str
+    branch: str
+    old_oid: str
+    new_oid: str
+    remote_oid: str
+
+
 def kit_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
@@ -848,6 +858,59 @@ def publish_current_branch(
         pushed_oid=captured_head,
         destination=f"origin/refs/heads/{expected_branch}",
         output=output,
+    )
+
+
+def sync_current_branch(
+    cwd: Path,
+    *,
+    expected_repo: str,
+    expected_branch: str,
+    env: dict[str, str] | None = None,
+) -> SyncResult:
+    active_env = dict(os.environ if env is None else env)
+    _reject_process_transport_env(active_env)
+    stable_env = _stable_git_security_env(active_env)
+    top = Path(_git_text(cwd, ["rev-parse", "--show-toplevel"], env=stable_env)).resolve()
+    branch = _git_text(top, ["symbolic-ref", "--quiet", "--short", "HEAD"], env=stable_env)
+    if branch != expected_branch:
+        raise HostPublishError("BRANCH_ASSERTION_FAILED")
+    if branch == "main":
+        raise HostPublishError("SYNC_CURRENT_BRANCH_EXCLUDES_MAIN")
+    if _git_text(top, ["status", "--porcelain=v1", "-uall"], env=stable_env):
+        raise HostPublishError("DIRTY_WORKTREE_REQUIRES_ORDINARY_APPROVAL")
+    if _config_value(top, f"branch.{branch}.remote", env=stable_env) != "origin":
+        raise HostPublishError("UPSTREAM_REMOTE_MISMATCH")
+    if _config_value(top, f"branch.{branch}.merge", env=stable_env) != f"refs/heads/{branch}":
+        raise HostPublishError("UPSTREAM_MERGE_MISMATCH")
+    fetch_url = _single_remote_url(top, ["remote", "get-url", "--all", "origin"], "REMOTE_URL_AMBIGUOUS", env=stable_env)
+    push_url = _single_remote_url(top, ["remote", "get-url", "--push", "--all", "origin"], "REMOTE_PUSH_URL_AMBIGUOUS", env=stable_env)
+    repo = _canonical_repo_identity(fetch_url)
+    push_repo = _canonical_repo_identity(push_url)
+    if repo != push_repo or repo != expected_repo:
+        raise HostPublishError("REMOTE_IDENTITY_MISMATCH")
+    _reject_repository_transport_config(top, env=stable_env)
+    _reject_active_hook(top, env=stable_env)
+    old_oid = _git_text(top, ["rev-parse", "HEAD"], env=stable_env)
+    fetch_env = _sanitized_push_env(active_env)
+    fetch = _git(top, ["fetch", "origin", f"{branch}:refs/remotes/origin/{branch}"], env=fetch_env, check=False)
+    if fetch.returncode != 0:
+        raise HostPublishError((fetch.stderr or fetch.stdout or "fetch failed").strip())
+    remote_oid = _git_text(top, ["rev-parse", f"refs/remotes/origin/{branch}"], env=stable_env)
+    if _git(top, ["merge-base", "--is-ancestor", old_oid, remote_oid], env=stable_env, check=False).returncode != 0:
+        raise HostPublishError("LOCAL_REMOTE_DIVERGED_REQUIRES_ORDINARY_APPROVAL")
+    if old_oid != remote_oid:
+        _git(top, ["merge", "--ff-only", f"refs/remotes/origin/{branch}"], env=stable_env)
+    new_oid = _git_text(top, ["rev-parse", "HEAD"], env=stable_env)
+    if new_oid != remote_oid:
+        raise HostPublishError("POST_SYNC_OID_MISMATCH")
+    return SyncResult(
+        status="already_current" if old_oid == new_oid else "fast_forwarded",
+        repo=expected_repo,
+        branch=branch,
+        old_oid=old_oid,
+        new_oid=new_oid,
+        remote_oid=remote_oid,
     )
 
 

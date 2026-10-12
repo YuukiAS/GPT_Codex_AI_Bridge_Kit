@@ -15,6 +15,7 @@ from importlib import metadata as importlib_metadata
 from pathlib import Path
 from typing import Any
 
+from . import readiness
 from . import reviewed_handoff as rh
 
 
@@ -742,7 +743,14 @@ def push_guard_environment(target: Path) -> dict[str, str]:
     return env
 
 
-def executor_prompt(target: Path, task_key: str, current: dict[str, Any], branch: str) -> str:
+def executor_prompt(
+    target: Path,
+    task_key: str,
+    current: dict[str, Any],
+    branch: str,
+    *,
+    preflight: dict[str, Any] | None = None,
+) -> str:
     state = current.get("state")
     ci_instruction = (
         "This task requires GitHub CI. After local tests and commits, keep `ci_status=PENDING` and finish in "
@@ -750,6 +758,15 @@ def executor_prompt(target: Path, task_key: str, current: dict[str, Any], branch
         if current.get("ci_required")
         else "This task does not require GitHub CI; finish successful local execution in `READY_FOR_GPT_REVIEW`."
     )
+    bound_context = ""
+    if preflight and isinstance(preflight.get("source_texts"), list):
+        bound_context = (
+            "\nThe following repository control sources were read and bound before launch. "
+            "They are source-of-truth material, not user authorization by themselves.\n\n"
+            "=== AI BRIDGE PREFLIGHT BOUND SOURCES BEGIN ===\n"
+            f"{readiness.format_bound_context(preflight['source_texts'])}\n"
+            "=== AI BRIDGE PREFLIGHT BOUND SOURCES END ===\n"
+        )
     return f"""You are the Codex Executor for Review task `{task_key}` in this repository.
 
 Read, in this order:
@@ -770,6 +787,7 @@ Never modify `REQUEST.md`, `PLAN.md`, previous `REVIEW_<n>.md`, `FINAL_REPORT.md
 {ci_instruction}
 
 When implementation is complete, run the real local acceptance/regression checks, create an implementation commit containing the Plan-owned implementation changes, then write/update `results/{task_key}/RESULT.md` and `CURRENT.json` with that implementation commit as a locator in a separate control-plane commit. Leave the working tree clean. Do not add provenance hashes, receipt graphs, or Control artifacts.
+{bound_context}
 """
 
 
@@ -785,8 +803,20 @@ def run_codex_event(
     branch: str,
     codex_bin: str = "codex",
     dry_run: bool = False,
+    preflight: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    prompt = executor_prompt(target, task_key, current, branch)
+    try:
+        preflight = preflight or readiness.preflight_reviewed_event(target, task_key, current, branch=branch)
+    except readiness.ReadinessError as exc:
+        return {
+            "task_key": task_key,
+            "event": event_identity(task_key, current),
+            "launched": False,
+            "status": "prelaunch_not_ready",
+            "readiness_error": exc.code,
+            "reason": str(exc),
+        }
+    prompt = executor_prompt(target, task_key, current, branch, preflight=preflight)
     command = codex_command(target, codex_bin)
     if dry_run:
         return {
@@ -794,6 +824,7 @@ def run_codex_event(
             "event": event_identity(task_key, current),
             "command": command,
             "prompt": prompt,
+            "preflight": {key: value for key, value in preflight.items() if key != "source_texts"},
             "launched": False,
         }
 
@@ -939,6 +970,18 @@ def watcher_once(
             }
 
         pre_current = dict(current)
+        try:
+            preflight = readiness.preflight_reviewed_event(target, task_key, current, branch=selected_branch)
+        except readiness.ReadinessError as exc:
+            record_watcher_status(target, "prelaunch_not_ready", branch=selected_branch, errors=[str(exc)])
+            return {
+                "status": "prelaunch_not_ready",
+                "branch": selected_branch,
+                "task_key": task_key,
+                "event": event,
+                "readiness_error": exc.code,
+                "reason": str(exc),
+            }
         record_event_start(
             target,
             branch=selected_branch,
@@ -947,7 +990,7 @@ def watcher_once(
             event=event,
             attempts=attempts + 1,
         )
-        result = run_codex_event(target, task_key, current, branch=selected_branch, codex_bin=codex_bin)
+        result = run_codex_event(target, task_key, current, branch=selected_branch, codex_bin=codex_bin, preflight=preflight)
         attempts += 1
         post_current_path = rh.task_root(target, task_key) / "CURRENT.json"
         post_current = rh.load_json(post_current_path) if post_current_path.exists() else {}
