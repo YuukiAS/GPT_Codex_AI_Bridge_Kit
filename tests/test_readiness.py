@@ -3,13 +3,16 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import os
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from ai_bridge_kit import readiness
 from ai_bridge_kit.cli import init_workspace, main as cli_main, validate_workspace
+from ai_bridge_kit.host import install_host_policy
 
 
 class ReadinessTests(unittest.TestCase):
@@ -42,6 +45,9 @@ class ReadinessTests(unittest.TestCase):
             encoding="utf-8",
         )
 
+    def add_github_origin(self, target: Path) -> None:
+        subprocess.check_call(["git", "remote", "add", "origin", "https://github.com/Example/project.git"], cwd=target)
+
     def test_validate_strict_fails_confirmed_instruction_budget_overflow(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "project"
@@ -67,6 +73,7 @@ class ReadinessTests(unittest.TestCase):
             with contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(init_workspace(target), 0)
             self.write_task(target, "repo--feature")
+            self.add_github_origin(target)
             subprocess.check_call(["git", "add", "."], cwd=target)
             subprocess.check_call(["git", "commit", "-m", "lite task"], cwd=target, stdout=subprocess.DEVNULL)
 
@@ -80,6 +87,46 @@ class ReadinessTests(unittest.TestCase):
             labels = {item["label"] for item in payload["preflight"]["source_bindings"]}
             self.assertEqual({"repo_agents", "agent_rules", "task"}, labels)
 
+    def test_lite_task_run_normal_entry_checks_temp_host_before_launch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            target = root / "project"
+            target.mkdir()
+            self.init_git(target)
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(init_workspace(target), 0)
+            self.write_task(target, "repo--feature")
+            self.add_github_origin(target)
+            subprocess.check_call(["git", "add", "."], cwd=target)
+            subprocess.check_call(["git", "commit", "-m", "lite task"], cwd=target, stdout=subprocess.DEVNULL)
+            codex_home = root / "codex-home"
+            install_host_policy(codex_home)
+            fake_codex = root / "codex"
+            prompt_path = root / "prompt.txt"
+            fake_codex.write_text(
+                "#!/bin/sh\n"
+                "if [ \"$1\" = \"--version\" ]; then echo 'codex test'; exit 0; fi\n"
+                "cat > '" + prompt_path.as_posix() + "'\n"
+                "exit 0\n",
+                encoding="utf-8",
+            )
+            fake_codex.chmod(0o700)
+
+            with mock.patch.dict(os.environ, {"CODEX_HOME": str(codex_home)}):
+                code = cli_main([
+                    "task",
+                    "run",
+                    "--target",
+                    str(target),
+                    "--task-key",
+                    "repo--feature",
+                    "--codex-bin",
+                    str(fake_codex),
+                ])
+
+            self.assertEqual(code, 0)
+            self.assertIn("AI BRIDGE PREFLIGHT BOUND SOURCES BEGIN", prompt_path.read_text(encoding="utf-8"))
+
     def test_lite_task_run_counts_nested_agents_for_subdirectory_launches(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "project"
@@ -88,6 +135,7 @@ class ReadinessTests(unittest.TestCase):
             with contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(init_workspace(target), 0)
             self.write_task(target, "repo--feature")
+            self.add_github_origin(target)
             (target / ".codex").mkdir()
             (target / ".codex" / "config.toml").write_text("project_doc_max_bytes = 64\n", encoding="utf-8")
             subdir = target / "subdir"
@@ -172,6 +220,28 @@ class ReadinessTests(unittest.TestCase):
                 )
 
             self.assertEqual(caught.exception.code, "CONTROL_REPLACE_REFS_ACTIVE")
+
+    def test_isolated_control_file_read_rejects_local_url_rewrite_config(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "repo"
+            root.mkdir()
+            self.init_git(root)
+            (root / "CONTROL.md").write_text("control\n", encoding="utf-8")
+            subprocess.check_call(["git", "add", "CONTROL.md"], cwd=root)
+            subprocess.check_call(["git", "commit", "-m", "control"], cwd=root, stdout=subprocess.DEVNULL)
+            commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+            subprocess.check_call(["git", "remote", "add", "origin", "https://github.com/Example/project.git"], cwd=root)
+            subprocess.check_call(["git", "config", "url.file:///tmp/evil.insteadOf", "https://github.com/"], cwd=root)
+
+            with self.assertRaises(readiness.ReadinessError) as caught:
+                readiness.read_control_file_isolated(
+                    root,
+                    expected_repo="Example/project",
+                    commit=commit,
+                    path="CONTROL.md",
+                )
+
+            self.assertEqual(caught.exception.code, "CONTROL_GIT_CONFIG_UNSAFE")
 
 
 if __name__ == "__main__":

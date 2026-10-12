@@ -806,7 +806,14 @@ def run_codex_event(
     preflight: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     try:
-        preflight = preflight or readiness.preflight_reviewed_event(target, task_key, current, branch=branch)
+        preflight = preflight or readiness.preflight_reviewed_event(
+            target,
+            task_key,
+            current,
+            branch=branch,
+            codex_bin=codex_bin,
+            require_host_ready=not dry_run,
+        )
     except readiness.ReadinessError as exc:
         return {
             "task_key": task_key,
@@ -971,7 +978,14 @@ def watcher_once(
 
         pre_current = dict(current)
         try:
-            preflight = readiness.preflight_reviewed_event(target, task_key, current, branch=selected_branch)
+            preflight = readiness.preflight_reviewed_event(
+                target,
+                task_key,
+                current,
+                branch=selected_branch,
+                codex_bin=codex_bin,
+                require_host_ready=True,
+            )
         except readiness.ReadinessError as exc:
             record_watcher_status(target, "prelaunch_not_ready", branch=selected_branch, errors=[str(exc)])
             return {

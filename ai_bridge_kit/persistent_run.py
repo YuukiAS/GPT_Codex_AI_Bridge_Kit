@@ -235,7 +235,7 @@ def report_progress_file(
     if delivery_mode == "notifications":
         if decision != "deliver":
             notification = "suppressed"
-        elif raw.get("notification_authorized") is True:
+        elif os.environ.get("AI_BRIDGE_PERSISTENT_RUN_NOTIFY_AUTHORIZED", "").strip().lower() in {"1", "true", "yes"}:
             from . import notifier
 
             brief_path = report_dir / "notification_brief.json"

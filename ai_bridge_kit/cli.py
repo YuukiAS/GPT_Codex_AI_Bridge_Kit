@@ -679,7 +679,12 @@ def run_lite_task(
 ) -> int:
     target = target.resolve()
     try:
-        preflight = readiness.preflight_lite_task(target, task_key)
+        preflight = readiness.preflight_lite_task(
+            target,
+            task_key,
+            codex_bin=codex_bin,
+            require_host_ready=not dry_run,
+        )
     except readiness.ReadinessError as exc:
         print(f"PRELAUNCH_NOT_READY: {exc}", file=sys.stderr)
         return 1

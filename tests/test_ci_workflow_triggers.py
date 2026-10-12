@@ -50,10 +50,8 @@ def tests_workflow_would_trigger(changed_paths: list[str], ignore_patterns: list
 
 
 class TestsWorkflowTriggerTests(unittest.TestCase):
-    def test_docs_markdown_results_only_changes_are_ignored_for_tests_workflow(self) -> None:
+    def test_docs_and_results_only_changes_are_ignored_for_tests_workflow(self) -> None:
         changed_paths = [
-            "README.md",
-            "CHANGELOG.md",
             "docs/TODO_LOCAL_AUTONOMOUS_ACCEPTANCE_WORKFLOW.md",
             "docs/design/0.9.1_reviewed_handoff_first_bootstrap_normal_entry_goal_v0.1_2026-09-24.md",
             "results/repo--task/FINAL_REPORT.md",
@@ -67,6 +65,9 @@ class TestsWorkflowTriggerTests(unittest.TestCase):
         changed_paths = [
             "ai_bridge_kit/reviewed_handoff.py",
             "tests/test_reviewed_handoff.py",
+            "AGENTS.md",
+            "README.md",
+            "CHANGELOG.md",
             ".github/workflows/tests.yml",
             "pyproject.toml",
         ]
@@ -78,6 +79,7 @@ class TestsWorkflowTriggerTests(unittest.TestCase):
 
     def test_tests_workflow_keeps_superseded_run_cancellation(self) -> None:
         text = TESTS_WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("workflow_dispatch:", text)
         self.assertIn("group: tests-${{ github.workflow }}-${{ github.ref }}", text)
         self.assertIn("cancel-in-progress: true", text)
 

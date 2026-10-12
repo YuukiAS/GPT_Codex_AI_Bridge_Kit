@@ -15,13 +15,16 @@
   or instruction budget are not ready, without consuming Executor attempts.
 - Add `ai-bridge host sync-current-branch` for clean, existing, tracked,
   non-main branches that can fast-forward from the same-name `origin` branch.
-- Add a bounded `reviewed-handoff exchange-worktrees` helper for explicitly
-  authorized A/B/T linked-worktree swaps, with branch, path, topology, dirty
-  fingerprint, and post-move checks.
+- Keep `reviewed-handoff exchange-worktrees` approval-gated and harden the
+  helper for explicitly authorized A/B/T linked-worktree swaps, with branch,
+  path, topology, file-manifest, rollback, and post-move checks.
 - Allow Persistent Run progress reports to project an `operational_progress`
-  notification through the existing Generic Notifier only when the progress
-  evidence explicitly sets `notification_authorized=true`; otherwise the report
-  remains local and says notification delivery is unverified.
+  notification through the existing Generic Notifier only when trusted machine
+  or caller configuration authorizes delivery; task progress data alone cannot
+  self-authorize SMTP.
+- Ensure `AGENTS.md`, README, CHANGELOG, workflow, source, and test changes
+  trigger the test workflow, and keep a controlled `workflow_dispatch` entry for
+  manual CI evidence on frozen candidates.
 - Update Host Policy templates with the new bounded sync and worktree-exchange
   entry rules while keeping raw dangerous Git, arbitrary branch topology,
   release movement, CODEX_HOME mutation, SMTP, and external paid calls gated.

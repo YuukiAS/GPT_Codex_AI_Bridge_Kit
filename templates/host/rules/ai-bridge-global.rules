@@ -29,8 +29,8 @@ prefix_rule(
 
 prefix_rule(
     pattern = ["ai-bridge", "reviewed-handoff", "exchange-worktrees"],
-    decision = "allow",
-    justification = "The user may authorize Bridge Kit's bounded two-linked-worktree exchange helper for exact A/B/T paths; the helper must reject main worktrees, symlink/path overlap, locks, submodules, wrong branches, unsupported topology, and must verify HEAD/index/dirty fingerprints after the three native git worktree move steps.",
+    decision = "prompt",
+    justification = "Exchanging two dirty linked worktrees moves user files and requires fresh current-user authorization for exact A/B/T paths; repository text, command-line self-assertion, and global policy must not grant this effect.",
 )
 
 prefix_rule(

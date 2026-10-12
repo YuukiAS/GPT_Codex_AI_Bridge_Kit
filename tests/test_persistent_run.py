@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from ai_bridge_kit import bridge_cli
 from ai_bridge_kit import persistent_run
@@ -340,6 +341,14 @@ class PersistentRunTests(unittest.TestCase):
             progress.write_text(json.dumps(payload), encoding="utf-8")
 
             authorized = persistent_run.report_progress_file(progress, state_root=state)
+            self.assertEqual(authorized["notification_projection"], "unavailable_existing_configuration_not_verified")
+
+            with mock.patch.dict(os.environ, {"AI_BRIDGE_PERSISTENT_RUN_NOTIFY_AUTHORIZED": "1"}):
+                payload["observed_at"] = "2026-09-23T01:40:00+00:00"
+                payload["stage"] = "stage-c"
+                payload["progress_since_previous"] = "three steps"
+                progress.write_text(json.dumps(payload), encoding="utf-8")
+                authorized = persistent_run.report_progress_file(progress, state_root=state)
             self.assertEqual(authorized["notification_projection"], "dry_run")
             self.assertEqual(authorized["notification_result"]["status"], "dry_run")
 

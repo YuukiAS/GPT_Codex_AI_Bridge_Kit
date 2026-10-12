@@ -13,6 +13,7 @@ from unittest import mock
 from ai_bridge_kit import reviewed_handoff as rh
 from ai_bridge_kit import reviewed_runner as runner
 from ai_bridge_kit import text_review
+from ai_bridge_kit.host import install_host_policy
 
 
 class ReviewedRunnerTests(unittest.TestCase):
@@ -23,6 +24,21 @@ class ReviewedRunnerTests(unittest.TestCase):
             tmp = tempfile.TemporaryDirectory()
         base = Path(tmp.name)
         state_home = base / "state-home"
+        codex_home = state_home / "codex-home"
+        install_host_policy(codex_home)
+        bin_dir = state_home / "bin"
+        bin_dir.mkdir(parents=True, exist_ok=True)
+        fake_codex = bin_dir / "codex"
+        fake_codex.write_text(
+            "#!/bin/sh\n"
+            "if [ \"$1\" = \"--version\" ]; then echo 'codex test'; exit 0; fi\n"
+            "cat >/dev/null\n"
+            "exit 0\n",
+            encoding="utf-8",
+        )
+        fake_codex.chmod(0o700)
+        os.environ["CODEX_HOME"] = str(codex_home)
+        os.environ["PATH"] = str(bin_dir) + os.pathsep + os.environ.get("PATH", "")
         target = base / "project"
         target.mkdir()
         subprocess.check_call(["git", "init", "--initial-branch", "main"], cwd=target, stdout=subprocess.DEVNULL)
@@ -34,6 +50,7 @@ class ReviewedRunnerTests(unittest.TestCase):
         plan_template = rh.read_text(rh.reviewed_root(target) / "templates" / "PLAN.md")
         rh.write_text(rh.task_root(target, "repo--feature") / "PLAN.md", plan_template.replace("<TASK_KEY>", "repo--feature"))
         rh.apply_transition(target, "repo--feature", expected_state="PLAN_REQUESTED", next_state="PLAN_FROZEN")
+        subprocess.check_call(["git", "remote", "add", "origin", "https://github.com/Example/project.git"], cwd=target)
         subprocess.check_call(["git", "add", "."], cwd=target)
         subprocess.check_call(["git", "commit", "-m", "freeze plan"], cwd=target, stdout=subprocess.DEVNULL)
         return tmp, target, state_home
@@ -41,7 +58,7 @@ class ReviewedRunnerTests(unittest.TestCase):
     def attach_origin(self, target: Path, base: Path) -> Path:
         remote = base / "origin.git"
         subprocess.check_call(["git", "init", "--bare", "--initial-branch", "main", remote], stdout=subprocess.DEVNULL)
-        subprocess.check_call(["git", "remote", "add", "origin", str(remote)], cwd=target)
+        subprocess.check_call(["git", "remote", "set-url", "origin", str(remote)], cwd=target)
         subprocess.check_call(["git", "push", "-u", "origin", "main"], cwd=target, stdout=subprocess.DEVNULL)
         subprocess.check_call(["git", "symbolic-ref", "HEAD", "refs/heads/main"], cwd=remote)
         return remote
@@ -159,7 +176,7 @@ class ReviewedRunnerTests(unittest.TestCase):
     def codex_only_fake(real_run, callback=None):
         def fake_run(*args, **kwargs):
             command = args[0] if args else kwargs.get("args")
-            if isinstance(command, (list, tuple)) and command and str(command[0]).endswith("codex"):
+            if isinstance(command, (list, tuple)) and command and str(command[0]).endswith("codex") and "exec" in command:
                 if callback:
                     callback()
                 return subprocess.CompletedProcess(args=command, returncode=0)

@@ -4,17 +4,26 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from .host import _canonical_repo_identity, _publisher_github_https_identity
+from .host import (
+    REJECTED_GIT_ENV_EXACT,
+    REJECTED_GIT_ENV_PREFIXES,
+    _canonical_repo_identity,
+    _publisher_github_https_identity,
+    inspect_host_policy,
+    resolve_codex_home,
+)
 
 
 DEFAULT_PROJECT_DOC_MAX_BYTES = 32768
 INSTRUCTION_FILE_NAMES = ("AGENTS.override.md", "AGENTS.md")
+FALLBACK_INSTRUCTION_FILE_NAMES = ("AGENTS.override.md", "AGENTS.md", "INSTRUCTIONS.md")
 
 
 class ReadinessError(ValueError):
@@ -103,12 +112,18 @@ def _read_bound_text(path: Path, *, root: Path, label: str) -> BoundText:
     )
 
 
-def _parse_project_doc_max_bytes(config: Path) -> int | None:
+def _read_config_text(config: Path) -> str | None:
     if not config.exists():
         return None
     try:
-        text = config.read_text(encoding="utf-8")
+        return config.read_text(encoding="utf-8")
     except OSError:
+        return None
+
+
+def _parse_project_doc_max_bytes(config: Path) -> int | None:
+    text = _read_config_text(config)
+    if text is None:
         return None
     match = re.search(r"(?m)^\s*project_doc_max_bytes\s*=\s*(\d+)\s*$", text)
     if not match:
@@ -116,9 +131,74 @@ def _parse_project_doc_max_bytes(config: Path) -> int | None:
     return int(match.group(1))
 
 
+def _parse_project_doc_fallback_file(config: Path) -> str | None:
+    text = _read_config_text(config)
+    if text is None:
+        return None
+    match = re.search(r"(?m)^\s*project_doc_fallback_file\s*=\s*[\"']([^\"']+)[\"']\s*$", text)
+    return match.group(1).strip() if match and match.group(1).strip() else None
+
+
+def effective_instruction_config(root: Path, *, env: dict[str, str] | None = None) -> dict[str, Any]:
+    active_env = os.environ if env is None else env
+    codex_home = resolve_codex_home(None, active_env)
+    sources = [
+        ("codex_home", codex_home / "config.toml"),
+        ("project", root / ".codex" / "config.toml"),
+    ]
+    max_bytes = DEFAULT_PROJECT_DOC_MAX_BYTES
+    max_source = "default"
+    fallback_names = list(FALLBACK_INSTRUCTION_FILE_NAMES)
+    for label, path in sources:
+        if path.exists() and not path.is_file():
+            return {
+                "state": "UNKNOWN",
+                "reason": f"CONFIG_SOURCE_NOT_FILE: {path}",
+                "codex_home": codex_home.as_posix(),
+                "max_bytes": None,
+                "max_bytes_source": None,
+                "instruction_file_names": fallback_names,
+            }
+        if path.exists() and _read_config_text(path) is None:
+            return {
+                "state": "UNKNOWN",
+                "reason": f"CONFIG_SOURCE_UNREADABLE: {path}",
+                "codex_home": codex_home.as_posix(),
+                "max_bytes": None,
+                "max_bytes_source": None,
+                "instruction_file_names": fallback_names,
+            }
+        configured = _parse_project_doc_max_bytes(path)
+        if configured is not None:
+            if configured <= 0:
+                return {
+                    "state": "UNKNOWN",
+                    "reason": f"CONFIG_PROJECT_DOC_MAX_BYTES_INVALID: {path}",
+                    "codex_home": codex_home.as_posix(),
+                    "max_bytes": None,
+                    "max_bytes_source": None,
+                    "instruction_file_names": fallback_names,
+                }
+            max_bytes = configured
+            max_source = f"{label}:{path.as_posix()}"
+        fallback = _parse_project_doc_fallback_file(path)
+        if fallback and fallback not in fallback_names:
+            fallback_names.append(fallback)
+    return {
+        "state": "VERIFIED",
+        "reason": "",
+        "codex_home": codex_home.as_posix(),
+        "max_bytes": max_bytes,
+        "max_bytes_source": max_source,
+        "instruction_file_names": fallback_names,
+    }
+
+
 def effective_project_doc_max_bytes(root: Path) -> int:
-    configured = _parse_project_doc_max_bytes(root / ".codex" / "config.toml")
-    return configured if configured and configured > 0 else DEFAULT_PROJECT_DOC_MAX_BYTES
+    config = effective_instruction_config(root)
+    if config.get("state") != "VERIFIED" or not isinstance(config.get("max_bytes"), int):
+        raise ReadinessError("PROJECT_INSTRUCTION_CONFIG_UNVERIFIED", str(config.get("reason") or "unknown"))
+    return int(config["max_bytes"])
 
 
 def _ancestor_dirs(root: Path, cwd: Path) -> list[Path]:
@@ -139,9 +219,11 @@ def _ancestor_dirs(root: Path, cwd: Path) -> list[Path]:
 def discover_instruction_files(target: Path, *, cwd: Path | None = None) -> list[Path]:
     root = repo_root_or_target(target)
     effective_cwd = (cwd or target).resolve()
+    config = effective_instruction_config(root)
+    names = tuple(config["instruction_file_names"]) if config.get("state") == "VERIFIED" else INSTRUCTION_FILE_NAMES
     files: list[Path] = []
     for directory in _ancestor_dirs(root, effective_cwd):
-        for name in INSTRUCTION_FILE_NAMES:
+        for name in names:
             candidate = directory / name
             if candidate.is_file():
                 files.append(candidate)
@@ -156,7 +238,20 @@ def audit_instruction_budget(
     max_bytes: int | None = None,
 ) -> dict[str, Any]:
     root = repo_root_or_target(target)
-    limit = max_bytes or effective_project_doc_max_bytes(root)
+    config = effective_instruction_config(root)
+    if config.get("state") != "VERIFIED":
+        return {
+            "schema": "ai-bridge.readiness.instruction_budget.v1",
+            "state": "UNKNOWN",
+            "reason": config.get("reason") or "PROJECT_INSTRUCTION_CONFIG_UNVERIFIED",
+            "codex_home": config.get("codex_home"),
+            "max_bytes": None,
+            "max_bytes_source": None,
+            "total_bytes": None,
+            "truncated_at": None,
+            "files": [],
+        }
+    limit = max_bytes or int(config["max_bytes"])
     bound_files = [_read_bound_text(path, root=root, label="project_instruction") for path in discover_instruction_files(root, cwd=cwd)]
     total = sum(item.size_bytes for item in bound_files)
     state = "PASS" if total <= limit else "FAIL"
@@ -172,6 +267,8 @@ def audit_instruction_budget(
         "schema": "ai-bridge.readiness.instruction_budget.v1",
         "state": state,
         "max_bytes": limit,
+        "max_bytes_source": config["max_bytes_source"],
+        "codex_home": config["codex_home"],
         "total_bytes": total,
         "truncated_at": truncated_at,
         "files": [
@@ -187,6 +284,9 @@ def audit_instruction_budget(
 
 def validate_instruction_budget(target: Path, *, strict: bool = False) -> tuple[list[str], list[str]]:
     audit = audit_instruction_budget(target)
+    if audit["state"] == "UNKNOWN":
+        line = f"{'ERROR' if strict else 'WARN'} instruction budget unverified: {audit.get('reason')}"
+        return [line], [line] if strict else []
     lines = [
         f"OK   instruction budget max_bytes={audit['max_bytes']} total_bytes={audit['total_bytes']}"
         if audit["state"] == "PASS"
@@ -220,6 +320,39 @@ def bind_repo_texts(target: Path, specs: list[tuple[str, str]]) -> list[BoundTex
     return bound
 
 
+def bind_repo_texts_isolated(target: Path, specs: list[tuple[str, str]]) -> list[BoundText]:
+    root = repo_root(target)
+    commit = git_text(root, ["rev-parse", "HEAD"])
+    expected_repo = _origin_identity(root)
+    if expected_repo == "UNKNOWN":
+        raise ReadinessError("CONTROL_ORIGIN_IDENTITY_UNVERIFIED")
+    require_github_https = not expected_repo.startswith("local:/tmp/")
+    bound: list[BoundText] = []
+    for label, rel in specs:
+        result = read_control_file_isolated(
+            root,
+            expected_repo=expected_repo,
+            commit=commit,
+            path=rel,
+            require_github_https=require_github_https,
+        )
+        text = str(result["text"])
+        raw = text.encode("utf-8")
+        bound.append(
+            BoundText(
+                label=label,
+                path=(root / rel).resolve(),
+                relative_path=result["path"],
+                size_bytes=int(result["size_bytes"]),
+                sha256=str(result["sha256"]),
+                text=text,
+            )
+        )
+        if result["sha256"] != _sha256_bytes(raw):
+            raise ReadinessError("CONTROL_TEXT_SHA_MISMATCH", rel)
+    return bound
+
+
 def _current_branch(root: Path) -> str:
     branch = git_text(root, ["rev-parse", "--abbrev-ref", "HEAD"])
     if branch == "HEAD":
@@ -235,7 +368,51 @@ def _origin_identity(root: Path) -> str:
     return _canonical_repo_identity(urls[0])
 
 
-def preflight_common(target: Path, *, expected_branch: str | None = None, require_clean: bool = False) -> dict[str, Any]:
+def _resolve_executable(name: str) -> str | None:
+    path = Path(name).expanduser()
+    if path.is_absolute() or "/" in name:
+        return path.resolve().as_posix() if path.exists() and os.access(path, os.X_OK) else None
+    found = shutil.which(name)
+    return str(Path(found).resolve()) if found else None
+
+
+def _codex_version(codex_bin: str) -> str:
+    exe = _resolve_executable(codex_bin)
+    if not exe:
+        raise ReadinessError("CODEX_EXECUTABLE_UNRESOLVED", codex_bin)
+    result = subprocess.run([exe, "--version"], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    if result.returncode != 0:
+        raise ReadinessError("CODEX_VERSION_UNAVAILABLE", (result.stderr or result.stdout).strip())
+    output = (result.stdout or result.stderr or "").strip()
+    return output or "UNKNOWN"
+
+
+def managed_host_identity(target: Path, *, codex_bin: str) -> dict[str, Any]:
+    root = repo_root(target)
+    codex_home = resolve_codex_home()
+    status = inspect_host_policy(codex_home, cwd=root)
+    if status.overall_state != "configured":
+        raise ReadinessError("HOST_POLICY_NOT_READY", status.overall_state)
+    return {
+        "codex_bin": _resolve_executable(codex_bin),
+        "codex_version": _codex_version(codex_bin),
+        "codex_home": codex_home.as_posix(),
+        "host_policy_state": status.overall_state,
+        "bridge_source": status.imported_package_source.as_posix(),
+        "bridge_version": status.imported_package_version,
+        "bridge_source_head": status.editable_source_head,
+        "bridge_source_dirty_state": status.editable_source_dirty_state,
+    }
+
+
+def preflight_common(
+    target: Path,
+    *,
+    expected_branch: str | None = None,
+    require_clean: bool = False,
+    codex_bin: str | None = None,
+    require_host_ready: bool = False,
+) -> dict[str, Any]:
     root = repo_root(target)
     branch = _current_branch(root)
     if expected_branch and branch != expected_branch:
@@ -247,19 +424,39 @@ def preflight_common(target: Path, *, expected_branch: str | None = None, requir
         origin_identity = _origin_identity(root)
     except Exception:
         origin_identity = "UNKNOWN"
-    return {
+    instruction_budget = audit_instruction_budget(root, cwd=target)
+    if instruction_budget["state"] == "UNKNOWN":
+        raise ReadinessError("PROJECT_INSTRUCTION_CONFIG_UNVERIFIED", str(instruction_budget.get("reason") or "unknown"))
+    result = {
         "root": root.as_posix(),
         "branch": branch,
         "head": git_text(root, ["rev-parse", "HEAD"]),
         "origin_identity": origin_identity,
         "dirty": bool(status.strip()),
         "dirty_status": status.strip(),
-        "instruction_budget": audit_instruction_budget(root, cwd=target),
+        "instruction_budget": instruction_budget,
     }
+    if require_host_ready:
+        result["managed_host"] = managed_host_identity(root, codex_bin=codex_bin or "codex")
+    return result
 
 
-def preflight_reviewed_event(target: Path, task_key: str, current: dict[str, Any], *, branch: str) -> dict[str, Any]:
-    common = preflight_common(target, expected_branch=branch, require_clean=True)
+def preflight_reviewed_event(
+    target: Path,
+    task_key: str,
+    current: dict[str, Any],
+    *,
+    branch: str,
+    codex_bin: str = "codex",
+    require_host_ready: bool = True,
+) -> dict[str, Any]:
+    common = preflight_common(
+        target,
+        expected_branch=branch,
+        require_clean=True,
+        codex_bin=codex_bin,
+        require_host_ready=require_host_ready,
+    )
     state = current.get("state")
     specs = []
     if (repo_root(target) / "AGENTS.md").is_file():
@@ -271,7 +468,9 @@ def preflight_reviewed_event(target: Path, task_key: str, current: dict[str, Any
         ("plan", f"automation/reviewed_handoff/tasks/{task_key}/PLAN.md"),
         ("current", f"automation/reviewed_handoff/tasks/{task_key}/CURRENT.json"),
     ])
-    bound = bind_repo_texts(target, specs)
+    if common["instruction_budget"]["state"] != "PASS":
+        raise ReadinessError("PROJECT_INSTRUCTION_BUDGET_EXCEEDED")
+    bound = bind_repo_texts_isolated(target, specs)
     try:
         current_from_disk = json.loads(bound[-1].text)
     except json.JSONDecodeError as exc:
@@ -280,21 +479,25 @@ def preflight_reviewed_event(target: Path, task_key: str, current: dict[str, Any
         raise ReadinessError("CURRENT_TASK_KEY_MISMATCH")
     if current_from_disk.get("state") != state:
         raise ReadinessError("CURRENT_STATE_CHANGED_BEFORE_LAUNCH")
-    if common["instruction_budget"]["state"] != "PASS":
-        raise ReadinessError("PROJECT_INSTRUCTION_BUDGET_EXCEEDED")
     return {**common, "task_key": task_key, "source_bindings": _binding_records(bound), "source_texts": bound}
 
 
-def preflight_lite_task(target: Path, task_key: str) -> dict[str, Any]:
-    common = preflight_common(target)
+def preflight_lite_task(
+    target: Path,
+    task_key: str,
+    *,
+    codex_bin: str = "codex",
+    require_host_ready: bool = True,
+) -> dict[str, Any]:
+    common = preflight_common(target, codex_bin=codex_bin, require_host_ready=require_host_ready)
     specs = [
         ("repo_agents", "AGENTS.md"),
         ("agent_rules", "prompts/AGENT_RULES.md"),
         ("task", f"prompts/tasks/{task_key}.md"),
     ]
-    bound = bind_repo_texts(target, specs)
     if common["instruction_budget"]["state"] != "PASS":
         raise ReadinessError("PROJECT_INSTRUCTION_BUDGET_EXCEEDED")
+    bound = bind_repo_texts_isolated(target, specs)
     return {**common, "task_key": task_key, "source_bindings": _binding_records(bound), "source_texts": bound}
 
 
@@ -382,6 +585,35 @@ def _reject_control_rewrite_refs(root: Path) -> None:
         raise ReadinessError("CONTROL_GRAFTS_ACTIVE")
 
 
+def _reject_control_git_environment(env: dict[str, str]) -> None:
+    for key in env:
+        if key in REJECTED_GIT_ENV_EXACT or key.startswith(REJECTED_GIT_ENV_PREFIXES):
+            raise ReadinessError("CONTROL_GIT_ENV_UNSAFE", key)
+
+
+def _reject_control_git_config(root: Path) -> None:
+    result = _git(root, ["config", "--local", "--name-only", "--list"], check=False)
+    if result.returncode != 0:
+        raise ReadinessError("CONTROL_GIT_CONFIG_UNREADABLE", (result.stderr or result.stdout).strip())
+    unsafe_prefixes = ("url.", "credential.", "filter.")
+    unsafe_exact = {
+        "core.sshcommand",
+        "core.gitproxy",
+        "core.fsmonitor",
+        "core.hookspath",
+        "remote.origin.uploadpack",
+        "remote.origin.proxy",
+        "http.proxy",
+        "https.proxy",
+    }
+    for raw in result.stdout.splitlines():
+        key = raw.strip().lower()
+        if not key:
+            continue
+        if key in unsafe_exact or key.startswith(unsafe_prefixes):
+            raise ReadinessError("CONTROL_GIT_CONFIG_UNSAFE", key)
+
+
 def read_control_file_isolated(
     target: Path,
     *,
@@ -394,6 +626,8 @@ def read_control_file_isolated(
     safe_path = _safe_repo_rel(path)
     if not re.fullmatch(r"[0-9a-fA-F]{40}", commit or ""):
         raise ReadinessError("CONTROL_COMMIT_INVALID")
+    _reject_control_git_environment(os.environ)
+    _reject_control_git_config(root)
     fetch_url = git_text(root, ["remote", "get-url", "origin"])
     identity = _publisher_github_https_identity(fetch_url) if require_github_https else _canonical_repo_identity(fetch_url)
     if identity != expected_repo:
@@ -406,6 +640,8 @@ def read_control_file_isolated(
         original_objects_path = root / original_objects_path
     with tempfile.TemporaryDirectory(prefix="ai-bridge-objects-") as tmp:
         env = os.environ.copy()
+        env["GIT_CONFIG_GLOBAL"] = "/dev/null"
+        env["GIT_CONFIG_NOSYSTEM"] = "1"
         env["GIT_OBJECT_DIRECTORY"] = tmp
         env["GIT_ALTERNATE_OBJECT_DIRECTORIES"] = original_objects_path.resolve().as_posix()
         env["GIT_NO_REPLACE_OBJECTS"] = "1"

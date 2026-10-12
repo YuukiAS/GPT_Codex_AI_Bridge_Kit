@@ -961,6 +961,89 @@ def _worktree_status_fingerprint(path: Path) -> dict[str, str]:
     }
 
 
+def _reject_worktree_internal_links(path: Path) -> None:
+    for item in path.rglob("*"):
+        if item.name == ".git" and item.parent == path:
+            continue
+        if item.is_symlink():
+            raise WorktreeExchangeError("WORKTREE_EXCHANGE_INTERNAL_SYMLINK_UNSUPPORTED")
+
+
+def _reject_worktree_locks(path: Path) -> None:
+    for rel in ["index.lock", "shallow.lock", "HEAD.lock", "config.lock"]:
+        lock = Path(git_output(path, ["rev-parse", "--git-path", rel]))
+        if not lock.is_absolute():
+            lock = path / lock
+        if lock.exists():
+            raise WorktreeExchangeError("WORKTREE_EXCHANGE_LOCKED_GIT_STATE")
+
+
+def _worktree_file_manifest(path: Path) -> dict[str, dict[str, Any]]:
+    manifest: dict[str, dict[str, Any]] = {}
+    for item in sorted(path.rglob("*")):
+        rel = item.relative_to(path).as_posix()
+        if rel == ".git" or rel.startswith(".git/"):
+            continue
+        stat = item.lstat()
+        if item.is_dir():
+            continue
+        if item.is_symlink():
+            raise WorktreeExchangeError("WORKTREE_EXCHANGE_INTERNAL_SYMLINK_UNSUPPORTED")
+        manifest[rel] = {
+            "mode": oct(stat.st_mode & 0o7777),
+            "size": stat.st_size,
+            "sha256": sha256_bytes(item.read_bytes()),
+        }
+    return manifest
+
+
+def _exchange_evidence(path: Path) -> dict[str, Any]:
+    return {
+        **_worktree_status_fingerprint(path),
+        "files": _worktree_file_manifest(path),
+    }
+
+
+def _assert_exchange_state(path: Path, expected: dict[str, Any], label: str) -> None:
+    actual = _exchange_evidence(path)
+    if actual != expected:
+        raise WorktreeExchangeError(f"WORKTREE_EXCHANGE_RECOVERY_STATE_MISMATCH:{label}")
+
+
+def _rollback_exchange(
+    target: Path,
+    *,
+    path_a: Path,
+    path_b: Path,
+    temp_path: Path,
+    before_a: dict[str, Any],
+    before_b: dict[str, Any],
+    completed: list[str],
+) -> list[str]:
+    recovery: list[str] = []
+    if completed == ["A_TO_TEMP"]:
+        _assert_exchange_state(temp_path, before_a, "temp_before_a")
+        _assert_exchange_state(path_b, before_b, "path_b_before_b")
+        git_run(target, ["worktree", "move", str(temp_path), str(path_a)])
+        recovery.append("TEMP_TO_A")
+    elif completed == ["A_TO_TEMP", "B_TO_A"]:
+        _assert_exchange_state(temp_path, before_a, "temp_before_a")
+        _assert_exchange_state(path_a, before_b, "path_a_before_b")
+        git_run(target, ["worktree", "move", str(path_a), str(path_b)])
+        recovery.append("A_TO_B")
+        git_run(target, ["worktree", "move", str(temp_path), str(path_a)])
+        recovery.append("TEMP_TO_A")
+    elif completed == []:
+        recovery.append("NOOP")
+    else:
+        raise WorktreeExchangeError("WORKTREE_EXCHANGE_RECOVERY_UNSUPPORTED_STATE:" + ",".join(completed))
+    if path_a.exists():
+        _assert_exchange_state(path_a, before_a, "path_a_restored")
+    if path_b.exists():
+        _assert_exchange_state(path_b, before_b, "path_b_restored")
+    return recovery
+
+
 def exchange_linked_worktrees(
     target: Path,
     *,
@@ -985,10 +1068,15 @@ def exchange_linked_worktrees(
         raise WorktreeExchangeError("WORKTREE_EXCHANGE_PATH_OVERLAP")
     if temp_path.exists() and any(temp_path.iterdir()):
         raise WorktreeExchangeError("TEMP_PATH_OCCUPIED")
+    if path_a.stat().st_dev != path_b.stat().st_dev or path_a.stat().st_dev != temp_path.parent.stat().st_dev:
+        raise WorktreeExchangeError("WORKTREE_EXCHANGE_CROSS_FILESYSTEM_UNSUPPORTED")
     if temp_path in path_a.parents or temp_path in path_b.parents or path_a in temp_path.parents or path_b in temp_path.parents:
         raise WorktreeExchangeError("WORKTREE_EXCHANGE_PATH_OVERLAP")
     for path in [path_a, path_b, temp_path]:
         _reject_path_symlinks(path)
+    for path in [path_a, path_b]:
+        _reject_worktree_internal_links(path)
+        _reject_worktree_locks(path)
     entry_a = _registered_worktree_entry_by_path(target, path_a)
     entry_b = _registered_worktree_entry_by_path(target, path_b)
     if entry_a.get("branch") != f"refs/heads/{expected_branch_a}":
@@ -997,8 +1085,8 @@ def exchange_linked_worktrees(
         raise WorktreeExchangeError("WORKTREE_B_BRANCH_MISMATCH")
     if (path_a / ".gitmodules").exists() or (path_b / ".gitmodules").exists():
         raise WorktreeExchangeError("SUBMODULE_WORKTREE_EXCHANGE_UNSUPPORTED")
-    before_a = _worktree_status_fingerprint(path_a)
-    before_b = _worktree_status_fingerprint(path_b)
+    before_a = _exchange_evidence(path_a)
+    before_b = _exchange_evidence(path_b)
     evidence = {
         "schema": "ai-bridge.reviewed_handoff.worktree_exchange.v1",
         "common_dir": common.as_posix(),
@@ -1018,9 +1106,31 @@ def exchange_linked_worktrees(
         git_run(target, ["worktree", "move", str(temp_path), str(path_b)])
         completed.append("TEMP_TO_B")
     except Exception as exc:
-        raise WorktreeExchangeError("WORKTREE_EXCHANGE_INTERRUPTED: " + ",".join(completed) + f"; {exc}") from exc
-    after_a = _worktree_status_fingerprint(path_a)
-    after_b = _worktree_status_fingerprint(path_b)
+        try:
+            recovery = _rollback_exchange(
+                target,
+                path_a=path_a,
+                path_b=path_b,
+                temp_path=temp_path,
+                before_a=before_a,
+                before_b=before_b,
+                completed=completed,
+            )
+        except Exception as recovery_exc:
+            raise WorktreeExchangeError(
+                "WORKTREE_EXCHANGE_INTERRUPTED_RECOVERY_STOPPED: "
+                + ",".join(completed)
+                + f"; failure={exc}; recovery={recovery_exc}"
+            ) from recovery_exc
+        raise WorktreeExchangeError(
+            "WORKTREE_EXCHANGE_INTERRUPTED_RECOVERED: "
+            + ",".join(completed)
+            + "; recovery="
+            + ",".join(recovery)
+            + f"; {exc}"
+        ) from exc
+    after_a = _exchange_evidence(path_a)
+    after_b = _exchange_evidence(path_b)
     if after_a != before_b or after_b != before_a:
         raise WorktreeExchangeError("WORKTREE_EXCHANGE_POSTCHECK_MISMATCH")
     return {"status": "exchanged", **evidence, "after": {"A": after_a, "B": after_b}}
