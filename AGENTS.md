@@ -81,21 +81,11 @@ default_mode_request_user_input = false
 memories = true
 ```
 
-`default_mode_request_user_input` 期望值是 `false`：Default mode 中真正必需的
-`HUMAN_ONLY` 输入必须使用一条清楚的 plain-text 问题、保留同一 Goal 的恢复点并
-停止依赖执行；到明确 deadline / 当前 run 结束仍无答案时，报告
-`GOAL_BLOCKED=YES`、`GOAL_ACHIEVED=NO`、`COMPLETE=NO`、
-`READY_FOR_USER_REVIEW=NO`。`ai-bridge host validate` 仍应检查 Codex 是否支持
-这个 feature key；key 缺失是 unsupported/incompatible，不能因为期望值为 false
-而静默通过。Plan-mode native blocking 语义保持独立有效。
+`default_mode_request_user_input=false` 是有意配置。Default mode 中真正必需的 `HUMAN_ONLY` 输入用一条 plain-text 问题并停止依赖执行；到 deadline / 本轮结束仍无答案时报告 `GOAL_BLOCKED=YES`、`GOAL_ACHIEVED=NO`、`COMPLETE=NO`、`READY_FOR_USER_REVIEW=NO`。`ai-bridge host validate` 仍必须确认 Codex 支持该 key；Plan-mode native blocking 语义独立。安装 Host Policy 必须非破坏式保留其他 TOML 配置并创建 backup；不得用 `approval_policy = "never"`、`danger-full-access` 或泛化 shell/python allow 解决审批。
 
-安装必须非破坏式保留其他 TOML 配置，并在修改已有文件前创建 backup。不要通过 `approval_policy = "never"`、`danger-full-access` 或泛化 shell/python allow 解决审批问题。
+全局 Host AGENTS 必须维持这些长期行为：用户可见 narrative 默认自然简体中文；架构、范围、部署、branch 策略、外部行为或科学/产品语义会实质改变时询问用户，普通局部实现细节自行完成；workspace 内 build/test/lint/render/QA/deterministic scripts/task-owned generated output 默认先走普通 `workspace-write`，命令是 Python/TeX/shell/compiler/build tool 或写入允许 workspace 本身都不是 escalation 理由。真实 private transfer、paid/external call、deployment、migration、scheduler/resource allocation、Persistent Run launch、destructive action，或 provider/artifact/recipient/purpose/resource/cost/backend scope 改变，仍走 approval / `HUMAN_ONLY` / Planner / STOP。refusal 后先分类 `OPTIONAL_NOT_REQUIRED`、`SANDBOX_CAPABLE_BUT_ESCALATED`、`BOUNDED_NORMAL_ENTRY_BLOCKER`、`TRUE_AUTHORITY_OR_SAFETY_BOUNDARY`；bounded helper 失败不授权 raw 宽操作。
 
-全局 Host AGENTS 必须继续维持这些长期行为：用户可见 narrative 默认使用自然简体中文；会实质改变架构、范围、部署、branch 策略、外部行为或科学/产品语义的歧义应询问用户；普通局部实现细节自行完成；当前已选 `main` 分支上的 `git fetch origin main`、clean worktree 下的 `git pull --ff-only origin main`、task-owned 文件的 `git add ...` 和普通 commit 可自动完成；低打扰发布必须使用 bounded `ai-bridge host publish-current-branch --expected-repo <owner/repo> --expected-branch <branch>`；Reviewed 首次远端发布仅能在已授权 exact task/branch/worktree 后通过 bounded `ai-bridge reviewed-handoff task publish-first --task-key <task_key> --expected-repo <owner/repo>` 创建同名 absent `origin` reviewed branch；raw `git push origin main`、raw `git push -u` 和 raw `--force-with-lease` 保持审批路径；同步前检查 working tree，dirty 时先判断 ownership，不得默认 autostash/stash/reset/restore；commit 前检查 staged diff；未经明确授权不得创建、切换、checkout、重命名或删除 branch，不得创建 PR、设置/改变 upstream、创建新远端分支、rebase/autostash pull、force push、删除远端 branch/tag、reset/clean/restore 用户工作或修改 remote。
-
-全局 Host AGENTS 还必须维持 sandbox-first 与 refusal recovery 语义：普通 repository/workspace 内的 build、test、lint、render、QA、deterministic scripts 和 task-owned generated output 默认先走正常 `workspace-write`；命令是 Python、TeX、shell script、compiler 或 build tool，本身不是申请 `require_escalated` 的理由；写入已允许的 workspace，本身也不是 authority boundary。真实未来副作用若已从当前用户授权、冻结 Goal/Plan/contract、既有 authority contract 或可信 static effect analysis 中确定，仍保留 upfront authority gate。已知 private transfer、paid/external call、deployment、migration、scheduler/resource allocation、Persistent Run launch、destructive action，或 provider/artifact/recipient/purpose/resource/cost/backend scope 改变，仍必须走既有 approval 或 `HUMAN_ONLY` 路径。遇到 refusal 或 unavailable effect 后，先分类为 `OPTIONAL_NOT_REQUIRED`、`SANDBOX_CAPABLE_BUT_ESCALATED`、`BOUNDED_NORMAL_ENTRY_BLOCKER` 或 `TRUE_AUTHORITY_OR_SAFETY_BOUNDARY`，再决定下一步。optional 工作可以跳过并继续 required work；误用 escalated 路径的 sandbox-capable effect 且尚未发生时，只能回到普通 sandbox route；bounded normal-entry blocker 必须保留已完成工作，不能扩大成 raw operation，例如 `ai-bridge host publish-current-branch` 失败不授权 raw `git push`；true authority 或 safety boundary 继续使用既有 approval、`HUMAN_ONLY`、Planner 或 STOP 路径。
-
-全局 execpolicy 目前只维护当前分支普通开发所需的低打扰前缀：
+当前分支普通开发的低打扰前缀只包括：
 
 ```text
 git fetch origin main
@@ -106,25 +96,9 @@ ai-bridge host publish-current-branch --expected-repo <owner/repo> --expected-br
 ai-bridge reviewed-handoff task publish-first --task-key <task_key> --expected-repo <owner/repo>
 ```
 
-这些规则用于跳过当前已选 `main` 分支安全同步、task-owned staging、普通 commit、bounded current-branch publisher，以及 exact Reviewed first-bootstrap control metadata 首次发布的 manual/auto review。其他长期分支如果也需要低打扰发布，应由项目规则或用户明确授权补充，不得靠泛化 `git push origin ...` 猜测。`git pull --rebase ...`、`git pull ... --autostash`、raw `git push origin main`、`git push -u origin ...`、`git push --set-upstream origin ...`、`git push origin <new-branch>`、`git push origin --delete ...`、raw `--force-with-lease`、force push、创建或改变 upstream、创建新远端分支等不是普通同步或 bounded 发布，必须先问用户。它们也不是对危险 Git 行为的授权；危险操作仍受 Host AGENTS 行为规则禁止。
+这些规则只覆盖当前已选 `main` 安全同步、task-owned staging、普通 commit、bounded current-branch publisher 和 exact Reviewed first-bootstrap control metadata 首次发布。`git pull --rebase`、`--autostash`、raw `git push origin main`、`git push -u` / `--set-upstream`、创建/删除/重命名/切换 branch、创建新远端 branch、force / `--force-with-lease`、reset/clean/restore、remote mutation 和 PR 创建都必须另获明确授权。
 
-0.7.2 起，Host Policy 还维护一个很窄的 Slurm inspection allowlist：直接
-`squeue`、`sinfo`、`sacct`、`sstat`、`sprio`，以及 `scontrol show ...` /
-`scontrol ping`。这只是 command-shape read-only inspection 授权，不是 HPC
-通用信任。`sbatch`、`srun`、`salloc`、`scancel`、mutating `scontrol`、
-`sacctmgr modify` / add / delete，以及 `bash -lc ...`、`xargs`、Python 或脚本包装
-的 Slurm 命令仍必须走审批路径。不要用 prose 假装 prefix rule 能验证 job ownership、
-pipeline 最终是否 mutation、worktree 是否 clean 或文件是否 task-owned；需要这些动态条件时必须使用 bounded wrapper 或继续 prompt。
-
-0.7.3 起，Host Policy 只额外修复已复现的低风险 unattended diagnostics false
-positive：直接 `ps`、`git fetch --all --prune`、`tmux ls`、`tmux list-sessions`
-和 `tmux has-session ...` 可以低打扰通过。默认 `ps` 使用
-`ps -u "$USER" -o pid,ppid,stat,etime,cmd`，只把 process listing 当作诊断证据；
-`tmux` 只用于 session existence / listing；`git fetch --all --prune` 只代表已配置
-remote 的常规同步。`kill`、`pkill`、`renice`、`setsid`、`sudo`、generic shell、
-generic Python、tmux mutation/control、arbitrary `git fetch` URL/refspec 和危险
-Git 仍必须保持 gated。不要因为某个 optional diagnostic 不完美，就终止整个
-unattended Goal 或升级成新的 allocation / cancellation / wrapper / state machine。
+Host Policy 的 read-only diagnostics allowlist 保持窄边界：直接 `squeue`、`sinfo`、`sacct`、`sstat`、`sprio`、`scontrol show ...` / `scontrol ping` 只是 Slurm inspection；`sbatch`、`srun`、`salloc`、`scancel`、mutating `scontrol`、`sacctmgr modify/add/delete` 仍审批。直接 `ps`、`git fetch --all --prune`、`tmux ls` / `tmux list-sessions` / `tmux has-session` 只用于低风险诊断；`kill`、`pkill`、`renice`、`setsid`、`sudo`、generic shell/Python、tmux mutation/control、arbitrary git fetch URL/refspec 和危险 Git 仍 gated。不要把 optional diagnostic failure 升级成新 allocation、cancellation、wrapper 或状态机。
 
 ### Production Plugin Replay
 
@@ -136,23 +110,11 @@ ai-bridge plugin-replay ...
 
 当用户或冻结 workflow 已经授权本机 production plugin repair/replay，且确实需要 fresh Codex runtime 测试当前 Codex identity 中已安装的插件时，使用这个入口。不要自行拼 raw nested `codex exec` 再申请审批。
 
-`plugin-replay` 只允许 target Git repo 内文件，或固定 trusted inbox `${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}/plugin-replay/inbox/` 内的显式 input file；symlink resolve 后仍必须落在这些授权根内。task/instruction file 只能来自 target Git repo、当前 caller Git repo 或同一 trusted inbox。replay 使用当前 Codex identity，不允许通过该入口切到另一个 `$CODEX_HOME`。这是 write-isolated / execution-bounded trusted-local replay：当前 Codex runtime 可能读取同一用户可读文件，wrapper 只把 read scope 作为 diagnostic 如实记录，不宣称 strict read isolation。replay 内容和完整输出留在 `${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}/plugin-replay/` 本机目录。它不授权外部上传、发布、危险 Git、branch/remote mutation、release/deploy 或产品/科学 scope expansion；这些仍按原 Host Policy 审核。
+`plugin-replay` 只允许 target Git repo 内文件或 `${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}/plugin-replay/inbox/` 的显式 input；symlink resolve 后仍在授权根内。task/instruction file 只能来自 target repo、caller repo 或同一 inbox。replay 使用当前 Codex identity，不切换 `$CODEX_HOME`；输出留在 `${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}/plugin-replay/`。它是 write-isolated / execution-bounded trusted-local replay，不授权外部上传、发布、危险 Git、branch/remote mutation、release/deploy 或产品/科学 scope expansion。
 
 ### External Planner / Reviewer Waiting
 
-全局 Host AGENTS 还必须携带通用 external GPT 等待规则。只要 repository-controlled workflow 明确表示下一动作属于外部 GPT Planner、Reviewer、Critic、Final Critic 或同类 reasoning role，尚未出现新 decision 就是正常等待，不是实现失败。
-
-这条规则适用于 Lite/custom repository workflow、Review、Control，以及以后安装的 Planner-driven workflow。识别时优先看当前 state ownership、`next_action`、role policy、repository schema 和 workflow contract；不要只靠固定状态字符串。`READY_FOR_GPT_REVIEW`、`NEEDS_GPT_PLANNER`、`READY_FOR_PLANNER_REVIEW`、`WAITING_FOR_EXTERNAL_GPT`、`READY_FOR_CRITIC_FINAL_AUDIT` 等只是常见例子。
-
-外部 GPT 等待的正常最短窗口是 `MIN_EXTERNAL_GPT_WAIT = 2 hours`，从本轮实现正式发布并交棒到 external-GPT-owned state 起算。2 小时是 minimum grace，不是自动 `BLOCKED` deadline。超过 2 小时后，只要 repository state 仍合法、implementation/result 仍完整、外部 GPT 机制仍存在，且没有明确 connector/auth/scheduler/schema/artifact-access/user-decision/workflow-contract failure，就继续视为 `waiting_external_review`。
-
-等待期间使用低频检查，通常只刷新授权 branch、读取 `CURRENT`/workflow state、比较当前 implementation/review target 与最新 external decision、必要时检查 CI/check 状态。纯等待不得消耗 `review_round`、`repair_round`、`plan_revision`、`retry_count`、`critic_round`、blocked-audit attempts 或 Executor retry budget。
-
-旧 review 不等于新 review。凡是 `reviewed_commit`、`implementation_commit`、`review_target_id`、snapshot identity 或当前 round 不匹配当前实现/review target 的 Planner/Reviewer/Critic artifact，都只能视为 stale decision；不能重复执行旧 `REVISE`，也不能把 stale artifact 当成新 PASS/BLOCKED。
-
-如果当前 Codex activity 无法继续保持 Goal，只能报告 `waiting_external_review`，并保持 repository tracked workflow state 不变；不得写 terminal `FINAL_REPORT.md`，不得把 workflow state 改成 `BLOCKED`，不得要求用户重置 `CURRENT` 或伪造 Planner decision。
-
-只有存在可观察证据时才允许 external-review `BLOCKED`：例如 Scheduled GPT automation 明确 disabled/deleted/expired，connector/auth 重复失败，外部角色安装缺失，repository state 非法，必需 review artifact 无法访问，visual review 环境确定无法读取必要图片，用户必须做新的产品/科学/branch 决策，或 workflow 规定的真实 hard deadline 已过。每个 `BLOCKED` 必须写明 actual failure、observed evidence、为什么继续等待不能自动恢复，以及 recovery action。
+通用 external GPT 等待规则必须保留：当 repo-controlled workflow 表示下一动作属于外部 GPT Planner/Reviewer/Critic/Final Critic 等 reasoning role，未出现新 decision 是正常等待。识别以 state ownership、`next_action`、role policy、schema 和 workflow contract 为准；`READY_FOR_GPT_REVIEW`、`NEEDS_GPT_PLANNER`、`WAITING_FOR_EXTERNAL_GPT` 等只是例子。`MIN_EXTERNAL_GPT_WAIT = 2 hours` 是正常等待下限，不是自动 `BLOCKED` deadline；等待不得消耗 review/repair/plan/retry/critic/blocked-audit 预算。stale Planner/Reviewer/Critic artifact 不能触发 repair 或 PASS。无法保持活动时只报告 `waiting_external_review` 并保持 tracked state；只有 automation disabled/deleted、connector/auth repeated failure、外部角色缺失、非法 state、必需 artifact 不可达、真实 visual 环境不可用、用户必须新决策或 hard deadline 已过等可观察失败，才可写明 evidence 进入 `BLOCKED`。
 
 ## 3. 新 repository：默认先装 Lite
 
@@ -290,11 +252,7 @@ scope、训练预算、数据、模型和 completion 继续由原 Goal/task/work
 
 ## 6. Overleaf Bridge：只有需要论文 publication mirror 时配置
 
-Overleaf Bridge 是项目层可选能力，不是 Handoff task、Review、Control、watcher、Scheduled Task 或新的 role。它用于科研 monorepo：Codex 仍在整个 repository 根目录读取代码、分析、结果、docs 和论文；Overleaf 只接收配置的 `paper_root`。
-
-Overleaf 本身不能从一个 GitHub monorepo 中只 Pull 某个子目录。Bridge Kit 的正确语义是：在机器本地维护独立 Overleaf Git mirror，并把 consumer repo 中配置的 manuscript publication root 投影进去。不要把文档写成“Overleaf 从 GitHub 拉取 paper folder”。
-
-consumer repo 只安装：
+Overleaf Bridge 是项目层可选 publication mirror，不是 Handoff task、Review、Control、watcher、Scheduled Task 或新 role。Codex 仍读科研 monorepo 根目录；Overleaf 只接收配置的 `paper_root`。Overleaf 不能从 GitHub monorepo 只 Pull 子目录；正确语义是在机器本地维护独立 Overleaf Git mirror，并投影 consumer repo 的 manuscript root。consumer repo 只安装：
 
 ```text
 automation/overleaf/
@@ -302,7 +260,7 @@ automation/overleaf/
 └── config.toml
 ```
 
-并在根 `AGENTS.md` 维护一个 Overleaf managed block。机器本地 state 放在：
+并在根 `AGENTS.md` 维护 Overleaf managed block。机器本地 state 放在：
 
 ```text
 ${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}/overleaf/<repo-id>/
@@ -310,7 +268,7 @@ ${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}/overleaf/<repo-id>/
 └── mirror/
 ```
 
-`mirror/` 是 Overleaf Git project 的本地 clone；`connection.json` 可以保存 Overleaf Git URL、baseline digest、remote commit locator、local locator 和 managed paths，但不得保存 authentication token。
+`mirror/` 是 Overleaf Git project 的本地 clone；`connection.json` 可保存 URL、baseline digest、remote/local locator 和 managed paths，但不得保存 token。
 
 常用命令：
 
@@ -323,17 +281,13 @@ ai-bridge overleaf pull --target /path/to/repo
 ai-bridge overleaf validate --target /path/to/repo
 ```
 
-不得把 Overleaf 当作科研 repo 的第二个 remote。`install/connect/status/push/pull/validate` 不得修改 consumer repo 的 `origin`、branch topology、upstream 或 remote list，不得执行 force push，不得创建 branch/PR/tag/release。正常 operation 所依赖的 Overleaf remote 只存在于机器本地 mirror。
-
-认证边界必须保持：不添加 `--token`、`--password` 参数；不把 token 写进 URL、`connection.json`、tracked config、README 示例、日志或异常；不实现 credential database；不降级到旧账号密码认证。真实访问 Overleaf 时让 Git 正常请求 token，并由用户自己的 Git credential helper 处理后续持久化。
-
-同步安全优先级高于便利性。必须维护 baseline digest，并在每次 push/pull 前比较 `baseline`、`local`、`remote`：remote ahead 拒绝 push；local ahead 拒绝 pull；双边变化且内容不同为 diverged，必须 fail closed；local 与 remote 等价时只刷新 baseline，不制造垃圾 commit。`pull` 只把 Overleaf 内容导入 `paper_root`，只删除 Bridge 曾管理的 publication files，保留 `exclude_paths`，不得修改 `paper_root` 外任何文件，也不得自动 commit 或 `git push origin main`。
+不得把 Overleaf 当作科研 repo 第二个 remote；不得修改 consumer repo 的 `origin`、branch topology、upstream 或 remote list，不得 force push、创建 branch/PR/tag/release。认证边界：不添加 `--token`/`--password`，不把 token 写进 URL、state、tracked config、README、日志或异常，真实访问由 Git credential helper 处理。同步必须维护 baseline digest：remote ahead 拒绝 push，local ahead 拒绝 pull，双边不同为 diverged/fail closed；`pull` 只导入 `paper_root`、只删除 Bridge 曾管理的 publication files、保留 `exclude_paths`，不改 `paper_root` 外文件，不自动 commit/push。
 
 ## 7. Review：中等风险任务的默认独立复核模式
 
 当任务需要 GPT 先做产品/语义/架构取舍、Codex 执行后再由独立 GPT 审核，但不需要 Control 的独立合同、Verifier 和 Final Critic 时，使用 Review。
 
-典型场景包括外部 repository/skill intake、第三方能力引入、中等规模重构、文档体系迁移和普通产品 feature。它的判断标准不是修改文件数量，而是：Codex 不应该自己发明产品语义，并且用户希望实现后有一次真正独立的 GPT review。
+典型场景包括外部 repo/skill intake、第三方能力引入、中等重构、文档迁移和普通产品 feature。判断标准不是文件数量，而是 Codex 不应自创产品语义且用户希望实现后有独立 GPT review。
 
 ```bash
 ai-bridge reviewed-handoff install --target /path/to/project
@@ -357,7 +311,7 @@ Review 的运行原则：
 - Scheduled GPT 最多允许一次最小 Plan revision；再次需要改变冻结 Plan 时必须交给用户。
 - 所有终态都必须生成 `FINAL_REPORT.md`。用户最终应能只读这份报告理解解决了什么、改了哪里、获得了什么新能力、哪些方案被拒绝、example usage 和 remaining limitations。
 
-GPT 异步唤醒使用 ChatGPT Scheduled Tasks/「安排任务」，通过 GitHub tracked `CURRENT.json` 与 Codex 协作，不使用 OpenAI API。没有需要 Planner/Reviewer 的 task 时，Scheduled Task 必须无副作用退出，不重复 review、不写无意义 commit、不通知用户。
+GPT 异步唤醒使用 ChatGPT Scheduled Tasks，通过 GitHub tracked `CURRENT.json` 协作，不使用 OpenAI API；无 Planner/Reviewer task 时无副作用退出。
 
 Codex 异步唤醒由目标机器上的轻量 watcher 完成：
 
@@ -367,9 +321,7 @@ ai-bridge reviewed-handoff watcher run \
   --branch <existing-authorized-branch>
 ```
 
-Watcher 只处理 `PLAN_FROZEN` / `REVISE`，只使用已经 checkout 且获授权的 branch，不创建 branch/PR。它通过 `git fetch` + `merge --ff-only` 同步 `origin/<branch>`，working tree 不干净时 fail closed。机器本地 event 去重与日志必须存放在 `${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}/reviewed-handoff/<repo>/`，不得为了 watcher state 修改目标 repository。
-
-Watcher 不保留 persistent role thread、独立 worktree receipt 或 hash event identity。每个 executor event 启动一次新的 `codex exec`。Codex exit 0 本身不代表完成；只有 `CURRENT` 真正离开原 event 才算 progress。同一 event 自动执行尝试必须有界，耗尽时发布可见 operational `BLOCKED` 和 `FINAL_REPORT.md`，不得无限循环。
+Watcher 只处理 `PLAN_FROZEN` / `REVISE`，只使用已 checkout 且获授权 branch，不创建 branch/PR；用 `git fetch` + `merge --ff-only` 同步 `origin/<branch>`，dirty fail closed。本地 event 去重与日志放 `${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}/reviewed-handoff/<repo>/`，不为 watcher state 改目标 repo。每个 executor event 启动一次新 `codex exec`；exit 0 不代表完成，只有 `CURRENT` 离开原 event 才算 progress；尝试有界，耗尽写 operational `BLOCKED` + `FINAL_REPORT.md`。
 
 ### Review Anti-Overengineering Invariants
 
@@ -398,13 +350,13 @@ Review v0.5 的权威规格：
 docs/V0_5_REVIEWED_HANDOFF_IMPLEMENTATION_SPEC.md
 ```
 
-如果 Review 的验收依赖完整 user-facing Markdown/plain-text artifact，但 plaintext 不能公开提交，使用 Text Review evidence path：本机用 `ai-bridge text-review encrypt` 通过 age public recipient 生成 encrypted payload + `text_inputs.json`，GitHub Actions 用 `AI_BRIDGE_PRIVATE_REVIEW_AGE_KEY` 临时解密并调用 OpenAI Responses API `store=false` 产出 `TEXT_REVIEW.json`。`TEXT_REVIEW.json` 是现有 Scheduled GPT Reviewer 消费的 evidence，不是新 role；缺失、stale、plaintext SHA mismatch 或 manifest identity mismatch 都不得支持 PASS。
+若 Review 依赖完整 Markdown/plain-text artifact 但 plaintext 不能公开提交，使用 Text Review evidence path：本机 `ai-bridge text-review encrypt` 生成 encrypted payload + `text_inputs.json`，GitHub Actions 用 `AI_BRIDGE_PRIVATE_REVIEW_AGE_KEY` 临时解密并调用 OpenAI Responses API `store=false` 产出 `TEXT_REVIEW.json`。它是 Scheduled GPT Reviewer evidence，不是新 role；缺失、stale、plaintext SHA/manifest mismatch 不得 PASS。
 
 ## 8. Control：仅对高风险 repository 显式安装
 
 只有当任务需要独立合同审计、独立 Verifier、Stable Review Snapshot、Final Critic 和严格 human gate 时，才在 repository 叠加 Control。
 
-典型适用场景包括科研架构实现、昂贵训练/计算、数据或安全敏感逻辑、生产部署、重大迁移，以及 false PASS 代价很高的工作。
+典型场景包括科研架构、昂贵训练/计算、数据或安全敏感逻辑、生产部署、重大迁移，以及 false PASS 代价很高的工作。
 
 ```bash
 ai-bridge agent-flow install --target /path/to/project
@@ -432,23 +384,21 @@ Verifier
 Executor
 ```
 
-不要新增功能重叠的 Reviewer/Auditor/Coordinator 角色来扩大流程。Planner 拥有用户/产品/科学意图与实现审查权；Critic 只参与 initial contract audit、必要 contract review 和 final audit；Controller 只做机械状态/路由；Verifier 只能基于冻结 requirement 建立阻断 oracle；Executor 只负责实现和授权 runtime evidence。
-
-Control 的核心设计必须保持“严格验证、简单编排”。不要把 CARE 原型中的大量 receipt/hash/moving Git target 复制进 generic core。Stable Review Snapshot 的语义身份只能由真正的合同、Requirement Ledger、implementation semantic source 和 verifier semantic source 决定；CURRENT、Controller receipt、通知、文档等控制平面变化不得默认触发 heavy re-verification。
+不要新增重叠 Reviewer/Auditor/Coordinator。Planner 拥有用户/产品/科学意图与实现审查权；Critic 只做 initial/必要 contract/final audit；Controller 只做机械路由；Verifier 基于冻结 requirement 建阻断 oracle；Executor 只负责实现和授权 runtime evidence。Control 必须“严格验证、简单编排”，不要把 CARE 原型的大量 receipt/hash/moving Git target 复制进 generic core；Stable Review Snapshot 语义身份只由合同、Requirement Ledger、implementation semantic source、verifier semantic source 决定，控制面变化默认不触发 heavy re-verification。
 
 ### Control Anti-Overengineering Invariants
 
-Semantic identity must stay small. `review_target_id` 只能由 task identity、frozen contract digest、Requirement Ledger digest、implementation semantic digest 和 verifier semantic digest 组成。未经用户明确架构决策，不得把 Git locator SHA、`CURRENT.json`、Controller state、Controller merge commit、role/session receipt hashes、Review Bundle hash、Planner review packet hash、Final Critic artifact hash、CI-record commit、runtime receipt commit、notification brief 或 documentation-only files 加入 `review_target_id`。Git SHA 可以作为 locator/provenance，但不能因为 Git history 移动而改变 semantic review identity。
+Semantic identity must stay small. `review_target_id` 只能由 task identity、frozen contract digest、Requirement Ledger digest、implementation semantic digest、verifier semantic digest 组成。未经用户明确架构决策，不得加入 Git locator SHA、`CURRENT.json`、Controller state/merge commit、receipt hashes、Review Bundle hash、Planner/Final Critic artifact hash、CI/runtime/notification/doc-only 文件。Git SHA 可作 locator/provenance，不能改变 semantic review identity。
 
-No provenance hash cycles. 禁止设计 `A hashes B`、`B hashes C`、`C hashes A`，也禁止通过 commit、receipt、manifest 的相互绑定间接形成 cycle。合法结构必须保持单向：semantic source -> semantic target -> current evidence -> Review Bundle -> Planner / Final Critic。
+No provenance hash cycles. 禁止直接或间接 hash cycle；合法结构单向：semantic source -> semantic target -> current evidence -> Review Bundle -> Planner / Final Critic。
 
 Control-plane changes stay lightweight. `CONTROL_PLANE_ONLY_CHANGED`、`RECEIPT_OR_MANIFEST_ONLY_CHANGED`、`CURRENT_OR_ROUTING_ONLY_CHANGED` 和 `DOC_ONLY_CHANGED` 默认不得触发新 semantic target、Executor restart 或 heavy Verifier，除非 Project Profile 明确把相关文件声明为 semantic source。
 
-Heavy verification requires semantic reason. 相同 `review_target_id` 的第二次 heavy Verifier 必须具有机器可验证的 semantic invalidation reason；receipt update、`CURRENT` update、Controller retry、notification、documentation 和 provenance repair 不是 heavy rerun 理由。
+Heavy verification requires semantic reason. 相同 `review_target_id` 再跑 heavy Verifier 必须有机器可验证的 semantic invalidation；receipt、`CURRENT`、retry、notification、docs 和 provenance repair 不是理由。
 
-Review Bundle stays compact. `REVIEW_BUNDLE.json` 只包含当前 target 所需的 current evidence references。不得重新引入 all historical receipts、giant runtime manifests、full smoke history、all previous Planner/Critic packets 或 all Controller transaction history。历史 artifact 可以保留供审计，但不能默认复制进每个 current Review Bundle。
+Review Bundle stays compact. `REVIEW_BUNDLE.json` 只含当前 target 所需 evidence references；不要复制全部历史 receipts、runtime manifests、smoke history、旧 Planner/Critic packets 或 Controller transaction history。
 
-New provenance fields need justification. 未来如果 Codex 认为需要增加新的 SHA、digest、receipt、manifest、binding 或 state，必须先回答：它防止什么具体 false PASS；现有 semantic identity / typed evidence 为什么不能解决；它是否会导致 receipt-only 或 control-plane-only change 触发昂贵重跑；是否形成新的 hash dependency chain；是否可以通过普通字段或 locator 解决而无需 hash。没有明确收益时不增加。
+新增 SHA/digest/receipt/manifest/binding/state 前必须说明防止什么 false PASS、现有 identity/evidence 为何不足、是否导致 receipt/control-plane-only 触发重跑、是否形成 hash dependency chain、是否可用普通字段/locator 替代；无明确收益不增加。
 
 Control v0.4 的当前实现与正确性要求以以下文件为准：
 
