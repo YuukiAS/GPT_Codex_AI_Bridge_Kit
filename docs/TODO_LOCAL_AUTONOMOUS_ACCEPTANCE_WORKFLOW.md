@@ -1,7 +1,41 @@
 # TODO — Local Autonomous Acceptance Workflow
 
-Status: NEW / DESIGN CANDIDATE  
-Priority: MEDIUM-HIGH — extracted from the Lucerna final-acceptance workflow on 2026-09-28.
+Status: **CLOSED / RESCOPED TO AI_Skills `workflow-core` — NOT A BRIDGE KIT WORKFLOW**  
+Priority: historical design evidence retained; no Bridge implementation planned.  
+Closed: 2026-10-12
+
+## Closure decision — 2026-10-12
+
+This TODO is closed as a Bridge Kit product/workflow proposal.
+
+The underlying user requirement remains valid:
+
+> Codex must not hand the user an unvalidated product/artifact and make the user the first QA pass.
+
+That requirement is not owned by a new Bridge runtime mode. Ownership is now:
+
+- **Bridge Kit**: reliable execution substrate only — sandbox/approval continuity, Git/worktree/runtime identity, fresh-session/recovery and other cross-repository execution primitives.
+- **AI_Skills `workflow-core`**: delivery admission — a task must not claim user-ready/release-ready completion until the final candidate has passed the required domain-owned self-QA / artifact-quality gate.
+- **Domain plugins / skills**: professional acceptance criteria and actual artifact review, e.g. Frontend Design for UI/native interaction quality, Presentations for rendered slides, Research Authoring/Writing for manuscript/report quality.
+- **Task Goal / Planner**: may require an additional fresh local Codex reviewer when independent local re-check is useful; this is task-specific assurance, not a mandatory fourth Bridge workflow.
+
+Therefore Bridge Kit will **not** implement:
+
+- a `local-review` top-level workflow or CLI;
+- a new Executor/Reviewer state machine;
+- a new watcher/controller/daemon for iterative local QA;
+- mandatory fresh-review passes for every task;
+- domain-specific UI/presentation/research quality logic.
+
+The useful Lucerna evidence and the historical design discussion below are retained as provenance, not as active Bridge implementation scope.
+
+Canonical transferred TODO:
+
+`YuukiAS/AI_Skills_Collection@main:docs/plugin-todos/workflow-core.md`
+
+Heading:
+
+`Final delivery must consume domain-owned self-QA before user-ready completion`
 
 ## Why this TODO exists
 
