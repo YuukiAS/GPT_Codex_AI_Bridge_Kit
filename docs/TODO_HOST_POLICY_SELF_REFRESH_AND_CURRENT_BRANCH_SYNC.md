@@ -153,7 +153,7 @@ if `0.10.0` is not yet formally distributed, fold this into its reviewed
 closure when appropriate; otherwise evaluate one `0.10.1` patch. Do not bump
 a version as a substitute for a complete release gate.
 
-### Required 0.10.1 behavioral contract
+### Candidate A behavioral contract (original 0.10.1 proposal)
 
 The helper should:
 
@@ -170,7 +170,7 @@ The helper should:
 
 The helper should be the normal low-friction route for this effect. Raw non-main branch pull/merge should remain approval-sensitive.
 
-### 0.10.1 acceptance evidence
+### Candidate A acceptance evidence
 
 In addition to the existing unit/integration suite, add deterministic fixtures for:
 
@@ -196,12 +196,12 @@ Negative:
 - SSH/scp/custom transport where the bounded GitHub HTTPS contract is required;
 - any attempt that would require checkout/switch, branch creation, rebase, reset, autostash, force or remote mutation.
 
-Patch release closure should include:
+Release closure, after the actual target/version is independently verified, should include:
 
-- version bump to `0.10.1`;
-- CHANGELOG entry identifying the two independent STAT5060 reproductions;
-- exact-sha CI PASS;
-- Host Policy validation including the new helper allow rule;
+- a coherent package/release version reflecting the selected formal target (no unconditional `0.10.1` bump);
+- CHANGELOG entry covering both independent STAT5060 reproductions and the Lucerna rule-loading/Host readiness regression;
+- exact-sha CI PASS and relevant fresh-consumer acceptance gates;
+- Host Policy validation including the new bounded helper allow rule and Candidate B task-start preflight/recovery contract;
 - formal release/distribution closure through the existing Bridge maintainer path.
 
 ## Candidate B — task-start policy readiness and bounded recovery
@@ -426,19 +426,19 @@ Negative:
 
 All negatives fail before mutation.
 
-### Host self-refresh
+### Host Policy readiness and safe recovery
 
 Positive:
-- stale managed Host Policy from an older Bridge-managed install refreshes to the exact installed formal-release bytes with backup;
-- `host validate` passes afterward;
-- fresh-session requirement is reported honestly.
+- stale managed Host Policy is detected before expensive consumer work;
+- if bounded in-session refresh is safe and implemented, it updates only exact Bridge-owned managed files from the selected formal release, creates backups and verifies afterward;
+- otherwise, one scoped out-of-session update plus a fresh Codex session restores valid Host Policy and resumes the **same** Goal from preserved task state;
+- `host validate` and project strict validation pass after recovery; required fresh-session boundaries are reported honestly.
 
 Negative:
-- symlink/path redirection;
-- unrelated user-owned file mutation;
-- non-current `CODEX_HOME`;
-- arbitrary plugin install/config mutation;
-- source/release identity mismatch.
+- symlink/path redirection or unrelated user-owned file mutation;
+- non-current `CODEX_HOME` or mismatched source/formal-release identity;
+- arbitrary plugin install/config mutation, shell elevation, unauthorized global writes or refusal-cascade fallback;
+- pretending that a read-only diagnostic changed active policy, or that the old session automatically ingested refreshed instructions.
 
 ## Non-goals
 
