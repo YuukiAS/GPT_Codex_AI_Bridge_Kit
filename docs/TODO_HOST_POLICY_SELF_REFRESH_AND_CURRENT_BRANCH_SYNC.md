@@ -1,8 +1,9 @@
 # TODO — Host Policy Self-Refresh and Current-Branch Sync
 
-Status: READY FOR PLANNER INTAKE / TARGET NEXT PATCH RELEASE 0.10.1 / NOT IMPLEMENTATION AUTHORIZATION  
-Priority: current-branch sync = HIGH; host-policy self-refresh = MEDIUM  
-Date: 2026-10-06
+Status: READY FOR PLANNER INTAKE / NEXT COHERENT RELEASE (VERSION MUST BE VERIFIED) / NOT IMPLEMENTATION AUTHORIZATION  
+Priority: current-branch sync = HIGH; mandatory-rule/load + Host identity preflight = CRITICAL; safe Host recovery = HIGH  
+Date: 2026-10-06  
+Amended: 2026-10-12 — Lucerna rule-budget and installed-identity regression
 
 ## Real incident
 
@@ -45,6 +46,47 @@ This incident also clarifies the ownership boundary:
 - the long-term fix belongs in Bridge Kit, not in every project Goal prompt;
 - a project Goal may still name the expected repo/branch so the bounded helper can prove scope.
 
+### Independent reproduction — Lucerna instruction truncation and approval drift (2026-10-08–10-12)
+
+Lucerna's root `AGENTS.md` grew to approximately 54 KiB / 710 lines. A fresh
+Codex session reported truncation at 32,768 bytes. Despite the Bridge Lite
+validation workflow, the project could retain a present, syntactically valid
+`AGENTS.md` that Codex did not fully ingest. The agent then requested human
+confirmation to replace the root file even though the user-authored governance
+Goal explicitly authorized that exact repository-policy rewrite in an isolated
+worktree. Its governance run reported `RULE_LOADING=FAIL`,
+`RUNTIME_ENFORCEMENT=FAIL` (filesystem protection passed, desktop/process
+isolation did not), and `INDEPENDENT_AUDIT=NOT_RUN`.
+
+Evidence boundaries:
+
+- The observed truncation is a concrete rule-delivery failure; it does **not**
+  prove every later behavioral error was caused by truncation. Several relevant
+  Lucerna UI/fixture constraints already occurred near the start of the file.
+- The repeated `AGENTS.md` confirmation is an observed authority-classification
+  error, not proof of a platform-level sandbox approval denial. A Goal entered
+  directly by the user is not equivalent to an untrusted repository file that
+  merely claims authorization.
+- Desktop/process enforcement is a consumer operating-system/Codex sandbox
+  boundary. Bridge may detect and report that boundary at preflight, but cannot
+  declare it enforced merely by installing written rules or hooks.
+- Existing Bridge `validate_workspace()` checks expected file existence,
+  protocol/frontmatter shape, etc., but currently does not calculate effective
+  project-instruction loading bytes. Existing `host validate` diagnostics
+  report several identities but do not provide an end-to-end, task-start
+  compatibility guarantee for the active Codex session.
+- The repository README currently describes source `0.10.0` as a candidate
+  and formal distribution `0.9.3`, while `pyproject.toml` read from the
+  remote `release` ref advertises `0.10.0`. This is a **reconciliation
+  trigger**, not permission to guess which release reference or documentation
+  is authoritative. Verify the actual moving ref, imported package and release
+  metadata before rewriting version claims.
+
+**Routing:** These Lucerna regressions are part of Candidate B's existing
+Host Policy / task-start readiness / safe recovery work, not a new sixth
+product feature or a Lucerna-specific Bridge fork. Candidate A below remains
+in scope without widening Git mutation authority.
+
 ## Candidate A — bounded current-branch fast-forward sync
 
 This is the higher-value addition.
@@ -84,19 +126,32 @@ Why this is worth adding:
 This should be a Bridge-owned dynamic check, not a broad execpolicy allow for arbitrary `git merge` or `git pull`.
 
 
-## Recommended 0.10.1 patch scope
+## Recommended coherent release scope (version not frozen)
 
-Recommended next small release: **0.10.1**.
+The original 2026-10-06 recommendation was a narrow `0.10.1` patch for
+Candidate A, with self-refresh optional. Lucerna's independent rule-loading
+failure changes the readiness priority: **Candidate B must now deliver
+preflight detection and an honest, tested recovery contract in the same
+convergence package**, even if in-session policy mutation remains unsafe and
+is explicitly deferred.
 
-Keep the patch intentionally narrow:
+Keep exactly the two existing capability areas:
 
-1. implement Candidate A only: `ai-bridge host sync-current-branch`;
-2. add the corresponding Host Policy allow entry for that bounded helper;
-3. add positive/negative tests covering the exact non-main same-name fast-forward contract;
-4. update README / Quickstart / Host Policy documentation so agents use the helper instead of raw non-main `git pull`;
-5. preserve all existing 0.10.0 behavior for `main`, publication, Reviewed Mode and dangerous Git boundaries.
+1. **Candidate A — bounded current-branch sync:** preserve the narrow
+   existing-branch, same-name, fast-forward-only contract and its tests.
+2. **Candidate B — trustworthy machine/project readiness:** enforce strict
+   cumulative AGENTS budget checks; identify effective Host Policy, project
+   policy and installed/runtime/release identity; detect drift before substantive
+   work; provide either a narrowly safe supported refresh or a one-time external
+   update + fresh session + same-Goal resume; validate that distribution/docs
+   state is truthfully labeled.
 
-Candidate B (`host refresh-policy`) should remain deferred unless Planner finds a coupling that makes it necessary for the same patch. It is useful but is not required to close the repeatedly reproduced non-main sync defect.
+Do not add a standalone `rules-budget` product, daemon, new workflow state
+machine, generic privilege bypass or a third authority owner. Planner/Critic
+must inspect the actual distributed `release` ref before selecting version:
+if `0.10.0` is not yet formally distributed, fold this into its reviewed
+closure when appropriate; otherwise evaluate one `0.10.1` patch. Do not bump
+a version as a substitute for a complete release gate.
 
 ### Required 0.10.1 behavioral contract
 
@@ -149,9 +204,12 @@ Patch release closure should include:
 - Host Policy validation including the new helper allow rule;
 - formal release/distribution closure through the existing Bridge maintainer path.
 
-## Candidate B — bounded Host Policy self-refresh
+## Candidate B — task-start policy readiness and bounded recovery
 
-Lower priority, but useful for avoiding the stale-policy bootstrap loop.
+Lucerna raises **detection and recovery** to a required capability. A
+self-refresh helper remains an implementation option only if its actual
+permission/ownership boundary can be proven safe; do not require self-mutation
+of a read-only `CODEX_HOME` merely to award a recovery PASS.
 
 Possible shape:
 
@@ -176,12 +234,137 @@ It must not become:
 - a way to bypass arbitrary Auto-review decisions;
 - a generic config mutation primitive.
 
-Why only MEDIUM priority:
+Why preflight is now critical:
 
-- Host Policy updates are occasional, not part of every repository task.
-- A fresh session after machine update is already an honest process boundary.
-- The current manual `host install` route works outside a stale/read-only running sandbox.
-- It is useful mainly to remove the chicken-and-egg case where an outdated active policy prevents its own bounded refresh.
+- A partially ingested instruction set can silently invalidate a normal
+  project task long before any optional Host refresh is attempted.
+- Host, active `CODEX_HOME`, executable/imported source, installed rules and
+  project rules must be checked **before** costly execution, not as a late
+  bootstrap surprise.
+- A fresh session after a safe, external one-time policy update is an
+  acceptable boundary; unsupported running-session hot reload is not.
+- Repo-local rule validation and Host validation must have one documented
+  composition so a caller cannot mistake one for the other.
+
+### B1. Strict effective project-instruction byte budget
+
+Extend existing `ai-bridge validate --strict` rather than introducing a new
+feature/command simply to check rule length.
+
+Required semantics:
+
+1. Resolve the **effective** Codex instruction-discovery behavior for the
+   actual `CODEX_HOME`, selected repository/worktree and target current
+   working directory. Account for applicable global, ancestor, repository
+   root and nested `AGENTS.md` / `AGENTS.override.md` / configured fallback
+   names according to the runtime's real precedence, not a hard-coded
+   root-only list. Clearly distinguish any global instructions exempt from a
+   project-byte cap from instructions counted by that cap.
+2. Read `project_doc_max_bytes` from the **effective configuration** when
+   available. Default to 32,768 bytes only when that is actually the runtime
+   default. Inspect user, project and startup override precedence; if a
+   session-only override cannot be observed, disclose the unverifiable part
+   instead of asserting exact equivalence with an active session.
+3. Measure **bytes actually consumed by Codex**, not Unicode characters,
+   Markdown lines or total text in linked reference documents. Treat UTF-8,
+   line endings and BOM as bytes in the raw file; verify against native
+   ingestion/decoding behavior. A Bridge-managed block is already part of its
+   owning AGENTS file and must **not** be added a second time. A separate
+   reference file named inside AGENTS does not enter the automatic discovery
+   budget unless Codex actually discovers it as an instruction file.
+4. Show a per-file ledger: discovered path, precedence, raw/effective bytes,
+   cumulative bytes, limit, remaining allowance, any repeated/missing blocks,
+   and which instruction segment would be omitted or truncated. Detect
+   duplicate Bridge managed markers as a separate malformed-install defect,
+   without double counting the same physical file.
+5. `--strict` must return a nonzero exit code for confirmed over-budget or
+   truncated effective mandatory instructions, not a warning. Non-strict
+   diagnostics may warn while preserving existing backward compatibility.
+   Unknown runtime semantics must be labeled `UNVERIFIED`, never
+   `RULE_LOADING_PASS`.
+6. When possible, perform one fresh Codex-session canary on the same
+   `CODEX_HOME` and current working directory to prove the actual effective
+   instructions are consumed. Static byte success and runtime ingestion success
+   must remain separate claims. Do not dump secret tokens or full private
+   global instructions into logs.
+
+Positive tests: exact boundary, under-budget with Chinese/multibyte text,
+managed block present once, root + nested overrides, configured larger limit,
+multiple valid worktrees, and a reference document not auto-counted.
+
+Negative tests: Lucerna-shaped ~54 KiB root on a 32,768-byte limit,
+cumulative multi-file overflow even when every individual file is small,
+CRLF/BOM/multibyte off-by-one errors, duplicate managed markers,
+different effective `CODEX_HOME`, stale project override, changed
+working directory, and unknown/unsupported effective config.
+
+### B2. Task-start Host and installed identity compatibility
+
+Before substantive work, provide a low-cost **read-only** preflight that
+composes existing `host validate` and project `validate --strict` checks,
+without obliging every consumer project to install Controlled Mode.
+
+Bind and report:
+
+- active `CODEX_HOME`, effective config and installed Host managed AGENTS
+  block / execpolicy identity, including any mismatched installed template;
+- exact `ai-bridge` executable, imported `ai_bridge_kit` location,
+  package version and editable-source HEAD/dirty state;
+- actual formal moving `release` ref/target, package metadata at that
+  target, selected distribution source, and active installed package identity;
+- project-side managed block/template generation where installed, and the
+  effective AGENTS discovery/budget result from B1;
+- required workflow plugin availability where the project declares it, without
+  silently installing unrelated optional plugins.
+
+Make distinctions explicit: an intentional source candidate on `main` ahead
+of formal `release` is not by itself drift; an active installed package or
+Host policy that contradicts the **selected formal target** or declared task
+contract is drift. Missing access to a remote release ref is `UNVERIFIED`,
+not an invented version match. Never quietly declare the newest `main`
+commit to be the formal release.
+
+A stale, incomplete, or incompatible mandatory policy is a task-start blocker
+for effects depending on it, while unrelated safe work and preservation of
+already completed client artifacts remain permitted.
+
+### B3. One-time update, fresh-session recovery and same-Goal resume
+
+First check if bounded in-sandbox repair of Bridge-owned managed files is
+both supported and authorized. If not:
+
+1. Preserve original worktree, task identity, dirty state, checkpoints and
+   completed artifacts without reset/clean/branch substitution.
+2. Return an exact, bounded external update instruction for the **active**
+   `CODEX_HOME`; use the installed trusted Bridge identity, create backups,
+   refuse symlink/path redirection and non-managed edits, and validate again.
+3. Require a **fresh Codex session** when instructions/config cannot be safely
+   hot-reloaded. Resume the same Goal/checkpoint once with unchanged
+   authorization, not a new task or repeated user approvals.
+4. Run task-start preflight before resuming substantive work. If the session
+   cannot establish current identity, report a precise unresolved blocker,
+   not `PASS` or an endless retry/escalation loop.
+
+Do not let a stale policy self-authorize shell elevation, arbitrarily mutate
+`CODEX_HOME`, install plugins, broaden branch/write permissions or bypass
+security review. A helper returning `RELOAD_REQUIRED` is valid when it has
+actually performed safe changes; a purely read-only diagnostic must not claim
+to have refreshed anything.
+
+### B4. Formal distribution and documentation consistency
+
+Cross-check `README.md`, `CHANGELOG.md`, package metadata,
+the canonical `release` ref, installed source/runtime identity and the
+machine-sync selection. Present three distinct identities when applicable:
+unreleased `main` candidate, formally distributed release, and machine
+installed version. If a README claim disagrees with actual formal distribution,
+correct the documentation in the *same release closure*; if runtime/distribution
+does not match the selected formal release, close that release/installation
+gap through its existing owner, not by modifying `release` opportunistically.
+
+`YuukiAS/AI_Skills_Collection` / the existing Bridge release owner retains
+formal distribution authority. This TODO alone must not move `release`,
+change installed `CODEX_HOME` files or perform a version bump.
 
 ## Workflow semantic follow-up
 
@@ -198,6 +381,31 @@ If build/render/QA has passed and only sync/commit/publication remains:
 This semantic is primarily owned by workflow-core, while Bridge owns the bounded Git/Host operations.
 
 ## Acceptance gates
+
+### Project rules / Host readiness / distribution (Lucerna regression)
+
+- `ai-bridge validate --strict` fails nonzero on the actual Lucerna
+  32,768-byte truncation reproduction before substantive execution.
+- Repeated Bridge managed markers, root+nested cumulative overflow, UTF-8
+  multibyte/CRLF/BOM edges, config overrides and false duplicate counting
+  have positive/negative deterministic tests. At least one actual fresh Codex
+  loading probe validates the model-visible rule surface where supported.
+- A stale machine policy or wrong `CODEX_HOME` is diagnosed at task start
+  with true executable/import/source/formal-release/installed identities.
+  Intentional `main`-ahead-of-release status is reported correctly.
+- One existing-policy recovery passes with backups, validation, fresh-session
+  reentry and same-task worktree/resume continuity. A read-only or unsupported
+  in-session refresh returns `RELOAD_REQUIRED` / a precise blocker, not
+  fake auto-repair.
+- A fresh consumer gate demonstrates direct user authorization to update an
+  exact `AGENTS.md` does **not** cause a duplicate `HUMAN_ONLY` prompt,
+  while task text that merely claims to authorize itself does **not** confer
+  authority. Preserve legitimate human gates for security/system mutations.
+- README / package version / moving `release` / installed runtime are
+  reconciled by actual target identity and reviewable evidence. Do not
+  publish a release or change `CODEX_HOME` as part of this TODO.
+- The same Lucerna-governance-shaped regression must not touch real Lucerna
+  foreground UI, fixture runtime, user processes or private provider data.
 
 ### Current-branch sync
 
@@ -234,6 +442,13 @@ Negative:
 
 ## Non-goals
 
+- no separate sixth Lucerna-only feature, duplicate rule-budget service or
+  continuously running preflight daemon;
+- no claim that AGENTS text, hooks or passing static preflight enforces
+  Windows process/desktop isolation; native negative tests remain necessary
+  on the consuming platform;
+- no task-wide `BLOCKED` claim merely because a safe/optional identity
+  diagnostic or unrelated machine refresh is unavailable;
 - no raw Git allow expansion;
 - no automatic rebase/autostash;
 - no new branch strategy;
