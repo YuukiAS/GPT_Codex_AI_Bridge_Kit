@@ -96,9 +96,9 @@ ai-bridge host publish-current-branch --expected-repo <owner/repo> --expected-br
 ai-bridge reviewed-handoff task publish-first --task-key <task_key> --expected-repo <owner/repo>
 ```
 
-这些规则只覆盖当前已选 `main` 安全同步、task-owned staging、普通 commit、bounded current-branch publisher 和 exact Reviewed first-bootstrap control metadata 首次发布。`git pull --rebase`、`--autostash`、raw `git push origin main`、`git push -u` / `--set-upstream`、创建/删除/重命名/切换 branch、创建新远端 branch、force / `--force-with-lease`、reset/clean/restore、remote mutation 和 PR 创建都必须另获明确授权。
+这些规则只覆盖当前已选 `main` 安全同步、task-owned staging、普通 commit、bounded current-branch publisher 和 exact Reviewed first-bootstrap control metadata 首次发布。同步前必须检查 working tree；dirty 时先判断 ownership，不得默认 autostash/stash/reset/restore；commit 前必须检查 staged diff，避免 unrelated files/generated noise/secrets。`git pull --rebase`、`--autostash`、raw `git push origin main`、`git push -u` / `--set-upstream`、创建/删除/重命名/切换 branch、创建新远端 branch、force / `--force-with-lease`、reset/clean/restore、remote mutation 和 PR 创建都必须另获明确授权。
 
-Host Policy 的 read-only diagnostics allowlist 保持窄边界：直接 `squeue`、`sinfo`、`sacct`、`sstat`、`sprio`、`scontrol show ...` / `scontrol ping` 只是 Slurm inspection；`sbatch`、`srun`、`salloc`、`scancel`、mutating `scontrol`、`sacctmgr modify/add/delete` 仍审批。直接 `ps`、`git fetch --all --prune`、`tmux ls` / `tmux list-sessions` / `tmux has-session` 只用于低风险诊断；`kill`、`pkill`、`renice`、`setsid`、`sudo`、generic shell/Python、tmux mutation/control、arbitrary git fetch URL/refspec 和危险 Git 仍 gated。不要把 optional diagnostic failure 升级成新 allocation、cancellation、wrapper 或状态机。
+Host Policy 的 read-only diagnostics allowlist 保持窄边界：直接 `squeue`、`sinfo`、`sacct`、`sstat`、`sprio`、`scontrol show ...` / `scontrol ping` 只是 Slurm inspection；`sbatch`、`srun`、`salloc`、`scancel`、mutating `scontrol`、`sacctmgr modify/add/delete` 仍审批。`ps` 默认只用 `ps -u "$USER" -o pid,ppid,stat,etime,cmd` 作当前用户诊断；不要主动请求 environ 或跨用户 inventory。`git fetch --all --prune`、`tmux ls` / `tmux list-sessions` / `tmux has-session` 只用于低风险诊断；`kill`、`pkill`、`renice`、`setsid`、`sudo`、generic shell/Python、tmux mutation/control、arbitrary git fetch URL/refspec 和危险 Git 仍 gated。不要把 optional diagnostic failure 升级成新 allocation、cancellation、wrapper 或状态机。
 
 ### Production Plugin Replay
 
@@ -114,7 +114,7 @@ ai-bridge plugin-replay ...
 
 ### External Planner / Reviewer Waiting
 
-通用 external GPT 等待规则必须保留：当 repo-controlled workflow 表示下一动作属于外部 GPT Planner/Reviewer/Critic/Final Critic 等 reasoning role，未出现新 decision 是正常等待。识别以 state ownership、`next_action`、role policy、schema 和 workflow contract 为准；`READY_FOR_GPT_REVIEW`、`NEEDS_GPT_PLANNER`、`WAITING_FOR_EXTERNAL_GPT` 等只是例子。`MIN_EXTERNAL_GPT_WAIT = 2 hours` 是正常等待下限，不是自动 `BLOCKED` deadline；等待不得消耗 review/repair/plan/retry/critic/blocked-audit 预算。stale Planner/Reviewer/Critic artifact 不能触发 repair 或 PASS。无法保持活动时只报告 `waiting_external_review` 并保持 tracked state；只有 automation disabled/deleted、connector/auth repeated failure、外部角色缺失、非法 state、必需 artifact 不可达、真实 visual 环境不可用、用户必须新决策或 hard deadline 已过等可观察失败，才可写明 evidence 进入 `BLOCKED`。
+通用 external GPT 等待规则必须保留：当 repo-controlled workflow 表示下一动作属于外部 GPT Planner/Reviewer/Critic/Final Critic 等 reasoning role，未出现新 decision 是正常等待。识别以 state ownership、`next_action`、role policy、schema 和 workflow contract 为准；`READY_FOR_GPT_REVIEW`、`NEEDS_GPT_PLANNER`、`WAITING_FOR_EXTERNAL_GPT` 等只是例子。`MIN_EXTERNAL_GPT_WAIT = 2 hours` 是正常等待下限，不是自动 `BLOCKED` deadline；等待不得消耗 review/repair/plan/retry/critic/blocked-audit 预算。stale Planner/Reviewer/Critic artifact 不能触发 repair、PASS 或 BLOCKED。无法保持活动时只报告 `waiting_external_review` 并保持 tracked state；只有 automation disabled/deleted、connector/auth repeated failure、外部角色缺失、非法 state、必需 artifact 不可达、真实 visual 环境不可用、用户必须新决策或 hard deadline 已过等可观察失败，才可写明 evidence 进入 `BLOCKED`。
 
 ## 3. 新 repository：默认先装 Lite
 
