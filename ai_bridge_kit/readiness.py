@@ -245,7 +245,7 @@ def preflight_common(target: Path, *, expected_branch: str | None = None, requir
         raise ReadinessError("DIRTY_WORKTREE_NOT_READY", status.strip())
     try:
         origin_identity = _origin_identity(root)
-    except ReadinessError:
+    except Exception:
         origin_identity = "UNKNOWN"
     return {
         "root": root.as_posix(),
@@ -254,7 +254,7 @@ def preflight_common(target: Path, *, expected_branch: str | None = None, requir
         "origin_identity": origin_identity,
         "dirty": bool(status.strip()),
         "dirty_status": status.strip(),
-        "instruction_budget": audit_instruction_budget(root),
+        "instruction_budget": audit_instruction_budget(root, cwd=target),
     }
 
 
@@ -353,6 +353,35 @@ def protected_git_state(root: Path) -> dict[str, str | None]:
     return state
 
 
+def _active_replace_refs(root: Path) -> list[str]:
+    result = _git(root, ["for-each-ref", "--format=%(refname)", "refs/replace"], check=False)
+    if result.returncode != 0:
+        raise ReadinessError("CONTROL_REPLACE_REF_CHECK_FAILED", (result.stderr or result.stdout).strip())
+    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+
+
+def _active_graft_lines(root: Path) -> list[str]:
+    raw = git_text(root, ["rev-parse", "--git-path", "info/grafts"])
+    path = Path(raw)
+    grafts = path if path.is_absolute() else root / path
+    if not grafts.exists():
+        return []
+    try:
+        lines = grafts.read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        raise ReadinessError("CONTROL_GRAFT_CHECK_FAILED", grafts.as_posix()) from exc
+    return [line.strip() for line in lines if line.strip() and not line.lstrip().startswith("#")]
+
+
+def _reject_control_rewrite_refs(root: Path) -> None:
+    replace_refs = _active_replace_refs(root)
+    if replace_refs:
+        raise ReadinessError("CONTROL_REPLACE_REFS_ACTIVE", ", ".join(replace_refs))
+    graft_lines = _active_graft_lines(root)
+    if graft_lines:
+        raise ReadinessError("CONTROL_GRAFTS_ACTIVE")
+
+
 def read_control_file_isolated(
     target: Path,
     *,
@@ -369,6 +398,7 @@ def read_control_file_isolated(
     identity = _publisher_github_https_identity(fetch_url) if require_github_https else _canonical_repo_identity(fetch_url)
     if identity != expected_repo:
         raise ReadinessError("CONTROL_REPO_IDENTITY_MISMATCH", identity)
+    _reject_control_rewrite_refs(root)
     before = protected_git_state(root)
     original_objects = git_text(root, ["rev-parse", "--git-path", "objects"])
     original_objects_path = Path(original_objects)
@@ -378,6 +408,7 @@ def read_control_file_isolated(
         env = os.environ.copy()
         env["GIT_OBJECT_DIRECTORY"] = tmp
         env["GIT_ALTERNATE_OBJECT_DIRECTORIES"] = original_objects_path.resolve().as_posix()
+        env["GIT_NO_REPLACE_OBJECTS"] = "1"
         _git(root, ["cat-file", "-e", f"{commit}^{{commit}}"], env=env)
         blob_oid = git_text(root, ["rev-parse", f"{commit}:{safe_path}"], env=env)
         blob_type = git_text(root, ["cat-file", "-t", blob_oid], env=env)

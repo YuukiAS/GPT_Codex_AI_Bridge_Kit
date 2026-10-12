@@ -80,6 +80,43 @@ class ReadinessTests(unittest.TestCase):
             labels = {item["label"] for item in payload["preflight"]["source_bindings"]}
             self.assertEqual({"repo_agents", "agent_rules", "task"}, labels)
 
+    def test_lite_task_run_counts_nested_agents_for_subdirectory_launches(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "project"
+            target.mkdir()
+            self.init_git(target)
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(init_workspace(target), 0)
+            self.write_task(target, "repo--feature")
+            (target / ".codex").mkdir()
+            (target / ".codex" / "config.toml").write_text("project_doc_max_bytes = 64\n", encoding="utf-8")
+            subdir = target / "subdir"
+            subdir.mkdir()
+            (subdir / "AGENTS.md").write_text("x" * 100, encoding="utf-8")
+            subprocess.check_call(["git", "add", "."], cwd=target)
+            subprocess.check_call(["git", "commit", "-m", "nested agents"], cwd=target, stdout=subprocess.DEVNULL)
+
+            stderr = io.StringIO()
+            with contextlib.redirect_stderr(stderr):
+                code = cli_main(["task", "run", "--target", str(subdir), "--task-key", "repo--feature", "--dry-run"])
+
+            self.assertEqual(code, 1)
+            self.assertIn("PROJECT_INSTRUCTION_BUDGET_EXCEEDED", stderr.getvalue())
+
+    def test_preflight_common_keeps_unknown_origin_identity_informational(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "repo"
+            root.mkdir()
+            self.init_git(root)
+            (root / "AGENTS.md").write_text("rules\n", encoding="utf-8")
+            subprocess.check_call(["git", "add", "AGENTS.md"], cwd=root)
+            subprocess.check_call(["git", "commit", "-m", "rules"], cwd=root, stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "remote", "add", "origin", "https://gitlab.com/group/repo.git"], cwd=root)
+
+            result = readiness.preflight_common(root)
+
+            self.assertEqual(result["origin_identity"], "UNKNOWN")
+
     def test_isolated_control_file_read_rejects_path_traversal_and_preserves_git_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "repo"
@@ -109,6 +146,32 @@ class ReadinessTests(unittest.TestCase):
                     path="../CONTROL.md",
                     require_github_https=False,
                 )
+
+    def test_isolated_control_file_read_rejects_replace_refs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "repo"
+            root.mkdir()
+            self.init_git(root)
+            (root / "CONTROL.md").write_text("original\n", encoding="utf-8")
+            subprocess.check_call(["git", "add", "CONTROL.md"], cwd=root)
+            subprocess.check_call(["git", "commit", "-m", "original"], cwd=root, stdout=subprocess.DEVNULL)
+            original = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+            (root / "CONTROL.md").write_text("replacement\n", encoding="utf-8")
+            subprocess.check_call(["git", "commit", "-am", "replacement"], cwd=root, stdout=subprocess.DEVNULL)
+            replacement = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+            subprocess.check_call(["git", "replace", original, replacement], cwd=root)
+            subprocess.check_call(["git", "remote", "add", "origin", str(root)], cwd=root)
+
+            with self.assertRaises(readiness.ReadinessError) as caught:
+                readiness.read_control_file_isolated(
+                    root,
+                    expected_repo="local:" + root.resolve().as_posix(),
+                    commit=original,
+                    path="CONTROL.md",
+                    require_github_https=False,
+                )
+
+            self.assertEqual(caught.exception.code, "CONTROL_REPLACE_REFS_ACTIVE")
 
 
 if __name__ == "__main__":
