@@ -116,6 +116,74 @@ class ReadinessTests(unittest.TestCase):
             labels = {item["label"] for item in payload["preflight"]["source_bindings"]}
             self.assertEqual({"repo_agents", "agent_rules", "task"}, labels)
 
+    def test_lite_task_run_allows_unrelated_dirty_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "project"
+            target.mkdir()
+            self.init_git(target)
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(init_workspace(target), 0)
+            self.write_task(target, "repo--feature")
+            self.add_github_origin(target)
+            subprocess.check_call(["git", "add", "."], cwd=target)
+            subprocess.check_call(["git", "commit", "-m", "lite task"], cwd=target, stdout=subprocess.DEVNULL)
+            (target / "unrelated-note.txt").write_text("local scratch\n", encoding="utf-8")
+            codex_home = Path(tmp) / "codex-home"
+            self.write_codex_config(codex_home, target)
+
+            output = io.StringIO()
+            with mock.patch.dict(os.environ, {"CODEX_HOME": str(codex_home), "AI_BRIDGE_STATE_HOME": str(Path(tmp) / "state")}), contextlib.redirect_stdout(output):
+                code = cli_main(["task", "run", "--target", str(target), "--task-key", "repo--feature", "--dry-run"])
+
+            self.assertEqual(code, 0)
+            payload = json.loads(output.getvalue())
+            self.assertTrue(payload["preflight"]["dirty"])
+
+    def test_lite_task_run_rejects_modified_mandatory_task_source(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "project"
+            target.mkdir()
+            self.init_git(target)
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(init_workspace(target), 0)
+            self.write_task(target, "repo--feature")
+            self.add_github_origin(target)
+            subprocess.check_call(["git", "add", "."], cwd=target)
+            subprocess.check_call(["git", "commit", "-m", "lite task"], cwd=target, stdout=subprocess.DEVNULL)
+            self.write_task(target, "repo--feature")
+            (target / "prompts" / "tasks" / "repo--feature.md").write_text("uncommitted replacement\n", encoding="utf-8")
+            codex_home = Path(tmp) / "codex-home"
+            self.write_codex_config(codex_home, target)
+
+            stderr = io.StringIO()
+            with mock.patch.dict(os.environ, {"CODEX_HOME": str(codex_home), "AI_BRIDGE_STATE_HOME": str(Path(tmp) / "state")}), contextlib.redirect_stderr(stderr):
+                code = cli_main(["task", "run", "--target", str(target), "--task-key", "repo--feature", "--dry-run"])
+
+            self.assertEqual(code, 1)
+            self.assertIn("MANDATORY_SOURCE_WORKTREE_MISMATCH", stderr.getvalue())
+
+    def test_lite_task_run_rejects_new_unfrozen_mandatory_task_source(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "project"
+            target.mkdir()
+            self.init_git(target)
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(init_workspace(target), 0)
+            self.write_task(target, "repo--old")
+            self.add_github_origin(target)
+            subprocess.check_call(["git", "add", "."], cwd=target)
+            subprocess.check_call(["git", "commit", "-m", "lite task"], cwd=target, stdout=subprocess.DEVNULL)
+            self.write_task(target, "repo--new")
+            codex_home = Path(tmp) / "codex-home"
+            self.write_codex_config(codex_home, target)
+
+            stderr = io.StringIO()
+            with mock.patch.dict(os.environ, {"CODEX_HOME": str(codex_home), "AI_BRIDGE_STATE_HOME": str(Path(tmp) / "state")}), contextlib.redirect_stderr(stderr):
+                code = cli_main(["task", "run", "--target", str(target), "--task-key", "repo--new", "--dry-run"])
+
+            self.assertEqual(code, 1)
+            self.assertIn("MANDATORY_SOURCE_NOT_FROZEN", stderr.getvalue())
+
     def test_lite_task_run_normal_entry_checks_temp_host_before_launch(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -368,6 +436,79 @@ class ReadinessTests(unittest.TestCase):
             self.assertEqual(result["text"], "old\r\nvalue\r\n")
             self.assertEqual(result["sha256"], old_sha)
             self.assertEqual(result["size_bytes"], len(b"old\r\nvalue\r\n"))
+
+    def test_isolated_control_file_read_rejects_symlink_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "repo"
+            root.mkdir()
+            self.init_git(root)
+            os.symlink("TARGET.md", root / "CONTROL.md")
+            subprocess.check_call(["git", "add", "CONTROL.md"], cwd=root)
+            subprocess.check_call(["git", "commit", "-m", "symlink"], cwd=root, stdout=subprocess.DEVNULL)
+            commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+            subprocess.check_call(["git", "remote", "add", "origin", str(root)], cwd=root)
+
+            with self.assertRaises(readiness.ReadinessError) as caught:
+                readiness.read_control_file_isolated(
+                    root,
+                    expected_repo="local:" + root.resolve().as_posix(),
+                    commit=commit,
+                    path="CONTROL.md",
+                    require_github_https=False,
+                    isolated_state_root=Path(tmp) / "state",
+                )
+
+            self.assertEqual(caught.exception.code, "CONTROL_PATH_SYMLINK")
+
+    def test_isolated_control_file_read_rejects_submodule_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "repo"
+            root.mkdir()
+            self.init_git(root)
+            (root / "README.md").write_text("base\n", encoding="utf-8")
+            subprocess.check_call(["git", "add", "README.md"], cwd=root)
+            subprocess.check_call(["git", "commit", "-m", "base"], cwd=root, stdout=subprocess.DEVNULL)
+            gitlink_oid = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+            subprocess.check_call(["git", "update-index", "--add", "--cacheinfo", f"160000,{gitlink_oid},CONTROL.md"], cwd=root)
+            subprocess.check_call(["git", "commit", "-m", "gitlink"], cwd=root, stdout=subprocess.DEVNULL)
+            commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+            subprocess.check_call(["git", "remote", "add", "origin", str(root)], cwd=root)
+
+            with self.assertRaises(readiness.ReadinessError) as caught:
+                readiness.read_control_file_isolated(
+                    root,
+                    expected_repo="local:" + root.resolve().as_posix(),
+                    commit=commit,
+                    path="CONTROL.md",
+                    require_github_https=False,
+                    isolated_state_root=Path(tmp) / "state",
+                )
+
+            self.assertEqual(caught.exception.code, "CONTROL_PATH_SUBMODULE")
+
+    def test_isolated_control_file_read_rejects_tree_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "repo"
+            root.mkdir()
+            self.init_git(root)
+            (root / "CONTROL.md").mkdir()
+            (root / "CONTROL.md" / "nested.txt").write_text("nested\n", encoding="utf-8")
+            subprocess.check_call(["git", "add", "."], cwd=root)
+            subprocess.check_call(["git", "commit", "-m", "tree"], cwd=root, stdout=subprocess.DEVNULL)
+            commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+            subprocess.check_call(["git", "remote", "add", "origin", str(root)], cwd=root)
+
+            with self.assertRaises(readiness.ReadinessError) as caught:
+                readiness.read_control_file_isolated(
+                    root,
+                    expected_repo="local:" + root.resolve().as_posix(),
+                    commit=commit,
+                    path="CONTROL.md",
+                    require_github_https=False,
+                    isolated_state_root=Path(tmp) / "state",
+                )
+
+            self.assertEqual(caught.exception.code, "CONTROL_PATH_NOT_REGULAR_FILE")
 
     def test_isolated_control_file_read_rejects_local_url_rewrite_config(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

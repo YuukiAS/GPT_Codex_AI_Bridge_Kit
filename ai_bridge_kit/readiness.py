@@ -6,6 +6,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -520,19 +521,29 @@ def bind_repo_texts_isolated(
         raise ReadinessError("CONTROL_ORIGIN_IDENTITY_UNVERIFIED")
     bound: list[BoundText] = []
     for label, rel in specs:
-        result = read_control_file_isolated(
-            root,
-            expected_repo=expected_repo,
-            commit=commit,
-            path=rel,
-            require_github_https=require_github_https,
-        )
+        safe_rel = _safe_repo_rel(rel)
+        worktree_path, worktree_content = _read_worktree_source_bytes(root, safe_rel)
+        try:
+            result = read_control_file_isolated(
+                root,
+                expected_repo=expected_repo,
+                commit=commit,
+                path=safe_rel,
+                require_github_https=require_github_https,
+            )
+        except ReadinessError as exc:
+            if exc.code == "CONTROL_PATH_NOT_IN_COMMIT":
+                raise ReadinessError("MANDATORY_SOURCE_NOT_FROZEN", safe_rel) from exc
+            raise
+        worktree_sha = _sha256_bytes(worktree_content)
+        if worktree_sha != str(result["sha256"]) or len(worktree_content) != int(result["size_bytes"]):
+            raise ReadinessError("MANDATORY_SOURCE_WORKTREE_MISMATCH", safe_rel)
         text = str(result["text"])
         raw_sha = str(result["sha256"])
         bound.append(
             BoundText(
                 label=label,
-                path=(root / rel).resolve(),
+                path=worktree_path.resolve(),
                 relative_path=result["path"],
                 size_bytes=int(result["size_bytes"]),
                 sha256=raw_sha,
@@ -540,6 +551,20 @@ def bind_repo_texts_isolated(
             )
         )
     return bound
+
+
+def _read_worktree_source_bytes(root: Path, safe_rel: str) -> tuple[Path, bytes]:
+    path = root / safe_rel
+    try:
+        mode = path.lstat().st_mode
+    except OSError as exc:
+        raise ReadinessError("MANDATORY_SOURCE_MISSING", safe_rel) from exc
+    if not stat.S_ISREG(mode):
+        raise ReadinessError("MANDATORY_SOURCE_NOT_REGULAR", safe_rel)
+    try:
+        return path, path.read_bytes()
+    except OSError as exc:
+        raise ReadinessError("MANDATORY_SOURCE_UNREADABLE", safe_rel) from exc
 
 
 def _current_branch(root: Path) -> str:
@@ -862,7 +887,28 @@ def read_control_file_isolated(
         env["GIT_ALTERNATE_OBJECT_DIRECTORIES"] = original_objects_path.resolve().as_posix()
         env["GIT_NO_REPLACE_OBJECTS"] = "1"
         _git(root, ["cat-file", "-e", f"{commit}^{{commit}}"], env=env)
-        blob_oid = git_text(root, ["rev-parse", f"{commit}:{safe_path}"], env=env)
+        tree_entry = _git_bytes(root, ["ls-tree", "-z", commit, "--", safe_path], env=env)
+        if not tree_entry.stdout:
+            raise ReadinessError("CONTROL_PATH_NOT_IN_COMMIT", safe_path)
+        entry = tree_entry.stdout.rstrip(b"\0")
+        header, sep, entry_path = entry.partition(b"\t")
+        if not sep:
+            raise ReadinessError("CONTROL_TREE_ENTRY_INVALID", safe_path)
+        fields = header.split()
+        if len(fields) != 3:
+            raise ReadinessError("CONTROL_TREE_ENTRY_INVALID", safe_path)
+        mode, tree_type, raw_oid = fields
+        if entry_path.decode("utf-8", errors="replace") != safe_path:
+            raise ReadinessError("CONTROL_TREE_ENTRY_INVALID", safe_path)
+        if mode not in {b"100644", b"100755"}:
+            if mode == b"120000":
+                raise ReadinessError("CONTROL_PATH_SYMLINK", safe_path)
+            if mode == b"160000":
+                raise ReadinessError("CONTROL_PATH_SUBMODULE", safe_path)
+            raise ReadinessError("CONTROL_PATH_NOT_REGULAR_FILE", safe_path)
+        if tree_type != b"blob":
+            raise ReadinessError("CONTROL_PATH_NOT_BLOB", safe_path)
+        blob_oid = raw_oid.decode("ascii")
         blob_type = git_text(root, ["cat-file", "-t", blob_oid], env=env)
         if blob_type != "blob":
             raise ReadinessError("CONTROL_PATH_NOT_BLOB", safe_path)

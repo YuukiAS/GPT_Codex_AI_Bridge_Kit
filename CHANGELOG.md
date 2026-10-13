@@ -30,6 +30,9 @@
   current Codex `project_doc_fallback_filenames` and trust/root-marker model,
   isolated control-file reads preserve raw Git blob bytes, and Reviewed launch
   rechecks mandatory preflight at the final spawn boundary.
+- Close the final pre-review Lite/control-file gaps by requiring bound mandatory
+  sources to match current worktree bytes before launch and by accepting only
+  normal-file modes from fixed Git trees for isolated control-file reads.
 - Update Host Policy templates with the new bounded sync and worktree-exchange
   entry rules while keeping raw dangerous Git, arbitrary branch topology,
   release movement, CODEX_HOME mutation, SMTP, and external paid calls gated.
