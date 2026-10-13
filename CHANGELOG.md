@@ -33,6 +33,9 @@
 - Close the final pre-review Lite/control-file gaps by requiring bound mandatory
   sources to match current worktree bytes before launch and by accepting only
   normal-file modes from fixed Git trees for isolated control-file reads.
+- Preserve that source-binding gate for clean CRLF working trees by using Git's
+  path-level `HEAD` comparison after rejecting unsafe source-transform
+  attributes, instead of raw worktree-byte equality.
 - Update Host Policy templates with the new bounded sync and worktree-exchange
   entry rules while keeping raw dangerous Git, arbitrary branch topology,
   release movement, CODEX_HOME mutation, SMTP, and external paid calls gated.

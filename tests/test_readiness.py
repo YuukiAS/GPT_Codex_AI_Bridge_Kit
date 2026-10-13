@@ -116,6 +116,49 @@ class ReadinessTests(unittest.TestCase):
             labels = {item["label"] for item in payload["preflight"]["source_bindings"]}
             self.assertEqual({"repo_agents", "agent_rules", "task"}, labels)
 
+    def test_lite_task_run_accepts_clean_crlf_worktree_sources(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "project"
+            target.mkdir()
+            self.init_git(target)
+            subprocess.check_call(["git", "config", "core.autocrlf", "true"], cwd=target)
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(init_workspace(target), 0)
+            self.write_task(target, "repo--feature")
+            (target / ".gitattributes").write_text(
+                "\n".join(
+                    [
+                        "AGENTS.md text eol=crlf",
+                        "prompts/AGENT_RULES.md text eol=crlf",
+                        "prompts/tasks/*.md text eol=crlf",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            self.add_github_origin(target)
+            subprocess.check_call(["git", "add", "."], cwd=target)
+            subprocess.check_call(["git", "commit", "-m", "lite task"], cwd=target, stdout=subprocess.DEVNULL)
+            required = ["AGENTS.md", "prompts/AGENT_RULES.md", "prompts/tasks/repo--feature.md"]
+            for rel in required:
+                (target / rel).unlink()
+            subprocess.check_call(["git", "checkout", "--", *required], cwd=target)
+            self.assertEqual(
+                subprocess.check_output(["git", "status", "--porcelain=v1", "-uall", "--", *required], cwd=target, text=True).strip(),
+                "",
+            )
+            self.assertIn(b"\r\n", (target / "prompts" / "tasks" / "repo--feature.md").read_bytes())
+            codex_home = Path(tmp) / "codex-home"
+            self.write_codex_config(codex_home, target)
+
+            output = io.StringIO()
+            with mock.patch.dict(os.environ, {"CODEX_HOME": str(codex_home), "AI_BRIDGE_STATE_HOME": str(Path(tmp) / "state")}), contextlib.redirect_stdout(output):
+                code = cli_main(["task", "run", "--target", str(target), "--task-key", "repo--feature", "--dry-run"])
+
+            self.assertEqual(code, 0)
+            payload = json.loads(output.getvalue())
+            self.assertEqual(payload["status"], "dry_run")
+
     def test_lite_task_run_allows_unrelated_dirty_files(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "project"
@@ -183,6 +226,28 @@ class ReadinessTests(unittest.TestCase):
 
             self.assertEqual(code, 1)
             self.assertIn("MANDATORY_SOURCE_NOT_FROZEN", stderr.getvalue())
+
+    def test_lite_task_run_rejects_mandatory_source_filter_attribute(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "project"
+            target.mkdir()
+            self.init_git(target)
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(init_workspace(target), 0)
+            self.write_task(target, "repo--feature")
+            (target / ".gitattributes").write_text("prompts/tasks/*.md filter=unsafe\n", encoding="utf-8")
+            self.add_github_origin(target)
+            subprocess.check_call(["git", "add", "."], cwd=target)
+            subprocess.check_call(["git", "commit", "-m", "lite task"], cwd=target, stdout=subprocess.DEVNULL)
+            codex_home = Path(tmp) / "codex-home"
+            self.write_codex_config(codex_home, target)
+
+            stderr = io.StringIO()
+            with mock.patch.dict(os.environ, {"CODEX_HOME": str(codex_home), "AI_BRIDGE_STATE_HOME": str(Path(tmp) / "state")}), contextlib.redirect_stderr(stderr):
+                code = cli_main(["task", "run", "--target", str(target), "--task-key", "repo--feature", "--dry-run"])
+
+            self.assertEqual(code, 1)
+            self.assertIn("MANDATORY_SOURCE_GIT_ATTRIBUTE_UNSAFE", stderr.getvalue())
 
     def test_lite_task_run_normal_entry_checks_temp_host_before_launch(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

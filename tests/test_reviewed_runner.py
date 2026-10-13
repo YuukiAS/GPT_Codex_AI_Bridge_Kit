@@ -251,6 +251,64 @@ class ReviewedRunnerTests(unittest.TestCase):
             self.assertEqual(result["task_key"], "repo--feature")
             self.assertNotEqual(result["status"], "invalid_workflow")
 
+    def test_watcher_dry_run_accepts_clean_crlf_bound_sources(self) -> None:
+        tmp, target, state_home = self.make_project()
+        with tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(state_home)}):
+            subprocess.check_call(["git", "config", "core.autocrlf", "true"], cwd=target)
+            (target / ".gitattributes").write_text(
+                "\n".join(
+                    [
+                        "AGENTS.md text eol=crlf",
+                        "automation/reviewed_handoff/README.md text eol=crlf",
+                        "automation/reviewed_handoff/prompts/CODEX_EXECUTOR.md text eol=crlf",
+                        "automation/reviewed_handoff/tasks/repo--feature/REQUEST.md text eol=crlf",
+                        "automation/reviewed_handoff/tasks/repo--feature/PLAN.md text eol=crlf",
+                        "automation/reviewed_handoff/tasks/repo--feature/CURRENT.json text eol=crlf",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            subprocess.check_call(["git", "add", ".gitattributes"], cwd=target)
+            subprocess.check_call(["git", "commit", "-m", "reviewed eol attributes"], cwd=target, stdout=subprocess.DEVNULL)
+            required = [
+                "automation/reviewed_handoff/README.md",
+                "automation/reviewed_handoff/prompts/CODEX_EXECUTOR.md",
+                "automation/reviewed_handoff/tasks/repo--feature/REQUEST.md",
+                "automation/reviewed_handoff/tasks/repo--feature/PLAN.md",
+                "automation/reviewed_handoff/tasks/repo--feature/CURRENT.json",
+            ]
+            if (target / "AGENTS.md").is_file():
+                required.insert(0, "AGENTS.md")
+            for rel in required:
+                (target / rel).unlink()
+            subprocess.check_call(["git", "checkout", "--", *required], cwd=target)
+            self.assertEqual(
+                subprocess.check_output(["git", "status", "--porcelain=v1", "-uall", "--", *required], cwd=target, text=True).strip(),
+                "",
+            )
+            self.assertIn(b"\r\n", (target / "automation" / "reviewed_handoff" / "tasks" / "repo--feature" / "PLAN.md").read_bytes())
+
+            result = runner.watcher_once(target, branch="main", sync=False, dry_run=True)
+
+            self.assertEqual(result["status"], "dry_run")
+            self.assertEqual(result["task_key"], "repo--feature")
+
+    def test_watcher_dry_run_rejects_mandatory_source_filter_attribute(self) -> None:
+        tmp, target, state_home = self.make_project()
+        with tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(state_home)}):
+            (target / ".gitattributes").write_text(
+                "automation/reviewed_handoff/tasks/*/PLAN.md filter=unsafe\n",
+                encoding="utf-8",
+            )
+            subprocess.check_call(["git", "add", ".gitattributes"], cwd=target)
+            subprocess.check_call(["git", "commit", "-m", "reviewed unsafe filter"], cwd=target, stdout=subprocess.DEVNULL)
+
+            result = runner.watcher_once(target, branch="main", sync=False, dry_run=True)
+
+            self.assertEqual(result["status"], "prelaunch_not_ready")
+            self.assertEqual(result["readiness_error"], "MANDATORY_SOURCE_GIT_ATTRIBUTE_UNSAFE")
+
     def test_watcher_reports_external_wait_without_consuming_executor_attempts(self) -> None:
         tmp, target, state_home = self.make_project()
         with tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(state_home)}):

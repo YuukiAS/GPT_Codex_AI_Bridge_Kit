@@ -522,7 +522,7 @@ def bind_repo_texts_isolated(
     bound: list[BoundText] = []
     for label, rel in specs:
         safe_rel = _safe_repo_rel(rel)
-        worktree_path, worktree_content = _read_worktree_source_bytes(root, safe_rel)
+        worktree_path = _require_worktree_source_file(root, safe_rel)
         try:
             result = read_control_file_isolated(
                 root,
@@ -535,9 +535,7 @@ def bind_repo_texts_isolated(
             if exc.code == "CONTROL_PATH_NOT_IN_COMMIT":
                 raise ReadinessError("MANDATORY_SOURCE_NOT_FROZEN", safe_rel) from exc
             raise
-        worktree_sha = _sha256_bytes(worktree_content)
-        if worktree_sha != str(result["sha256"]) or len(worktree_content) != int(result["size_bytes"]):
-            raise ReadinessError("MANDATORY_SOURCE_WORKTREE_MISMATCH", safe_rel)
+        _assert_mandatory_source_clean_at_head(root, safe_rel)
         text = str(result["text"])
         raw_sha = str(result["sha256"])
         bound.append(
@@ -553,7 +551,7 @@ def bind_repo_texts_isolated(
     return bound
 
 
-def _read_worktree_source_bytes(root: Path, safe_rel: str) -> tuple[Path, bytes]:
+def _require_worktree_source_file(root: Path, safe_rel: str) -> Path:
     path = root / safe_rel
     try:
         mode = path.lstat().st_mode
@@ -561,10 +559,37 @@ def _read_worktree_source_bytes(root: Path, safe_rel: str) -> tuple[Path, bytes]
         raise ReadinessError("MANDATORY_SOURCE_MISSING", safe_rel) from exc
     if not stat.S_ISREG(mode):
         raise ReadinessError("MANDATORY_SOURCE_NOT_REGULAR", safe_rel)
-    try:
-        return path, path.read_bytes()
-    except OSError as exc:
-        raise ReadinessError("MANDATORY_SOURCE_UNREADABLE", safe_rel) from exc
+    return path
+
+
+def _assert_mandatory_source_clean_at_head(root: Path, safe_rel: str) -> None:
+    _reject_mandatory_source_transforms(root, safe_rel)
+    diff = _git(root, ["diff", "--no-ext-diff", "--quiet", "HEAD", "--", safe_rel], check=False)
+    if diff.returncode == 1:
+        raise ReadinessError("MANDATORY_SOURCE_WORKTREE_MISMATCH", safe_rel)
+    if diff.returncode != 0:
+        raise ReadinessError("MANDATORY_SOURCE_DIFF_FAILED", (diff.stderr or diff.stdout).strip())
+
+
+def _reject_mandatory_source_transforms(root: Path, safe_rel: str) -> None:
+    result = _git_bytes(
+        root,
+        ["check-attr", "-z", "filter", "ident", "working-tree-encoding", "--", safe_rel],
+        check=False,
+    )
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or b"git check-attr failed").decode("utf-8", errors="replace").strip()
+        raise ReadinessError("MANDATORY_SOURCE_ATTRIBUTE_CHECK_FAILED", detail)
+    parts = result.stdout.split(b"\0")
+    for index in range(0, max(0, len(parts) - 1), 3):
+        if index + 2 >= len(parts):
+            break
+        _path, attr, value = parts[index : index + 3]
+        if value in {b"", b"unspecified", b"unset", b"false"}:
+            continue
+        name = attr.decode("utf-8", errors="replace")
+        rendered = value.decode("utf-8", errors="replace")
+        raise ReadinessError("MANDATORY_SOURCE_GIT_ATTRIBUTE_UNSAFE", f"{safe_rel}: {name}={rendered}")
 
 
 def _current_branch(root: Path) -> str:
