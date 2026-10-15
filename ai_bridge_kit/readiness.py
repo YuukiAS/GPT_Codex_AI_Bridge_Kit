@@ -563,12 +563,38 @@ def _require_worktree_source_file(root: Path, safe_rel: str) -> Path:
 
 
 def _assert_mandatory_source_clean_at_head(root: Path, safe_rel: str) -> None:
+    _reject_mandatory_source_index_flags(root, safe_rel)
     _reject_mandatory_source_transforms(root, safe_rel)
     diff = _git(root, ["diff", "--no-ext-diff", "--quiet", "HEAD", "--", safe_rel], check=False)
     if diff.returncode == 1:
         raise ReadinessError("MANDATORY_SOURCE_WORKTREE_MISMATCH", safe_rel)
     if diff.returncode != 0:
         raise ReadinessError("MANDATORY_SOURCE_DIFF_FAILED", (diff.stderr or diff.stdout).strip())
+
+
+def _reject_mandatory_source_index_flags(root: Path, safe_rel: str) -> None:
+    result = _git_bytes(
+        root,
+        ["--literal-pathspecs", "ls-files", "-v", "-z", "--", safe_rel],
+        check=False,
+    )
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or b"git ls-files failed").decode("utf-8", errors="replace").strip()
+        raise ReadinessError("MANDATORY_SOURCE_INDEX_CHECK_FAILED", detail)
+    records = [record for record in result.stdout.split(b"\0") if record]
+    if len(records) != 1 or len(records[0]) < 3 or records[0][1:2] != b" ":
+        raise ReadinessError("MANDATORY_SOURCE_INDEX_ENTRY_INVALID", safe_rel)
+    tag = records[0][:1]
+    entry_path = records[0][2:]
+    if entry_path != os.fsencode(safe_rel):
+        raise ReadinessError("MANDATORY_SOURCE_INDEX_ENTRY_INVALID", safe_rel)
+    flags: list[str] = []
+    if tag.decode("ascii", errors="ignore").islower():
+        flags.append("assume-unchanged")
+    if tag in {b"S", b"s"}:
+        flags.append("skip-worktree")
+    if flags:
+        raise ReadinessError("MANDATORY_SOURCE_INDEX_FLAGS_UNSAFE", f"{safe_rel}: {','.join(flags)}")
 
 
 def _reject_mandatory_source_transforms(root: Path, safe_rel: str) -> None:

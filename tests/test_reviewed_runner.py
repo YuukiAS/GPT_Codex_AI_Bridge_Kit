@@ -309,6 +309,35 @@ class ReviewedRunnerTests(unittest.TestCase):
             self.assertEqual(result["status"], "prelaunch_not_ready")
             self.assertEqual(result["readiness_error"], "MANDATORY_SOURCE_GIT_ATTRIBUTE_UNSAFE")
 
+    def test_watcher_dry_run_rejects_hidden_mandatory_source_index_flags(self) -> None:
+        cases = [
+            ("assume-unchanged", "--assume-unchanged", "h"),
+            ("skip-worktree", "--skip-worktree", "S"),
+        ]
+        for expected_flag, update_flag, expected_tag in cases:
+            with self.subTest(index_flag=expected_flag):
+                tmp, target, state_home = self.make_project()
+                with tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(state_home)}):
+                    rel = "automation/reviewed_handoff/prompts/CODEX_EXECUTOR.md"
+                    subprocess.check_call(["git", "update-index", update_flag, rel], cwd=target)
+                    prompt_path = target / rel
+                    prompt_path.write_text(prompt_path.read_text(encoding="utf-8") + "\nHidden replacement.\n", encoding="utf-8")
+                    self.assertEqual(
+                        subprocess.call(["git", "diff", "--no-ext-diff", "--quiet", "HEAD", "--", rel], cwd=target),
+                        0,
+                    )
+
+                    result = runner.watcher_once(target, branch="main", sync=False, dry_run=True)
+
+                    self.assertEqual(result["status"], "prelaunch_not_ready")
+                    self.assertEqual(result["readiness_error"], "MANDATORY_SOURCE_INDEX_FLAGS_UNSAFE")
+                    self.assertIn(expected_flag, result["reason"])
+                    self.assertTrue(
+                        subprocess.check_output(["git", "ls-files", "-v", "--", rel], cwd=target, text=True).startswith(
+                            f"{expected_tag} "
+                        )
+                    )
+
     def test_watcher_reports_external_wait_without_consuming_executor_attempts(self) -> None:
         tmp, target, state_home = self.make_project()
         with tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(state_home)}):

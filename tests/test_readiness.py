@@ -205,6 +205,45 @@ class ReadinessTests(unittest.TestCase):
             self.assertEqual(code, 1)
             self.assertIn("MANDATORY_SOURCE_WORKTREE_MISMATCH", stderr.getvalue())
 
+    def test_lite_task_run_rejects_hidden_mandatory_source_index_flags(self) -> None:
+        cases = [
+            ("assume-unchanged", "--assume-unchanged", "h"),
+            ("skip-worktree", "--skip-worktree", "S"),
+        ]
+        for expected_flag, update_flag, expected_tag in cases:
+            with self.subTest(index_flag=expected_flag), tempfile.TemporaryDirectory() as tmp:
+                target = Path(tmp) / "project"
+                target.mkdir()
+                self.init_git(target)
+                with contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(init_workspace(target), 0)
+                self.write_task(target, "repo--feature")
+                self.add_github_origin(target)
+                subprocess.check_call(["git", "add", "."], cwd=target)
+                subprocess.check_call(["git", "commit", "-m", "lite task"], cwd=target, stdout=subprocess.DEVNULL)
+                rel = "prompts/tasks/repo--feature.md"
+                subprocess.check_call(["git", "update-index", update_flag, rel], cwd=target)
+                (target / rel).write_text("hidden replacement\n", encoding="utf-8")
+                self.assertEqual(
+                    subprocess.call(["git", "diff", "--no-ext-diff", "--quiet", "HEAD", "--", rel], cwd=target),
+                    0,
+                )
+                codex_home = Path(tmp) / "codex-home"
+                self.write_codex_config(codex_home, target)
+
+                stderr = io.StringIO()
+                with mock.patch.dict(os.environ, {"CODEX_HOME": str(codex_home), "AI_BRIDGE_STATE_HOME": str(Path(tmp) / "state")}), contextlib.redirect_stderr(stderr):
+                    code = cli_main(["task", "run", "--target", str(target), "--task-key", "repo--feature", "--dry-run"])
+
+                self.assertEqual(code, 1)
+                self.assertIn("MANDATORY_SOURCE_INDEX_FLAGS_UNSAFE", stderr.getvalue())
+                self.assertIn(expected_flag, stderr.getvalue())
+                self.assertTrue(
+                    subprocess.check_output(["git", "ls-files", "-v", "--", rel], cwd=target, text=True).startswith(
+                        f"{expected_tag} "
+                    )
+                )
+
     def test_lite_task_run_rejects_new_unfrozen_mandatory_task_source(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "project"
