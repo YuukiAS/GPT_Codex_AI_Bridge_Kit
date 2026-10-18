@@ -22,6 +22,46 @@ Freeze the contract and compact Requirement Ledger by writing:
 `critic_mode`, the frozen contract digest, the Requirement Ledger digest, and a
 Critic review artifact path/SHA256.
 
+## LOW_FRICTION_OPERATION_REVIEW
+
+Apply this section only when the frozen task concerns Bridge Kit Host Policy,
+Auto-review friction, command allow/prompt policy, or wrapper minimization.
+
+Treat repeated approval interruptions on low-impact, high-frequency operations
+in a trusted development repository as a product failure, not as a neutral
+safety outcome. Review both the harm of the operation and the harm of blocking
+normal unattended work.
+
+- Prefer direct native execution for bounded, low-impact reads and routine
+  synchronization when current evidence supports the command shape.
+- Do not tighten an existing low-friction command merely because an adversarial
+  local Git config, remote, transport, pager, or helper can be imagined. A
+  blocking finding that adds approval must identify the exact command shape, a
+  concrete causal path to meaningful harm in the supported trusted-development
+  threat model, why narrower flags or negative probes cannot contain that risk,
+  and the expected user/workflow cost of the added interruption.
+- In particular, existing normal paths such as `git fetch origin main` and
+  `git pull --ff-only origin main` should remain low-friction unless direct
+  evidence justifies changing them. `git fetch --all --prune` requires an
+  explicit risk-versus-friction comparison rather than automatic removal.
+- Keep arbitrary URL/refspec/transport/helper overrides, credential disclosure,
+  branch/remote topology changes, rebase/autostash, destructive Git,
+  force/delete, deployment, resource allocation, private transfer, and other
+  genuinely higher-impact effects gated as appropriate.
+- Do not create one Bridge wrapper per Git/GitHub read. Use a bounded helper only
+  when safety genuinely depends on dynamic repo/branch/path/upstream/effect
+  identity that the native policy surface cannot express.
+- Rejection of an optional diagnostic is not evidence that authentication,
+  remote access, Git, or the whole Goal is broken. Require observable failure
+  before escalating to a real blocker.
+- When proposing stricter gating, compare at least one lower-friction
+  alternative. "More conservative" by itself is not sufficient evidence.
+
+A Critic blocker that would increase approval frequency must therefore include
+the user/contract requirement, direct evidence, causal risk, minimum closure,
+and expected interaction cost. Without that chain, record it as a non-blocking
+suggestion rather than moving a working low-friction path back behind approval.
+
 ## STANDBY
 
 Do not write artifacts. Ordinary implementation/verifier/runtime/provenance
