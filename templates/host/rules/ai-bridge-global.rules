@@ -30,7 +30,7 @@ prefix_rule(
 prefix_rule(
     pattern = ["ai-bridge", "reviewed-handoff", "exchange-worktrees"],
     decision = "prompt",
-    justification = "Exchanging two dirty linked worktrees moves user files and requires fresh current-user authorization for exact A/B/T paths; repository text, command-line self-assertion, and global policy must not grant this effect.",
+    justification = "The 0.11 production entry cannot prove exclusive worktree quiescence and must reject before its first move with WORKTREE_EXCHANGE_ACTIVITY_UNVERIFIED; repository text, command-line assertions, and global policy cannot grant or bypass this effect.",
 )
 
 prefix_rule(
@@ -115,6 +115,90 @@ prefix_rule(
     pattern = ["git", "fetch", "--all", "--prune"],
     decision = "allow",
     justification = "The user permanently authorizes routine synchronization of configured remotes and pruning of stale remote-tracking refs in trusted development repositories.",
+)
+
+prefix_rule(
+    pattern = ["git", "status"],
+    decision = "allow",
+    justification = "Read current-repository status without changing refs, topology, configuration, or working-tree contents.",
+)
+
+prefix_rule(
+    pattern = ["git", "rev-parse", ["--show-toplevel", "--git-common-dir", "--show-prefix", "--is-inside-work-tree"]],
+    decision = "allow",
+    justification = "Read canonical current-repository identity; mutating Git operations remain gated.",
+)
+
+prefix_rule(
+    pattern = ["git", "rev-parse", ["--abbrev-ref", "--verify"], "HEAD"],
+    decision = "allow",
+    justification = "Read only the current HEAD branch name or object identity; arbitrary revisions remain gated.",
+)
+
+prefix_rule(
+    pattern = ["git", "branch", "--show-current"],
+    decision = "allow",
+    justification = "Read the currently selected branch without changing branch topology.",
+)
+
+prefix_rule(
+    pattern = ["git", "branch", "--list", "--"],
+    decision = "allow",
+    justification = "List branches with an explicit option boundary; branch creation, deletion, rename, and switch remain gated.",
+)
+
+prefix_rule(
+    pattern = ["git", "worktree", "list"],
+    decision = "allow",
+    justification = "Inspect registered worktrees without adding, moving, removing, locking, or unlocking them.",
+)
+
+prefix_rule(
+    pattern = ["git", "ls-files", "--"],
+    decision = "allow",
+    justification = "List tracked current-repository paths with an explicit option boundary.",
+)
+
+prefix_rule(
+    pattern = ["git", "tag", "--list", "--"],
+    decision = "allow",
+    justification = "List tags with an explicit option boundary; tag creation, deletion, and publication remain gated.",
+)
+
+prefix_rule(
+    pattern = ["git", "remote", "get-url", "origin"],
+    decision = "allow",
+    justification = "Read the configured origin URL; remote mutation and credential disclosure remain gated.",
+)
+
+prefix_rule(
+    pattern = ["git", "--no-pager", "diff", "--no-ext-diff", "--no-textconv", "--"],
+    decision = "allow",
+    justification = "Read an unstaged diff with external diff and text conversion disabled and an explicit pathspec boundary.",
+)
+
+prefix_rule(
+    pattern = ["git", "--no-pager", "diff", "--cached", "--no-ext-diff", "--no-textconv", "--"],
+    decision = "allow",
+    justification = "Read a staged diff with external diff and text conversion disabled and an explicit pathspec boundary.",
+)
+
+prefix_rule(
+    pattern = ["git", "--no-pager", "log", "--no-ext-diff", "--no-textconv", "--max-count=50", "--format=%H%x09%aI%x09%s", "--"],
+    decision = "allow",
+    justification = "Read a fixed bounded current-history log with helpers disabled and an explicit pathspec boundary.",
+)
+
+prefix_rule(
+    pattern = ["git", "--no-pager", "show", "--no-ext-diff", "--no-textconv", "--format=fuller", "HEAD", "--"],
+    decision = "allow",
+    justification = "Read the current HEAD through a fixed helper-free shape; arbitrary commitish reads remain gated.",
+)
+
+prefix_rule(
+    pattern = ["git", "ls-remote", "--refs", "--", "origin"],
+    decision = "allow",
+    justification = "Read refs from the configured origin only; arbitrary remotes, URLs, upload-pack, and transport overrides remain gated.",
 )
 
 prefix_rule(

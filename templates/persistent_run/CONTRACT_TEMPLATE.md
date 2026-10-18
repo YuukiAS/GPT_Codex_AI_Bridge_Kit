@@ -10,6 +10,16 @@ Persistent execution: REQUIRED
 Backend: tmux
 Goal source: <repo-relative path>
 Run/session key: <project-owned stable key>
+Working directory: .
+Launch argv JSON: ["project-owned-executable", "argument"]
+Resume argv JSON: SAME_AS_LAUNCH
+Progress producer: lifecycle-only
+Progress source locator: NONE
+
+Progress email: DISABLED
+Runtime terminal email: DISABLED
+Semantic completion email: DISABLED
+Reader render max turns: 0
 
 ## Authorized Effects
 
@@ -49,7 +59,7 @@ Run/session key: <project-owned stable key>
 
 ## Progress Reporting
 
-- Progress source locator:
+- Source semantics: use the frozen `Progress source locator` above; Bridge does not infer domain progress from tmux/PID state.
 - Report interval: 60 minutes unless the task contract gives a defensible shorter cadence; do not default below 15 minutes.
 - Delivery mode: local latest/history, or Notifications only when an existing authorized provider/recipient is already configured.
 - Stall threshold:

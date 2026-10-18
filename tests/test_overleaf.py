@@ -55,6 +55,28 @@ class OverleafBridgeTests(unittest.TestCase):
         git_call(target, "commit", "-m", "initial")
         return target
 
+    def test_install_projected_instruction_overflow_writes_nothing(self) -> None:
+        target = self.make_project()
+        original = "user-owned\n"
+        (target / "AGENTS.md").write_text(original, encoding="utf-8")
+        codex_home = self.root / "codex-home"
+        codex_home.mkdir()
+        (codex_home / "config.toml").write_text("project_doc_max_bytes = 64\n", encoding="utf-8")
+
+        old = os.environ.get("CODEX_HOME")
+        os.environ["CODEX_HOME"] = str(codex_home)
+        try:
+            with self.assertRaisesRegex(overleaf.OverleafError, "BRIDGE_MANAGED_INSTRUCTION_PROJECTED_OVERFLOW"):
+                overleaf.install_overleaf(target, paper_root="paper/manuscript")
+        finally:
+            if old is None:
+                os.environ.pop("CODEX_HOME", None)
+            else:
+                os.environ["CODEX_HOME"] = old
+
+        self.assertEqual((target / "AGENTS.md").read_text(encoding="utf-8"), original)
+        self.assertFalse((target / "automation" / "overleaf").exists())
+
     def make_empty_remote(self, branch: str = "master") -> Path:
         remote = self.root / f"overleaf-{len(list(self.root.glob('overleaf-*.git')))}.git"
         git_call(self.root, "init", "--bare", "--initial-branch", branch, str(remote))

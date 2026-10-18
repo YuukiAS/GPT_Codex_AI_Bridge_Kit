@@ -45,6 +45,30 @@
   Bridge maintenance-specific low-friction policy is no longer distributed to
   consumer Control installations, while Host and Persistent Run behavior stays
   unchanged.
+- Preflight every Bridge-managed root `AGENTS.md` mutation against the actual
+  Codex instruction byte limit and native discovery order, cap each Bridge-owned
+  block, and reduce this repository's root instructions while preserving formal
+  policy locators; user-owned overflow remains diagnostic-only.
+- Prohibit new formal task worktrees under system temporary roots and make the
+  production reciprocal-exchange entry fail closed with
+  `WORKTREE_EXCHANGE_ACTIVITY_UNVERIFIED` before its first move; the transaction
+  and rollback core remains covered only by disposable fixtures.
+- Keep normal fetch/pull behavior low-friction and allow fixed native Git
+  identity/status/branch/worktree/path/tag/origin/diff/log/HEAD/remote reads,
+  while dangerous remotes, helpers, refspecs, topology changes and destructive
+  operations remain gated.
+- Bind bounded human-only operations to a recomputed human-readable effect
+  identity and real current-thread/session lifetime without creating an
+  authorization database or treating repository `authorized` fields as
+  authority.
+- Add independent progress, runtime-terminal and semantic-completion notification
+  intents and canonical events, Gmail machine/project/process configuration,
+  lifecycle-owner dedupe, and fixed Lite/Reviewed/Control/Persistent ownership
+  boundaries while retaining legacy manual Notifier behavior.
+- Add Persistent Run `start/status`, an exact-contract tmux supervisor, a
+  display-only Progress thread adapter, and a fresh stateless Clear Writing
+  reader layer that discovers `writing-style@yuukias-ai-skills`, reuses one
+  result across display/email, and falls back deterministically on failure.
 
 ## 0.10.0 - 2026-10-01
 

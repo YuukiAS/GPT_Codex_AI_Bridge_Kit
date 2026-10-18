@@ -332,6 +332,10 @@ def default_profile(project_name: str) -> dict[str, Any]:
         "notification_policy": {
             "terminal_states": sorted(TERMINAL_NOTIFICATION_STATES),
             "brief_path": "results/<task_key>/notification_brief.json",
+            "progress_email": "DISABLED",
+            "runtime_terminal_email": "DISABLED",
+            "semantic_completion_email": "DISABLED",
+            "reader_render_max_turns": 0,
         },
         "role_isolation_policy": {
             "controller": "authorized integration branch",
@@ -643,6 +647,13 @@ def validate_task_envelope(target: Path, task_key: str) -> tuple[dict[str, Any] 
         errors.append("REQUEST/CURRENT integration_branch mismatch")
     if not isinstance(request.get("max_repair_rounds"), int) or request.get("max_repair_rounds") < 0:
         errors.append("REQUEST.max_repair_rounds must be a non-negative integer")
+    for key in ["progress_email", "runtime_terminal_email"]:
+        if request.get(key, "DISABLED") not in {"ENABLED", "DISABLED"}:
+            errors.append(f"REQUEST.{key} invalid")
+    if request.get("semantic_completion_email", "DISABLED") not in {"ENABLED", "DISABLED", "UNSUPPORTED"}:
+        errors.append("REQUEST.semantic_completion_email invalid")
+    if not isinstance(request.get("reader_render_max_turns", 0), int) or request.get("reader_render_max_turns", 0) < 0:
+        errors.append("REQUEST.reader_render_max_turns must be a non-negative integer")
     if current.get("critic_mode") not in CRITIC_MODES:
         errors.append("CURRENT.critic_mode invalid")
     if current.get("state") not in TASK_STATES:
@@ -679,6 +690,10 @@ def init_task(
                 "max_repair_rounds": max_repair_rounds,
                 "status": "PLAN_REQUESTED",
                 "contract_frozen": False,
+                "progress_email": "DISABLED",
+                "runtime_terminal_email": "DISABLED",
+                "semantic_completion_email": "DISABLED",
+                "reader_render_max_turns": 0,
             },
         )
         actions.append(f"CREATE {request_path}")
@@ -2474,7 +2489,15 @@ def plan_transition(target: Path, task_key: str) -> dict[str, Any]:
     return {"state": state, "valid": True, "next_action": "NO_AUTOMATIC_TRANSITION"}
 
 
-def apply_transition(target: Path, task_key: str, *, expected_state: str, next_state: str, next_action: str = "") -> dict[str, Any]:
+def apply_transition(
+    target: Path,
+    task_key: str,
+    *,
+    expected_state: str,
+    next_state: str,
+    next_action: str = "",
+    notification_effect_sha256: str = "",
+) -> dict[str, Any]:
     path = task_root(target, task_key) / "CURRENT.json"
     current = load_json(path)
     if current.get("state") != expected_state:
@@ -2536,7 +2559,44 @@ def apply_transition(target: Path, task_key: str, *, expected_state: str, next_s
     if next_action:
         current["next_action"] = next_action
     write_json(path, current)
+    if next_state == "PLANNER_PASS":
+        _emit_control_semantic_completion(target, task_key, expected_effect_sha256=notification_effect_sha256)
     return current
+
+
+def _emit_control_semantic_completion(
+    target: Path,
+    task_key: str,
+    *,
+    expected_effect_sha256: str = "",
+) -> dict[str, Any]:
+    from . import notifier
+
+    request = load_json(task_root(target, task_key) / "REQUEST.json")
+    audit = final_critic_artifact_path(target, task_key)
+    event = notifier.canonical_event(
+        event_class="semantic_completion",
+        project=target.resolve().name,
+        task_key=task_key,
+        status="CRITIC_FINAL_PASS",
+        key_conclusion="The current bound Control target received CRITIC_FINAL_PASS.",
+        next_step="Present the current Control review bundle through the existing human gate.",
+        evidence_paths=[audit.as_posix(), (result_root(target, task_key) / "REVIEW_BUNDLE.json").as_posix()],
+        emitter="control_final_critic",
+        semantic_authority="Final Critic",
+    )
+    intents = {
+        "progress_email": request.get("progress_email", "DISABLED"),
+        "runtime_terminal_email": request.get("runtime_terminal_email", "DISABLED"),
+        "semantic_completion_email": request.get("semantic_completion_email", "DISABLED"),
+    }
+    return notifier.deliver_canonical_event(
+        event,
+        intents=intents,
+        output_dir=result_root(target, task_key) / "notifications" / "semantic_completion",
+        expected_effect_sha256=expected_effect_sha256,
+        reader_render_max_turns=int(request.get("reader_render_max_turns", 0)),
+    )
 
 
 def write_terminal_brief(target: Path, task_key: str) -> dict[str, Any]:
@@ -2566,6 +2626,53 @@ def terminal_notification_brief(target: Path, task_key: str) -> dict[str, Any] |
         "next_step": "Review the current Review Bundle and decide the next human action.",
         "evidence_paths": [str((result_root(target, task_key) / "REVIEW_BUNDLE.json").as_posix())],
     }
+
+
+def emit_control_runtime_terminal(
+    target: Path,
+    task_key: str,
+    *,
+    runtime_id: str,
+    exit_code: int,
+    started_at: str,
+    ended_at: str,
+    primary_runtime_owner: str = "control_execution_owner",
+    expected_effect_sha256: str = "",
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    """Fixed Control runtime emitter; process exit never implies semantic PASS."""
+    from . import notifier
+
+    request = load_json(task_root(target, task_key) / "REQUEST.json")
+    intents = {
+        "progress_email": request.get("progress_email", "DISABLED"),
+        "runtime_terminal_email": request.get("runtime_terminal_email", "DISABLED"),
+        "semantic_completion_email": request.get("semantic_completion_email", "DISABLED"),
+    }
+    event = notifier.canonical_event(
+        event_class="runtime_terminal",
+        project=target.resolve().name,
+        task_key=task_key,
+        status="process_exited" if exit_code == 0 else "process_failed",
+        terminal_status="success" if exit_code == 0 else "failed",
+        exit_code=exit_code,
+        started_at=started_at,
+        ended_at=ended_at,
+        key_conclusion=f"Control execution runtime exited with code {exit_code}.",
+        next_step="Use current Control evidence and Final Critic authority to evaluate semantic completion separately.",
+        evidence_paths=[(task_root(target, task_key) / "CURRENT.json").as_posix()],
+        emitter="control_execution_owner",
+        runtime_id=runtime_id,
+        lifecycle_owner="control_execution_owner",
+        primary_runtime_owner=primary_runtime_owner,
+    )
+    return notifier.deliver_canonical_event(
+        event,
+        intents=intents,
+        output_dir=result_root(target, task_key) / "notifications" / "runtime_terminal" / runtime_id,
+        expected_effect_sha256=expected_effect_sha256,
+        dry_run=dry_run,
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -2617,10 +2724,22 @@ def build_parser() -> argparse.ArgumentParser:
     transition_apply.add_argument("--expected-state", required=True)
     transition_apply.add_argument("--next-state", required=True)
     transition_apply.add_argument("--next-action", default="")
+    transition_apply.add_argument("--notification-effect-sha256", default="")
 
     terminal = sub.add_parser("terminal-brief")
     terminal.add_argument("--target", type=Path, default=Path.cwd())
     terminal.add_argument("--task-key", required=True)
+
+    runtime_event = sub.add_parser("runtime-event", help="Record the fixed Control execution runtime terminal event.")
+    runtime_event.add_argument("--target", type=Path, default=Path.cwd())
+    runtime_event.add_argument("--task-key", required=True)
+    runtime_event.add_argument("--runtime-id", required=True)
+    runtime_event.add_argument("--exit-code", required=True, type=int)
+    runtime_event.add_argument("--started-at", required=True)
+    runtime_event.add_argument("--ended-at", required=True)
+    runtime_event.add_argument("--primary-runtime-owner", default="control_execution_owner")
+    runtime_event.add_argument("--notification-effect-sha256", default="")
+    runtime_event.add_argument("--dry-run", action="store_true")
 
     prompt = sub.add_parser("prompt")
     prompt.add_argument("--target", type=Path, default=Path.cwd())
@@ -2688,6 +2807,7 @@ def main(argv: list[str] | None = None) -> int:
                     expected_state=args.expected_state,
                     next_state=args.next_state,
                     next_action=args.next_action,
+                    notification_effect_sha256=args.notification_effect_sha256,
                 ),
                 pretty=True,
             ),
@@ -2696,6 +2816,25 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "terminal-brief":
         print(canonical_json(write_terminal_brief(args.target, args.task_key), pretty=True), end="")
+        return 0
+    if args.command == "runtime-event":
+        print(
+            canonical_json(
+                emit_control_runtime_terminal(
+                    args.target,
+                    args.task_key,
+                    runtime_id=args.runtime_id,
+                    exit_code=args.exit_code,
+                    started_at=args.started_at,
+                    ended_at=args.ended_at,
+                    primary_runtime_owner=args.primary_runtime_owner,
+                    expected_effect_sha256=args.notification_effect_sha256,
+                    dry_run=args.dry_run,
+                ),
+                pretty=True,
+            ),
+            end="",
+        )
         return 0
     if args.command == "prompt":
         print(role_prompt(args.target, args.role))

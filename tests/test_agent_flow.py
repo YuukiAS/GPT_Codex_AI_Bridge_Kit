@@ -73,6 +73,23 @@ class AgentFlowTests(unittest.TestCase):
         )
         return tmp, target
 
+    def test_control_runtime_emitter_uses_frozen_intent_and_never_claims_pass(self) -> None:
+        tmp, target = self.make_project()
+        self.addCleanup(tmp.cleanup)
+        result = agent_flow.emit_control_runtime_terminal(
+            target,
+            "001_toy",
+            runtime_id="control-runtime-1",
+            exit_code=0,
+            started_at="2026-10-18T10:00:00+00:00",
+            ended_at="2026-10-18T10:01:00+00:00",
+        )
+        self.assertEqual(result["status"], "disabled_by_frozen_intent")
+        event = agent_flow.load_json(Path(result["event_path"]))
+        self.assertEqual(event["event_class"], "runtime_terminal")
+        self.assertEqual(event["lifecycle_owner"], "control_execution_owner")
+        self.assertNotIn("PASS", event["key_conclusion"])
+
     def snapshot_and_bundle(self, target: Path) -> dict[str, str]:
         snapshot = agent_flow.snapshot(target, "001_toy")
         evidence_path = agent_flow.result_root(target, "001_toy") / "verification" / "unit.json"
@@ -385,6 +402,8 @@ class AgentFlowTests(unittest.TestCase):
 
             installed_critic = installed_path.read_text(encoding="utf-8")
             self.assertNotIn("LOW_FRICTION_OPERATION_REVIEW", installed_critic)
+            self.assertIn("three notification intents", " ".join(installed_critic.split()))
+            self.assertIn("Reader render max", installed_critic)
             for marker in [
                 "REQUIRED_INITIAL",
                 "STANDBY",

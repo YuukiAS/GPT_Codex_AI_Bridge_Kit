@@ -14,6 +14,11 @@ Explain what problem this task will solve and why the change is useful.
 
 State the semantic/product/architecture decisions that Codex must not reinvent.
 
+Freeze `Progress email`, `Runtime terminal email`, and `Semantic completion
+email` independently, with all three defaulting to `DISABLED`. Freeze a bounded
+`Reader render max turns`; a runtime-terminal event may report process facts but
+must not claim semantic completion.
+
 ## Positive completion
 
 State the real user, product, scientific, or repository observable outcome that

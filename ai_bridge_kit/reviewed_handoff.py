@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -13,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from . import external_wait
+from .readiness import bounded_effect_identity
 from .host import (
     HostPublishError,
     _canonical_repo_identity,
@@ -452,6 +454,12 @@ def _lexical_absolute(path: Path) -> Path:
     return Path(path.as_posix())
 
 
+def _is_system_temp_worktree(path: Path) -> bool:
+    temp_root = Path(tempfile.gettempdir()).resolve()
+    resolved = path.expanduser().resolve()
+    return resolved == temp_root or temp_root in resolved.parents
+
+
 def _reject_symlink_redirection(path: Path) -> None:
     current = Path(path.anchor)
     parts = path.parts[1:] if path.anchor else path.parts
@@ -594,6 +602,7 @@ def _load_task_scope(
     expected_worktree: Path,
     expected_base_ref: str,
     mode: str,
+    disposable_fixture: bool = False,
 ) -> TaskScope:
     if _origin_repo_identity(target) != expected_repo:
         raise WorktreeMaterializeError("REPO_ASSERTION_FAILED")
@@ -629,6 +638,8 @@ def _load_task_scope(
     _reject_symlink_redirection(asserted_worktree)
     if asserted_worktree != scope.frozen_worktree:
         raise WorktreeMaterializeError("WORKTREE_ASSERTION_FAILED")
+    if mode == "bootstrap" and not disposable_fixture and _is_system_temp_worktree(scope.frozen_worktree):
+        raise WorktreeMaterializeError("NEW_TASK_WORKTREE_TEMP_FORBIDDEN")
     if not _base_ref_matches(expected_base_ref, scope.base_branch, scope.base_commit):
         raise WorktreeMaterializeError("BASE_REF_ASSERTION_FAILED")
     if not git_commit_exists(target, scope.base_commit):
@@ -842,6 +853,7 @@ def materialize_worktree(
     expected_worktree: Path,
     expected_base_ref: str,
     mode: str,
+    _disposable_fixture: bool = False,
 ) -> list[str]:
     target = target.resolve()
     if mode not in {"bootstrap", "resume"}:
@@ -855,6 +867,7 @@ def materialize_worktree(
         expected_worktree=expected_worktree,
         expected_base_ref=expected_base_ref,
         mode=mode,
+        disposable_fixture=_disposable_fixture,
     )
     branch = f"reviewed/{task_key}"
     branch_ref = f"refs/heads/{branch}"
@@ -1205,7 +1218,7 @@ def _recover_exchange_journal(target: Path, journal_path: Path, expected: dict[s
     return {"status": "recovered_journal", "state": state, "recovery": recovery, "journal": journal_path.as_posix()}
 
 
-def exchange_linked_worktrees(
+def _exchange_linked_worktrees_transaction_fixture(
     target: Path,
     *,
     path_a: Path,
@@ -1215,6 +1228,7 @@ def exchange_linked_worktrees(
     expected_branch_b: str,
     dry_run: bool = False,
 ) -> dict[str, Any]:
+    """Exercise the S1-S3 transaction only in disposable test fixtures."""
     for raw_path in [target, path_a, path_b, temp_path]:
         _reject_lexical_path_symlinks(raw_path)
     target = target.resolve()
@@ -1368,6 +1382,124 @@ def exchange_linked_worktrees(
         raise WorktreeExchangeError("WORKTREE_EXCHANGE_POSTCHECK_RECOVERED: " + ",".join(recovery))
     journal_path.unlink(missing_ok=True)
     return {"status": "exchanged", **evidence, "after": {"A": after_a, "B": after_b}}
+
+
+def derived_exchange_temp_path(
+    target: Path,
+    *,
+    path_a: Path,
+    path_b: Path,
+    expected_branch_a: str,
+    expected_branch_b: str,
+) -> Path:
+    target = target.resolve()
+    path_a = path_a.expanduser().resolve()
+    path_b = path_b.expanduser().resolve()
+    common = Path(git_output(target, ["rev-parse", "--git-common-dir"]))
+    if not common.is_absolute():
+        common = (target / common).resolve()
+    payload = "\0".join(
+        [
+            common.as_posix(),
+            path_a.as_posix(),
+            path_b.as_posix(),
+            expected_branch_a,
+            expected_branch_b,
+        ]
+    )
+    suffix = hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+    return path_a.parent / f".ai-bridge-exchange-{suffix}"
+
+
+def _worktree_activity_diagnostics(paths: list[Path]) -> list[dict[str, str]]:
+    """Return positive same-user cwd observations only; an empty list proves nothing."""
+    proc = Path("/proc")
+    if not proc.is_dir():
+        return []
+    observations: list[dict[str, str]] = []
+    uid = os.getuid() if hasattr(os, "getuid") else None
+    for entry in proc.iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            if uid is not None and entry.stat().st_uid != uid:
+                continue
+            cwd = (entry / "cwd").resolve(strict=True)
+        except (OSError, RuntimeError):
+            continue
+        for path in paths:
+            if cwd == path or path in cwd.parents:
+                observations.append({"pid": entry.name, "cwd": cwd.as_posix()})
+                break
+        if len(observations) >= 10:
+            break
+    return observations
+
+
+def exchange_linked_worktrees(
+    target: Path,
+    *,
+    task_key: str,
+    path_a: Path,
+    path_b: Path,
+    temp_path: Path | None,
+    expected_branch_a: str,
+    expected_branch_b: str,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    """Fail closed until Bridge has an exclusive worktree quiescence primitive."""
+    for raw_path in [target, path_a, path_b]:
+        _reject_lexical_path_symlinks(raw_path)
+    target = target.resolve()
+    if task_keys.existing_task_key_error(task_key):
+        raise WorktreeExchangeError("WORKTREE_EXCHANGE_TASK_KEY_INVALID")
+    path_a = path_a.expanduser().resolve()
+    path_b = path_b.expanduser().resolve()
+    top = Path(git_output(target, ["rev-parse", "--show-toplevel"])).resolve()
+    if path_a == top or path_b == top:
+        raise WorktreeExchangeError("MAIN_WORKTREE_EXCHANGE_UNSUPPORTED")
+    if path_a == path_b or path_a in path_b.parents or path_b in path_a.parents:
+        raise WorktreeExchangeError("WORKTREE_EXCHANGE_PATH_OVERLAP")
+    derived_temp = derived_exchange_temp_path(
+        target,
+        path_a=path_a,
+        path_b=path_b,
+        expected_branch_a=expected_branch_a,
+        expected_branch_b=expected_branch_b,
+    )
+    if temp_path is not None and temp_path.expanduser().resolve() != derived_temp:
+        raise WorktreeExchangeError(
+            f"WORKTREE_EXCHANGE_TEMP_ASSERTION_FAILED: expected={derived_temp} actual={temp_path.expanduser().resolve()}"
+        )
+    entry_a = _registered_worktree_entry_by_path(target, path_a)
+    entry_b = _registered_worktree_entry_by_path(target, path_b)
+    if entry_a.get("branch") != f"refs/heads/{expected_branch_a}":
+        raise WorktreeExchangeError("WORKTREE_A_BRANCH_MISMATCH")
+    if entry_b.get("branch") != f"refs/heads/{expected_branch_b}":
+        raise WorktreeExchangeError("WORKTREE_B_BRANCH_MISMATCH")
+    common = Path(git_output(target, ["rev-parse", "--git-common-dir"]))
+    if not common.is_absolute():
+        common = (target / common).resolve()
+    effect = bounded_effect_identity(
+        "worktree_exchange",
+        {
+            "repo_common_dir": common,
+            "task_key": task_key,
+            "path_a": path_a,
+            "path_b": path_b,
+            "temp_path": derived_temp,
+            "expected_branch_a": expected_branch_a,
+            "expected_branch_b": expected_branch_b,
+            "purpose": "reciprocal_exchange",
+        },
+    )
+    active = _worktree_activity_diagnostics([path_a, path_b])
+    diagnostic = f" active_process_diagnostic={json.dumps(active, sort_keys=True)}" if active else ""
+    raise WorktreeExchangeError(
+        "WORKTREE_EXCHANGE_ACTIVITY_UNVERIFIED: "
+        f"effect_sha256={effect['sha256']} A={path_a} B={path_b} T={derived_temp}; "
+        f"no observed activity cannot prove quiescence; positive observations only reject.{diagnostic}"
+    )
 
 
 def bootstrap_task_worktree(
@@ -2611,6 +2743,7 @@ def apply_transition(
     expected_state: str,
     next_state: str,
     next_action: str = "",
+    notification_effect_sha256: str = "",
 ) -> dict[str, Any]:
     path = task_root(target, task_key) / "CURRENT.json"
     original = load_json(path)
@@ -2686,7 +2819,63 @@ def apply_transition(
     if post_errors:
         write_json(path, original)
         raise ValueError("transition would create invalid Review state: " + "; ".join(post_errors))
+    if expected_state == "PASS" and next_state == "AWAIT_HUMAN_DECISION":
+        _emit_reviewed_semantic_completion(
+            target,
+            task_key,
+            current,
+            expected_effect_sha256=notification_effect_sha256,
+        )
     return current
+
+
+def _review_notification_intents(target: Path, task_key: str) -> dict[str, str]:
+    request = task_root(target, task_key) / "REQUEST.md"
+    text = request.read_text(encoding="utf-8") if request.is_file() else ""
+    result: dict[str, str] = {}
+    for label, key in [
+        ("Progress email", "progress_email"),
+        ("Runtime terminal email", "runtime_terminal_email"),
+        ("Semantic completion email", "semantic_completion_email"),
+    ]:
+        match = re.search(rf"(?mi)^{re.escape(label)}:\s*(ENABLED|DISABLED|UNSUPPORTED)\s*$", text)
+        result[key] = match.group(1).upper() if match else "DISABLED"
+    return result
+
+
+def _emit_reviewed_semantic_completion(
+    target: Path,
+    task_key: str,
+    current: dict[str, Any],
+    *,
+    expected_effect_sha256: str = "",
+) -> dict[str, Any]:
+    from . import notifier
+
+    review_round = int(current.get("review_round") or 0)
+    event = notifier.canonical_event(
+        event_class="semantic_completion",
+        project=target.resolve().name,
+        task_key=task_key,
+        status="REVIEW_PASS",
+        key_conclusion="The current implementation commit received a valid Reviewed PASS and has a final report.",
+        next_step="Present FINAL_REPORT.md through the existing human gate.",
+        evidence_paths=[
+            (result_root(target, task_key) / f"REVIEW_{review_round}.md").as_posix(),
+            (result_root(target, task_key) / "FINAL_REPORT.md").as_posix(),
+        ],
+        emitter="reviewed_reviewer",
+        semantic_authority="Reviewer",
+    )
+    request_text = (task_root(target, task_key) / "REQUEST.md").read_text(encoding="utf-8")
+    reader_match = re.search(r"(?mi)^Reader render max turns:\s*(\d+)\s*$", request_text)
+    return notifier.deliver_canonical_event(
+        event,
+        intents=_review_notification_intents(target, task_key),
+        output_dir=result_root(target, task_key) / "notifications" / "semantic_completion",
+        expected_effect_sha256=expected_effect_sha256,
+        reader_render_max_turns=int(reader_match.group(1)) if reader_match else 0,
+    )
 
 
 def record_review(
@@ -2907,6 +3096,7 @@ def build_parser() -> argparse.ArgumentParser:
     transition_apply.add_argument("--expected-state", required=True)
     transition_apply.add_argument("--next-state", required=True)
     transition_apply.add_argument("--next-action", default="")
+    transition_apply.add_argument("--notification-effect-sha256", default="")
 
     review = sub.add_parser("review")
     review_sub = review.add_subparsers(dest="review_command")
@@ -2936,9 +3126,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     exchange = sub.add_parser("exchange-worktrees")
     exchange.add_argument("--target", type=Path, default=Path.cwd())
+    exchange.add_argument("--task-key", required=True)
     exchange.add_argument("--path-a", type=Path, required=True)
     exchange.add_argument("--path-b", type=Path, required=True)
-    exchange.add_argument("--temp-path", type=Path, required=True)
+    exchange.add_argument(
+        "--temp-path",
+        type=Path,
+        help="Optional exact assertion of Bridge's derived same-filesystem temporary path.",
+    )
     exchange.add_argument("--expected-branch-a", required=True)
     exchange.add_argument("--expected-branch-b", required=True)
     exchange.add_argument("--dry-run", action="store_true")
@@ -3023,6 +3218,7 @@ def main(argv: list[str] | None = None) -> int:
                 expected_state=args.expected_state,
                 next_state=args.next_state,
                 next_action=args.next_action,
+                notification_effect_sha256=args.notification_effect_sha256,
             )
             print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
             return 0
@@ -3042,6 +3238,7 @@ def main(argv: list[str] | None = None) -> int:
                 json.dumps(
                     exchange_linked_worktrees(
                         args.target,
+                        task_key=args.task_key,
                         path_a=args.path_a,
                         path_b=args.path_b,
                         temp_path=args.temp_path,

@@ -38,10 +38,41 @@ class PersistentRunTests(unittest.TestCase):
         git_call(target, "init")
         return target
 
+    def test_install_projected_instruction_overflow_writes_nothing(self) -> None:
+        target = self.make_repo()
+        original = "user-owned\n"
+        (target / "AGENTS.md").write_text(original, encoding="utf-8")
+        codex_home = Path(os.environ["CODEX_HOME"])
+        codex_home.mkdir(parents=True)
+        (codex_home / "config.toml").write_text("project_doc_max_bytes = 64\n", encoding="utf-8")
+
+        with self.assertRaisesRegex(persistent_run.PersistentRunError, "BRIDGE_MANAGED_INSTRUCTION_PROJECTED_OVERFLOW"):
+            persistent_run.install_persistent_run(target)
+
+        self.assertEqual((target / "AGENTS.md").read_text(encoding="utf-8"), original)
+        self.assertFalse((target / "automation" / "persistent_run").exists())
+
     def write_goal(self, target: Path, rel: str = "prompts/tasks/001_goal.md") -> Path:
         goal = target / rel
         goal.parent.mkdir(parents=True, exist_ok=True)
-        goal.write_text("# Goal\n\nPersistent execution: REQUIRED\n", encoding="utf-8")
+        goal.write_text(
+            "# Goal\n\n"
+            "Persistent execution: REQUIRED\n"
+            "Backend: tmux\n"
+            f"Goal source: {rel}\n"
+            "Run/session key: repo--run\n"
+            "Working directory: .\n"
+            'Launch argv JSON: ["python", "-c", "print(1)"]\n'
+            "Resume argv JSON: SAME_AS_LAUNCH\n"
+            "Progress producer: lifecycle-only\n"
+            "Progress source locator: NONE\n"
+            "Report interval: 60 minutes\n"
+            "Reader render max turns: 2\n"
+            "Progress email: DISABLED\n"
+            "Runtime terminal email: ENABLED\n"
+            "Semantic completion email: UNSUPPORTED\n",
+            encoding="utf-8",
+        )
         return goal
 
     def test_install_into_real_git_repo_without_lite(self) -> None:
@@ -70,7 +101,7 @@ class PersistentRunTests(unittest.TestCase):
         self.assertEqual(first.count(persistent_run.PERSISTENT_RUN_BEGIN_MARKER), 1)
 
         agents.write_text(
-            first.replace("0.8.0 唯一 persistence backend", "stale managed text"),
+            first.replace("0.11.0 唯一 persistence backend", "stale managed text"),
             encoding="utf-8",
         )
         persistent_run.install_persistent_run(target)
@@ -78,7 +109,7 @@ class PersistentRunTests(unittest.TestCase):
 
         self.assertIn("# User Rules", updated)
         self.assertNotIn("stale managed text", updated)
-        self.assertIn("0.8.0 唯一 persistence backend", updated)
+        self.assertIn("0.11.0 唯一 persistence backend", updated)
         self.assertEqual(updated.count(persistent_run.PERSISTENT_RUN_BEGIN_MARKER), 1)
 
     def test_repeated_install_is_stable_and_does_not_write_codex_home_or_rules(self) -> None:
@@ -133,6 +164,8 @@ class PersistentRunTests(unittest.TestCase):
         prompt = persistent_run.render_kickoff_prompt(target, "prompts/tasks/001_goal.md")
 
         self.assertIn("Goal: `prompts/tasks/001_goal.md`", prompt)
+        self.assertIn("Goal/contract SHA-256", prompt)
+        self.assertIn("--authorization-effect-sha256", prompt)
         self.assertIn("persistent tmux session", prompt)
         self.assertIn("Do not ask again", prompt)
         self.assertIn("does not permit scope expansion", prompt)
@@ -143,6 +176,96 @@ class PersistentRunTests(unittest.TestCase):
             persistent_run.render_kickoff_prompt(target, str(outside))
         with self.assertRaisesRegex(persistent_run.PersistentRunError, "does not exist"):
             persistent_run.render_kickoff_prompt(target, "prompts/tasks/missing.md")
+
+    def test_start_requires_exact_hash_and_effect_then_launches_bounded_supervisor(self) -> None:
+        target = self.make_repo()
+        self.write_goal(target)
+        contract = persistent_run.parse_persistent_contract(target, "prompts/tasks/001_goal.md")
+        effect = persistent_run.persistent_launch_effect(contract)
+        calls: list[list[str]] = []
+
+        class FakeApp:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return None
+
+            def request(self, method, params):
+                self.method = method
+                self.params = params
+                return {"thread": {"id": "progress-thread-1"}}
+
+        def runner(argv, **_kwargs):
+            calls.append(argv)
+            return subprocess.CompletedProcess(argv, 1 if argv[1] == "has-session" else 0, "", "")
+
+        result = persistent_run.start_persistent_run(
+            target,
+            "prompts/tasks/001_goal.md",
+            expected_goal_sha256=contract["goal_sha256"],
+            authorization_effect_sha256=effect["sha256"],
+            state_root=self.root / "state",
+            app_factory=FakeApp,
+            runner=runner,
+        )
+
+        self.assertEqual(result["status"], "STARTED_NEW_RUN")
+        self.assertEqual(result["progress_thread_id"], "progress-thread-1")
+        launch = calls[-1]
+        self.assertEqual(launch[:3], ["tmux", "new-session", "-d"])
+        self.assertNotIn("python -c print(1)", launch)
+        self.assertIn("ai_bridge_kit.persistent_run", launch[-1])
+
+        with self.assertRaisesRegex(persistent_run.PersistentRunError, "GOAL_HASH_MISMATCH"):
+            persistent_run.start_persistent_run(
+                target,
+                "prompts/tasks/001_goal.md",
+                expected_goal_sha256="0" * 64,
+                authorization_effect_sha256=effect["sha256"],
+                state_root=self.root / "state-2",
+                app_factory=FakeApp,
+                runner=runner,
+            )
+
+    def test_start_resumes_same_binding_without_second_thread_or_primary(self) -> None:
+        target = self.make_repo()
+        self.write_goal(target)
+        contract = persistent_run.parse_persistent_contract(target, "prompts/tasks/001_goal.md")
+        effect = persistent_run.persistent_launch_effect(contract)
+        active = False
+        app_starts = 0
+
+        class FakeApp:
+            def __enter__(self):
+                nonlocal app_starts
+                app_starts += 1
+                return self
+
+            def __exit__(self, *_args):
+                return None
+
+            def request(self, method, params):
+                return {"thread": {"id": "progress-thread-1"}}
+
+        def runner(argv, **_kwargs):
+            nonlocal active
+            if argv[1] == "has-session":
+                return subprocess.CompletedProcess(argv, 0 if active else 1, "", "")
+            active = True
+            return subprocess.CompletedProcess(argv, 0, "", "")
+
+        kwargs = {
+            "expected_goal_sha256": contract["goal_sha256"],
+            "authorization_effect_sha256": effect["sha256"],
+            "state_root": self.root / "state-resume",
+            "app_factory": FakeApp,
+            "runner": runner,
+        }
+        persistent_run.start_persistent_run(target, "prompts/tasks/001_goal.md", **kwargs)
+        resumed = persistent_run.start_persistent_run(target, "prompts/tasks/001_goal.md", **kwargs)
+        self.assertEqual(resumed["status"], "RESUMED_EXISTING_RUN")
+        self.assertEqual(app_starts, 1)
 
     def test_validate_rejects_codex_rules_created_by_target(self) -> None:
         target = self.make_repo()
@@ -329,7 +452,7 @@ class PersistentRunTests(unittest.TestCase):
             )
 
             report = persistent_run.report_progress_file(progress, state_root=state)
-            self.assertEqual(report["notification_projection"], "unavailable_existing_configuration_not_verified")
+            self.assertEqual(report["notification_projection"], "disabled_by_frozen_intent")
             self.assertIsNone(report["notification_result"])
 
             payload = json.loads(progress.read_text(encoding="utf-8"))
@@ -338,6 +461,7 @@ class PersistentRunTests(unittest.TestCase):
             payload["observed_at"] = "2026-09-23T01:20:00+00:00"
             payload["stage"] = "stage-b"
             payload["progress_since_previous"] = "two steps"
+            payload["notification_intents"] = {"progress_email": "ENABLED"}
             progress.write_text(json.dumps(payload), encoding="utf-8")
 
             authorized = persistent_run.report_progress_file(progress, state_root=state)

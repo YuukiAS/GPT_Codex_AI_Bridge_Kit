@@ -350,6 +350,122 @@ class NotifierTests(unittest.TestCase):
 
         self.assertEqual(notifier.validate_brief(brief), [])
 
+    def test_three_intent_event_matrix_and_runtime_claim_boundary(self) -> None:
+        intents = notifier.normalize_notification_intents(None)
+        self.assertEqual(
+            intents,
+            {
+                "progress_email": "DISABLED",
+                "runtime_terminal_email": "DISABLED",
+                "semantic_completion_email": "DISABLED",
+            },
+        )
+        progress = notifier.canonical_event(
+            event_class="progress",
+            project="demo",
+            task_key="repo--task",
+            status="running",
+            key_conclusion="Observed checkpoint 3.",
+            next_step="Continue observing.",
+            evidence_paths=["progress.json"],
+            emitter="persistent_supervisor",
+        )
+        runtime = notifier.canonical_event(
+            event_class="runtime_terminal",
+            project="demo",
+            task_key="repo--task",
+            status="process_exited",
+            key_conclusion="Process exited with code 0.",
+            next_step="Await semantic review.",
+            evidence_paths=["run.log"],
+            emitter="persistent_supervisor",
+            runtime_id="run-1",
+            lifecycle_owner="persistent_supervisor",
+        )
+        semantic = notifier.canonical_event(
+            event_class="semantic_completion",
+            project="demo",
+            task_key="repo--task",
+            status="PASS",
+            key_conclusion="Frozen completion criteria passed.",
+            next_step="User may review.",
+            evidence_paths=["FINAL_CRITIC_AUDIT.json"],
+            emitter="control_execution_owner",
+            semantic_authority="Final Critic",
+        )
+        self.assertEqual(notifier.event_intent_state(progress, intents), "DISABLED")
+        self.assertEqual(notifier.event_intent_state(runtime, intents), "DISABLED")
+        self.assertEqual(notifier.event_intent_state(semantic, intents), "DISABLED")
+        with self.assertRaisesRegex(ValueError, "must not claim Goal"):
+            notifier.canonical_event(
+                event_class="runtime_terminal",
+                project="demo",
+                task_key="repo--task",
+                status="RELEASE_READY",
+                key_conclusion="Process exited.",
+                next_step="none",
+                evidence_paths=["run.log"],
+                emitter="reviewed_runner",
+                runtime_id="run-1",
+                lifecycle_owner="reviewed_runner",
+            )
+
+    def test_machine_project_process_merge_and_project_password_rejection(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            machine = root / "machine.env"
+            project = root / "project.env"
+            machine.write_text(
+                "AI_BRIDGE_NOTIFY_SMTP_USER=machine@example.com\n"
+                "AI_BRIDGE_NOTIFY_SMTP_PASSWORD=machine-secret\n"
+                "AI_BRIDGE_NOTIFY_TO=machine@example.com\n",
+                encoding="utf-8",
+            )
+            project.write_text("AI_BRIDGE_NOTIFY_TO=project@example.com\n", encoding="utf-8")
+            merged = notifier.notifier_env(
+                {"AI_BRIDGE_NOTIFY_TO": "process@example.com"},
+                project,
+                machine_file=machine,
+            )
+            self.assertEqual(merged["AI_BRIDGE_NOTIFY_SMTP_PASSWORD"], "machine-secret")
+            self.assertEqual(merged["AI_BRIDGE_NOTIFY_TO"], "process@example.com")
+            with self.assertRaisesRegex(ValueError, "must not store Gmail App Password"):
+                notifier.configure_profile(
+                    scope="project",
+                    target=root,
+                    values={"AI_BRIDGE_NOTIFY_SMTP_PASSWORD": "forbidden"},
+                )
+
+    def test_gmail_effect_scope_mismatch_blocks_before_sender(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            event = notifier.canonical_event(
+                event_class="progress",
+                project="demo",
+                task_key="repo--task",
+                status="running",
+                key_conclusion="checkpoint",
+                next_step="continue",
+                evidence_paths=["progress.json"],
+                emitter="persistent_supervisor",
+            )
+            calls: list[dict] = []
+            result = notifier.deliver_canonical_event(
+                event,
+                intents={"progress_email": "ENABLED"},
+                output_dir=root / "output",
+                expected_effect_sha256="0" * 64,
+                env={
+                    "AI_BRIDGE_NOTIFY_SMTP_USER": "sender@example.com",
+                    "AI_BRIDGE_NOTIFY_SMTP_PASSWORD": "secret",
+                    "AI_BRIDGE_NOTIFY_TO": "recipient@example.com",
+                },
+                sender=lambda brief, env: calls.append(brief),
+            )
+            self.assertEqual(result["status"], "authorization_required")
+            self.assertEqual(calls, [])
+            self.assertFalse(result["effect"]["grants_authority"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,9 +1,11 @@
 # TODO — Execution Context Continuity: Canonical Worktree + Mandatory Control Reads
 
-Status: **READY FOR PLANNER INTAKE / NOT IMPLEMENTATION AUTHORIZATION**  
-Priority: **CRITICAL — repeated real-user task interruption**  
-Date: 2026-10-08  
-Task key candidate: `bridge-core--execution-context-continuity`
+- Status: **IMPLEMENTED_NOT_FINAL_VALIDATED — 0.11.0 candidate freeze pending development Progress injection canary**
+- Priority: **CRITICAL — repeated real-user task interruption**
+- Date: 2026-10-08
+- Task key: `bridge-core--execution-context-readiness-convergence`
+- Approved execution package: `bbd14ce66b462ba2dbcecc6ad06d851598a3aacc`
+- Candidate locator: `PENDING_G14_DEVELOPMENT_CANARY`
 
 ## User problem
 

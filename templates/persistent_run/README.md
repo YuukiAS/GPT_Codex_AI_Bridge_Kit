@@ -49,6 +49,12 @@ ai-bridge persistent-run prompt kickoff \
 
 这个命令只打印授权文本，不会创建 tmux session，不会启动任务，也不会扩大 Goal scope。它只适用于已经选择 Persistent Run/tmux 的 Goal；scheduler-native 或 already-detached 工作不需要伪造 Persistent Run kickoff。
 
+用户发送这段 exact kickoff 后，Codex 使用其中给出的 `persistent-run start` 命令。该入口重读 Goal、核对 SHA-256 与 bounded effect identity，连接已有 official shared app-server，创建 display-only Progress thread，然后才幂等启动或恢复 canonical tmux run。只读诊断使用：
+
+```bash
+ai-bridge persistent-run status --target /path/to/repo --goal path/to/goal.md
+```
+
 ## Codex 恢复原则
 
 收到 kickoff 后，Codex 应读取 Goal 和 Persistent Run contract，检查 canonical tmux session、项目已有 lock / heartbeat / stage-state / checkpoint / resume evidence，再决定启动或恢复。已有兼容 run 时应 resume，不重复启动。

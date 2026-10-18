@@ -404,12 +404,29 @@ class ReviewedHandoffTests(unittest.TestCase):
                 expected_worktree=frozen,
                 expected_base_ref="origin/main",
                 mode="bootstrap",
+                _disposable_fixture=True,
             )
 
             self.assertTrue(frozen.is_dir())
             self.assertTrue(any("CREATE worktree" in action for action in actions))
             branch = subprocess.check_output(["git", "branch", "--show-current"], cwd=frozen, text=True).strip()
             self.assertEqual(branch, "reviewed/repo--feature")
+
+    def test_new_formal_task_worktree_rejects_system_temp_without_fixture_override(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            frozen = Path(tmp) / "project-reviewed"
+            target, identity = self.make_remote_review_project(tmp, worktree=frozen)
+
+            with self.assertRaisesRegex(rh.WorktreeMaterializeError, "NEW_TASK_WORKTREE_TEMP_FORBIDDEN"):
+                rh.materialize_worktree(
+                    target,
+                    "repo--feature",
+                    expected_repo=identity,
+                    expected_worktree=frozen,
+                    expected_base_ref="origin/main",
+                    mode="bootstrap",
+                )
+            self.assertFalse(frozen.exists())
 
     def test_task_bootstrap_creates_exact_first_worktree_without_polluting_main(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1072,6 +1089,7 @@ class ReviewedHandoffTests(unittest.TestCase):
                     expected_worktree=Path(tmp) / "other",
                     expected_base_ref="origin/main",
                     mode="bootstrap",
+                    _disposable_fixture=True,
                 )
             frozen.mkdir()
             (frozen / "foreign.txt").write_text("not ours\n", encoding="utf-8")
@@ -1083,6 +1101,7 @@ class ReviewedHandoffTests(unittest.TestCase):
                     expected_worktree=frozen,
                     expected_base_ref="origin/main",
                     mode="bootstrap",
+                    _disposable_fixture=True,
                 )
 
     def test_materialize_worktree_rejects_symlink_redirection_for_frozen_locator(self) -> None:
@@ -1106,6 +1125,7 @@ class ReviewedHandoffTests(unittest.TestCase):
                     expected_worktree=frozen,
                     expected_base_ref="origin/main",
                     mode="bootstrap",
+                    _disposable_fixture=True,
                 )
 
     def test_materialize_worktree_bootstrap_requires_base_lineage(self) -> None:
@@ -1131,6 +1151,7 @@ class ReviewedHandoffTests(unittest.TestCase):
                     expected_worktree=frozen,
                     expected_base_ref="origin/main",
                     mode="bootstrap",
+                    _disposable_fixture=True,
                 )
             self.assertIsNone(rh._branch_oid(target, "refs/heads/reviewed/repo--feature"))
 
@@ -1154,6 +1175,7 @@ class ReviewedHandoffTests(unittest.TestCase):
                         expected_worktree=frozen,
                         expected_base_ref="origin/main",
                         mode="bootstrap",
+                        _disposable_fixture=True,
                     )
             self.assertIsNone(rh._branch_oid(target, "refs/heads/reviewed/repo--feature"))
 
@@ -1209,8 +1231,55 @@ class ReviewedHandoffTests(unittest.TestCase):
             subprocess.check_call(["git", "add", "tracked.txt"], cwd=path_b)
             (path_b / "b-untracked.txt").write_text("b\n", encoding="utf-8")
 
+            derived_temp = rh.derived_exchange_temp_path(
+                repo,
+                path_a=path_a,
+                path_b=path_b,
+                expected_branch_a="tutorial",
+                expected_branch_b="hw",
+            )
+            self.assertEqual(derived_temp.parent, path_a.parent)
+            with self.assertRaisesRegex(rh.WorktreeExchangeError, "WORKTREE_EXCHANGE_TEMP_ASSERTION_FAILED"):
+                rh.exchange_linked_worktrees(
+                    repo,
+                    task_key="repo--feature",
+                    path_a=path_a,
+                    path_b=path_b,
+                    temp_path=root / "caller-selected-temp",
+                    expected_branch_a="tutorial",
+                    expected_branch_b="hw",
+                )
+            with self.assertRaisesRegex(rh.WorktreeExchangeError, "WORKTREE_EXCHANGE_ACTIVITY_UNVERIFIED"):
+                rh.exchange_linked_worktrees(
+                    repo,
+                    task_key="repo--feature",
+                    path_a=path_a,
+                    path_b=path_b,
+                    temp_path=derived_temp,
+                    expected_branch_a="tutorial",
+                    expected_branch_b="hw",
+                )
+            with mock.patch.object(
+                rh,
+                "_worktree_activity_diagnostics",
+                return_value=[{"pid": "123", "cwd": path_a.as_posix()}],
+            ):
+                with self.assertRaisesRegex(rh.WorktreeExchangeError, "active_process_diagnostic"):
+                    rh.exchange_linked_worktrees(
+                        repo,
+                        task_key="repo--feature",
+                        path_a=path_a,
+                        path_b=path_b,
+                        temp_path=derived_temp,
+                        expected_branch_a="tutorial",
+                        expected_branch_b="hw",
+                    )
+            self.assertEqual(subprocess.check_output(["git", "branch", "--show-current"], cwd=path_a, text=True).strip(), "tutorial")
+            self.assertEqual(subprocess.check_output(["git", "branch", "--show-current"], cwd=path_b, text=True).strip(), "hw")
+            self.assertFalse(derived_temp.exists())
+
             with mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(root / "state")}):
-                result = rh.exchange_linked_worktrees(
+                result = rh._exchange_linked_worktrees_transaction_fixture(
                     repo,
                     path_a=path_a,
                     path_b=path_b,
@@ -1260,7 +1329,7 @@ class ReviewedHandoffTests(unittest.TestCase):
 
                 with mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(root / "state")}), mock.patch.object(rh, "git_run", side_effect=fail_selected_move):
                     with self.assertRaisesRegex(rh.WorktreeExchangeError, "WORKTREE_EXCHANGE_INTERRUPTED"):
-                        rh.exchange_linked_worktrees(
+                        rh._exchange_linked_worktrees_transaction_fixture(
                             repo,
                             path_a=path_a,
                             path_b=path_b,
@@ -1310,7 +1379,7 @@ class ReviewedHandoffTests(unittest.TestCase):
                     rh, "git_run", side_effect=crash_after_selected_move
                 ):
                     with self.assertRaises(SystemExit):
-                        rh.exchange_linked_worktrees(
+                        rh._exchange_linked_worktrees_transaction_fixture(
                             repo,
                             path_a=path_a,
                             path_b=path_b,
@@ -1321,7 +1390,7 @@ class ReviewedHandoffTests(unittest.TestCase):
 
                 with mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(root / "state")}):
                     with self.assertRaisesRegex(rh.WorktreeExchangeError, "WORKTREE_EXCHANGE_JOURNAL_RECOVERED"):
-                        rh.exchange_linked_worktrees(
+                        rh._exchange_linked_worktrees_transaction_fixture(
                             repo,
                             path_a=path_a,
                             path_b=path_b,
@@ -1368,7 +1437,7 @@ class ReviewedHandoffTests(unittest.TestCase):
                 rh, "_exchange_evidence", side_effect=one_bad_postcheck
             ):
                 with self.assertRaisesRegex(rh.WorktreeExchangeError, "WORKTREE_EXCHANGE_POSTCHECK_RECOVERED"):
-                    rh.exchange_linked_worktrees(
+                    rh._exchange_linked_worktrees_transaction_fixture(
                         repo,
                         path_a=path_a,
                         path_b=path_b,

@@ -46,10 +46,15 @@ is a project decision controlled by the user.
   raw-object, GitHub HTTPS transport, empty-expect lease and post-read identity
   checks. Raw `git push -u`, raw force-with-lease and arbitrary first branch
   publication remain on the approval path.
-- Bridge Kit's bounded two-linked-worktree exchange helper may be used only
-  for an exact current-user-authorized A/B/T path effect and must reject main
-  worktrees, locks, symlink/path overlap, submodules, wrong branches, and
-  unsupported topology. It is not a general `git worktree` allowance.
+- New formal task worktrees must use the Bridge-derived repository sibling;
+  never fall back to `/tmp` or another system temp root. Historical tasks with
+  an already-frozen temp locator remain compatible and are not migrated.
+- Bridge Kit has no reliable automatic worktree-quiescence proof in 0.11.
+  The bounded two-linked-worktree exchange entry derives T from A/B/common-dir
+  and branches, treats `--temp-path` only as an exact assertion, and must return
+  `WORKTREE_EXCHANGE_ACTIVITY_UNVERIFIED` before the first move with zero
+  mutation. `ps`, `lsof`, procfs, absent locks, or no observed process are
+  diagnostics, not a PASS. Transaction/rollback runs only in disposable tests.
 - Large scope, many files, incomplete implementation, perceived PR safety, or a
   clean `main` baseline are not independent authorization to invent a branch.
 - If the user explicitly selected an existing branch, continue on that branch
@@ -280,6 +285,22 @@ work and must not widen to the raw operation; for example,
 `ai-bridge host publish-current-branch` failure is not permission to run raw
 `git push`. A true authority or safety boundary continues through the existing
 approval, `HUMAN_ONLY`, Planner, or STOP route.
+
+For a bounded `HUMAN_ONLY` effect, bind the user-visible request to the exact
+repo/target/path/hash/provider/recipient/resource/backend/purpose and recompute
+that identity from frozen inputs plus actual state at execution time. A repo
+field such as `authorized=true` is never authority. Reuse an unchanged approval
+only for its real current-thread or native Codex session lifetime; ask again
+after a material identity change, or when a restart/new thread cannot prove the
+old approval remains valid. Do not create a Bridge authorization database.
+
+Notifier is the only automatic email transport. Keep progress,
+runtime-terminal, and semantic-completion intents independent and disabled by
+default. A runtime exit reports process facts only; it is not Goal PASS or
+release readiness. Reader-facing automatic text may use the installed
+`writing-style@yuukias-ai-skills` capability through a fresh tool-free reader
+turn; on discovery, fidelity, budget, or injection failure use the bounded
+deterministic fallback without stopping the primary task.
 
 ## External Planner / Reviewer Waiting
 

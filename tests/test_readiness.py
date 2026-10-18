@@ -637,6 +637,97 @@ class ReadinessTests(unittest.TestCase):
 
             self.assertEqual(caught.exception.code, "CONTROL_GIT_CONFIG_UNSAFE")
 
+    def test_projected_instruction_budget_uses_actual_limit_without_fixed_headroom(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            target = base / "repo"
+            target.mkdir()
+            self.init_git(target)
+            codex_home = base / "codex-home"
+            codex_home.mkdir()
+            projected = b"user\n" + b"bridge\n"
+            (codex_home / "config.toml").write_text(
+                f"project_doc_max_bytes = {len(projected)}\n",
+                encoding="utf-8",
+            )
+            with mock.patch.dict(os.environ, {"CODEX_HOME": str(codex_home)}):
+                result = readiness.preflight_root_agents_mutation(
+                    target,
+                    projected,
+                    block_name="core",
+                    block_bytes=len(b"bridge\n"),
+                )
+
+            self.assertEqual(result["state"], "PASS")
+            self.assertEqual(result["projected_total_bytes"], result["max_bytes"])
+
+    def test_lite_projected_overflow_has_zero_project_mutation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            target = base / "repo"
+            target.mkdir()
+            original = b"user-owned\n"
+            (target / "AGENTS.md").write_bytes(original)
+            codex_home = base / "codex-home"
+            codex_home.mkdir()
+            (codex_home / "config.toml").write_text("project_doc_max_bytes = 32\n", encoding="utf-8")
+            before = sorted(path.relative_to(target).as_posix() for path in target.rglob("*"))
+            with mock.patch.dict(os.environ, {"CODEX_HOME": str(codex_home)}):
+                self.assertEqual(init_workspace(target), 2)
+
+            self.assertEqual((target / "AGENTS.md").read_bytes(), original)
+            self.assertEqual(sorted(path.relative_to(target).as_posix() for path in target.rglob("*")), before)
+
+    def test_bounded_effect_identity_ignores_repo_authorized_flag_and_binds_lifetime(self) -> None:
+        fields = {"repo": "Example/repo", "path": "/exact", "purpose": "publish", "authorized": True}
+        effect = readiness.bounded_effect_identity("github_publication", fields)
+        self.assertNotIn("authorized", effect["fields"])
+        same = readiness.authorization_continuity(
+            effect["sha256"],
+            "github_publication",
+            {**fields, "authorized": False},
+            current_thread_or_session_proven=True,
+        )
+        self.assertEqual(same["decision"], "REUSE_CURRENT_SCOPE")
+        changed = readiness.authorization_continuity(
+            effect["sha256"],
+            "github_publication",
+            {**fields, "path": "/changed"},
+            current_thread_or_session_proven=True,
+        )
+        self.assertEqual(changed["decision"], "PROMPT_REQUIRED")
+        restarted = readiness.authorization_continuity(
+            effect["sha256"],
+            "github_publication",
+            fields,
+            current_thread_or_session_proven=False,
+        )
+        self.assertEqual(restarted["decision"], "PROMPT_REQUIRED")
+
+    def test_bridge_root_agents_has_required_headroom_and_live_locators(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        agents = (root / "AGENTS.md").read_bytes()
+        self.assertLessEqual(len(agents), 24576)
+        self.assertGreaterEqual(32768 - len(agents), 8192)
+        text = agents.decode("utf-8")
+        for rel in [
+            "docs/V0_5_REVIEWED_HANDOFF_IMPLEMENTATION_SPEC.md",
+            "docs/V0_4_AGENT_FLOW_IMPLEMENTATION_SPEC.md",
+            "docs/V0_6_OVERLEAF_BRIDGE_IMPLEMENTATION_SPEC.md",
+            "docs/design/0.8.0_persistent_run.md",
+            "templates/host/GLOBAL_AGENTS_SNIPPET.md",
+            "templates/host/rules/ai-bridge-global.rules",
+        ]:
+            self.assertIn(rel, text)
+            self.assertTrue((root / rel).is_file(), rel)
+        for invariant in [
+            "WORKTREE_EXCHANGE_ACTIVITY_UNVERIFIED",
+            "BRIDGE_MANAGED_INSTRUCTION_PROJECTED_OVERFLOW",
+            "LOW_FRICTION_OPERATION_REVIEW",
+            "waiting_external_review",
+        ]:
+            self.assertIn(invariant, text)
+
 
 if __name__ == "__main__":
     unittest.main()

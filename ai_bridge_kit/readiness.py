@@ -31,6 +31,16 @@ from .host import (
 DEFAULT_PROJECT_DOC_MAX_BYTES = 32768
 INSTRUCTION_FILE_NAMES = ("AGENTS.override.md", "AGENTS.md")
 DEFAULT_PROJECT_ROOT_MARKERS = (".git",)
+BRIDGE_MANAGED_BLOCK_CAPS = {
+    "core": 2048,
+    "persistent_run": 4096,
+    "overleaf": 2048,
+}
+BRIDGE_MANAGED_BLOCK_MARKERS = {
+    "core": (b"<!-- ai-bridge-kit:start -->", b"<!-- ai-bridge-kit:end -->"),
+    "persistent_run": (b"<!-- ai-bridge-kit:persistent-run:start -->", b"<!-- ai-bridge-kit:persistent-run:end -->"),
+    "overleaf": (b"<!-- ai-bridge-kit:overleaf:start -->", b"<!-- ai-bridge-kit:overleaf:end -->"),
+}
 
 
 class ReadinessError(ValueError):
@@ -52,6 +62,64 @@ class BoundText:
 
 def _sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def bounded_effect_identity(effect_type: str, fields: dict[str, Any]) -> dict[str, Any]:
+    """Create a comparable scope identity; this digest never grants authority."""
+    if not re.fullmatch(r"[a-z][a-z0-9_]*", effect_type or ""):
+        raise ReadinessError("BOUNDED_EFFECT_TYPE_INVALID", effect_type)
+    normalized: dict[str, str] = {}
+    for key, value in sorted(fields.items()):
+        if key in {"authorized", "approved", "authority"}:
+            continue
+        if not re.fullmatch(r"[a-z][a-z0-9_]*", key or ""):
+            raise ReadinessError("BOUNDED_EFFECT_FIELD_INVALID", key)
+        text_value = str(value).strip()
+        if not text_value:
+            raise ReadinessError("BOUNDED_EFFECT_FIELD_EMPTY", key)
+        normalized[key] = text_value
+    if not normalized:
+        raise ReadinessError("BOUNDED_EFFECT_FIELDS_REQUIRED", effect_type)
+    human = "\n".join([f"effect={effect_type}", *[f"{key}={value}" for key, value in normalized.items()]])
+    return {
+        "schema": "ai-bridge.authorization.effect.v1",
+        "effect_type": effect_type,
+        "fields": normalized,
+        "human_readable": human,
+        "sha256": _sha256_bytes(human.encode("utf-8")),
+        "grants_authority": False,
+    }
+
+
+def verify_bounded_effect(expected_sha256: str, effect_type: str, fields: dict[str, Any]) -> dict[str, Any]:
+    actual = bounded_effect_identity(effect_type, fields)
+    if not re.fullmatch(r"[0-9a-f]{64}", expected_sha256 or "") or actual["sha256"] != expected_sha256:
+        raise ReadinessError(
+            "BOUNDED_EFFECT_SCOPE_MISMATCH",
+            f"expected={expected_sha256 or 'missing'} actual={actual['sha256']}",
+        )
+    return actual
+
+
+def authorization_continuity(
+    previous_effect_sha256: str | None,
+    effect_type: str,
+    fields: dict[str, Any],
+    *,
+    current_thread_or_session_proven: bool,
+) -> dict[str, Any]:
+    effect = bounded_effect_identity(effect_type, fields)
+    reusable = bool(
+        current_thread_or_session_proven
+        and previous_effect_sha256
+        and previous_effect_sha256 == effect["sha256"]
+    )
+    return {
+        "decision": "REUSE_CURRENT_SCOPE" if reusable else "PROMPT_REQUIRED",
+        "reason": "exact_effect_and_lifetime_match" if reusable else "effect_or_lifetime_not_proven",
+        "effect": effect,
+        "persistent_authorization_store": False,
+    }
 
 
 def _git(
@@ -382,6 +450,147 @@ def effective_project_doc_max_bytes(root: Path) -> int:
     if config.get("state") != "VERIFIED" or not isinstance(config.get("max_bytes"), int):
         raise ReadinessError("PROJECT_INSTRUCTION_CONFIG_UNVERIFIED", str(config.get("reason") or "unknown"))
     return int(config["max_bytes"])
+
+
+def _instruction_budget_config(root: Path, *, env: dict[str, str] | None = None) -> dict[str, Any]:
+    """Resolve native instruction byte settings without treating trust as authority.
+
+    Project trust controls whether Codex consumes project instructions.  It does
+    not change the configured byte ceiling, so managed writers can and must
+    preflight the projected bytes even before a project has been trusted.
+    """
+    active_env = os.environ if env is None else env
+    codex_home = resolve_codex_home(None, active_env)
+    codex_path = codex_home / "config.toml"
+    project_path = root / ".codex" / "config.toml"
+    codex_config = _load_toml_config(codex_path)
+    project_config = _load_toml_config(project_path)
+    if codex_config is None or project_config is None:
+        bad = codex_path if codex_config is None else project_path
+        raise ReadinessError("PROJECT_INSTRUCTION_CONFIG_UNVERIFIED", bad.as_posix())
+    merged = _merge_config(codex_config, project_config)
+    limit = merged.get("project_doc_max_bytes", DEFAULT_PROJECT_DOC_MAX_BYTES)
+    if not isinstance(limit, int) or limit <= 0:
+        raise ReadinessError("CONFIG_PROJECT_DOC_MAX_BYTES_INVALID")
+    markers = _project_root_markers(codex_config)
+    if markers is None:
+        raise ReadinessError("PROJECT_ROOT_MARKERS_INVALID")
+    source = "default"
+    if "project_doc_max_bytes" in project_config:
+        source = f"project:{project_path.as_posix()}"
+    elif "project_doc_max_bytes" in codex_config:
+        source = f"codex_home:{codex_path.as_posix()}"
+    return {
+        "max_bytes": limit,
+        "max_bytes_source": source,
+        "instruction_file_names": _candidate_filenames(merged),
+        "project_root_markers": markers,
+    }
+
+
+def projected_root_agents_budget(
+    target: Path,
+    projected_agents: bytes,
+    *,
+    block_name: str,
+    block_bytes: int,
+    env: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """Return the native-discovery byte projection for a root AGENTS mutation."""
+    if block_name not in BRIDGE_MANAGED_BLOCK_CAPS:
+        raise ReadinessError("BRIDGE_MANAGED_INSTRUCTION_BLOCK_UNKNOWN", block_name)
+    cap = BRIDGE_MANAGED_BLOCK_CAPS[block_name]
+    if block_bytes > cap:
+        raise ReadinessError(
+            "BRIDGE_MANAGED_INSTRUCTION_BLOCK_OVER_CAP",
+            f"block={block_name} bytes={block_bytes} cap={cap}",
+        )
+    root = target.expanduser().resolve()
+    config = _instruction_budget_config(root, env=env)
+    names = tuple(config["instruction_file_names"])
+    instruction_root = _find_instruction_root(root, tuple(config["project_root_markers"]))
+    sources: list[dict[str, Any]] = []
+    remaining = int(config["max_bytes"])
+    truncated_at: str | None = None
+    projected_total = 0
+    for directory in _ancestor_dirs(instruction_root, root):
+        selected: Path | None = None
+        raw: bytes | None = None
+        for name in names:
+            candidate = directory / name
+            if candidate == root / "AGENTS.md":
+                selected = candidate
+                raw = projected_agents
+                break
+            if candidate.is_file():
+                selected = candidate
+                raw = candidate.read_bytes()
+                break
+        if selected is None or raw is None:
+            continue
+        size = len(raw)
+        projected_total += size
+        relative = _repo_relative(selected, root)
+        sources.append({"path": relative, "size_bytes": size})
+        if truncated_at is None and size > remaining:
+            truncated_at = relative
+        remaining -= min(remaining, size)
+    managed_blocks: dict[str, int] = {}
+    for name, (begin, end) in BRIDGE_MANAGED_BLOCK_MARKERS.items():
+        start = projected_agents.find(begin)
+        finish = projected_agents.find(end, start + len(begin)) if start >= 0 else -1
+        managed_blocks[name] = 0 if start < 0 or finish < 0 else finish + len(end) - start
+    user_owned_bytes = max(0, len(projected_agents) - sum(managed_blocks.values()))
+    overflow = max(0, projected_total - int(config["max_bytes"]))
+    return {
+        "schema": "ai-bridge.readiness.projected_instruction_budget.v1",
+        "state": "FAIL" if overflow or truncated_at else "PASS",
+        "block": block_name,
+        "block_bytes": block_bytes,
+        "block_cap": cap,
+        "bridge_block_bytes": managed_blocks,
+        "user_owned_bytes": user_owned_bytes,
+        "projected_total_bytes": projected_total,
+        "max_bytes": int(config["max_bytes"]),
+        "max_bytes_source": config["max_bytes_source"],
+        "first_projected_truncation_source": truncated_at,
+        "bytes_to_release": overflow,
+        "sources": sources,
+    }
+
+
+def preflight_root_agents_mutation(
+    target: Path,
+    projected_agents: bytes,
+    *,
+    block_name: str,
+    block_bytes: int,
+    env: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    projection = projected_root_agents_budget(
+        target,
+        projected_agents,
+        block_name=block_name,
+        block_bytes=block_bytes,
+        env=env,
+    )
+    if projection["state"] != "PASS":
+        raise ReadinessError(
+            "BRIDGE_MANAGED_INSTRUCTION_PROJECTED_OVERFLOW",
+            " ".join(
+                [
+                    f"user_owned_bytes={projection['user_owned_bytes']}",
+                    f"block={projection['block']}",
+                    f"block_bytes={projection['block_bytes']}",
+                    f"bridge_block_bytes={json.dumps(projection['bridge_block_bytes'], sort_keys=True, separators=(',', ':'))}",
+                    f"projected_total={projection['projected_total_bytes']}",
+                    f"limit={projection['max_bytes']}",
+                    f"truncated_at={projection['first_projected_truncation_source']}",
+                    f"bytes_to_release={projection['bytes_to_release']}",
+                ]
+            ),
+        )
+    return projection
 
 
 def _ancestor_dirs(root: Path, cwd: Path) -> list[Path]:

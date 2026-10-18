@@ -7,7 +7,7 @@ import stat
 import subprocess
 from pathlib import Path
 
-from .notifier import require_email_config, load_env_file
+from .notifier import PRIVATE_ENV_PATH, load_env_file, machine_env_path, require_email_config
 
 
 REQUIRED_NOTIFIER_KEYS = {
@@ -18,7 +18,13 @@ REQUIRED_NOTIFIER_KEYS = {
 }
 
 
-def sync_private(profile: str, env: dict[str, str] | None = None) -> tuple[int, list[str]]:
+def sync_private(
+    profile: str,
+    env: dict[str, str] | None = None,
+    *,
+    scope: str = "project",
+    target: Path | None = None,
+) -> tuple[int, list[str]]:
     env = os.environ if env is None else env
     if profile != "notifier":
         return 2, [f"UNSUPPORTED_PROFILE: {profile}"]
@@ -27,10 +33,13 @@ def sync_private(profile: str, env: dict[str, str] | None = None) -> tuple[int, 
     source = env.get("AI_BRIDGE_PRIVATE_RCLONE_SOURCE", "").strip()
     if not source:
         return 1, ["PRIVATE_SOURCE_UNAVAILABLE: AI_BRIDGE_PRIVATE_RCLONE_SOURCE is not set"]
-    target = Path(".ai-bridge") / "private" / "notifier.env"
-    target.parent.mkdir(parents=True, exist_ok=True)
+    if scope not in {"project", "machine"}:
+        return 2, ["UNSUPPORTED_SCOPE"]
+    project_target = Path.cwd() if target is None else target
+    destination = machine_env_path(env) if scope == "machine" else project_target.resolve() / PRIVATE_ENV_PATH
+    destination.parent.mkdir(parents=True, exist_ok=True)
     result = subprocess.run(
-        ["rclone", "copyto", source, str(target)],
+        ["rclone", "copyto", source, str(destination)],
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -39,16 +48,16 @@ def sync_private(profile: str, env: dict[str, str] | None = None) -> tuple[int, 
     if result.returncode != 0:
         return 1, ["PRIVATE_SOURCE_UNAVAILABLE"]
     try:
-        target.chmod(stat.S_IRUSR | stat.S_IWUSR)
+        destination.chmod(stat.S_IRUSR | stat.S_IWUSR)
     except OSError:
         pass
-    values = load_env_file(target)
+    values = load_env_file(destination)
     missing = sorted(REQUIRED_NOTIFIER_KEYS - set(values))
     email_missing = require_email_config(values)
     missing = sorted(set(missing) | set(email_missing))
     if missing:
         return 1, ["PRIVATE_KEYS_MISSING: " + ", ".join(missing)]
-    return 0, [f"Synced profile: {profile}", f"Target: {target}", "Mode: pull-only", "Secrets: redacted"]
+    return 0, [f"Synced profile: {profile}", f"Scope: {scope}", f"Target: {destination}", "Mode: pull-only", "Secrets: redacted"]
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -56,6 +65,8 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="private_command")
     sync_parser = subparsers.add_parser("sync", help="Pull private config from an existing rclone remote.")
     sync_parser.add_argument("--profile", required=True, choices=["notifier"])
+    sync_parser.add_argument("--scope", choices=["project", "machine"], default="project")
+    sync_parser.add_argument("--target", type=Path, default=Path.cwd())
     return parser
 
 
@@ -63,7 +74,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     if args.private_command == "sync":
-        code, lines = sync_private(args.profile)
+        code, lines = sync_private(args.profile, scope=args.scope, target=args.target)
         for line in lines:
             print(line)
         return code

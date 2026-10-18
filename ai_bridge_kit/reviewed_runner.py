@@ -806,6 +806,7 @@ def run_codex_event(
     preflight: dict[str, Any] | None = None,
     on_prelaunch_ready: Callable[[dict[str, Any]], None] | None = None,
     require_github_https: bool = True,
+    notification_effect_sha256: str = "",
 ) -> dict[str, Any]:
     try:
         # Always recompute readiness at the launch boundary. A caller-supplied
@@ -865,6 +866,46 @@ def run_codex_event(
     post_current = rh.load_json(post_path) if post_path.exists() else {}
     post_head = git_output(target, ["rev-parse", "HEAD"])
     progressed = event_identity(task_key, post_current) != event or post_current.get("state") not in ELIGIBLE_EXECUTOR_STATES
+    from . import notifier
+
+    notification_event = notifier.canonical_event(
+        event_class="runtime_terminal",
+        project=target.name,
+        task_key=task_key,
+        status="process_exited" if proc.returncode == 0 else "process_failed",
+        key_conclusion=f"Reviewed runner process exited with code {proc.returncode}.",
+        next_step="Use CURRENT and review evidence to decide workflow progress; process exit is not semantic completion.",
+        evidence_paths=[str(log_path), str(post_path)],
+        emitter="reviewed_runner",
+        runtime_id=f"reviewed:{task_key}:{event}",
+        lifecycle_owner="reviewed_runner",
+    )
+    notification_root = machine_task_root(target) / "notifications" / task_key / "runtime_terminal" / f"reviewed-{event}"
+    notification_path = notification_root / "canonical_event.json"
+    notification_path.parent.mkdir(parents=True, exist_ok=True)
+    notification_path.write_text(
+        json.dumps(notification_event, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    request_path = rh.task_root(target, task_key) / "REQUEST.md"
+    request_text = request_path.read_text(encoding="utf-8") if request_path.is_file() else ""
+    intent_values: dict[str, str] = {}
+    for label, key in [
+        ("Progress email", "progress_email"),
+        ("Runtime terminal email", "runtime_terminal_email"),
+        ("Semantic completion email", "semantic_completion_email"),
+    ]:
+        match = re.search(rf"(?mi)^{re.escape(label)}:\s*(ENABLED|DISABLED|UNSUPPORTED)\s*$", request_text)
+        intent_values[key] = match.group(1).upper() if match else "DISABLED"
+    reader_match = re.search(r"(?mi)^Reader render max turns:\s*(\d+)\s*$", request_text)
+    reader_max_turns = int(reader_match.group(1)) if reader_match else 0
+    notification_delivery = notifier.deliver_canonical_event(
+        notification_event,
+        intents=intent_values,
+        output_dir=notification_root,
+        expected_effect_sha256=notification_effect_sha256,
+        reader_render_max_turns=reader_max_turns,
+    )
     return {
         "task_key": task_key,
         "event": event,
@@ -881,6 +922,8 @@ def run_codex_event(
         "started_at": started_at,
         "completed_at": utc_now(),
         "elapsed_seconds": round(time.time() - started, 3),
+        "notification_event_path": str(notification_path),
+        "notification_delivery": notification_delivery,
     }
 
 
@@ -942,6 +985,7 @@ def watcher_once(
     dry_run: bool = False,
     max_attempts_per_event: int = 2,
     require_github_https: bool = True,
+    notification_effect_sha256: str = "",
 ) -> dict[str, Any]:
     target = target.resolve()
     selected_branch = resolve_branch(target, branch)
@@ -996,7 +1040,15 @@ def watcher_once(
         if dry_run:
             return {
                 "status": "dry_run",
-                **run_codex_event(target, task_key, current, branch=selected_branch, codex_bin=codex_bin, dry_run=True),
+                **run_codex_event(
+                    target,
+                    task_key,
+                    current,
+                    branch=selected_branch,
+                    codex_bin=codex_bin,
+                    dry_run=True,
+                    notification_effect_sha256=notification_effect_sha256,
+                ),
             }
 
         pre_current = dict(current)
@@ -1043,6 +1095,7 @@ def watcher_once(
             preflight=preflight,
             on_prelaunch_ready=record_ready,
             require_github_https=require_github_https,
+            notification_effect_sha256=notification_effect_sha256,
         )
         if recorded_start:
             attempts += 1
@@ -1239,6 +1292,7 @@ def watcher_run(
     interval_seconds: int = 60,
     max_cycles: int | None = None,
     require_github_https: bool = True,
+    notification_effect_sha256: str = "",
 ) -> int:
     target = target.resolve()
     selected_branch = resolve_branch(target, branch)
@@ -1269,6 +1323,7 @@ def watcher_run(
                     sync=True,
                     dry_run=False,
                     require_github_https=require_github_https,
+                    notification_effect_sha256=notification_effect_sha256,
                 )
                 update_watcher_process(
                     target,
@@ -1309,6 +1364,7 @@ def watcher_start(
     branch: str | None = None,
     codex_bin: str = "codex",
     interval_seconds: int = 60,
+    notification_effect_sha256: str = "",
 ) -> dict[str, Any]:
     target = target.resolve()
     selected_branch = resolve_branch(target, branch)
@@ -1350,6 +1406,8 @@ def watcher_start(
         "--interval-seconds",
         str(interval_seconds),
     ]
+    if notification_effect_sha256:
+        command.extend(["--notification-effect-sha256", notification_effect_sha256])
     env = os.environ.copy()
     existing_pythonpath = env.get("PYTHONPATH")
     env["PYTHONPATH"] = str(rh.kit_root()) if not existing_pythonpath else f"{rh.kit_root()}{os.pathsep}{existing_pythonpath}"
@@ -1440,11 +1498,18 @@ def watcher_restart(
     branch: str | None = None,
     codex_bin: str = "codex",
     interval_seconds: int = 60,
+    notification_effect_sha256: str = "",
 ) -> dict[str, Any]:
     stop = watcher_stop(target, branch=branch)
     if stop.get("status") not in {"STOPPED", "NOT_RUNNING"}:
         return {"status": "RESTART_REFUSED", "stop": stop}
-    start = watcher_start(target, branch=branch, codex_bin=codex_bin, interval_seconds=interval_seconds)
+    start = watcher_start(
+        target,
+        branch=branch,
+        codex_bin=codex_bin,
+        interval_seconds=interval_seconds,
+        notification_effect_sha256=notification_effect_sha256,
+    )
     return {"status": "RESTARTED" if start.get("status") == "STARTED" else "RESTART_FAILED", "stop": stop, "start": start}
 
 
@@ -1457,6 +1522,7 @@ def build_parser() -> argparse.ArgumentParser:
     once.add_argument("--codex-bin", default="codex")
     once.add_argument("--no-sync", action="store_true")
     once.add_argument("--dry-run", action="store_true")
+    once.add_argument("--notification-effect-sha256", default="")
     status = sub.add_parser("status")
     status.add_argument("--target", type=Path, default=Path.cwd())
     status.add_argument("--branch")
@@ -1465,6 +1531,7 @@ def build_parser() -> argparse.ArgumentParser:
     start.add_argument("--branch")
     start.add_argument("--codex-bin", default="codex")
     start.add_argument("--interval-seconds", type=int, default=60)
+    start.add_argument("--notification-effect-sha256", default="")
     stop = sub.add_parser("stop")
     stop.add_argument("--target", type=Path, default=Path.cwd())
     stop.add_argument("--branch")
@@ -1473,12 +1540,14 @@ def build_parser() -> argparse.ArgumentParser:
     restart.add_argument("--branch")
     restart.add_argument("--codex-bin", default="codex")
     restart.add_argument("--interval-seconds", type=int, default=60)
+    restart.add_argument("--notification-effect-sha256", default="")
     run = sub.add_parser("run")
     run.add_argument("--target", type=Path, default=Path.cwd())
     run.add_argument("--branch")
     run.add_argument("--codex-bin", default="codex")
     run.add_argument("--interval-seconds", type=int, default=60)
     run.add_argument("--max-cycles", type=int)
+    run.add_argument("--notification-effect-sha256", default="")
     return parser
 
 
@@ -1492,6 +1561,7 @@ def main(argv: list[str] | None = None) -> int:
             codex_bin=args.codex_bin,
             sync=not args.no_sync,
             dry_run=args.dry_run,
+            notification_effect_sha256=args.notification_effect_sha256,
         )
         print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
         failure_statuses = {
@@ -1516,6 +1586,7 @@ def main(argv: list[str] | None = None) -> int:
             branch=args.branch,
             codex_bin=args.codex_bin,
             interval_seconds=args.interval_seconds,
+            notification_effect_sha256=args.notification_effect_sha256,
         )
         print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
         return 0 if result.get("status") == "STARTED" else 1
@@ -1529,6 +1600,7 @@ def main(argv: list[str] | None = None) -> int:
             branch=args.branch,
             codex_bin=args.codex_bin,
             interval_seconds=args.interval_seconds,
+            notification_effect_sha256=args.notification_effect_sha256,
         )
         print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
         return 0 if result.get("status") == "RESTARTED" else 1
@@ -1539,6 +1611,7 @@ def main(argv: list[str] | None = None) -> int:
             codex_bin=args.codex_bin,
             interval_seconds=args.interval_seconds,
             max_cycles=args.max_cycles,
+            notification_effect_sha256=args.notification_effect_sha256,
         )
     parser.print_help()
     return 0
