@@ -31,7 +31,7 @@ def _walk_dicts(value: Any):
 def resolve_writing_skills(
     plugin_list: dict[str, Any],
     skills_list: dict[str, Any],
-) -> dict[str, str]:
+) -> dict[str, dict[str, str]]:
     plugin: dict[str, Any] | None = None
     for item in _walk_dicts(plugin_list):
         if item.get("id") == WRITING_PLUGIN_ID:
@@ -39,23 +39,22 @@ def resolve_writing_skills(
             break
     if plugin is None or plugin.get("installed") is not True or plugin.get("enabled") is not True:
         raise ReaderLayerError("WRITING_STYLE_PLUGIN_UNAVAILABLE")
-    roots: list[Path] = []
-    source = plugin.get("source")
-    if isinstance(source, dict) and isinstance(source.get("path"), str):
-        roots.append(Path(source["path"]).expanduser().resolve())
-    result: dict[str, str] = {}
+    result: dict[str, dict[str, str]] = {}
     for item in _walk_dicts(skills_list):
-        name = item.get("name")
+        actual_name = item.get("name")
         raw_path = item.get("path")
-        if name not in REQUIRED_READER_SKILLS or not isinstance(raw_path, str):
+        if not isinstance(actual_name, str) or not isinstance(raw_path, str):
             continue
-        path = Path(raw_path).expanduser().resolve()
-        if roots and not any(path == root or root in path.parents for root in roots):
+        logical_name = actual_name.removeprefix("writing-style:")
+        if logical_name not in REQUIRED_READER_SKILLS:
             continue
         plugin_id = item.get("pluginId") or item.get("plugin_id")
         if plugin_id != WRITING_PLUGIN_ID:
             continue
-        result[str(name)] = path.as_posix()
+        result[logical_name] = {
+            "name": actual_name,
+            "path": Path(raw_path).expanduser().resolve().as_posix(),
+        }
     missing = [name for name in REQUIRED_READER_SKILLS if name not in result]
     if missing:
         raise ReaderLayerError("WRITING_STYLE_SKILLS_UNAVAILABLE: " + ",".join(missing))
@@ -74,7 +73,12 @@ def writing_plugin_version(plugin_list: dict[str, Any]) -> str:
     return "UNKNOWN"
 
 
-def reader_turn_input(event: dict[str, Any], *, language: str, skills: dict[str, str]) -> list[dict[str, str]]:
+def reader_turn_input(
+    event: dict[str, Any],
+    *,
+    language: str,
+    skills: dict[str, dict[str, str]],
+) -> list[dict[str, str]]:
     if event.get("schema") != notifier.CANONICAL_EVENT_SCHEMA:
         raise ReaderLayerError("CANONICAL_NOTIFICATION_EVENT_REQUIRED")
     canonical = json.dumps(event, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
@@ -89,7 +93,7 @@ def reader_turn_input(event: dict[str, Any], *, language: str, skills: dict[str,
     return [
         {"type": "text", "text": prompt},
         *[
-            {"type": "skill", "name": name, "path": skills[name]}
+            {"type": "skill", "name": skills[name]["name"], "path": skills[name]["path"]}
             for name in REQUIRED_READER_SKILLS
         ],
     ]
@@ -154,7 +158,7 @@ def render_event(
     reader_thread_id = ""
     used_model_turn = False
     plugin_version = "UNKNOWN"
-    selected_skills: dict[str, str] = {}
+    selected_skills: dict[str, dict[str, str]] = {}
     try:
         if reader_turns_used >= reader_render_max_turns:
             raise ReaderLayerError("READER_TURN_BUDGET_EXHAUSTED")
@@ -179,7 +183,7 @@ def render_event(
                 "sandbox": "read-only",
                 "baseInstructions": "Render only the supplied event. Do not use tools or infer missing facts.",
                 "developerInstructions": "Return only the user-facing notification text.",
-                "multiAgentMode": "none",
+                "multiAgentMode": {"custom": "Never delegate to sub-agents in this reader thread."},
             },
         )
         reader_thread_id = str(thread.get("thread", {}).get("id") or "")
@@ -191,7 +195,7 @@ def render_event(
                 "threadId": reader_thread_id,
                 "cwd": neutral_cwd.expanduser().resolve().as_posix(),
                 "environments": [],
-                "multiAgentMode": "none",
+                "multiAgentMode": {"custom": "Never delegate to sub-agents in this reader turn."},
                 "input": reader_turn_input(event, language=language, skills=skills),
             },
         )

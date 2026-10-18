@@ -1,11 +1,26 @@
 # TODO — Execution Context Continuity: Canonical Worktree + Mandatory Control Reads
 
-- Status: **IMPLEMENTED_NOT_FINAL_VALIDATED — 0.11.0 candidate freeze pending development Progress injection canary**
+- Status: **IMPLEMENTED_DEVELOPMENT_CANARY_BLOCKED — selected CODEX_HOME 无法提供无 AGENTS 的 reader thread，候选未冻结**
 - Priority: **CRITICAL — repeated real-user task interruption**
 - Date: 2026-10-08
 - Task key: `bridge-core--execution-context-readiness-convergence`
 - Approved execution package: `bbd14ce66b462ba2dbcecc6ad06d851598a3aacc`
-- Candidate locator: `PENDING_G14_DEVELOPMENT_CANARY`
+- Candidate locator: `NOT_FROZEN_RUNTIME_CAPABILITY_GAP`
+
+## 2026-10-18 development canary 结果
+
+实现和确定性回归已完成，但真实 Progress/Clear Writing canary 按冻结合同默认失败，不能据此冻结 `0.11.0-rc.1`。
+
+在 actual selected `CODEX_HOME=/users/a/e/aereinh/.codex` 和现有 official shared app-server 上，neutral Bridge-state cwd 没有加载本仓库的 `AGENTS.md`，但 `thread/start` 仍固定回传：
+
+```text
+instructionSources = ["/users/a/e/aereinh/.codex/AGENTS.md"]
+multiAgentMode = "explicitRequestOnly"
+```
+
+使用 thread-local `config.project_doc_max_bytes=0` 后结果不变。当前 runtime 没有在保持同一 selected `CODEX_HOME` 的同时禁用 global `AGENTS.md` 的受支持入口；换 `CODEX_HOME`、临时改名机器文件或启动另一套 daemon 都超出批准范围。由于冻结 v0.8 要求 fresh reader thread 无 `AGENTS.md`、无 multi-agent surface，本轮没有消耗 2 个 reader model turns，也没有开始 final G01–G14。
+
+直接证据见 `results/bridge-core--execution-context-readiness-convergence/DEVELOPMENT_PROGRESS_CANARY.json`。恢复条件是 selected Codex runtime 提供并验证 thread-local global-instruction disable，同时 app-server 对禁用 multi-agent 的请求给出一致 readback；随后从同一 development canary 入口重跑，不复用本次失败作为 PASS。
 
 ## User problem
 

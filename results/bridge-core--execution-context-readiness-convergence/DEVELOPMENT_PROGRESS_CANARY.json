@@ -1,0 +1,43 @@
+{
+  "app_server_socket": "/users/a/e/aereinh/.codex-run/as/b7587b26bdc509ee.sock",
+  "candidate_frozen": false,
+  "codex_cli_version": "0.160.1",
+  "codex_executable": "/users/a/e/aereinh/.codex-cli-candidates/0.160.1/20261015T064058Z/node_modules/.bin/codex",
+  "durable_progress_threads_created": 0,
+  "evidence_recorded_at": "2026-10-18T16:13:12Z",
+  "executor_thread_id": "01a14fb3-0bd2-7150-b54a-0a3f502e9de2",
+  "final_g01_g14_started": false,
+  "observations": {
+    "development_display_attempt": "thread/start returned, then the fail-closed instructionSources validator rejected the thread before any reader turn or injection; after the connection closed, thread/list and the state DB contained no durable thread for the neutral cwd",
+    "ephemeral_diagnostic_default": {
+      "approvalPolicy": "never",
+      "instructionSources": [
+        "/users/a/e/aereinh/.codex/AGENTS.md"
+      ],
+      "multiAgentMode": "explicitRequestOnly",
+      "runtimeWorkspaceRoots": [],
+      "sandbox": {
+        "networkAccess": false,
+        "type": "readOnly"
+      }
+    },
+    "ephemeral_diagnostic_project_doc_max_bytes_zero": {
+      "config": {
+        "project_doc_max_bytes": 0
+      },
+      "instructionSources": [
+        "/users/a/e/aereinh/.codex/AGENTS.md"
+      ],
+      "multiAgentMode": "explicitRequestOnly"
+    }
+  },
+  "reader_render_max_turns": 2,
+  "reader_turns_used": 0,
+  "recovery_condition": "The selected Codex runtime must expose and read back a thread-local supported way to disable global AGENTS instructions and multi-agent delegation without changing CODEX_HOME or starting another daemon.",
+  "runtime_capability_classification": "UNSUPPORTED_WITH_EVIDENCE",
+  "runtime_capability_gap": "GLOBAL_AGENTS_CANNOT_BE_DISABLED_ON_SELECTED_CODEX_HOME",
+  "schema": "ai-bridge.development_progress_canary.v1",
+  "selected_codex_home": "/users/a/e/aereinh/.codex",
+  "status": "FAIL_CLOSED",
+  "task_key": "bridge-core--execution-context-readiness-convergence"
+}

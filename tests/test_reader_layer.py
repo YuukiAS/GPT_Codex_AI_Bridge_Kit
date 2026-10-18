@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import base64
+import hashlib
+import io
+import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from ai_bridge_kit import codex_progress_thread, notifier, reader_layer
 
@@ -36,7 +41,11 @@ class FakeApp:
         if method == "skills/list":
             return {
                 "skills": [
-                    {"name": name, "path": str(self.root / "writing-style" / name / "SKILL.md"), "pluginId": reader_layer.WRITING_PLUGIN_ID}
+                    {
+                        "name": f"writing-style:{name}",
+                        "path": str(self.root / "plugin-cache" / name / "SKILL.md"),
+                        "pluginId": reader_layer.WRITING_PLUGIN_ID,
+                    }
                     for name in reader_layer.REQUIRED_READER_SKILLS
                 ]
             }
@@ -105,6 +114,83 @@ def event(number: int = 1) -> dict:
 
 
 class ReaderLayerTests(unittest.TestCase):
+    def test_display_thread_rejects_any_loaded_instruction_source(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            app = FakeApp(root)
+            original = app.request
+
+            def with_instructions(method: str, params: dict):
+                response = original(method, params)
+                if method == "thread/start":
+                    response["instructionSources"] = ["/selected-codex-home/AGENTS.md"]
+                return response
+
+            app.request = with_instructions  # type: ignore[method-assign]
+            with self.assertRaisesRegex(
+                codex_progress_thread.AppServerError,
+                r"progress thread loaded instruction sources:.*AGENTS\.md",
+            ):
+                codex_progress_thread.start_progress_display_thread(app, neutral_cwd=root)
+
+    def test_json_rpc_proxy_uses_websocket_handshake_and_masked_frames(self) -> None:
+        websocket_key = bytes(range(16))
+        encoded_key = base64.b64encode(websocket_key).decode("ascii")
+        accept = base64.b64encode(
+            hashlib.sha1(
+                (encoded_key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").encode("ascii")
+            ).digest()
+        ).decode("ascii")
+        initialize_result = json.dumps(
+            {"id": 1, "result": {}}, separators=(",", ":")
+        ).encode("utf-8")
+        server_frame = bytes([0x81, len(initialize_result)]) + initialize_result
+
+        class FakeProcess:
+            def __init__(self) -> None:
+                self.stdin = io.BytesIO()
+                self.stdout = io.BytesIO(
+                    (
+                        "HTTP/1.1 101 Switching Protocols\r\n"
+                        "Upgrade: websocket\r\n"
+                        "Connection: Upgrade\r\n"
+                        f"Sec-WebSocket-Accept: {accept}\r\n\r\n"
+                    ).encode("ascii")
+                    + server_frame
+                )
+                self.stderr = io.BytesIO()
+                self.running = True
+
+            def poll(self):
+                return None if self.running else 0
+
+            def terminate(self) -> None:
+                self.running = False
+
+            def wait(self, timeout: int) -> int:
+                return 0
+
+            def kill(self) -> None:
+                self.running = False
+
+        process = FakeProcess()
+        random_bytes = [websocket_key, b"mask", b"mask", b"mask"]
+        with (
+            mock.patch.object(codex_progress_thread.subprocess, "Popen", return_value=process),
+            mock.patch.object(codex_progress_thread.select, "select", return_value=([process.stdout], [], [])),
+            mock.patch.object(codex_progress_thread.secrets, "token_bytes", side_effect=random_bytes),
+        ):
+            proxy = codex_progress_thread.JsonRpcProxy(codex="codex")
+            proxy.close()
+
+        written = process.stdin.getvalue()
+        self.assertIn(b"GET /rpc HTTP/1.1\r\n", written)
+        self.assertIn(f"Sec-WebSocket-Key: {encoded_key}\r\n".encode("ascii"), written)
+        frame_start = written.index(b"\r\n\r\n") + 4
+        self.assertEqual(written[frame_start] & 0x0F, 0x1)
+        self.assertTrue(written[frame_start + 1] & 0x80)
+        self.assertFalse(process.running)
+
     def test_display_delivery_runs_when_progress_email_is_disabled(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -161,6 +247,10 @@ class ReaderLayerTests(unittest.TestCase):
             self.assertEqual(len(turn_inputs), 2)
             self.assertNotIn("progress-1.json", turn_inputs[1][0]["text"])
             self.assertEqual([item["type"] for item in turn_inputs[0]], ["text", "skill", "skill"])
+            self.assertEqual(
+                [item["name"] for item in turn_inputs[0][1:]],
+                ["writing-style:chinese-prose", "writing-style:writing-fidelity"],
+            )
             self.assertEqual(len(app.injected[display]), 2)
             read = codex_progress_thread.read_progress_thread(app, thread_id=display)
             self.assertEqual(codex_progress_thread.injected_assistant_texts(read), app.injected[display])
