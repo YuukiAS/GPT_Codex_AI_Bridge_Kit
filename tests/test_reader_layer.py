@@ -53,7 +53,18 @@ class FakeApp:
             self.thread_count += 1
             thread_id = f"thread-{self.thread_count}"
             self.injected.setdefault(thread_id, [])
-            return {"thread": {"id": thread_id}}
+            return {
+                "thread": {
+                    "id": thread_id,
+                    "ephemeral": params.get("ephemeral"),
+                    "environments": params.get("environments", []),
+                },
+                "approvalPolicy": params.get("approvalPolicy"),
+                "runtimeWorkspaceRoots": params.get("runtimeWorkspaceRoots", []),
+                "instructionSources": [],
+                "multiAgentMode": params.get("multiAgentMode"),
+                "sandbox": {"type": "readOnly", "networkAccess": False},
+            }
         if method == "turn/start":
             self.turn_count += 1
             return {"turn": {"id": f"turn-{self.turn_count}"}}
@@ -114,7 +125,7 @@ def event(number: int = 1) -> dict:
 
 
 class ReaderLayerTests(unittest.TestCase):
-    def test_display_thread_rejects_any_loaded_instruction_source(self) -> None:
+    def test_display_thread_accepts_machine_instructions_without_model_turn(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             app = FakeApp(root)
@@ -127,11 +138,74 @@ class ReaderLayerTests(unittest.TestCase):
                 return response
 
             app.request = with_instructions  # type: ignore[method-assign]
-            with self.assertRaisesRegex(
-                codex_progress_thread.AppServerError,
-                r"progress thread loaded instruction sources:.*AGENTS\.md",
-            ):
-                codex_progress_thread.start_progress_display_thread(app, neutral_cwd=root)
+            display = codex_progress_thread.start_progress_display_thread(app, neutral_cwd=root)
+            self.assertEqual(display, "thread-1")
+            self.assertEqual(app.turn_count, 0)
+
+    def test_reader_instruction_source_fails_before_model_turn_and_falls_back(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            app = FakeApp(root)
+            original = app.request
+
+            def with_instructions(method: str, params: dict):
+                response = original(method, params)
+                if method == "thread/start" and params.get("ephemeral"):
+                    response["instructionSources"] = ["/selected-codex-home/AGENTS.md"]
+                return response
+
+            app.request = with_instructions  # type: ignore[method-assign]
+            result = reader_layer.render_event(
+                app,
+                event=event(),
+                neutral_cwd=root,
+                language="zh-CN",
+                reader_turns_used=0,
+                reader_render_max_turns=2,
+            )
+            self.assertEqual(result["reader_layer"], "DEGRADED_FALLBACK")
+            self.assertIn("READER_INSTRUCTION_SOURCES_NOT_EMPTY", result["failure"])
+            self.assertFalse(result["model_turn_used"])
+            self.assertEqual(app.turn_count, 0)
+
+    def test_reader_multi_agent_surface_fails_before_model_turn_and_falls_back(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            app = FakeApp(root)
+            original = app.request
+
+            def with_multi_agent_surface(method: str, params: dict):
+                response = original(method, params)
+                if method == "thread/start" and params.get("ephemeral"):
+                    response["multiAgentMode"] = "explicitRequestOnly"
+                return response
+
+            app.request = with_multi_agent_surface  # type: ignore[method-assign]
+            result = reader_layer.render_event(
+                app,
+                event=event(),
+                neutral_cwd=root,
+                language="zh-CN",
+                reader_turns_used=0,
+                reader_render_max_turns=2,
+            )
+            self.assertEqual(result["reader_layer"], "DEGRADED_FALLBACK")
+            self.assertIn("READER_MULTI_AGENT_MODE_NOT_DISABLED", result["failure"])
+            self.assertFalse(result["model_turn_used"])
+            self.assertEqual(app.turn_count, 0)
+
+    def test_reader_preflight_runs_before_display_without_model_turn(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            app = FakeApp(root)
+            preflight = reader_layer.preflight_reader_isolation(app, neutral_cwd=root)
+            display = codex_progress_thread.start_progress_display_thread(app, neutral_cwd=root)
+            starts = [(method, params) for method, params in app.requests if method == "thread/start"]
+            self.assertTrue(preflight["thread"]["ephemeral"])
+            self.assertEqual(display, "thread-2")
+            self.assertTrue(starts[0][1]["ephemeral"])
+            self.assertFalse(starts[1][1]["ephemeral"])
+            self.assertEqual(app.turn_count, 0)
 
     def test_json_rpc_proxy_uses_websocket_handshake_and_masked_frames(self) -> None:
         websocket_key = bytes(range(16))

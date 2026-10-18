@@ -1,6 +1,6 @@
 # TODO — Execution Context Continuity: Canonical Worktree + Mandatory Control Reads
 
-- Status: **IMPLEMENTED_DEVELOPMENT_CANARY_BLOCKED — selected CODEX_HOME 无法提供无 AGENTS 的 reader thread，候选未冻结**
+- Status: **IMPLEMENTED_READER_CANARY_BLOCKED — selected CODEX_HOME 无法提供隔离 reader thread，候选未冻结**
 - Priority: **CRITICAL — repeated real-user task interruption**
 - Date: 2026-10-08
 - Task key: `bridge-core--execution-context-readiness-convergence`
@@ -11,6 +11,8 @@
 
 实现和确定性回归已完成，但真实 Progress/Clear Writing canary 按冻结合同默认失败，不能据此冻结 `0.11.0-rc.1`。
 
+第一次 non-ephemeral display `thread/start` 被一个范围过宽的 validator 拒绝：它把机器级 `AGENTS.md` 也当作 0-model display thread 的失败条件。v0.8 对 `instructionSources=[]` 的硬要求属于 reader thread；display thread只要求 non-ephemeral、read-only/no-network、无 environment、0 model turns。实现已修正这一区分，把严格隔离检查移到 reader 的 `turn/start` 之前，并在 development canary 分配 display thread 前增加零模型 turn 的 reader 隔离预检。该失败 thread 没有持久化；由于本轮只有一次 development display 分配，没有再创建替代 display thread。
+
 在 actual selected `CODEX_HOME=/users/a/e/aereinh/.codex` 和现有 official shared app-server 上，neutral Bridge-state cwd 没有加载本仓库的 `AGENTS.md`，但 `thread/start` 仍固定回传：
 
 ```text
@@ -18,9 +20,9 @@ instructionSources = ["/users/a/e/aereinh/.codex/AGENTS.md"]
 multiAgentMode = "explicitRequestOnly"
 ```
 
-使用 thread-local `config.project_doc_max_bytes=0` 后结果不变。当前 runtime 没有在保持同一 selected `CODEX_HOME` 的同时禁用 global `AGENTS.md` 的受支持入口；换 `CODEX_HOME`、临时改名机器文件或启动另一套 daemon 都超出批准范围。由于冻结 v0.8 要求 fresh reader thread 无 `AGENTS.md`、无 multi-agent surface，本轮没有消耗 2 个 reader model turns，也没有开始 final G01–G14。
+使用 thread-local `config.project_doc_max_bytes=0` 后结果不变。0.160.1 生成的 `ThreadStartParams` schema 还明确标记 `multiAgentMode` 为 `@deprecated Ignored`。因此当前 runtime 没有在保持同一 selected `CODEX_HOME` 的同时禁用 global `AGENTS.md` 和 multi-agent surface 的受支持入口；换 `CODEX_HOME`、临时改名机器文件或启动另一套 daemon 都超出批准范围。reader 现在会在 model turn 前检查这些实际回读值，不满足时直接使用 0-model `DEGRADED_FALLBACK`。本轮没有消耗 2 个 reader model turns，也没有开始 final G01–G14。
 
-直接证据见 `results/bridge-core--execution-context-readiness-convergence/DEVELOPMENT_PROGRESS_CANARY.json`。恢复条件是 selected Codex runtime 提供并验证 thread-local global-instruction disable，同时 app-server 对禁用 multi-agent 的请求给出一致 readback；随后从同一 development canary 入口重跑，不复用本次失败作为 PASS。
+直接证据见 `results/bridge-core--execution-context-readiness-convergence/DEVELOPMENT_PROGRESS_CANARY.json`。恢复条件是 selected Codex runtime 提供并验证 thread-local global-instruction disable 和 multi-agent disable；随后在获得新的 bounded display allocation 后重跑 development canary，不复用本次失败作为 PASS。
 
 ## User problem
 

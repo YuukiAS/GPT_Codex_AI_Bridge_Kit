@@ -77,6 +77,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     with RecordingProxy(codex=args.codex, socket_path=args.socket) as writer:
         executor_before = read_progress_thread(writer, thread_id=executor_thread_id)
         executor_before_texts = injected_assistant_texts(executor_before)
+        reader_preflight = reader_layer.preflight_reader_isolation(writer, neutral_cwd=neutral_cwd)
         display_thread_id = start_progress_display_thread(writer, neutral_cwd=neutral_cwd)
 
         first = reader_layer.render_event(
@@ -176,6 +177,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "progress_thread_non_ephemeral": True,
         "progress_thread_tool_free": True,
         "same_shared_app_server": True,
+        "reader_preflight_thread_id": reader_preflight["thread"]["id"],
+        "reader_preflight_model_turns": 0,
+        "reader_preflight_before_display_allocation": True,
         "viewer_open_during_second_injection": True,
         "exact_id_cold_resume": resumed.get("thread", {}).get("id") == display_thread_id,
         "durable_messages": len({first["text"], second["text"], fallback["text"]}),

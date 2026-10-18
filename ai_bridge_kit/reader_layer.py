@@ -12,6 +12,7 @@ from .codex_progress_thread import AppServerError, inject_progress_text
 WRITING_PLUGIN_ID = "writing-style@yuukias-ai-skills"
 REQUIRED_READER_SKILLS = ("chinese-prose", "writing-fidelity")
 READER_TEXT_MAX_BYTES = 4096
+READER_MULTI_AGENT_MODE = {"custom": "Never delegate to sub-agents in this reader thread."}
 
 
 class ReaderLayerError(RuntimeError):
@@ -141,6 +142,62 @@ def fidelity_check(event: dict[str, Any], rendered: str, turn_payload: dict[str,
         raise ReaderLayerError("READER_FIDELITY_UNKNOWN_MISSING")
 
 
+def validate_reader_thread(response: dict[str, Any]) -> None:
+    thread = response.get("thread", {})
+    if thread.get("ephemeral") is not True:
+        raise ReaderLayerError("READER_THREAD_NOT_EPHEMERAL")
+    if thread.get("environments") != []:
+        raise ReaderLayerError("READER_ENVIRONMENTS_NOT_EMPTY")
+    if response.get("approvalPolicy") != "never":
+        raise ReaderLayerError("READER_APPROVAL_POLICY_NOT_NEVER")
+    if response.get("runtimeWorkspaceRoots") != []:
+        raise ReaderLayerError("READER_RUNTIME_ROOTS_NOT_EMPTY")
+    instruction_sources = response.get("instructionSources")
+    if instruction_sources != []:
+        raise ReaderLayerError(
+            "READER_INSTRUCTION_SOURCES_NOT_EMPTY: "
+            + json.dumps(instruction_sources, ensure_ascii=False, separators=(",", ":"))
+        )
+    if response.get("multiAgentMode") != READER_MULTI_AGENT_MODE:
+        raise ReaderLayerError("READER_MULTI_AGENT_MODE_NOT_DISABLED")
+    sandbox = response.get("sandbox")
+    sandbox_ok = (
+        isinstance(sandbox, dict)
+        and sandbox.get("type") == "readOnly"
+        and sandbox.get("networkAccess") is False
+    )
+    if not sandbox_ok:
+        raise ReaderLayerError("READER_SANDBOX_NOT_READ_ONLY_NO_NETWORK")
+
+
+def start_reader_thread(app: Any, *, neutral_cwd: Path) -> dict[str, Any]:
+    response = app.request(
+        "thread/start",
+        {
+            "cwd": neutral_cwd.expanduser().resolve().as_posix(),
+            "ephemeral": True,
+            "dynamicTools": [],
+            "environments": [],
+            "runtimeWorkspaceRoots": [],
+            "selectedCapabilityRoots": [],
+            "approvalPolicy": "never",
+            "sandbox": "read-only",
+            "baseInstructions": "Render only the supplied event. Do not use tools or infer missing facts.",
+            "developerInstructions": "Return only the user-facing notification text.",
+            "multiAgentMode": READER_MULTI_AGENT_MODE,
+        },
+    )
+    validate_reader_thread(response)
+    if not str(response.get("thread", {}).get("id") or ""):
+        raise ReaderLayerError("READER_THREAD_ID_MISSING")
+    return response
+
+
+def preflight_reader_isolation(app: Any, *, neutral_cwd: Path) -> dict[str, Any]:
+    """Start and validate an ephemeral zero-turn reader before allocating display state."""
+    return start_reader_thread(app, neutral_cwd=neutral_cwd)
+
+
 def render_event(
     app: Any,
     *,
@@ -170,25 +227,8 @@ def render_event(
         skills = resolve_writing_skills(plugins, skills_payload)
         selected_skills = skills
         plugin_version = writing_plugin_version(plugins)
-        thread = app.request(
-            "thread/start",
-            {
-                "cwd": neutral_cwd.expanduser().resolve().as_posix(),
-                "ephemeral": True,
-                "dynamicTools": [],
-                "environments": [],
-                "runtimeWorkspaceRoots": [],
-                "selectedCapabilityRoots": [],
-                "approvalPolicy": "never",
-                "sandbox": "read-only",
-                "baseInstructions": "Render only the supplied event. Do not use tools or infer missing facts.",
-                "developerInstructions": "Return only the user-facing notification text.",
-                "multiAgentMode": {"custom": "Never delegate to sub-agents in this reader thread."},
-            },
-        )
+        thread = start_reader_thread(app, neutral_cwd=neutral_cwd)
         reader_thread_id = str(thread.get("thread", {}).get("id") or "")
-        if not reader_thread_id:
-            raise ReaderLayerError("READER_THREAD_ID_MISSING")
         turn = app.request(
             "turn/start",
             {

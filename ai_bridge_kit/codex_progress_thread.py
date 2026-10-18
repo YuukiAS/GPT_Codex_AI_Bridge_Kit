@@ -232,6 +232,15 @@ def _thread_id(response: dict[str, Any]) -> str:
     return thread_id
 
 
+def _read_only_no_network(response: dict[str, Any]) -> bool:
+    sandbox = response.get("sandbox")
+    return (
+        isinstance(sandbox, dict)
+        and sandbox.get("type") == "readOnly"
+        and sandbox.get("networkAccess") is False
+    )
+
+
 def start_progress_display_thread(app: Any, *, neutral_cwd: Path) -> str:
     request = {
         "cwd": neutral_cwd.expanduser().resolve().as_posix(),
@@ -250,21 +259,21 @@ def start_progress_display_thread(app: Any, *, neutral_cwd: Path) -> str:
         "thread/start",
         request,
     )
-    # The official response exposes the effective values that can be verified
-    # without starting a model turn. Anything less fails closed.
-    if response.get("approvalPolicy") not in {None, "never"}:
+    # The display thread never runs a model turn, so machine-level instruction
+    # sources and the runtime's default multi-agent mode are inert here. The
+    # reader thread validates those separately before its single model turn.
+    # The effective execution boundary must still fail closed.
+    thread = response.get("thread", {})
+    if thread.get("ephemeral") is not False:
+        raise AppServerError("progress thread is not non-ephemeral")
+    if thread.get("environments") != []:
+        raise AppServerError("progress thread environments are not empty")
+    if response.get("approvalPolicy") != "never":
         raise AppServerError("progress thread approval policy is not tool-free")
-    if response.get("runtimeWorkspaceRoots", []) != []:
+    if response.get("runtimeWorkspaceRoots") != []:
         raise AppServerError("progress thread runtime workspace roots are not empty")
-    instruction_sources = response.get("instructionSources", [])
-    if instruction_sources not in (None, []):
-        raise AppServerError(
-            "progress thread loaded instruction sources: "
-            + json.dumps(instruction_sources, ensure_ascii=False, separators=(",", ":"))
-        )
-    effective_multi_agent = response.get("multiAgentMode")
-    if effective_multi_agent not in (None, {"custom": "Never delegate to sub-agents in this display-only thread."}):
-        raise AppServerError("progress thread multi-agent mode is not disabled")
+    if not _read_only_no_network(response):
+        raise AppServerError("progress thread sandbox is not read-only with network disabled")
     return _thread_id(response)
 
 

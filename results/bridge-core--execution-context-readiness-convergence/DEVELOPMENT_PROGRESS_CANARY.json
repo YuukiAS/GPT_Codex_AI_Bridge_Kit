@@ -1,14 +1,20 @@
 {
   "app_server_socket": "/users/a/e/aereinh/.codex-run/as/b7587b26bdc509ee.sock",
+  "available_codex_cli_versions": [
+    "0.160.1"
+  ],
   "candidate_frozen": false,
   "codex_cli_version": "0.160.1",
   "codex_executable": "/users/a/e/aereinh/.codex-cli-candidates/0.160.1/20261015T064058Z/node_modules/.bin/codex",
   "durable_progress_threads_created": 0,
   "evidence_recorded_at": "2026-10-18T16:13:12Z",
+  "evidence_updated_at": "2026-10-18T16:20:28Z",
   "executor_thread_id": "01a14fb3-0bd2-7150-b54a-0a3f502e9de2",
   "final_g01_g14_started": false,
   "observations": {
-    "development_display_attempt": "thread/start returned, then the fail-closed instructionSources validator rejected the thread before any reader turn or injection; after the connection closed, thread/list and the state DB contained no durable thread for the neutral cwd",
+    "development_display_attempt": "thread/start returned, then an over-scoped validator rejected the 0-model display thread because machine-level instructionSources was non-empty; after the connection closed, thread/list and the state DB contained no durable thread for the neutral cwd",
+    "display_validator_scope_correction": "Machine instruction sources and multi-agent defaults are inert in the display thread because it runs zero model turns. The implementation now validates display persistence and execution boundaries separately, and validates empty instructionSources plus disabled multi-agent mode on the reader thread before turn/start.",
+    "reader_preflight_correction": "The development canary now starts and validates an ephemeral zero-turn reader before allocating any non-ephemeral display thread, so an unsupported reader runtime fails without consuming a replacement display allocation.",
     "ephemeral_diagnostic_default": {
       "approvalPolicy": "never",
       "instructionSources": [
@@ -29,13 +35,17 @@
         "/users/a/e/aereinh/.codex/AGENTS.md"
       ],
       "multiAgentMode": "explicitRequestOnly"
-    }
+    },
+    "thread_start_multi_agent_mode_schema": "@deprecated Ignored. Use Ultra reasoning effort for proactive multi-agent behavior."
   },
   "reader_render_max_turns": 2,
   "reader_turns_used": 0,
-  "recovery_condition": "The selected Codex runtime must expose and read back a thread-local supported way to disable global AGENTS instructions and multi-agent delegation without changing CODEX_HOME or starting another daemon.",
+  "recovery_condition": "The selected Codex runtime must expose and read back thread-local supported ways to disable global AGENTS instructions and multi-agent delegation without changing CODEX_HOME or starting another daemon; a new bounded display allocation is then required for rerun.",
   "runtime_capability_classification": "UNSUPPORTED_WITH_EVIDENCE",
-  "runtime_capability_gap": "GLOBAL_AGENTS_CANNOT_BE_DISABLED_ON_SELECTED_CODEX_HOME",
+  "runtime_capability_gaps": [
+    "GLOBAL_AGENTS_CANNOT_BE_DISABLED_ON_SELECTED_CODEX_HOME",
+    "MULTI_AGENT_MODE_REQUEST_IS_DEPRECATED_AND_IGNORED"
+  ],
   "schema": "ai-bridge.development_progress_canary.v1",
   "selected_codex_home": "/users/a/e/aereinh/.codex",
   "status": "FAIL_CLOSED",

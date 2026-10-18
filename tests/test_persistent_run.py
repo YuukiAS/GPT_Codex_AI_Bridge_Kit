@@ -194,7 +194,12 @@ class PersistentRunTests(unittest.TestCase):
             def request(self, method, params):
                 self.method = method
                 self.params = params
-                return {"thread": {"id": "progress-thread-1"}}
+                return {
+                    "thread": {"id": "progress-thread-1", "ephemeral": False, "environments": []},
+                    "approvalPolicy": "never",
+                    "runtimeWorkspaceRoots": [],
+                    "sandbox": {"type": "readOnly", "networkAccess": False},
+                }
 
         def runner(argv, **_kwargs):
             calls.append(argv)
@@ -246,7 +251,12 @@ class PersistentRunTests(unittest.TestCase):
                 return None
 
             def request(self, method, params):
-                return {"thread": {"id": "progress-thread-1"}}
+                return {
+                    "thread": {"id": "progress-thread-1", "ephemeral": False, "environments": []},
+                    "approvalPolicy": "never",
+                    "runtimeWorkspaceRoots": [],
+                    "sandbox": {"type": "readOnly", "networkAccess": False},
+                }
 
         def runner(argv, **_kwargs):
             nonlocal active
