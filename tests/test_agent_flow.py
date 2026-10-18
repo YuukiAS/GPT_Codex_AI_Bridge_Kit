@@ -372,6 +372,28 @@ class AgentFlowTests(unittest.TestCase):
             with contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(main(["agent-flow", "status", "--target", str(target)]), 0)
 
+    def test_agent_flow_install_distributes_canonical_critic_without_bridge_maintenance_policy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "consumer"
+            target.mkdir()
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(main(["agent-flow", "install", "--target", str(target)]), 0)
+
+            canonical_path = Path("templates/agent_flow/prompts/CRITIC.md")
+            installed_path = target / "automation" / "agent_flow" / "prompts" / "CRITIC.md"
+            self.assertEqual(installed_path.read_bytes(), canonical_path.read_bytes())
+
+            installed_critic = installed_path.read_text(encoding="utf-8")
+            self.assertNotIn("LOW_FRICTION_OPERATION_REVIEW", installed_critic)
+            for marker in [
+                "REQUIRED_INITIAL",
+                "STANDBY",
+                "REQUIRED_CONTRACT_REVIEW",
+                "REQUIRED_FINAL_AUDIT",
+            ]:
+                with self.subTest(marker=marker):
+                    self.assertIn(marker, installed_critic)
+
     def test_snapshot_uses_canonical_manifests_and_ignores_receipts_current_docs(self) -> None:
         tmp, target = self.make_project()
         with tmp:

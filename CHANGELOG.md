@@ -41,6 +41,10 @@
 - Update Host Policy templates with the new bounded sync and worktree-exchange
   entry rules while keeping raw dangerous Git, arbitrary branch topology,
   release movement, CODEX_HOME mutation, SMTP, and external paid calls gated.
+- Restore the Control Critic to its initial, contract, and final audit duties;
+  Bridge maintenance-specific low-friction policy is no longer distributed to
+  consumer Control installations, while Host and Persistent Run behavior stays
+  unchanged.
 
 ## 0.10.0 - 2026-10-01
 
