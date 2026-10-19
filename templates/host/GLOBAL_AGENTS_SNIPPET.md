@@ -49,12 +49,6 @@ is a project decision controlled by the user.
 - New formal task worktrees must use the Bridge-derived repository sibling;
   never fall back to `/tmp` or another system temp root. Historical tasks with
   an already-frozen temp locator remain compatible and are not migrated.
-- Bridge Kit has no reliable automatic worktree-quiescence proof in 0.11.
-  The bounded two-linked-worktree exchange entry derives T from A/B/common-dir
-  and branches, treats `--temp-path` only as an exact assertion, and must return
-  `WORKTREE_EXCHANGE_ACTIVITY_UNVERIFIED` before the first move with zero
-  mutation. `ps`, `lsof`, procfs, absent locks, or no observed process are
-  diagnostics, not a PASS. Transaction/rollback runs only in disposable tests.
 - Large scope, many files, incomplete implementation, perceived PR safety, or a
   clean `main` baseline are not independent authorization to invent a branch.
 - If the user explicitly selected an existing branch, continue on that branch

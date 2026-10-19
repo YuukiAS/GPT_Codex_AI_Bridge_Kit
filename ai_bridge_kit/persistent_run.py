@@ -5,10 +5,8 @@ import hashlib
 import json
 import os
 import re
-import shlex
 import subprocess
 import sys
-import time
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -37,160 +35,28 @@ def _sha256_bytes(data: bytes) -> str:
 
 def _atomic_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary = path.with_name(f".{path.name}.tmp-{os.getpid()}")
     temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    temporary.replace(path)
+    os.replace(temporary, path)
 
 
-def _field_map(text: str) -> dict[str, str]:
+def _contract_fields(text: str) -> dict[str, str]:
     fields: dict[str, str] = {}
     for raw in text.splitlines():
-        match = re.match(r"^\s*(?:[-*]\s*)?([A-Za-z][A-Za-z /_-]*?):\s*(.*?)\s*$", raw)
-        if match:
-            fields[match.group(1).strip().lower()] = match.group(2).strip()
+        match = re.match(r"^([A-Za-z][A-Za-z /_-]*):\s*(.*?)\s*$", raw)
+        if match and match.group(1) not in fields:
+            fields[match.group(1)] = match.group(2)
     return fields
 
 
-def _json_argv(raw: str, *, field: str) -> list[str]:
+def _json_argv(raw: str) -> list[str]:
     try:
         value = json.loads(raw)
     except json.JSONDecodeError as exc:
-        raise PersistentRunError(f"{field} must be a JSON argv array") from exc
-    if not isinstance(value, list) or not value or not all(isinstance(item, str) and item for item in value):
-        raise PersistentRunError(f"{field} must be a non-empty JSON argv array of strings")
-    if any("\x00" in item for item in value):
-        raise PersistentRunError(f"{field} contains NUL")
+        raise PersistentRunError("Launch argv must be a JSON array") from exc
+    if not isinstance(value, list) or not value or not all(isinstance(item, str) and item and "\0" not in item for item in value):
+        raise PersistentRunError("Launch argv must be a non-empty JSON string array")
     return value
-
-
-def parse_persistent_contract(target: Path, goal: str) -> dict[str, Any]:
-    target = ensure_git_repo(target.resolve())
-    rel_goal, goal_path = _validate_goal_path(target, goal)
-    raw = goal_path.read_bytes()
-    try:
-        text = raw.decode("utf-8")
-    except UnicodeDecodeError as exc:
-        raise PersistentRunError("Goal must be UTF-8") from exc
-    fields = _field_map(text)
-    required = {
-        "persistent execution": "REQUIRED",
-        "backend": "tmux",
-        "goal source": rel_goal,
-        "run/session key": None,
-        "working directory": None,
-        "launch argv json": None,
-        "resume argv json": None,
-        "progress producer": None,
-        "progress source locator": None,
-        "reader render max turns": None,
-        "progress email": None,
-        "runtime terminal email": None,
-        "semantic completion email": None,
-    }
-    missing = [name for name in required if not fields.get(name)]
-    if missing:
-        raise PersistentRunError("Persistent Run contract missing fields: " + ", ".join(missing))
-    for name, expected in required.items():
-        if expected is not None and fields[name] != expected:
-            raise PersistentRunError(f"Persistent Run contract requires {name}: {expected}")
-    run_key = fields["run/session key"]
-    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", run_key):
-        raise PersistentRunError("Run/session key must be a stable safe key")
-    working_raw = fields["working directory"].replace("\\", "/")
-    working = PurePosixPath(working_raw)
-    if working.is_absolute() or ".." in working.parts:
-        raise PersistentRunError("Working directory must be repo-relative")
-    working_path = (target / working.as_posix()).resolve()
-    if not working_path.is_relative_to(target) or not working_path.is_dir():
-        raise PersistentRunError("Working directory is missing or outside the repository")
-    launch_argv = _json_argv(fields["launch argv json"], field="Launch argv JSON")
-    resume_raw = fields["resume argv json"]
-    resume_argv = launch_argv if resume_raw == "SAME_AS_LAUNCH" else _json_argv(resume_raw, field="Resume argv JSON")
-    progress_producer = fields["progress producer"]
-    if progress_producer not in {"project-native", "lifecycle-only"}:
-        raise PersistentRunError("Progress producer must be project-native or lifecycle-only")
-    progress_locator = fields["progress source locator"]
-    progress_path: Path | None = None
-    if progress_locator != "NONE":
-        candidate = PurePosixPath(progress_locator.replace("\\", "/"))
-        if candidate.is_absolute() or ".." in candidate.parts:
-            raise PersistentRunError("Progress source locator must be repo-relative or NONE")
-        progress_path = (target / candidate.as_posix()).resolve()
-        if not progress_path.is_relative_to(target):
-            raise PersistentRunError("Progress source locator resolves outside repository")
-    try:
-        reader_max = int(fields["reader render max turns"])
-    except ValueError as exc:
-        raise PersistentRunError("Reader render max turns must be a bounded integer") from exc
-    if not 0 <= reader_max <= 1000:
-        raise PersistentRunError("Reader render max turns must be between 0 and 1000")
-    from . import notifier
-
-    intents = notifier.normalize_notification_intents(
-        {
-            "progress_email": fields["progress email"],
-            "runtime_terminal_email": fields["runtime terminal email"],
-            "semantic_completion_email": fields["semantic completion email"],
-        }
-    )
-    if intents["semantic_completion_email"] == "ENABLED":
-        # Persistent Run can copy this intent for the underlying workflow, but never owns it.
-        pass
-    goal_sha = _sha256_bytes(raw)
-    session_digest = hashlib.sha256(f"{target.as_posix()}|{run_key}".encode("utf-8")).hexdigest()[:16]
-    return {
-        "repo": target.as_posix(),
-        "goal": rel_goal,
-        "goal_sha256": goal_sha,
-        "run_key": run_key,
-        "runtime_id": f"persistent:{run_key}:{goal_sha[:12]}",
-        "session_name": f"ai-bridge-pr-{session_digest}",
-        "working_directory": working_path.as_posix(),
-        "launch_argv": launch_argv,
-        "resume_argv": resume_argv,
-        "progress_producer": progress_producer,
-        "progress_source": progress_path.as_posix() if progress_path else "NONE",
-        "reader_render_max_turns": reader_max,
-        "notification_intents": intents,
-        "report_interval_seconds": max(900, _parse_seconds(fields.get("report interval"), default=3600)),
-        "resource_boundary_sha256": _sha256_bytes(text.encode("utf-8")),
-    }
-
-
-def persistent_launch_effect(contract: dict[str, Any]) -> dict[str, Any]:
-    from .readiness import bounded_effect_identity
-
-    return bounded_effect_identity(
-        "persistent_launch",
-        {
-            "repo": contract["repo"],
-            "run_key": contract["run_key"],
-            "goal": contract["goal"],
-            "goal_sha256": contract["goal_sha256"],
-            "backend": "tmux",
-            "launch_argv_sha256": _sha256_bytes(json.dumps(contract["launch_argv"], separators=(",", ":")).encode("utf-8")),
-            "resume_argv_sha256": _sha256_bytes(json.dumps(contract["resume_argv"], separators=(",", ":")).encode("utf-8")),
-            "resource_boundary_sha256": contract["resource_boundary_sha256"],
-            "progress_backend": "official_shared_app_server",
-            "purpose": "terminal_owned_survive_disconnect",
-        },
-    )
-
-
-def _run_binding_path(contract: dict[str, Any], *, state_root: Path | None = None) -> Path:
-    identity = hashlib.sha256(f"{contract['repo']}|{contract['run_key']}".encode("utf-8")).hexdigest()[:24]
-    return state_home(state_root) / "persistent-run" / "runs" / identity / "binding.json"
-
-
-def _tmux_has_session(session_name: str, *, runner: Any = subprocess.run) -> bool:
-    result = runner(
-        ["tmux", "has-session", "-t", f"={session_name}"],
-        check=False,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    return result.returncode == 0
 
 
 def _parse_seconds(value: Any, *, default: int) -> int:
@@ -395,56 +261,8 @@ def report_progress_file(
     previous_report = previous_latest.get("normalized") if previous_latest else None
     decision, reason = _delivery_decision(previous_report if isinstance(previous_report, dict) else None, normalized, interval_seconds=interval_seconds)
     notification = "not_requested"
-    notification_result: dict[str, Any] | None = None
-    from . import notifier
-
-    intents = notifier.normalize_notification_intents(raw.get("notification_intents"))
-    legacy_notify_authorized = os.environ.get("AI_BRIDGE_PERSISTENT_RUN_NOTIFY_AUTHORIZED", "").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-    }
-    if "notification_intents" not in raw and legacy_notify_authorized:
-        intents["progress_email"] = "ENABLED"
-    progress_event = notifier.canonical_event(
-        event_class="progress",
-        project=str(raw.get("project") or "Persistent Run"),
-        task_key=str(raw.get("task_key") or normalized.get("run_locator") or "persistent_run"),
-        status=str(normalized.get("status")),
-        key_conclusion=str(
-            normalized.get("progress_summary")
-            or f"Persistent Run stage {normalized.get('stage')} progress update."
-        ),
-        evidence_paths=[path.expanduser().resolve().as_posix(), (report_dir / "latest.json").as_posix()],
-        next_step="Continue monitoring existing project-native progress evidence.",
-        emitter="persistent_supervisor",
-        runtime_id=str(normalized.get("run_locator")),
-        lifecycle_owner="persistent_supervisor",
-        primary_runtime_owner="persistent_supervisor",
-    )
     if delivery_mode == "notifications":
-        if decision != "deliver":
-            notification = "suppressed"
-        elif intents["progress_email"] == "ENABLED" and legacy_notify_authorized:
-            brief_path = report_dir / "notification_brief.json"
-            rendered = notifier.deterministic_fallback(progress_event)
-            brief = notifier.rendered_event_brief(progress_event, rendered)
-            brief_path.write_text(json.dumps(brief, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-            notification_result = notifier.send_brief(
-                brief_path,
-                state_path=report_dir / "notifier_state.json",
-                dry_run=bool(raw.get("notification_dry_run")),
-            )
-            notification = str(getattr(notification_result, "status", "unknown"))
-            notification_result = {
-                "status": getattr(notification_result, "status", "unknown"),
-                "event_key": getattr(notification_result, "event_key", ""),
-                "message": getattr(notification_result, "message", ""),
-            }
-        elif intents["progress_email"] != "ENABLED":
-            notification = "disabled_by_frozen_intent"
-        else:
-            notification = "unavailable_existing_configuration_not_verified"
+        notification = "unavailable_existing_configuration_not_verified"
     elif delivery_mode not in {"local", "none"}:
         notification = "unsupported_delivery_mode"
     entry = {
@@ -456,9 +274,7 @@ def report_progress_file(
         "delivery_decision": decision,
         "delivery_reason": reason,
         "notification_projection": notification,
-        "notification_intents": intents,
-        "canonical_event": progress_event,
-        "notification_result": notification_result,
+        "notification_result": None,
         "normalized": normalized,
     }
     latest_path.write_text(json.dumps(entry, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -569,7 +385,7 @@ def install_persistent_run(target: Path) -> list[str]:
     try:
         preflight_root_agents_mutation(
             target,
-            projected_agents.encode("utf-8"),
+            projected_agents,
             block_name="persistent_run",
             block_bytes=len(_managed_block().encode("utf-8")),
         )
@@ -589,7 +405,13 @@ def install_persistent_run(target: Path) -> list[str]:
             actions.append(f"{'UPDATE' if existed else 'CREATE'} {destination}")
         else:
             actions.append(f"SKIP unchanged {destination}")
-    actions.append(install_agents_block(target, projected=projected_agents, projected_action=projected_action))
+    actions.append(
+        install_agents_block(
+            target,
+            projected=projected_agents,
+            projected_action=projected_action,
+        )
+    )
     return actions
 
 
@@ -609,40 +431,167 @@ def _validate_goal_path(target: Path, raw_goal: str) -> tuple[str, Path]:
 
 
 def render_kickoff_prompt(target: Path, goal: str) -> str:
-    contract = parse_persistent_contract(target, goal)
-    effect = persistent_launch_effect(contract)
-    from . import notifier
-
-    notify_env = notifier.notifier_env(None, Path(contract["repo"]) / notifier.PRIVATE_ENV_PATH)
-    notification_effects: dict[str, str] = {}
-    for event_class in ("progress", "runtime_terminal"):
-        prototype = notifier.canonical_event(
-            event_class=event_class,
-            project=Path(contract["repo"]).name,
-            task_key=contract["run_key"],
-            status="authorized_future_runtime_event",
-            key_conclusion="Bounded future Persistent Run notification facts.",
-            next_step="Use only the frozen event class and runtime identity.",
-            evidence_paths=[contract["goal"]],
-            emitter="persistent_supervisor",
-            runtime_id=contract["runtime_id"],
-            lifecycle_owner="persistent_supervisor",
-            primary_runtime_owner="persistent_supervisor",
-        )
-        notification_effects[event_class] = notifier.gmail_effect_identity(prototype, notify_env)["sha256"]
+    target = ensure_git_repo(target.resolve())
+    rel_goal, goal_path = _validate_goal_path(target, goal)
+    digest = _sha256_bytes(goal_path.read_bytes())
     template = read_text(template_root() / "KICKOFF_TEMPLATE.md")
-    replacements = {
-        "__GOAL_PATH__": contract["goal"],
-        "__GOAL_SHA256__": contract["goal_sha256"],
-        "__RUN_KEY__": contract["run_key"],
-        "__EFFECT_SHA256__": effect["sha256"],
-        "__REPO__": contract["repo"],
-        "__PROGRESS_NOTIFICATION_EFFECT_SHA256__": notification_effects["progress"],
-        "__RUNTIME_NOTIFICATION_EFFECT_SHA256__": notification_effects["runtime_terminal"],
+    return (
+        template.replace("__GOAL_PATH__", rel_goal)
+        .replace("__GOAL_SHA256__", digest)
+        .rstrip()
+        + "\n"
+    )
+
+
+def parse_persistent_contract(target: Path, goal: str, *, expected_goal_sha256: str) -> dict[str, Any]:
+    target = ensure_git_repo(target.resolve())
+    rel_goal, goal_path = _validate_goal_path(target, goal)
+    goal_bytes = goal_path.read_bytes()
+    goal_sha256 = _sha256_bytes(goal_bytes)
+    if not re.fullmatch(r"[0-9a-f]{64}", expected_goal_sha256 or ""):
+        raise PersistentRunError("expected Goal SHA-256 must be 64 lowercase hex")
+    if goal_sha256 != expected_goal_sha256:
+        raise PersistentRunError(f"GOAL_SHA256_MISMATCH: actual={goal_sha256} expected={expected_goal_sha256}")
+    try:
+        text = goal_bytes.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise PersistentRunError("Goal must be UTF-8") from exc
+    fields = _contract_fields(text)
+    if fields.get("Persistent execution") != "REQUIRED":
+        raise PersistentRunError("Goal must freeze 'Persistent execution: REQUIRED'")
+    if fields.get("Backend") != "tmux":
+        raise PersistentRunError("Goal must freeze 'Backend: tmux'")
+    if fields.get("Goal source") != rel_goal:
+        raise PersistentRunError("Goal source must exactly match --goal")
+    run_key = fields.get("Run/session key", "")
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", run_key):
+        raise PersistentRunError("Run/session key must be a stable safe key")
+    working_raw = fields.get("Working directory", ".").replace("\\", "/")
+    working_path = PurePosixPath(working_raw)
+    if working_path.is_absolute() or ".." in working_path.parts:
+        raise PersistentRunError("Working directory must be repo-relative")
+    working_directory = (target / working_path.as_posix()).resolve()
+    if not working_directory.is_relative_to(target) or not working_directory.is_dir():
+        raise PersistentRunError("Working directory is missing or outside target")
+    launch_argv = _json_argv(fields.get("Launch argv", ""))
+    progress_raw = fields.get("Progress source locator", "").replace("\\", "/").strip()
+    progress_path: Path | None = None
+    progress_rel = ""
+    if progress_raw and not progress_raw.startswith("<"):
+        progress = PurePosixPath(progress_raw)
+        if progress.is_absolute() or ".." in progress.parts:
+            raise PersistentRunError("Progress source locator must be repo-relative")
+        progress_path = (target / progress.as_posix()).resolve()
+        if not progress_path.is_relative_to(target):
+            raise PersistentRunError("Progress source locator resolves outside target")
+        progress_rel = progress.as_posix()
+    identity = {
+        "repo_realpath": target.as_posix(),
+        "run_key": run_key,
+        "goal_repo_relative_path": rel_goal,
+        "goal_sha256": goal_sha256,
+        "working_directory_repo_relative_path": working_path.as_posix(),
+        "launch_argv": launch_argv,
+        "backend": "tmux",
     }
-    for marker, value in replacements.items():
-        template = template.replace(marker, str(value))
-    return template.rstrip() + "\n"
+    launch_id = _sha256_bytes(
+        json.dumps(identity, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    )
+    return {
+        **identity,
+        "launch_id": launch_id,
+        "session_name": f"ai-bridge-pr-{launch_id}",
+        "working_directory": working_directory.as_posix(),
+        "progress_source_locator": progress_rel,
+        "progress_source_path": progress_path.as_posix() if progress_path else "",
+    }
+
+
+def _run_binding_path(contract: dict[str, Any], *, state_root: Path | None = None) -> Path:
+    key = f"{contract['repo_realpath']}\0{contract['run_key']}".encode("utf-8")
+    return state_home(state_root) / "persistent-run" / "runs" / f"{_sha256_bytes(key)}.json"
+
+
+def _tmux_has_session(session_name: str, *, runner: Any = subprocess.run) -> bool:
+    result = runner(
+        ["tmux", "has-session", "-t", f"={session_name}"],
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    return result.returncode == 0
+
+
+def _binding_matches(binding: dict[str, Any], contract: dict[str, Any]) -> bool:
+    immutable = [
+        "repo_realpath",
+        "run_key",
+        "goal_repo_relative_path",
+        "goal_sha256",
+        "working_directory_repo_relative_path",
+        "launch_argv",
+        "backend",
+        "launch_id",
+        "session_name",
+    ]
+    return all(binding.get(key) == contract.get(key) for key in immutable)
+
+
+def _binding_terminal(binding: dict[str, Any]) -> bool:
+    return bool(binding.get("child_exit_observed_at") or binding.get("create_failure_observed_at"))
+
+
+def _progress_status(contract: dict[str, Any]) -> dict[str, Any]:
+    raw = str(contract.get("progress_source_path") or "")
+    if not raw:
+        return {"state": "UNKNOWN", "reason": "progress source not configured"}
+    path = Path(raw)
+    if not path.is_file():
+        return {"state": "UNKNOWN", "reason": "progress source missing", "path": path.as_posix()}
+    try:
+        return {"state": "AVAILABLE", "normalized": normalize_progress_file(path), "path": path.as_posix()}
+    except PersistentRunError as exc:
+        return {"state": "UNKNOWN", "reason": str(exc), "path": path.as_posix()}
+
+
+def _run_status(
+    contract: dict[str, Any],
+    binding: dict[str, Any] | None,
+    exact_active: bool,
+) -> dict[str, Any]:
+    progress = _progress_status(contract)
+    if binding is None:
+        return {
+            "status": "CONFLICT" if exact_active else "NOT_STARTED",
+            "reason": "exact session exists without binding" if exact_active else "no binding or exact session",
+            "launch_id": contract["launch_id"],
+            "session_name": contract["session_name"],
+            "progress": progress,
+        }
+    if not _binding_matches(binding, contract):
+        return {"status": "CONFLICT", "reason": "binding identity mismatch", "binding": binding}
+    if _binding_terminal(binding):
+        if exact_active:
+            return {"status": "CONFLICT", "reason": "terminal binding has active session", "binding": binding}
+        return {
+            "status": "TERMINAL" if binding.get("child_exit_observed_at") else "CREATE_FAILED",
+            "exit_code": binding.get("exit_code"),
+            "binding": binding,
+            "progress": progress,
+        }
+    if exact_active:
+        return {
+            "status": "RUNNING" if binding.get("child_started_at") else "STARTING",
+            "binding": binding,
+            "progress": progress,
+        }
+    return {
+        "status": "UNKNOWN/UNAVAILABLE",
+        "reason": "nonterminal binding exists but exact session is missing; no relaunch and no terminal inference",
+        "binding": binding,
+        "progress": progress,
+    }
 
 
 def start_persistent_run(
@@ -650,250 +599,129 @@ def start_persistent_run(
     goal: str,
     *,
     expected_goal_sha256: str,
-    authorization_effect_sha256: str,
-    progress_notification_effect_sha256: str = "",
-    runtime_notification_effect_sha256: str = "",
     state_root: Path | None = None,
-    app_factory: Any = None,
     runner: Any = subprocess.run,
 ) -> dict[str, Any]:
-    contract = parse_persistent_contract(target, goal)
-    if contract["goal_sha256"] != expected_goal_sha256:
-        raise PersistentRunError("PERSISTENT_GOAL_HASH_MISMATCH")
-    effect = persistent_launch_effect(contract)
-    if effect["sha256"] != authorization_effect_sha256:
-        raise PersistentRunError("PERSISTENT_LAUNCH_AUTHORIZATION_SCOPE_MISMATCH")
+    contract = parse_persistent_contract(target, goal, expected_goal_sha256=expected_goal_sha256)
     binding_path = _run_binding_path(contract, state_root=state_root)
-    previous = _read_json_if_exists(binding_path)
-    session_active = _tmux_has_session(contract["session_name"], runner=runner)
-    if previous is not None:
-        compatible = (
-            previous.get("goal_sha256") == contract["goal_sha256"]
-            and previous.get("effect_sha256") == effect["sha256"]
-            and previous.get("session_name") == contract["session_name"]
-        )
-        if session_active and compatible:
-            previous["last_resumed_at"] = _utc_now()
-            _atomic_json(binding_path, previous)
-            return {**previous, "status": "RESUMED_EXISTING_RUN", "binding_path": binding_path.as_posix()}
-        if session_active:
-            raise PersistentRunError("PERSISTENT_RUN_CONFLICTING_ACTIVE_BINDING")
-
-    if app_factory is None:
-        from .codex_progress_thread import JsonRpcProxy
-
-        app_factory = JsonRpcProxy
-    neutral_cwd = state_home(state_root) / "persistent-run" / "reader-neutral"
-    neutral_cwd.mkdir(parents=True, exist_ok=True)
-    try:
-        from .codex_progress_thread import start_progress_display_thread
-
-        with app_factory() as app:
-            progress_thread_id = start_progress_display_thread(app, neutral_cwd=neutral_cwd)
-    except Exception as exc:
-        raise PersistentRunError(f"PROGRESS_THREAD_SHARED_APP_SERVER_UNAVAILABLE: {exc}") from exc
-
+    binding = _read_json_if_exists(binding_path)
+    exact_active = _tmux_has_session(contract["session_name"], runner=runner)
+    observed = _run_status(contract, binding, exact_active)
+    if observed["status"] != "NOT_STARTED":
+        mapping = {
+            "TERMINAL": "ALREADY_TERMINAL",
+            "CREATE_FAILED": "ALREADY_TERMINAL",
+            "RUNNING": "RETURN_EXISTING",
+            "STARTING": "RETURN_EXISTING",
+            "UNKNOWN/UNAVAILABLE": "NO_RELAUNCH",
+        }
+        original = str(observed["status"])
+        observed["status"] = mapping.get(original, original)
+        if original in {"RUNNING", "STARTING", "UNKNOWN/UNAVAILABLE"}:
+            observed["lifecycle_state"] = original
+        return observed
     binding = {
-        "schema": "ai-bridge.persistent_run.binding.v1",
+        "schema": "ai-bridge.persistent-run.binding.v1",
         **contract,
-        "effect_sha256": effect["sha256"],
         "binding_path": binding_path.as_posix(),
-        "state_root": state_home(state_root).as_posix(),
-        "progress_thread_id": progress_thread_id,
-        "progress_thread_isolation": "STRUCTURED_TOOL_FREE_CONFIG_REQUESTED",
-        "lifecycle_owner": "persistent_supervisor",
-        "status": "launching",
-        "started_at": _utc_now(),
-        "reader_turns_used": 0,
-        "notification_effect_sha256": {
-            "progress": progress_notification_effect_sha256,
-            "runtime_terminal": runtime_notification_effect_sha256,
-        },
+        "start_requested_at": _utc_now(),
+        "lifecycle_state": "START_REQUESTED",
     }
     _atomic_json(binding_path, binding)
     supervisor = [
         sys.executable,
         "-m",
         "ai_bridge_kit.persistent_run",
-        "supervise",
+        "_supervise",
         "--binding",
         binding_path.as_posix(),
+        "--launch-id",
+        contract["launch_id"],
     ]
-    result = runner(
-        [
-            "tmux",
-            "new-session",
-            "-d",
-            "-s",
-            contract["session_name"],
-            "-c",
-            contract["working_directory"],
-            shlex.join(supervisor),
-        ],
-        check=False,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
+    command = [
+        "tmux",
+        "new-session",
+        "-d",
+        "-s",
+        contract["session_name"],
+        "-c",
+        contract["working_directory"],
+        *supervisor,
+    ]
+    result = runner(command, check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     if result.returncode != 0:
-        binding["status"] = "launch_failed"
-        binding["launch_error"] = (result.stderr or result.stdout or "tmux launch failed").strip()
+        created = _tmux_has_session(contract["session_name"], runner=runner)
+        if not created:
+            binding["create_failure_observed_at"] = _utc_now()
+            binding["create_returncode"] = result.returncode
+            binding["lifecycle_state"] = "CREATE_FAILED"
+            binding["create_error"] = (result.stderr or result.stdout or "tmux new-session failed").strip()
+            _atomic_json(binding_path, binding)
+            return {"status": "CREATE_FAILED", "binding": binding, "command": command}
+        binding["lifecycle_state"] = "UNKNOWN/UNAVAILABLE"
+        binding["create_error"] = "tmux returned nonzero but the exact session exists"
         _atomic_json(binding_path, binding)
-        raise PersistentRunError(f"PERSISTENT_TMUX_LAUNCH_FAILED: {binding['launch_error']}")
-    binding["status"] = "active"
-    binding["tmux_command"] = ["tmux", "new-session", "-d", "-s", contract["session_name"]]
-    _atomic_json(binding_path, binding)
-    return {**binding, "status": "STARTED_NEW_RUN", "binding_path": binding_path.as_posix()}
-
-
-def _binding_for_goal(target: Path, goal: str, *, state_root: Path | None = None) -> tuple[dict[str, Any], Path]:
-    contract = parse_persistent_contract(target, goal)
-    path = _run_binding_path(contract, state_root=state_root)
-    binding = _read_json_if_exists(path)
-    if binding is None:
-        raise PersistentRunError("PERSISTENT_RUN_BINDING_UNAVAILABLE")
-    return binding, path
+        return {"status": "UNKNOWN/UNAVAILABLE", "binding": binding, "command": command}
+    return {
+        "status": "NEW_START",
+        "launch_id": contract["launch_id"],
+        "session_name": contract["session_name"],
+        "binding_path": binding_path.as_posix(),
+        "command": command,
+        "progress": _progress_status(contract),
+    }
 
 
 def status_persistent_run(
     target: Path,
     goal: str,
     *,
+    expected_goal_sha256: str,
     state_root: Path | None = None,
     runner: Any = subprocess.run,
 ) -> dict[str, Any]:
-    binding, path = _binding_for_goal(target, goal, state_root=state_root)
-    active = _tmux_has_session(str(binding.get("session_name") or ""), runner=runner)
-    progress: dict[str, Any] | str = "UNKNOWN"
-    source = binding.get("progress_source")
-    if isinstance(source, str) and source != "NONE" and Path(source).is_file():
-        try:
-            progress = normalize_progress_file(Path(source))
-        except PersistentRunError:
-            progress = "UNKNOWN"
-    return {
-        "schema": "ai-bridge.persistent_run.status.v1",
-        "availability": "active" if active else ("terminal" if binding.get("status") == "terminal" else "unavailable"),
-        "run_key": binding.get("run_key"),
-        "session_name": binding.get("session_name"),
-        "lifecycle_owner": binding.get("lifecycle_owner"),
-        "goal": binding.get("goal"),
-        "goal_sha256": binding.get("goal_sha256"),
-        "progress": progress,
-        "reporter_active": active and binding.get("status") == "active",
-        "progress_thread_id": binding.get("progress_thread_id"),
-        "progress_thread_isolation": binding.get("progress_thread_isolation"),
-        "reader_layer": binding.get("reader_layer", "UNKNOWN"),
-        "last_delivery_at": binding.get("last_delivery_at", "UNKNOWN"),
-        "last_delivery_reason": binding.get("last_delivery_reason", "UNKNOWN"),
-        "terminal_status": binding.get("terminal_status", "UNKNOWN"),
-        "exit_code": binding.get("exit_code", "UNKNOWN"),
-        "binding_path": path.as_posix(),
-    }
+    contract = parse_persistent_contract(target, goal, expected_goal_sha256=expected_goal_sha256)
+    binding_path = _run_binding_path(contract, state_root=state_root)
+    binding = _read_json_if_exists(binding_path)
+    exact_active = _tmux_has_session(contract["session_name"], runner=runner)
+    return _run_status(contract, binding, exact_active)
 
 
-def _supervisor_delivery(binding: dict[str, Any], event: dict[str, Any], binding_path: Path) -> None:
-    from .codex_progress_thread import JsonRpcProxy
-    from . import notifier
-
-    neutral = Path(str(binding.get("state_root") or state_home())) / "persistent-run" / "reader-neutral"
-    neutral.mkdir(parents=True, exist_ok=True)
-    try:
-        with JsonRpcProxy() as app:
-            delivery = notifier.deliver_canonical_event(
-                event,
-                intents=binding.get("notification_intents"),
-                output_dir=binding_path.parent / "notifications" / str(event.get("event_class")) / str(event.get("runtime_id") or "progress"),
-                expected_effect_sha256=str(
-                    (binding.get("notification_effect_sha256") or {}).get(str(event.get("event_class")), "")
-                    if isinstance(binding.get("notification_effect_sha256"), dict)
-                    else ""
-                ),
-                app=app,
-                neutral_cwd=neutral,
-                language="zh-CN",
-                reader_turns_used=int(binding.get("reader_turns_used") or 0),
-                reader_render_max_turns=int(binding.get("reader_render_max_turns") or 0),
-                progress_thread_id=str(binding.get("progress_thread_id") or "") or None,
-            )
-        rendered = delivery.get("reader") if isinstance(delivery.get("reader"), dict) else {}
-        binding["reader_turns_used"] = rendered.get("reader_turns_used", binding.get("reader_turns_used", 0))
-        binding["reader_layer"] = rendered.get("reader_layer", "DEGRADED_FALLBACK")
-        binding["reader_failure_reason"] = rendered.get("failure", "")
-        binding["notification_delivery_status"] = delivery.get("status", "UNKNOWN")
-        binding["last_delivery_at"] = _utc_now()
-        binding["last_delivery_reason"] = event.get("subtype") or event.get("event_class")
-    except Exception as exc:
-        binding["reader_layer"] = "DEGRADED_FALLBACK"
-        binding["reader_failure_reason"] = f"DISPLAY_INJECTION_FAILED: {exc}"
-    _atomic_json(binding_path, binding)
-
-
-def supervise_binding(binding_path: Path) -> int:
+def supervise_binding(binding_path: Path, launch_id: str) -> int:
     binding = _read_json_if_exists(binding_path)
     if binding is None:
-        raise PersistentRunError("supervisor binding is missing")
+        return 2
+    expected_session = f"ai-bridge-pr-{launch_id}"
+    if binding.get("launch_id") != launch_id or binding.get("session_name") != expected_session:
+        binding["supervisor_identity_error_at"] = _utc_now()
+        binding["lifecycle_state"] = "UNKNOWN/UNAVAILABLE"
+        _atomic_json(binding_path, binding)
+        return 2
+    working_directory = Path(str(binding.get("working_directory") or ""))
     argv = binding.get("launch_argv")
-    if not isinstance(argv, list) or not argv or not all(isinstance(item, str) for item in argv):
-        raise PersistentRunError("supervisor binding launch argv is invalid")
-    from . import notifier
-
-    started = _utc_now()
-    child = subprocess.Popen(argv, cwd=str(binding["working_directory"]))
-    binding["primary_pid"] = child.pid
-    binding["status"] = "active"
+    if not working_directory.is_dir() or not isinstance(argv, list) or not argv:
+        binding["supervisor_start_error_at"] = _utc_now()
+        binding["lifecycle_state"] = "UNKNOWN/UNAVAILABLE"
+        _atomic_json(binding_path, binding)
+        return 2
+    try:
+        child = subprocess.Popen(argv, cwd=working_directory)
+    except OSError as exc:
+        binding["child_spawn_failure_observed_at"] = _utc_now()
+        binding["child_spawn_error"] = str(exc)
+        binding["lifecycle_state"] = "SPAWN_FAILED"
+        _atomic_json(binding_path, binding)
+        return 2
+    binding["child_started_at"] = _utc_now()
+    binding["child_pid"] = child.pid
+    binding["lifecycle_state"] = "RUNNING"
     _atomic_json(binding_path, binding)
-    start_event = notifier.canonical_event(
-        event_class="progress",
-        subtype="start",
-        project=Path(str(binding["repo"])).name,
-        task_key=str(binding["run_key"]),
-        status="running",
-        key_conclusion="Persistent Run primary runtime started.",
-        evidence_paths=[binding_path.as_posix()],
-        next_step="Continue using project-native progress evidence.",
-        emitter="persistent_supervisor",
-        runtime_id=str(binding["runtime_id"]),
-        lifecycle_owner="persistent_supervisor",
-        primary_runtime_owner="persistent_supervisor",
-    )
-    _supervisor_delivery(binding, start_event, binding_path)
-    interval = int(binding.get("report_interval_seconds") or 3600)
-    while True:
-        try:
-            exit_code = child.wait(timeout=interval)
-            break
-        except subprocess.TimeoutExpired:
-            source = binding.get("progress_source")
-            if isinstance(source, str) and source != "NONE" and Path(source).is_file():
-                report = report_progress_file(Path(source), state_root=Path(str(binding.get("state_root") or state_home())))
-                if report["delivery_decision"] == "deliver":
-                    _supervisor_delivery(binding, report["canonical_event"], binding_path)
-    ended = _utc_now()
-    binding["status"] = "terminal"
-    binding["terminal_status"] = "success" if exit_code == 0 else "failed"
+    exit_code = child.wait()
+    binding["child_exit_observed_at"] = _utc_now()
     binding["exit_code"] = exit_code
-    binding["ended_at"] = ended
+    binding["lifecycle_state"] = "TERMINAL"
     _atomic_json(binding_path, binding)
-    terminal_event = notifier.canonical_event(
-        event_class="runtime_terminal",
-        project=Path(str(binding["repo"])).name,
-        task_key=str(binding["run_key"]),
-        status=str(binding["terminal_status"]),
-        key_conclusion=f"Persistent Run primary runtime exited with code {exit_code}.",
-        evidence_paths=[binding_path.as_posix()],
-        next_step="Evaluate the original Goal completion criteria separately.",
-        emitter="persistent_supervisor",
-        runtime_id=str(binding["runtime_id"]),
-        lifecycle_owner="persistent_supervisor",
-        primary_runtime_owner="persistent_supervisor",
-        started_at=started,
-        ended_at=ended,
-        terminal_status=str(binding["terminal_status"]),
-        exit_code=exit_code,
-    )
-    _supervisor_delivery(binding, terminal_event, binding_path)
-    return exit_code
+    return 0
 
 
 def validate_persistent_run(target: Path) -> tuple[list[str], int]:
@@ -969,17 +797,15 @@ def build_parser() -> argparse.ArgumentParser:
     kickoff = prompt_sub.add_parser("kickoff", help="Print explicit kickoff authorization for a Goal.")
     kickoff.add_argument("--target", type=Path, default=Path.cwd())
     kickoff.add_argument("--goal", required=True)
-    start = sub.add_parser("start", help="Idempotently start or resume one frozen terminal-owned tmux run.")
+    start = sub.add_parser("start", help="Start exactly one frozen local Persistent Run.")
     start.add_argument("--target", type=Path, default=Path.cwd())
     start.add_argument("--goal", required=True)
     start.add_argument("--expected-goal-sha256", required=True)
-    start.add_argument("--authorization-effect-sha256", required=True)
-    start.add_argument("--progress-notification-effect-sha256", default="")
-    start.add_argument("--runtime-notification-effect-sha256", default="")
     start.add_argument("--state-home", type=Path)
-    status = sub.add_parser("status", help="Show truthful machine-local status for one frozen Persistent Run.")
+    status = sub.add_parser("status", help="Read the exact local Persistent Run lifecycle.")
     status.add_argument("--target", type=Path, default=Path.cwd())
     status.add_argument("--goal", required=True)
+    status.add_argument("--expected-goal-sha256", required=True)
     status.add_argument("--state-home", type=Path)
     progress = sub.add_parser("progress", help="Normalize project-native Persistent Run progress evidence.")
     progress.add_argument("--evidence", type=Path, required=True)
@@ -992,8 +818,9 @@ def build_parser() -> argparse.ArgumentParser:
     latest = sub.add_parser("latest", help="Read the latest recorded Persistent Run report for a progress source.")
     latest.add_argument("--progress", type=Path, required=True)
     latest.add_argument("--state-home", type=Path)
-    supervise = sub.add_parser("supervise", help=argparse.SUPPRESS)
+    supervise = sub.add_parser("_supervise", help=argparse.SUPPRESS)
     supervise.add_argument("--binding", type=Path, required=True)
+    supervise.add_argument("--launch-id", required=True)
     return parser
 
 
@@ -1020,9 +847,6 @@ def main(argv: list[str] | None = None) -> int:
                         args.target,
                         args.goal,
                         expected_goal_sha256=args.expected_goal_sha256,
-                        authorization_effect_sha256=args.authorization_effect_sha256,
-                        progress_notification_effect_sha256=args.progress_notification_effect_sha256,
-                        runtime_notification_effect_sha256=args.runtime_notification_effect_sha256,
                         state_root=args.state_home,
                     ),
                     ensure_ascii=False,
@@ -1034,7 +858,12 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "status":
             print(
                 json.dumps(
-                    status_persistent_run(args.target, args.goal, state_root=args.state_home),
+                    status_persistent_run(
+                        args.target,
+                        args.goal,
+                        expected_goal_sha256=args.expected_goal_sha256,
+                        state_root=args.state_home,
+                    ),
                     ensure_ascii=False,
                     indent=2,
                     sort_keys=True,
@@ -1062,8 +891,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "latest":
             print(json.dumps(latest_report_for_progress(args.progress, state_root=args.state_home), ensure_ascii=False, indent=2, sort_keys=True))
             return 0
-        if args.command == "supervise":
-            return supervise_binding(args.binding.expanduser().resolve())
+        if args.command == "_supervise":
+            return supervise_binding(args.binding.resolve(), args.launch_id)
     except PersistentRunError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1

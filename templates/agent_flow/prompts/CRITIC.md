@@ -18,11 +18,6 @@ Freeze the contract and compact Requirement Ledger by writing:
 - `REQUIREMENT_LEDGER.json`
 - `CRITIC_FREEZE.json`
 
-As part of the existing contract-freeze authority, verify that the three
-notification intents are independently frozen and that `Reader render max
-turns` is bounded. Do not import Bridge maintenance policy into the consumer
-Critic.
-
 `CRITIC_FREEZE.json` must bind `task_key`, `request_nonce`, `decision=PLAN_FROZEN`,
 `critic_mode`, the frozen contract digest, the Requirement Ledger digest, and a
 Critic review artifact path/SHA256.

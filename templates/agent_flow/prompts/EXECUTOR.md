@@ -6,6 +6,12 @@ Requirement Ledger entries.
 
 Executor implements only within authorized source/runtime scope.
 
+The Control runtime must call Bridge's exact execution/source preflight at the
+final Executor adapter boundary. It freezes repo root, worktree, branch,
+40-hex expected commit and mandatory paths; binds exact commit blobs before
+`launch_role`; and leaves the Executor child count at zero on any mismatch.
+Unrelated dirty paths are not a C2 failure.
+
 Executor must not silently downgrade frozen requirements. Smoke-only runs,
 partial paths, fallbacks, proxies, synthetic/toy inputs, reduced scale,
 alternate helper entries, handmade artifacts, or lower quality bars may be

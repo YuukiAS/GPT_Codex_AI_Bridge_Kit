@@ -412,22 +412,6 @@ class ReviewedHandoffTests(unittest.TestCase):
             branch = subprocess.check_output(["git", "branch", "--show-current"], cwd=frozen, text=True).strip()
             self.assertEqual(branch, "reviewed/repo--feature")
 
-    def test_new_formal_task_worktree_rejects_system_temp_without_fixture_override(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            frozen = Path(tmp) / "project-reviewed"
-            target, identity = self.make_remote_review_project(tmp, worktree=frozen)
-
-            with self.assertRaisesRegex(rh.WorktreeMaterializeError, "NEW_TASK_WORKTREE_TEMP_FORBIDDEN"):
-                rh.materialize_worktree(
-                    target,
-                    "repo--feature",
-                    expected_repo=identity,
-                    expected_worktree=frozen,
-                    expected_base_ref="origin/main",
-                    mode="bootstrap",
-                )
-            self.assertFalse(frozen.exists())
-
     def test_task_bootstrap_creates_exact_first_worktree_without_polluting_main(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             target, identity = self.make_remote_review_project(tmp, worktree=Path(tmp) / "unused")
@@ -1029,6 +1013,7 @@ class ReviewedHandoffTests(unittest.TestCase):
                 expected_worktree=frozen,
                 expected_base_ref="origin/main",
                 mode="resume",
+                _disposable_fixture=True,
             )
 
             self.assertTrue(frozen.is_dir())
@@ -1051,6 +1036,7 @@ class ReviewedHandoffTests(unittest.TestCase):
                     expected_worktree=frozen,
                     expected_base_ref="origin/main",
                     mode="resume",
+                    _disposable_fixture=True,
                 )
 
     def test_materialize_worktree_resume_uses_remote_task_metadata(self) -> None:
@@ -1070,12 +1056,36 @@ class ReviewedHandoffTests(unittest.TestCase):
                 expected_worktree=frozen,
                 expected_base_ref="origin/main",
                 mode="resume",
+                _disposable_fixture=True,
             )
 
             self.assertTrue(frozen.is_dir())
             self.assertTrue(any("CREATE branch reviewed/repo--feature" in action for action in actions))
             current = rh.load_json(frozen / "automation" / "reviewed_handoff" / "tasks" / "repo--feature" / "CURRENT.json")
             self.assertEqual(current["task_key"], "repo--feature")
+
+    def test_materialize_worktree_production_rejects_new_system_temp_locator(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            frozen = Path(tmp) / "project-reviewed"
+            target, identity = self.make_remote_review_project(tmp, worktree=frozen)
+            with self.assertRaisesRegex(rh.WorktreeMaterializeError, "NEW_TASK_WORKTREE_TEMP_FORBIDDEN"):
+                rh.materialize_worktree(
+                    target,
+                    "repo--feature",
+                    expected_repo=identity,
+                    expected_worktree=frozen,
+                    expected_base_ref="origin/main",
+                    mode="bootstrap",
+                )
+            self.assertFalse(frozen.exists())
+            self.assertNotEqual(
+                subprocess.run(
+                    ["git", "show-ref", "--verify", "--quiet", "refs/heads/reviewed/repo--feature"],
+                    cwd=target,
+                    check=False,
+                ).returncode,
+                0,
+            )
 
     def test_materialize_worktree_fails_closed_on_wrong_or_occupied_path(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1151,7 +1161,7 @@ class ReviewedHandoffTests(unittest.TestCase):
                     expected_worktree=frozen,
                     expected_base_ref="origin/main",
                     mode="bootstrap",
-                    _disposable_fixture=True,
+                _disposable_fixture=True,
                 )
             self.assertIsNone(rh._branch_oid(target, "refs/heads/reviewed/repo--feature"))
 
@@ -1204,251 +1214,9 @@ class ReviewedHandoffTests(unittest.TestCase):
                         expected_worktree=frozen,
                         expected_base_ref="origin/main",
                         mode="resume",
+                        _disposable_fixture=True,
                     )
             self.assertIsNone(rh._branch_oid(target, "refs/heads/reviewed/repo--feature"))
-
-    def test_exchange_linked_worktrees_preserves_dirty_state(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            repo = root / "repo"
-            repo.mkdir()
-            subprocess.check_call(["git", "init", "--initial-branch", "main"], cwd=repo, stdout=subprocess.DEVNULL)
-            subprocess.check_call(["git", "config", "user.email", "test@example.org"], cwd=repo)
-            subprocess.check_call(["git", "config", "user.name", "Test User"], cwd=repo)
-            (repo / "tracked.txt").write_text("base\n", encoding="utf-8")
-            subprocess.check_call(["git", "add", "tracked.txt"], cwd=repo)
-            subprocess.check_call(["git", "commit", "-m", "base"], cwd=repo, stdout=subprocess.DEVNULL)
-            subprocess.check_call(["git", "branch", "tutorial"], cwd=repo)
-            subprocess.check_call(["git", "branch", "hw"], cwd=repo)
-            path_a = root / "tutorial-tree"
-            path_b = root / "hw-tree"
-            temp_path = root / "swap-temp"
-            subprocess.check_call(["git", "worktree", "add", str(path_a), "tutorial"], cwd=repo, stdout=subprocess.DEVNULL)
-            subprocess.check_call(["git", "worktree", "add", str(path_b), "hw"], cwd=repo, stdout=subprocess.DEVNULL)
-            (path_a / "tracked.txt").write_text("tutorial dirty\n", encoding="utf-8")
-            (path_a / "a-untracked.txt").write_text("a\n", encoding="utf-8")
-            (path_b / "tracked.txt").write_text("hw staged\n", encoding="utf-8")
-            subprocess.check_call(["git", "add", "tracked.txt"], cwd=path_b)
-            (path_b / "b-untracked.txt").write_text("b\n", encoding="utf-8")
-
-            derived_temp = rh.derived_exchange_temp_path(
-                repo,
-                path_a=path_a,
-                path_b=path_b,
-                expected_branch_a="tutorial",
-                expected_branch_b="hw",
-            )
-            self.assertEqual(derived_temp.parent, path_a.parent)
-            with self.assertRaisesRegex(rh.WorktreeExchangeError, "WORKTREE_EXCHANGE_TEMP_ASSERTION_FAILED"):
-                rh.exchange_linked_worktrees(
-                    repo,
-                    task_key="repo--feature",
-                    path_a=path_a,
-                    path_b=path_b,
-                    temp_path=root / "caller-selected-temp",
-                    expected_branch_a="tutorial",
-                    expected_branch_b="hw",
-                )
-            with self.assertRaisesRegex(rh.WorktreeExchangeError, "WORKTREE_EXCHANGE_ACTIVITY_UNVERIFIED"):
-                rh.exchange_linked_worktrees(
-                    repo,
-                    task_key="repo--feature",
-                    path_a=path_a,
-                    path_b=path_b,
-                    temp_path=derived_temp,
-                    expected_branch_a="tutorial",
-                    expected_branch_b="hw",
-                )
-            with mock.patch.object(
-                rh,
-                "_worktree_activity_diagnostics",
-                return_value=[{"pid": "123", "cwd": path_a.as_posix()}],
-            ):
-                with self.assertRaisesRegex(rh.WorktreeExchangeError, "active_process_diagnostic"):
-                    rh.exchange_linked_worktrees(
-                        repo,
-                        task_key="repo--feature",
-                        path_a=path_a,
-                        path_b=path_b,
-                        temp_path=derived_temp,
-                        expected_branch_a="tutorial",
-                        expected_branch_b="hw",
-                    )
-            self.assertEqual(subprocess.check_output(["git", "branch", "--show-current"], cwd=path_a, text=True).strip(), "tutorial")
-            self.assertEqual(subprocess.check_output(["git", "branch", "--show-current"], cwd=path_b, text=True).strip(), "hw")
-            self.assertFalse(derived_temp.exists())
-
-            with mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(root / "state")}):
-                result = rh._exchange_linked_worktrees_transaction_fixture(
-                    repo,
-                    path_a=path_a,
-                    path_b=path_b,
-                    temp_path=temp_path,
-                    expected_branch_a="tutorial",
-                    expected_branch_b="hw",
-                )
-
-            self.assertEqual(result["status"], "exchanged")
-            self.assertEqual(subprocess.check_output(["git", "branch", "--show-current"], cwd=path_a, text=True).strip(), "hw")
-            self.assertEqual(subprocess.check_output(["git", "branch", "--show-current"], cwd=path_b, text=True).strip(), "tutorial")
-            self.assertEqual((path_a / "tracked.txt").read_text(encoding="utf-8"), "hw staged\n")
-            self.assertEqual((path_b / "tracked.txt").read_text(encoding="utf-8"), "tutorial dirty\n")
-
-    def test_exchange_linked_worktrees_recovers_each_move_interruption(self) -> None:
-        for fail_step in (1, 2, 3):
-            with self.subTest(fail_step=fail_step), tempfile.TemporaryDirectory() as tmp:
-                root = Path(tmp)
-                repo = root / "repo"
-                repo.mkdir()
-                subprocess.check_call(["git", "init", "--initial-branch", "main"], cwd=repo, stdout=subprocess.DEVNULL)
-                subprocess.check_call(["git", "config", "user.email", "test@example.org"], cwd=repo)
-                subprocess.check_call(["git", "config", "user.name", "Test User"], cwd=repo)
-                (repo / "tracked.txt").write_text("base\n", encoding="utf-8")
-                subprocess.check_call(["git", "add", "tracked.txt"], cwd=repo)
-                subprocess.check_call(["git", "commit", "-m", "base"], cwd=repo, stdout=subprocess.DEVNULL)
-                subprocess.check_call(["git", "branch", "tutorial"], cwd=repo)
-                subprocess.check_call(["git", "branch", "hw"], cwd=repo)
-                path_a = root / "tutorial-tree"
-                path_b = root / "hw-tree"
-                temp_path = root / "swap-temp"
-                subprocess.check_call(["git", "worktree", "add", str(path_a), "tutorial"], cwd=repo, stdout=subprocess.DEVNULL)
-                subprocess.check_call(["git", "worktree", "add", str(path_b), "hw"], cwd=repo, stdout=subprocess.DEVNULL)
-                (path_a / "tracked.txt").write_text("tutorial dirty\n", encoding="utf-8")
-                (path_a / "a-untracked.txt").write_text("a\n", encoding="utf-8")
-                (path_b / "tracked.txt").write_text("hw dirty\n", encoding="utf-8")
-                (path_b / "b-untracked.txt").write_text("b\n", encoding="utf-8")
-                calls = {"move": 0}
-                original_git_run = rh.git_run
-
-                def fail_selected_move(cwd: Path, args: list[str], *, check: bool = True):
-                    if args[:2] == ["worktree", "move"]:
-                        calls["move"] += 1
-                        if calls["move"] == fail_step:
-                            raise rh.WorktreeExchangeError("synthetic move failure")
-                    return original_git_run(cwd, args, check=check)
-
-                with mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(root / "state")}), mock.patch.object(rh, "git_run", side_effect=fail_selected_move):
-                    with self.assertRaisesRegex(rh.WorktreeExchangeError, "WORKTREE_EXCHANGE_INTERRUPTED"):
-                        rh._exchange_linked_worktrees_transaction_fixture(
-                            repo,
-                            path_a=path_a,
-                            path_b=path_b,
-                            temp_path=temp_path,
-                            expected_branch_a="tutorial",
-                            expected_branch_b="hw",
-                        )
-                self.assertEqual(subprocess.check_output(["git", "branch", "--show-current"], cwd=path_a, text=True).strip(), "tutorial")
-                self.assertEqual(subprocess.check_output(["git", "branch", "--show-current"], cwd=path_b, text=True).strip(), "hw")
-                self.assertEqual((path_a / "tracked.txt").read_text(encoding="utf-8"), "tutorial dirty\n")
-                self.assertEqual((path_b / "tracked.txt").read_text(encoding="utf-8"), "hw dirty\n")
-                self.assertFalse(temp_path.exists())
-
-    def test_exchange_linked_worktrees_recovers_persisted_journal_after_restart(self) -> None:
-        for crash_step in (1, 2, 3):
-            with self.subTest(crash_step=crash_step), tempfile.TemporaryDirectory() as tmp:
-                root = Path(tmp)
-                repo = root / "repo"
-                repo.mkdir()
-                subprocess.check_call(["git", "init", "--initial-branch", "main"], cwd=repo, stdout=subprocess.DEVNULL)
-                subprocess.check_call(["git", "config", "user.email", "test@example.org"], cwd=repo)
-                subprocess.check_call(["git", "config", "user.name", "Test User"], cwd=repo)
-                (repo / "tracked.txt").write_text("base\n", encoding="utf-8")
-                subprocess.check_call(["git", "add", "tracked.txt"], cwd=repo)
-                subprocess.check_call(["git", "commit", "-m", "base"], cwd=repo, stdout=subprocess.DEVNULL)
-                subprocess.check_call(["git", "branch", "tutorial"], cwd=repo)
-                subprocess.check_call(["git", "branch", "hw"], cwd=repo)
-                path_a = root / "tutorial-tree"
-                path_b = root / "hw-tree"
-                temp_path = root / "swap-temp"
-                subprocess.check_call(["git", "worktree", "add", str(path_a), "tutorial"], cwd=repo, stdout=subprocess.DEVNULL)
-                subprocess.check_call(["git", "worktree", "add", str(path_b), "hw"], cwd=repo, stdout=subprocess.DEVNULL)
-                (path_a / "tracked.txt").write_text("tutorial dirty\n", encoding="utf-8")
-                (path_b / "tracked.txt").write_text("hw dirty\n", encoding="utf-8")
-                calls = {"move": 0}
-                original_git_run = rh.git_run
-
-                def crash_after_selected_move(cwd: Path, args: list[str], *, check: bool = True):
-                    result = original_git_run(cwd, args, check=check)
-                    if args[:2] == ["worktree", "move"]:
-                        calls["move"] += 1
-                        if calls["move"] == crash_step:
-                            raise SystemExit("synthetic crash")
-                    return result
-
-                with mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(root / "state")}), mock.patch.object(
-                    rh, "git_run", side_effect=crash_after_selected_move
-                ):
-                    with self.assertRaises(SystemExit):
-                        rh._exchange_linked_worktrees_transaction_fixture(
-                            repo,
-                            path_a=path_a,
-                            path_b=path_b,
-                            temp_path=temp_path,
-                            expected_branch_a="tutorial",
-                            expected_branch_b="hw",
-                        )
-
-                with mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(root / "state")}):
-                    with self.assertRaisesRegex(rh.WorktreeExchangeError, "WORKTREE_EXCHANGE_JOURNAL_RECOVERED"):
-                        rh._exchange_linked_worktrees_transaction_fixture(
-                            repo,
-                            path_a=path_a,
-                            path_b=path_b,
-                            temp_path=temp_path,
-                            expected_branch_a="tutorial",
-                            expected_branch_b="hw",
-                        )
-                self.assertEqual(subprocess.check_output(["git", "branch", "--show-current"], cwd=path_a, text=True).strip(), "tutorial")
-                self.assertEqual(subprocess.check_output(["git", "branch", "--show-current"], cwd=path_b, text=True).strip(), "hw")
-                self.assertEqual((path_a / "tracked.txt").read_text(encoding="utf-8"), "tutorial dirty\n")
-                self.assertEqual((path_b / "tracked.txt").read_text(encoding="utf-8"), "hw dirty\n")
-                self.assertFalse(temp_path.exists())
-
-    def test_exchange_linked_worktrees_recovers_after_postcheck_failure(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            repo = root / "repo"
-            repo.mkdir()
-            subprocess.check_call(["git", "init", "--initial-branch", "main"], cwd=repo, stdout=subprocess.DEVNULL)
-            subprocess.check_call(["git", "config", "user.email", "test@example.org"], cwd=repo)
-            subprocess.check_call(["git", "config", "user.name", "Test User"], cwd=repo)
-            (repo / "tracked.txt").write_text("base\n", encoding="utf-8")
-            subprocess.check_call(["git", "add", "tracked.txt"], cwd=repo)
-            subprocess.check_call(["git", "commit", "-m", "base"], cwd=repo, stdout=subprocess.DEVNULL)
-            subprocess.check_call(["git", "branch", "tutorial"], cwd=repo)
-            subprocess.check_call(["git", "branch", "hw"], cwd=repo)
-            path_a = root / "tutorial-tree"
-            path_b = root / "hw-tree"
-            temp_path = root / "swap-temp"
-            subprocess.check_call(["git", "worktree", "add", str(path_a), "tutorial"], cwd=repo, stdout=subprocess.DEVNULL)
-            subprocess.check_call(["git", "worktree", "add", str(path_b), "hw"], cwd=repo, stdout=subprocess.DEVNULL)
-            (path_a / "tracked.txt").write_text("tutorial dirty\n", encoding="utf-8")
-            (path_b / "tracked.txt").write_text("hw dirty\n", encoding="utf-8")
-            original_evidence = rh._exchange_evidence
-            calls = {"count": 0}
-
-            def one_bad_postcheck(path: Path):
-                calls["count"] += 1
-                if calls["count"] == 3:
-                    return {"synthetic": "postcheck mismatch"}
-                return original_evidence(path)
-
-            with mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(root / "state")}), mock.patch.object(
-                rh, "_exchange_evidence", side_effect=one_bad_postcheck
-            ):
-                with self.assertRaisesRegex(rh.WorktreeExchangeError, "WORKTREE_EXCHANGE_POSTCHECK_RECOVERED"):
-                    rh._exchange_linked_worktrees_transaction_fixture(
-                        repo,
-                        path_a=path_a,
-                        path_b=path_b,
-                        temp_path=temp_path,
-                        expected_branch_a="tutorial",
-                        expected_branch_b="hw",
-                    )
-            self.assertEqual(subprocess.check_output(["git", "branch", "--show-current"], cwd=path_a, text=True).strip(), "tutorial")
-            self.assertEqual(subprocess.check_output(["git", "branch", "--show-current"], cwd=path_b, text=True).strip(), "hw")
-            self.assertEqual((path_a / "tracked.txt").read_text(encoding="utf-8"), "tutorial dirty\n")
-            self.assertEqual((path_b / "tracked.txt").read_text(encoding="utf-8"), "hw dirty\n")
 
     def test_install_and_task_init_are_additive_and_branch_free(self) -> None:
         tmp, target = self.make_project(git=True)

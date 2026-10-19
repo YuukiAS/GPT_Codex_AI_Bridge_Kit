@@ -16,11 +16,6 @@ Requirement Ledger candidates, implementation/verifier boundaries, evidence
 requirements, and unresolved choices. Do not modify implementation, verifier,
 Controller state, or Final Critic artifacts.
 
-Freeze three independent notification intents (`Progress email`, `Runtime
-terminal email`, and `Semantic completion email`) and a bounded `Reader render
-max turns`. Defaults are `DISABLED`, `DISABLED`, `DISABLED`, and `0`; runtime
-terminal notices are process facts and never semantic completion.
-
 The draft must define Goal Fidelity before Requirement Ledger candidates:
 
 - positive completion: the actual user, product, scientific, or repository

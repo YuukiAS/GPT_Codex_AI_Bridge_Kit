@@ -33,8 +33,8 @@ owner 完成闭环前声称 distribution-complete。
   `templates/host/CODEX_CONFIG_PROFILE.md`；
 - Lite/task：`codex/AGENTS_SNIPPET.md`、`templates/prompts/`；
 - 当前 0.11 收口：
-  `docs/design/0.11.0_final_scope_recovery_execution_plan_v0.8_2026-10-18.md`
-  及其同版本 Goal/Kickoff。
+  `docs/design/0.11.0_product_scope_reset_execution_plan_v0.1_2026-10-19.md`
+  及其同版本 Goal/Kickoff；旧 Final Scope Recovery v0.1–v0.8 只作历史证据。
 
 修改实现前先按实际 workflow inventory 检查 `automation/reviewed_handoff/`、
 `automation/agent_flow/`、各自 `tasks/*/CURRENT.json`、
@@ -61,11 +61,8 @@ worktree 时，才可使用其 bounded bootstrap/materialize/publish-first 入�
 授权其他拓扑操作。
 
 新正式 task worktree 不得使用 `/tmp` 或系统 temp fallback。历史已冻结的 temp
-locator 只兼容、不迁移。reciprocal dirty-worktree exchange 在 0.11 没有可信的
-排他 quiescence primitive；production 必须在首个 `git worktree move` 前返回
-`WORKTREE_EXCHANGE_ACTIVITY_UNVERIFIED` 且零 mutation。`ps`、`lsof`、procfs 或
-“未观察到进程”只能诊断，不能成为 PASS。transaction/journal/rollback 只可在
-明确 disposable fixture 中验证。
+locator 只兼容、不迁移。0.11 不提供 reciprocal worktree exchange；不得恢复对应
+生产入口、Host rule、transaction/journal 或自动 `git worktree move`。
 
 ## 3. Host 与普通执行
 
@@ -129,7 +126,7 @@ Critic 不拥有 Bridge maintenance-specific low-friction policy，不得加入
 也不写 terminal report。`BLOCKED` 只用于已有可观察证据证明正常等待、恢复、用户
 输入或 Planner re-entry 都无法解决的情况。细节读取 Host template 与 workflow spec。
 
-## 6. Persistent Run、Progress、Notifier 与 Reader
+## 6. Persistent Run、Progress、Notifier 与 Clear Writing
 
 Persistent Run 是项目层可选的 terminal-owned survive-disconnect 合同，不是第四套
 workflow。先分别判断 upfront authorization、process lifetime owner 与
@@ -139,24 +136,21 @@ duration 增加 tmux；terminal-owned foreground orchestrator 真正需要断线
 也不全局放开 tmux mutation、setsid/nohup/background/scheduler 命令。真实 kickoff
 必须由当前用户发送；session/PID/heartbeat/checkpoint 不是 Goal completion。
 
-进度 cadence 默认 60 分钟、不得无理由低于 15 分钟；ETA 无证据时写 UNKNOWN，
-只在 stage/progress/material ETA/stall/terminal 变化时交付。durable Progress display
-thread 与业务 Executor thread 分离；display thread 不运行 model turn。Clear Writing
-正常 reader 必须通过 selected `CODEX_HOME` 的 official app-server `plugin/list` 与
-`skills/list` 解析 enabled/installed `writing-style@yuukias-ai-skills` 的
-`chinese-prose`、`writing-fidelity`，每个 logical delivery 使用 fresh ephemeral、
-tool-free reader thread，输入只有 canonical event、language preference 和两个
-structured skill items。输出通过同一 shared app-server `thread/inject_items` 注入
-Progress thread；email 复用同一结果。失败时只用 deterministic factual fallback，
-不得启动第二模型、塞入旧 Progress history 或改写业务 thread。
+每个 Persistent Run 只有一个由 full 64-hex `launch_id` 命名的 exact tmux session、
+一个 run-scoped supervisor、一个 binding JSON 和一个 child。`start/status` 只按
+binding/session truth table 返回事实；stale、mismatch、partial start 或 supervisor
+loss 不自动 relaunch、takeover 或猜测 terminal，`exit_code` 只能来自真实
+`child.wait()`。项目原生 progress 缺失时返回 `UNKNOWN`；既有 progress/report/latest
+继续可用，且不依赖 app-server、Notifier 或 Codex thread。
 
-Notifier 是唯一 email transport，正式 provider 只有 Gmail SMTP 587 + STARTTLS +
-App Password。配置优先级 machine < project partial override < process env；secret 不
-提交、不打印。每个冻结任务独立声明 `Progress email`、`Runtime terminal email`、
-`Semantic completion email`，默认全关，并冻结 `Reader render max turns`。runtime
-terminal 只陈述 process 事实，不能写 Goal PASS/READY/RELEASE_READY；Persistent
-拥有 primary runtime 时 lifecycle owner wins，underlying launcher 不重复发同一
-`runtime_id` 终态。legacy manual send/send-test/brief 继续兼容。
+Notifier 保持 0.10 的 project-local private config、SMTP transport、去重与 manual
+`send`/`send-test` 行为。只有 existing automatic owner 已决定发送后，才可调用一次
+one-shot Clear Writing adapter：从当前 installed/enabled
+`writing-style@yuukias-ai-skills` 绑定 `writing-fidelity` 与 `chinese-prose`，最多运行
+一次 `codex exec --ephemeral --json --sandbox read-only`。JSONL、skill consumption 或
+机械保真任一失败立即使用 deterministic fallback，模型 retry 为 0；表达或 transport
+失败不得改变业务状态。不得恢复 app-server client、Progress display thread、持久
+reader/session、three-intent event bus 或 machine notifier profile。
 
 ## 7. Overleaf 与外部边界
 

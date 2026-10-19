@@ -7,6 +7,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from ai_bridge_kit.cli import init_workspace, main, validate_workspace
 
@@ -55,6 +56,18 @@ class RepoCliCompatibilityTests(unittest.TestCase):
             self.assertTrue(
                 (target / ".agents" / "skills" / "agent-task-executor" / "SKILL.md").exists()
             )
+
+    def test_init_projected_overflow_has_zero_project_mutation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            target = base / "project"
+            codex_home = base / "codex-home"
+            codex_home.mkdir()
+            (codex_home / "config.toml").write_text("project_doc_max_bytes = 32\n", encoding="utf-8")
+            with mock.patch.dict("os.environ", {"CODEX_HOME": str(codex_home)}):
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                    self.assertEqual(init_workspace(target), 2)
+            self.assertFalse(target.exists())
 
     def test_existing_cli_commands_remain_available(self) -> None:
         with contextlib.redirect_stdout(io.StringIO()):

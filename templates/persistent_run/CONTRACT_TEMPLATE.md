@@ -11,15 +11,7 @@ Backend: tmux
 Goal source: <repo-relative path>
 Run/session key: <project-owned stable key>
 Working directory: .
-Launch argv JSON: ["project-owned-executable", "argument"]
-Resume argv JSON: SAME_AS_LAUNCH
-Progress producer: lifecycle-only
-Progress source locator: NONE
-
-Progress email: DISABLED
-Runtime terminal email: DISABLED
-Semantic completion email: DISABLED
-Reader render max turns: 0
+Launch argv: ["python", "-m", "<project-owned-entrypoint>"]
 
 ## Authorized Effects
 
@@ -45,21 +37,24 @@ Reader render max turns: 0
 
 ## Recovery Evidence
 
-- tmux session identity.
-- Project-native lock / heartbeat / stage-state / checkpoint / resume evidence, or equivalent observable state.
-- Scheduler/process diagnostics may support diagnosis, but do not override stronger project-native state.
+- Bridge 使用完整 launch identity 派生唯一
+  `ai-bridge-pr-<full-64-hex-launch-id>` session、一个 machine-local binding、
+  一个 run-scoped supervisor 和一个 child。
+- active compatible binding 只返回 existing；stale、mismatch、partial start 或
+  supervisor loss 不自动 relaunch、不 takeover、不猜 terminal。
+- exit code 只能来自 supervisor 对真实 child 的 `wait()` observation。
 
 ## Heartbeat / Stage-State / Checkpoint / Resume Semantics
 
 - Heartbeat path and expected cadence:
 - Stage-state path and state meanings:
 - Checkpoint/output path:
-- Resume rule for an existing compatible run:
-- Stale-run or conflicting-run handling:
+- Resume rule for an existing compatible run: return existing; do not start a second child.
+- Stale-run or conflicting-run handling: report UNKNOWN/UNAVAILABLE or CONFLICT; do not relaunch or take over.
 
 ## Progress Reporting
 
-- Source semantics: use the frozen `Progress source locator` above; Bridge does not infer domain progress from tmux/PID state.
+- Progress source locator: <repo-relative JSON path, or leave unset>
 - Report interval: 60 minutes unless the task contract gives a defensible shorter cadence; do not default below 15 minutes.
 - Delivery mode: local latest/history, or Notifications only when an existing authorized provider/recipient is already configured.
 - Stall threshold:

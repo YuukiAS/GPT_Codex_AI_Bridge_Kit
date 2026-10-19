@@ -80,6 +80,7 @@ class TestsWorkflowTriggerTests(unittest.TestCase):
     def test_tests_workflow_keeps_superseded_run_cancellation(self) -> None:
         text = TESTS_WORKFLOW.read_text(encoding="utf-8")
         self.assertIn("workflow_dispatch:", text)
+        self.assertNotIn("branches: [main]", text)
         self.assertIn("group: tests-${{ github.workflow }}-${{ github.ref }}", text)
         self.assertIn("cancel-in-progress: true", text)
 

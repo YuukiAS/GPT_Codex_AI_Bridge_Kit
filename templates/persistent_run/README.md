@@ -49,15 +49,23 @@ ai-bridge persistent-run prompt kickoff \
 
 这个命令只打印授权文本，不会创建 tmux session，不会启动任务，也不会扩大 Goal scope。它只适用于已经选择 Persistent Run/tmux 的 Goal；scheduler-native 或 already-detached 工作不需要伪造 Persistent Run kickoff。
 
-用户发送这段 exact kickoff 后，Codex 使用其中给出的 `persistent-run start` 命令。该入口重读 Goal、核对 SHA-256 与 bounded effect identity，连接已有 official shared app-server，创建 display-only Progress thread，然后才幂等启动或恢复 canonical tmux run。只读诊断使用：
-
-```bash
-ai-bridge persistent-run status --target /path/to/repo --goal path/to/goal.md
-```
-
 ## Codex 恢复原则
 
-收到 kickoff 后，Codex 应读取 Goal 和 Persistent Run contract，检查 canonical tmux session、项目已有 lock / heartbeat / stage-state / checkpoint / resume evidence，再决定启动或恢复。已有兼容 run 时应 resume，不重复启动。
+收到 kickoff 后，Codex 应使用 `persistent-run start`。Bridge 从 exact Goal
+bytes、repo、run key、working directory、launch argv 与固定 `backend=tmux`
+计算完整 launch identity，并只创建一个
+`ai-bridge-pr-<full-64-hex-launch-id>` session、一个 run-scoped supervisor、
+一个 machine-local binding 和一个 child。已有 compatible active run 只返回
+existing；stale binding、identity mismatch、partial start 或 supervisor loss
+不自动 relaunch、不 takeover、不猜 terminal。exit code 只来自 supervisor
+观察到的真实 `child.wait()`。
+
+```bash
+ai-bridge persistent-run status \
+  --target /path/to/repo \
+  --goal path/to/goal.md \
+  --expected-goal-sha256 <exact-sha256>
+```
 
 tmux session、Slurm job、PID、heartbeat 或 checkpoint 只能证明活动或状态，不能证明 Goal 完成。完成声明仍必须由原 Goal 的正向完成标准支持。
 

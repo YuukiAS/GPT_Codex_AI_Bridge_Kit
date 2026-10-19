@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import re
@@ -14,7 +13,6 @@ from pathlib import Path
 from typing import Any
 
 from . import external_wait
-from .readiness import bounded_effect_identity
 from .host import (
     HostPublishError,
     _canonical_repo_identity,
@@ -134,10 +132,6 @@ class WorktreeMaterializeError(ValueError):
     pass
 
 
-class WorktreeExchangeError(ValueError):
-    pass
-
-
 class PublishFirstError(ValueError):
     pass
 
@@ -203,16 +197,6 @@ def load_json(path: Path) -> dict[str, Any]:
 
 def write_json(path: Path, payload: dict[str, Any]) -> None:
     write_text(path, json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
-
-
-def sha256_bytes(data: bytes) -> str:
-    import hashlib
-
-    return hashlib.sha256(data).hexdigest()
-
-
-def file_sha256(path: Path) -> str:
-    return sha256_bytes(path.read_bytes())
 
 
 def utc_now() -> str:
@@ -939,567 +923,6 @@ def materialize_worktree(
         ) from exc
     actions.append(f"CREATE worktree {scope.frozen_worktree} at {branch}")
     return actions
-
-
-def _registered_worktree_entry_by_path(target: Path, path: Path) -> dict[str, str]:
-    entry = _path_registered_worktree(target, path.resolve())
-    if not entry:
-        raise WorktreeExchangeError(f"WORKTREE_NOT_REGISTERED: {path}")
-    if entry.get("worktree") == git_output(target, ["rev-parse", "--show-toplevel"]):
-        raise WorktreeExchangeError("MAIN_WORKTREE_EXCHANGE_UNSUPPORTED")
-    if entry.get("locked"):
-        raise WorktreeExchangeError("LOCKED_WORKTREE_EXCHANGE_UNSUPPORTED")
-    return entry
-
-
-def _reject_path_symlinks(path: Path) -> None:
-    current = Path(path.anchor)
-    parts = path.parts[1:] if path.anchor else path.parts
-    for part in parts:
-        current = current / part
-        if current.is_symlink():
-            raise WorktreeExchangeError("WORKTREE_EXCHANGE_SYMLINK_UNSUPPORTED")
-
-
-def _reject_lexical_path_symlinks(path: Path) -> None:
-    expanded = path.expanduser()
-    absolute = expanded if expanded.is_absolute() else Path.cwd() / expanded
-    current = Path(absolute.anchor)
-    parts = absolute.parts[1:] if absolute.anchor else absolute.parts
-    for part in parts:
-        current = current / part
-        if current.is_symlink():
-            raise WorktreeExchangeError("WORKTREE_EXCHANGE_SYMLINK_UNSUPPORTED")
-
-
-def _worktree_status_fingerprint(path: Path) -> dict[str, str]:
-    index_path = Path(git_output(path, ["rev-parse", "--git-path", "index"]))
-    if not index_path.is_absolute():
-        index_path = path / index_path
-    return {
-        "head": git_output(path, ["rev-parse", "HEAD"]),
-        "branch": git_output(path, ["symbolic-ref", "--quiet", "--short", "HEAD"]),
-        "status_z_sha256": sha256_bytes(
-            subprocess.check_output(["git", "status", "--porcelain=v1", "-z", "-uall"], cwd=path)
-        ),
-        "index_sha256": file_sha256(index_path),
-    }
-
-
-def _reject_worktree_internal_links(path: Path) -> None:
-    for item in path.rglob("*"):
-        if item.name == ".git" and item.parent == path:
-            continue
-        if item.is_symlink():
-            raise WorktreeExchangeError("WORKTREE_EXCHANGE_INTERNAL_SYMLINK_UNSUPPORTED")
-
-
-def _reject_worktree_locks(path: Path) -> None:
-    for rel in ["index.lock", "shallow.lock", "HEAD.lock", "config.lock"]:
-        lock = Path(git_output(path, ["rev-parse", "--git-path", rel]))
-        if not lock.is_absolute():
-            lock = path / lock
-        if lock.exists():
-            raise WorktreeExchangeError("WORKTREE_EXCHANGE_LOCKED_GIT_STATE")
-
-
-def _worktree_file_manifest(path: Path) -> dict[str, dict[str, Any]]:
-    manifest: dict[str, dict[str, Any]] = {}
-    for item in sorted(path.rglob("*")):
-        rel = item.relative_to(path).as_posix()
-        if rel == ".git" or rel.startswith(".git/"):
-            continue
-        stat = item.lstat()
-        if item.is_dir():
-            continue
-        if item.is_symlink():
-            raise WorktreeExchangeError("WORKTREE_EXCHANGE_INTERNAL_SYMLINK_UNSUPPORTED")
-        manifest[rel] = {
-            "mode": oct(stat.st_mode & 0o7777),
-            "size": stat.st_size,
-            "sha256": sha256_bytes(item.read_bytes()),
-        }
-    return manifest
-
-
-def _exchange_evidence(path: Path) -> dict[str, Any]:
-    return {
-        **_worktree_status_fingerprint(path),
-        "files": _worktree_file_manifest(path),
-    }
-
-
-def _assert_exchange_state(path: Path, expected: dict[str, Any], label: str) -> None:
-    actual = _exchange_evidence(path)
-    if actual != expected:
-        raise WorktreeExchangeError(f"WORKTREE_EXCHANGE_RECOVERY_STATE_MISMATCH:{label}")
-
-
-def _rollback_exchange(
-    target: Path,
-    *,
-    path_a: Path,
-    path_b: Path,
-    temp_path: Path,
-    before_a: dict[str, Any],
-    before_b: dict[str, Any],
-    completed: list[str],
-) -> list[str]:
-    recovery: list[str] = []
-    if completed == ["A_TO_TEMP"]:
-        _assert_exchange_state(temp_path, before_a, "temp_before_a")
-        _assert_exchange_state(path_b, before_b, "path_b_before_b")
-        git_run(target, ["worktree", "move", str(temp_path), str(path_a)])
-        recovery.append("TEMP_TO_A")
-    elif completed == ["A_TO_TEMP", "B_TO_A"]:
-        _assert_exchange_state(temp_path, before_a, "temp_before_a")
-        _assert_exchange_state(path_a, before_b, "path_a_before_b")
-        git_run(target, ["worktree", "move", str(path_a), str(path_b)])
-        recovery.append("A_TO_B")
-        git_run(target, ["worktree", "move", str(temp_path), str(path_a)])
-        recovery.append("TEMP_TO_A")
-    elif completed == []:
-        recovery.append("NOOP")
-    else:
-        raise WorktreeExchangeError("WORKTREE_EXCHANGE_RECOVERY_UNSUPPORTED_STATE:" + ",".join(completed))
-    if path_a.exists():
-        _assert_exchange_state(path_a, before_a, "path_a_restored")
-    if path_b.exists():
-        _assert_exchange_state(path_b, before_b, "path_b_restored")
-    return recovery
-
-
-EXCHANGE_JOURNAL_SCHEMA = "ai-bridge.reviewed_handoff.worktree_exchange_journal.v1"
-
-
-def _machine_state_home(env: dict[str, str] | None = None) -> Path:
-    source = os.environ if env is None else env
-    override = source.get("AI_BRIDGE_STATE_HOME")
-    return Path(override).expanduser().resolve() if override else (Path.home() / ".ai-bridge").resolve()
-
-
-def _exchange_journal_path(target: Path, path_a: Path, path_b: Path, temp_path: Path) -> Path:
-    raw = "\0".join(
-        [
-            target.resolve().as_posix(),
-            path_a.as_posix(),
-            path_b.as_posix(),
-            temp_path.as_posix(),
-        ]
-    ).encode("utf-8")
-    digest = sha256_bytes(raw)[:24]
-    return _machine_state_home() / "reviewed-handoff" / "worktree-exchange" / f"{digest}.json"
-
-
-def _write_exchange_journal(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(
-        mode="w",
-        encoding="utf-8",
-        dir=path.parent,
-        prefix=f"{path.name}.",
-        suffix=".tmp",
-        delete=False,
-    ) as handle:
-        temp = Path(handle.name)
-        json.dump(payload, handle, ensure_ascii=False, indent=2, sort_keys=True)
-        handle.write("\n")
-        handle.flush()
-        os.fsync(handle.fileno())
-    os.replace(temp, path)
-
-
-def _load_exchange_journal(path: Path) -> dict[str, Any] | None:
-    if not path.exists():
-        return None
-    data = json.loads(path.read_text(encoding="utf-8"))
-    if data.get("schema") != EXCHANGE_JOURNAL_SCHEMA:
-        raise WorktreeExchangeError("WORKTREE_EXCHANGE_JOURNAL_SCHEMA_MISMATCH")
-    return data
-
-
-def _current_exchange_state(
-    *,
-    path_a: Path,
-    path_b: Path,
-    temp_path: Path,
-    before_a: dict[str, Any],
-    before_b: dict[str, Any],
-) -> str:
-    exists_a = path_a.exists()
-    exists_b = path_b.exists()
-    exists_t = temp_path.exists()
-    if exists_a and exists_b and not exists_t:
-        actual_a = _exchange_evidence(path_a)
-        actual_b = _exchange_evidence(path_b)
-        if actual_a == before_a and actual_b == before_b:
-            return "ORIGINAL"
-        if actual_a == before_b and actual_b == before_a:
-            return "SWAPPED"
-    if exists_t and exists_b and not exists_a:
-        if _exchange_evidence(temp_path) == before_a and _exchange_evidence(path_b) == before_b:
-            return "A_TO_TEMP"
-    if exists_t and exists_a and not exists_b:
-        if _exchange_evidence(temp_path) == before_a and _exchange_evidence(path_a) == before_b:
-            return "B_TO_A"
-    raise WorktreeExchangeError("WORKTREE_EXCHANGE_RECOVERY_STATE_MISMATCH")
-
-
-def _rollback_exchange_state(
-    target: Path,
-    *,
-    state: str,
-    path_a: Path,
-    path_b: Path,
-    temp_path: Path,
-    before_a: dict[str, Any],
-    before_b: dict[str, Any],
-) -> list[str]:
-    if state == "ORIGINAL":
-        _assert_exchange_state(path_a, before_a, "path_a_original")
-        _assert_exchange_state(path_b, before_b, "path_b_original")
-        return ["NOOP"]
-    if state == "A_TO_TEMP":
-        return _rollback_exchange(
-            target,
-            path_a=path_a,
-            path_b=path_b,
-            temp_path=temp_path,
-            before_a=before_a,
-            before_b=before_b,
-            completed=["A_TO_TEMP"],
-        )
-    if state == "B_TO_A":
-        return _rollback_exchange(
-            target,
-            path_a=path_a,
-            path_b=path_b,
-            temp_path=temp_path,
-            before_a=before_a,
-            before_b=before_b,
-            completed=["A_TO_TEMP", "B_TO_A"],
-        )
-    if state == "SWAPPED":
-        _assert_exchange_state(path_a, before_b, "path_a_swapped_before_b")
-        _assert_exchange_state(path_b, before_a, "path_b_swapped_before_a")
-        git_run(target, ["worktree", "move", str(path_b), str(temp_path)])
-        git_run(target, ["worktree", "move", str(path_a), str(path_b)])
-        git_run(target, ["worktree", "move", str(temp_path), str(path_a)])
-        _assert_exchange_state(path_a, before_a, "path_a_restored")
-        _assert_exchange_state(path_b, before_b, "path_b_restored")
-        return ["B_TO_TEMP", "A_TO_B", "TEMP_TO_A"]
-    raise WorktreeExchangeError("WORKTREE_EXCHANGE_RECOVERY_UNSUPPORTED_STATE:" + state)
-
-
-def _recover_exchange_journal(target: Path, journal_path: Path, expected: dict[str, Any]) -> dict[str, Any] | None:
-    journal = _load_exchange_journal(journal_path)
-    if journal is None:
-        return None
-    if any(journal.get(key) != expected.get(key) for key in ["target", "path_a", "path_b", "temp_path", "common_dir"]):
-        raise WorktreeExchangeError("WORKTREE_EXCHANGE_JOURNAL_SCOPE_MISMATCH")
-    before_a = journal.get("before", {}).get("A")
-    before_b = journal.get("before", {}).get("B")
-    if not isinstance(before_a, dict) or not isinstance(before_b, dict):
-        raise WorktreeExchangeError("WORKTREE_EXCHANGE_JOURNAL_EVIDENCE_MISSING")
-    path_a = Path(journal["path_a"])
-    path_b = Path(journal["path_b"])
-    temp_path = Path(journal["temp_path"])
-    state = _current_exchange_state(path_a=path_a, path_b=path_b, temp_path=temp_path, before_a=before_a, before_b=before_b)
-    recovery = _rollback_exchange_state(
-        target,
-        state=state,
-        path_a=path_a,
-        path_b=path_b,
-        temp_path=temp_path,
-        before_a=before_a,
-        before_b=before_b,
-    )
-    journal_path.unlink()
-    return {"status": "recovered_journal", "state": state, "recovery": recovery, "journal": journal_path.as_posix()}
-
-
-def _exchange_linked_worktrees_transaction_fixture(
-    target: Path,
-    *,
-    path_a: Path,
-    path_b: Path,
-    temp_path: Path,
-    expected_branch_a: str,
-    expected_branch_b: str,
-    dry_run: bool = False,
-) -> dict[str, Any]:
-    """Exercise the S1-S3 transaction only in disposable test fixtures."""
-    for raw_path in [target, path_a, path_b, temp_path]:
-        _reject_lexical_path_symlinks(raw_path)
-    target = target.resolve()
-    path_a = path_a.expanduser().resolve()
-    path_b = path_b.expanduser().resolve()
-    temp_path = temp_path.expanduser().resolve()
-    top = Path(git_output(target, ["rev-parse", "--show-toplevel"])).resolve()
-    common = Path(git_output(target, ["rev-parse", "--git-common-dir"]))
-    if not common.is_absolute():
-        common = top / common
-    if path_a == top or path_b == top:
-        raise WorktreeExchangeError("MAIN_WORKTREE_EXCHANGE_UNSUPPORTED")
-    if path_a == path_b or path_a in path_b.parents or path_b in path_a.parents:
-        raise WorktreeExchangeError("WORKTREE_EXCHANGE_PATH_OVERLAP")
-    journal_path = _exchange_journal_path(target, path_a, path_b, temp_path)
-    expected_scope = {
-        "target": target.as_posix(),
-        "common_dir": common.as_posix(),
-        "path_a": path_a.as_posix(),
-        "path_b": path_b.as_posix(),
-        "temp_path": temp_path.as_posix(),
-    }
-    recovered = _recover_exchange_journal(target, journal_path, expected_scope)
-    if recovered is not None:
-        raise WorktreeExchangeError(
-            "WORKTREE_EXCHANGE_JOURNAL_RECOVERED: "
-            + recovered["state"]
-            + "; recovery="
-            + ",".join(recovered["recovery"])
-        )
-    if temp_path.exists() and any(temp_path.iterdir()):
-        raise WorktreeExchangeError("TEMP_PATH_OCCUPIED")
-    if path_a.stat().st_dev != path_b.stat().st_dev or path_a.stat().st_dev != temp_path.parent.stat().st_dev:
-        raise WorktreeExchangeError("WORKTREE_EXCHANGE_CROSS_FILESYSTEM_UNSUPPORTED")
-    if temp_path in path_a.parents or temp_path in path_b.parents or path_a in temp_path.parents or path_b in temp_path.parents:
-        raise WorktreeExchangeError("WORKTREE_EXCHANGE_PATH_OVERLAP")
-    for path in [path_a, path_b, temp_path]:
-        _reject_path_symlinks(path)
-    for path in [path_a, path_b]:
-        _reject_worktree_internal_links(path)
-        _reject_worktree_locks(path)
-    entry_a = _registered_worktree_entry_by_path(target, path_a)
-    entry_b = _registered_worktree_entry_by_path(target, path_b)
-    if entry_a.get("branch") != f"refs/heads/{expected_branch_a}":
-        raise WorktreeExchangeError("WORKTREE_A_BRANCH_MISMATCH")
-    if entry_b.get("branch") != f"refs/heads/{expected_branch_b}":
-        raise WorktreeExchangeError("WORKTREE_B_BRANCH_MISMATCH")
-    if (path_a / ".gitmodules").exists() or (path_b / ".gitmodules").exists():
-        raise WorktreeExchangeError("SUBMODULE_WORKTREE_EXCHANGE_UNSUPPORTED")
-    before_a = _exchange_evidence(path_a)
-    before_b = _exchange_evidence(path_b)
-    evidence = {
-        "schema": "ai-bridge.reviewed_handoff.worktree_exchange.v1",
-        "common_dir": common.as_posix(),
-        "path_a": path_a.as_posix(),
-        "path_b": path_b.as_posix(),
-        "temp_path": temp_path.as_posix(),
-        "before": {"A": before_a, "B": before_b},
-    }
-    if dry_run:
-        return {"status": "dry_run", **evidence}
-    journal_payload = {
-        "schema": EXCHANGE_JOURNAL_SCHEMA,
-        "created_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
-        "phase": "READY",
-        "completed": [],
-        "target": target.as_posix(),
-        "common_dir": common.as_posix(),
-        "path_a": path_a.as_posix(),
-        "path_b": path_b.as_posix(),
-        "temp_path": temp_path.as_posix(),
-        "expected_branch_a": expected_branch_a,
-        "expected_branch_b": expected_branch_b,
-        "entry_a": entry_a,
-        "entry_b": entry_b,
-        "before": {"A": before_a, "B": before_b},
-    }
-    _write_exchange_journal(journal_path, journal_payload)
-    completed: list[str] = []
-    try:
-        git_run(target, ["worktree", "move", str(path_a), str(temp_path)])
-        completed.append("A_TO_TEMP")
-        journal_payload["phase"] = "A_TO_TEMP"
-        journal_payload["completed"] = list(completed)
-        _write_exchange_journal(journal_path, journal_payload)
-        git_run(target, ["worktree", "move", str(path_b), str(path_a)])
-        completed.append("B_TO_A")
-        journal_payload["phase"] = "B_TO_A"
-        journal_payload["completed"] = list(completed)
-        _write_exchange_journal(journal_path, journal_payload)
-        git_run(target, ["worktree", "move", str(temp_path), str(path_b)])
-        completed.append("TEMP_TO_B")
-        journal_payload["phase"] = "TEMP_TO_B"
-        journal_payload["completed"] = list(completed)
-        _write_exchange_journal(journal_path, journal_payload)
-    except Exception as exc:
-        try:
-            state = _current_exchange_state(
-                path_a=path_a,
-                path_b=path_b,
-                temp_path=temp_path,
-                before_a=before_a,
-                before_b=before_b,
-            )
-            recovery = _rollback_exchange_state(
-                target,
-                state=state,
-                path_a=path_a,
-                path_b=path_b,
-                temp_path=temp_path,
-                before_a=before_a,
-                before_b=before_b,
-            )
-            journal_path.unlink(missing_ok=True)
-        except Exception as recovery_exc:
-            raise WorktreeExchangeError(
-                "WORKTREE_EXCHANGE_INTERRUPTED_RECOVERY_STOPPED: "
-                + ",".join(completed)
-                + f"; failure={exc}; recovery={recovery_exc}"
-            ) from recovery_exc
-        raise WorktreeExchangeError(
-            "WORKTREE_EXCHANGE_INTERRUPTED_RECOVERED: "
-            + ",".join(completed)
-            + "; recovery="
-            + ",".join(recovery)
-            + f"; {exc}"
-        ) from exc
-    after_a = _exchange_evidence(path_a)
-    after_b = _exchange_evidence(path_b)
-    if after_a != before_b or after_b != before_a:
-        try:
-            state = _current_exchange_state(
-                path_a=path_a,
-                path_b=path_b,
-                temp_path=temp_path,
-                before_a=before_a,
-                before_b=before_b,
-            )
-            recovery = _rollback_exchange_state(
-                target,
-                state=state,
-                path_a=path_a,
-                path_b=path_b,
-                temp_path=temp_path,
-                before_a=before_a,
-                before_b=before_b,
-            )
-            journal_path.unlink(missing_ok=True)
-        except Exception as recovery_exc:
-            raise WorktreeExchangeError(f"WORKTREE_EXCHANGE_POSTCHECK_RECOVERY_STOPPED: {recovery_exc}") from recovery_exc
-        raise WorktreeExchangeError("WORKTREE_EXCHANGE_POSTCHECK_RECOVERED: " + ",".join(recovery))
-    journal_path.unlink(missing_ok=True)
-    return {"status": "exchanged", **evidence, "after": {"A": after_a, "B": after_b}}
-
-
-def derived_exchange_temp_path(
-    target: Path,
-    *,
-    path_a: Path,
-    path_b: Path,
-    expected_branch_a: str,
-    expected_branch_b: str,
-) -> Path:
-    target = target.resolve()
-    path_a = path_a.expanduser().resolve()
-    path_b = path_b.expanduser().resolve()
-    common = Path(git_output(target, ["rev-parse", "--git-common-dir"]))
-    if not common.is_absolute():
-        common = (target / common).resolve()
-    payload = "\0".join(
-        [
-            common.as_posix(),
-            path_a.as_posix(),
-            path_b.as_posix(),
-            expected_branch_a,
-            expected_branch_b,
-        ]
-    )
-    suffix = hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
-    return path_a.parent / f".ai-bridge-exchange-{suffix}"
-
-
-def _worktree_activity_diagnostics(paths: list[Path]) -> list[dict[str, str]]:
-    """Return positive same-user cwd observations only; an empty list proves nothing."""
-    proc = Path("/proc")
-    if not proc.is_dir():
-        return []
-    observations: list[dict[str, str]] = []
-    uid = os.getuid() if hasattr(os, "getuid") else None
-    for entry in proc.iterdir():
-        if not entry.name.isdigit():
-            continue
-        try:
-            if uid is not None and entry.stat().st_uid != uid:
-                continue
-            cwd = (entry / "cwd").resolve(strict=True)
-        except (OSError, RuntimeError):
-            continue
-        for path in paths:
-            if cwd == path or path in cwd.parents:
-                observations.append({"pid": entry.name, "cwd": cwd.as_posix()})
-                break
-        if len(observations) >= 10:
-            break
-    return observations
-
-
-def exchange_linked_worktrees(
-    target: Path,
-    *,
-    task_key: str,
-    path_a: Path,
-    path_b: Path,
-    temp_path: Path | None,
-    expected_branch_a: str,
-    expected_branch_b: str,
-    dry_run: bool = False,
-) -> dict[str, Any]:
-    """Fail closed until Bridge has an exclusive worktree quiescence primitive."""
-    for raw_path in [target, path_a, path_b]:
-        _reject_lexical_path_symlinks(raw_path)
-    target = target.resolve()
-    if task_keys.existing_task_key_error(task_key):
-        raise WorktreeExchangeError("WORKTREE_EXCHANGE_TASK_KEY_INVALID")
-    path_a = path_a.expanduser().resolve()
-    path_b = path_b.expanduser().resolve()
-    top = Path(git_output(target, ["rev-parse", "--show-toplevel"])).resolve()
-    if path_a == top or path_b == top:
-        raise WorktreeExchangeError("MAIN_WORKTREE_EXCHANGE_UNSUPPORTED")
-    if path_a == path_b or path_a in path_b.parents or path_b in path_a.parents:
-        raise WorktreeExchangeError("WORKTREE_EXCHANGE_PATH_OVERLAP")
-    derived_temp = derived_exchange_temp_path(
-        target,
-        path_a=path_a,
-        path_b=path_b,
-        expected_branch_a=expected_branch_a,
-        expected_branch_b=expected_branch_b,
-    )
-    if temp_path is not None and temp_path.expanduser().resolve() != derived_temp:
-        raise WorktreeExchangeError(
-            f"WORKTREE_EXCHANGE_TEMP_ASSERTION_FAILED: expected={derived_temp} actual={temp_path.expanduser().resolve()}"
-        )
-    entry_a = _registered_worktree_entry_by_path(target, path_a)
-    entry_b = _registered_worktree_entry_by_path(target, path_b)
-    if entry_a.get("branch") != f"refs/heads/{expected_branch_a}":
-        raise WorktreeExchangeError("WORKTREE_A_BRANCH_MISMATCH")
-    if entry_b.get("branch") != f"refs/heads/{expected_branch_b}":
-        raise WorktreeExchangeError("WORKTREE_B_BRANCH_MISMATCH")
-    common = Path(git_output(target, ["rev-parse", "--git-common-dir"]))
-    if not common.is_absolute():
-        common = (target / common).resolve()
-    effect = bounded_effect_identity(
-        "worktree_exchange",
-        {
-            "repo_common_dir": common,
-            "task_key": task_key,
-            "path_a": path_a,
-            "path_b": path_b,
-            "temp_path": derived_temp,
-            "expected_branch_a": expected_branch_a,
-            "expected_branch_b": expected_branch_b,
-            "purpose": "reciprocal_exchange",
-        },
-    )
-    active = _worktree_activity_diagnostics([path_a, path_b])
-    diagnostic = f" active_process_diagnostic={json.dumps(active, sort_keys=True)}" if active else ""
-    raise WorktreeExchangeError(
-        "WORKTREE_EXCHANGE_ACTIVITY_UNVERIFIED: "
-        f"effect_sha256={effect['sha256']} A={path_a} B={path_b} T={derived_temp}; "
-        f"no observed activity cannot prove quiescence; positive observations only reject.{diagnostic}"
-    )
 
 
 def bootstrap_task_worktree(
@@ -2743,7 +2166,6 @@ def apply_transition(
     expected_state: str,
     next_state: str,
     next_action: str = "",
-    notification_effect_sha256: str = "",
 ) -> dict[str, Any]:
     path = task_root(target, task_key) / "CURRENT.json"
     original = load_json(path)
@@ -2819,63 +2241,7 @@ def apply_transition(
     if post_errors:
         write_json(path, original)
         raise ValueError("transition would create invalid Review state: " + "; ".join(post_errors))
-    if expected_state == "PASS" and next_state == "AWAIT_HUMAN_DECISION":
-        _emit_reviewed_semantic_completion(
-            target,
-            task_key,
-            current,
-            expected_effect_sha256=notification_effect_sha256,
-        )
     return current
-
-
-def _review_notification_intents(target: Path, task_key: str) -> dict[str, str]:
-    request = task_root(target, task_key) / "REQUEST.md"
-    text = request.read_text(encoding="utf-8") if request.is_file() else ""
-    result: dict[str, str] = {}
-    for label, key in [
-        ("Progress email", "progress_email"),
-        ("Runtime terminal email", "runtime_terminal_email"),
-        ("Semantic completion email", "semantic_completion_email"),
-    ]:
-        match = re.search(rf"(?mi)^{re.escape(label)}:\s*(ENABLED|DISABLED|UNSUPPORTED)\s*$", text)
-        result[key] = match.group(1).upper() if match else "DISABLED"
-    return result
-
-
-def _emit_reviewed_semantic_completion(
-    target: Path,
-    task_key: str,
-    current: dict[str, Any],
-    *,
-    expected_effect_sha256: str = "",
-) -> dict[str, Any]:
-    from . import notifier
-
-    review_round = int(current.get("review_round") or 0)
-    event = notifier.canonical_event(
-        event_class="semantic_completion",
-        project=target.resolve().name,
-        task_key=task_key,
-        status="REVIEW_PASS",
-        key_conclusion="The current implementation commit received a valid Reviewed PASS and has a final report.",
-        next_step="Present FINAL_REPORT.md through the existing human gate.",
-        evidence_paths=[
-            (result_root(target, task_key) / f"REVIEW_{review_round}.md").as_posix(),
-            (result_root(target, task_key) / "FINAL_REPORT.md").as_posix(),
-        ],
-        emitter="reviewed_reviewer",
-        semantic_authority="Reviewer",
-    )
-    request_text = (task_root(target, task_key) / "REQUEST.md").read_text(encoding="utf-8")
-    reader_match = re.search(r"(?mi)^Reader render max turns:\s*(\d+)\s*$", request_text)
-    return notifier.deliver_canonical_event(
-        event,
-        intents=_review_notification_intents(target, task_key),
-        output_dir=result_root(target, task_key) / "notifications" / "semantic_completion",
-        expected_effect_sha256=expected_effect_sha256,
-        reader_render_max_turns=int(reader_match.group(1)) if reader_match else 0,
-    )
 
 
 def record_review(
@@ -3096,7 +2462,6 @@ def build_parser() -> argparse.ArgumentParser:
     transition_apply.add_argument("--expected-state", required=True)
     transition_apply.add_argument("--next-state", required=True)
     transition_apply.add_argument("--next-action", default="")
-    transition_apply.add_argument("--notification-effect-sha256", default="")
 
     review = sub.add_parser("review")
     review_sub = review.add_subparsers(dest="review_command")
@@ -3123,20 +2488,6 @@ def build_parser() -> argparse.ArgumentParser:
     materialize.add_argument("--expected-worktree", type=Path, required=True)
     materialize.add_argument("--expected-base-ref", required=True)
     materialize.add_argument("--mode", choices=["bootstrap", "resume"], required=True)
-
-    exchange = sub.add_parser("exchange-worktrees")
-    exchange.add_argument("--target", type=Path, default=Path.cwd())
-    exchange.add_argument("--task-key", required=True)
-    exchange.add_argument("--path-a", type=Path, required=True)
-    exchange.add_argument("--path-b", type=Path, required=True)
-    exchange.add_argument(
-        "--temp-path",
-        type=Path,
-        help="Optional exact assertion of Bridge's derived same-filesystem temporary path.",
-    )
-    exchange.add_argument("--expected-branch-a", required=True)
-    exchange.add_argument("--expected-branch-b", required=True)
-    exchange.add_argument("--dry-run", action="store_true")
 
     prompt = sub.add_parser("prompt")
     prompt.add_argument("--target", type=Path, default=Path.cwd())
@@ -3218,7 +2569,6 @@ def main(argv: list[str] | None = None) -> int:
                 expected_state=args.expected_state,
                 next_state=args.next_state,
                 next_action=args.next_action,
-                notification_effect_sha256=args.notification_effect_sha256,
             )
             print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
             return 0
@@ -3232,25 +2582,6 @@ def main(argv: list[str] | None = None) -> int:
                 mode=args.mode,
             ):
                 print(action)
-            return 0
-        if args.command == "exchange-worktrees":
-            print(
-                json.dumps(
-                    exchange_linked_worktrees(
-                        args.target,
-                        task_key=args.task_key,
-                        path_a=args.path_a,
-                        path_b=args.path_b,
-                        temp_path=args.temp_path,
-                        expected_branch_a=args.expected_branch_a,
-                        expected_branch_b=args.expected_branch_b,
-                        dry_run=args.dry_run,
-                    ),
-                    ensure_ascii=False,
-                    indent=2,
-                    sort_keys=True,
-                )
-            )
             return 0
     except ValueError as exc:
         parser.error(str(exc))

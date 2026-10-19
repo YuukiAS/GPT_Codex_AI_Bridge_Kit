@@ -407,11 +407,10 @@ class ReviewedRunnerTests(unittest.TestCase):
             local = runner.load_local_state(target)
             self.assertEqual(local.get("events"), {})
 
-    def test_run_codex_event_rechecks_even_with_supplied_preflight(self) -> None:
+    def test_run_codex_event_preflights_at_final_spawn_boundary(self) -> None:
         tmp, target, state_home = self.make_project()
         with tmp, mock.patch.dict(os.environ, {"AI_BRIDGE_STATE_HOME": str(state_home)}):
             current = rh.load_json(rh.task_root(target, "repo--feature") / "CURRENT.json")
-            stale_preflight = {"source_texts": [], "source_bindings": [{"path": "stale"}]}
             with mock.patch(
                 "ai_bridge_kit.reviewed_runner.readiness.preflight_reviewed_event",
                 side_effect=runner.readiness.ReadinessError("CURRENT_STATE_CHANGED_BEFORE_LAUNCH"),
@@ -421,7 +420,6 @@ class ReviewedRunnerTests(unittest.TestCase):
                     "repo--feature",
                     current,
                     branch="main",
-                    preflight=stale_preflight,
                 )
 
             self.assertEqual(result["status"], "prelaunch_not_ready")

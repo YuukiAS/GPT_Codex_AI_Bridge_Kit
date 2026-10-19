@@ -712,7 +712,7 @@ def _reject_repository_transport_config(cwd: Path, *, env: dict[str, str] | None
                 raise HostPublishError("REPO_CREDENTIAL_HELPER_REQUIRES_APPROVAL")
 
 
-def _pre_push_hook_path(cwd: Path, *, env: dict[str, str] | None = None) -> Path:
+def _hook_path(cwd: Path, name: str, *, env: dict[str, str] | None = None) -> Path:
     stable_env = _git_security_env_or_default(env)
     hooks_path = _config_value(cwd, "core.hooksPath", env=stable_env)
     git_dir = Path(_git_text(cwd, ["rev-parse", "--git-dir"], env=stable_env))
@@ -722,14 +722,21 @@ def _pre_push_hook_path(cwd: Path, *, env: dict[str, str] | None = None) -> Path
         candidate = Path(hooks_path).expanduser()
         if not candidate.is_absolute():
             candidate = cwd / candidate
-        return candidate / "pre-push"
-    return git_dir / "hooks" / "pre-push"
+        return candidate / name
+    return git_dir / "hooks" / name
 
 
 def _reject_active_hook(cwd: Path, *, env: dict[str, str] | None = None) -> None:
-    hook = _pre_push_hook_path(cwd, env=env)
+    hook = _hook_path(cwd, "pre-push", env=env)
     if hook.exists() and os.access(hook, os.X_OK):
         raise HostPublishError("PRE_PUSH_HOOK_REQUIRES_APPROVAL")
+
+
+def _reject_active_sync_hooks(cwd: Path, *, env: dict[str, str] | None = None) -> None:
+    for name in ("post-fetch", "reference-transaction", "post-merge"):
+        hook = _hook_path(cwd, name, env=env)
+        if hook.exists() and os.access(hook, os.X_OK):
+            raise HostPublishError(f"SYNC_HOOK_REQUIRES_APPROVAL: {name}")
 
 
 def _sanitized_push_env(source: dict[str, str]) -> dict[str, str]:
@@ -890,7 +897,7 @@ def sync_current_branch(
     if repo != push_repo or repo != expected_repo:
         raise HostPublishError("REMOTE_IDENTITY_MISMATCH")
     _reject_repository_transport_config(top, env=stable_env)
-    _reject_active_hook(top, env=stable_env)
+    _reject_active_sync_hooks(top, env=stable_env)
     old_oid = _git_text(top, ["rev-parse", "HEAD"], env=stable_env)
     fetch_env = _sanitized_push_env(active_env)
     fetch = _git(top, ["fetch", "origin", f"{branch}:refs/remotes/origin/{branch}"], env=fetch_env, check=False)

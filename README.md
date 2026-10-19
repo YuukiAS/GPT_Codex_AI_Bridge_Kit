@@ -89,7 +89,7 @@ GPT 先规划，Codex 执行，再由 GPT 独立复核
 | `0.9.2` | 无人值守执行与持久运行选择语义收窄。 | 过夜、无人值守、多小时先触发启动前授权预检，不自动变成 tmux；调度器批处理或已脱离终端的服务由原生 owner 负责寿命；终端拥有且必须断线存活的 orchestrator 仍可使用 Persistent Run/tmux；进度报告继续来自项目原生证据且可独立于 tmux 使用。 |
 | `0.9.3` | 复核模式首次远端发布的受边界约束入口。 | `task bootstrap` 后，全新复核任务的第一份 REQUEST/CURRENT 元数据提交可以用 `ai-bridge reviewed-handoff task publish-first` 创建同名远端分支并绑定上游；它只支持 GitHub HTTPS、空期望 lease、单个首发元数据提交和原始 Git 对象校验，原始 `git push -u`、SSH/自定义传输、已有远端分支或包含任务内容/生产源码的提交仍走普通审批。 |
 | `0.10.0` | 执行可靠性与运行身份诊断闭环。 | 机器策略明确普通 workspace 工作先走 sandbox，拒绝后先分类再恢复；`publish-current-branch` 使用稳定 Git inspection view 和清洗后的网络/push 环境，ambient `SSH_ASKPASS` 不再导致 GitHub HTTPS 正例误拒绝但也不会被执行；`host validate/status` 会报告可执行文件、import source/version、source HEAD/dirty、local release ref 和 distribution metadata。 |
-| `0.11.0` | 上下文、长期运行与通知就绪收口（源码候选，正式分发待 `release` 授权）。 | Bridge 写根 `AGENTS.md` 前按当前 Codex 字节上限预检；新正式任务工作树不再落到系统临时目录，自动交换因无法证明活动静止而在首个移动前拒绝；常用安全 Git 读取保持低打扰；Persistent Run 提供 exact kickoff 后的 `start/status`；Notifier 区分进度、运行终止和语义完成，并可用已安装的 Clear Writing reader 生成同一份 thread/email 文本。 |
+| `0.11.0` | 执行上下文、指令预算、持久运行与自动通知表达收口（源码候选，正式分发待 `release` 授权）。 | 常用安全读取和当前分支快进保持低打扰；Bridge-managed Executor 启动前绑定 exact repo/worktree/branch/commit 与 mandatory source blob；三类根 `AGENTS.md` writer 写入前检查真实字节预算；Persistent Run 提供一个 exact tmux session 的 `start/status`；自动通知可做一次 one-shot Clear Writing，失败立即回退。旧 app-server reader/display、自动工作树交换和跨工作流 event bus 不再属于当前产品。 |
 
 本项目采用 `0.x` 迭代方式。每个 `0.x` 小版本通常代表一项可独立使用的能力进入稳定工作流；补丁版本主要用于安全性、兼容性和默认行为修正。这不是严格的语义化版本承诺，而是当前阶段的版本阅读方式。
 
@@ -398,7 +398,9 @@ ai-bridge persistent-run prompt kickoff \
   --goal prompts/tasks/repo--long-run.md
 ```
 
-这个命令会校验冻结合同并打印 Goal SHA-256、bounded effect identity 和 exact `persistent-run start` 命令；它本身不会启动 tmux。用户把这段授权发给 Codex 后，`start` 才会连接当前 official shared app-server、建立 display-only Progress thread，并幂等启动或恢复 canonical tmux supervisor。只读诊断使用 `ai-bridge persistent-run status --target ... --goal ...`。已有兼容运行不会重复启动；`tmux` 会话、Slurm 任务、PID、心跳或检查点只能证明活动或状态，不能替代原目标的完成标准。
+这个命令会校验冻结合同并打印 Goal SHA-256 和 exact `persistent-run start` 命令；它本身不会启动 tmux。用户把这段授权发给 Codex 后，`start` 为该 run identity 创建一个 full-hash exact tmux session、一个 run-scoped supervisor、一个 binding JSON 和一个 child。只读诊断使用同一个 Goal SHA-256 调用 `persistent-run status`。兼容 active run 再次 `start` 只返回现有运行，不会创建第二个 child；terminal run 也不会用同一 run key 自动重跑。
+
+`start/status` 不需要 app-server、Progress thread、Notifier 或长期 Codex 会话。stale binding、session/binding mismatch、partial start 或 supervisor loss 都返回冲突或 `UNKNOWN/UNAVAILABLE`，不会自动 relaunch、takeover 或猜测 terminal。`exit_code` 只记录 supervisor 从真实 `child.wait()` 观察到的值。
 
 当前持久运行还可以把长期任务的运行状态说清楚：
 
@@ -408,7 +410,7 @@ ai-bridge persistent-run prompt kickoff \
 - 从真实无进展证据推出的停滞状态；
 - latest/history/reconnect 查询。
 
-这些运行进展可以通过通知投影出去。这里报告的是运行进展，不是自动控制：Bridge Kit 不会因此自动重启任务、取消任务、扩资源，也不会把心跳、PID、tmux 会话或预计完成时间当成目标完成。
+这些信息只报告运行事实，不是自动控制：Bridge Kit 不会因此自动重启任务、取消任务、扩资源，也不会把心跳、PID、tmux 会话或预计完成时间当成目标完成。没有配置项目原生 progress source，或文件缺失、不可读时，状态明确返回 `UNKNOWN`。
 
 GPT 写长期目标/任务时要先判断执行生命周期和寿命 owner。中文里“跑到明早”“无人值守”“多小时”不等于 tmux；“断线后继续运行一个终端拥有的 orchestrator”“恢复已有持久目标”才通常指向持久运行合同。无论选择哪种寿命 owner，都不代表必须把轻量交接任务改成复核模式 / 控制模式。如果确实需要终端拥有的断线存活能力，而仓库没有安装持久运行，也没有用户选择的等价项目原生合同，不要把任务写成普通实时 Codex 会话。
 
@@ -418,19 +420,9 @@ Codex 收到任务后会在实质执行前检查是否存在可预见、需要�
 
 通知器只负责通知，不负责决定任务是不是完成。
 
-权责边界是：语义决定者写结构化摘要，通知器只做确定性渲染、去重和 SMTP 发送。规划者/复核者/审查者/最终审查者可以写自己决定对应的终态、人工等待或里程碑摘要；控制器/监视器只可以写运行层失败、状态或进展摘要。执行者/Codex 不能决定 `PASS`，不能写自由文本式用户结论邮件，也不能绕过通知器的一次发送和去重机制。
+权责边界是：语义决定者写结构化摘要，通知器负责验证、确定性 fallback、去重和 SMTP 发送。执行者/Codex 不能自行决定 `PASS`，表达层也不能把运行事实升级成 Goal PASS、`READY`、`RELEASE_READY` 或最终完成。
 
-自动通知有三个互不推导的冻结开关：`Progress email`、`Runtime terminal email`、`Semantic completion email`，默认都关闭。运行终止只陈述 process/exit 事实，不能写成 Goal PASS、`READY` 或发布就绪；语义完成只能由 Reviewed/Control 的真实当前 PASS 证据产生。Persistent supervisor 已拥有 primary runtime 时，底层 launcher 不会再为同一 `runtime_id` 重复发送终止事件。
-
-正式 transport 只支持 Gmail SMTP。机器级配置入口是：
-
-```bash
-ai-bridge notifier configure
-ai-bridge notifier status
-ai-bridge notifier send-test
-```
-
-项目可用 `ai-bridge notifier configure --scope project --target /path/to/project` 只覆盖 recipient/from/prefix，字段按 machine < project < process 合并，项目层不复制 App Password。`configure --clear` 只清除本地 Bridge 配置，不会撤销 Google 端 App Password。旧的项目本地同步入口仍兼容：
+正式 transport 只支持 Gmail SMTP 587 + STARTTLS + App Password。配置保持项目本地和进程环境语义，不新增 machine-scope notifier profile。先把私有配置同步到当前项目，再检查或发送测试邮件：
 
 ```bash
 cd /path/to/project
@@ -450,7 +442,7 @@ results/<task_key>/notification_brief.json
 ai-bridge notifier send results/<task_key>/notification_brief.json
 ```
 
-推荐这种一次性发送方式，不要求为了通知常驻一个 tmux、systemd 或后台轮询进程。
+推荐这种一次性发送方式，不要求为了通知常驻一个 tmux、systemd、app-server 或后台轮询进程。manual `send` 与 `send-test` 保持 0.10 行为，不经过 Clear Writing adapter。
 
 向后兼容的旧 `notification_brief.json` 仍表示终态或人工决策通知。需要工作流继续运行的非阻塞里程碑通知时，可以写入：
 
@@ -458,7 +450,13 @@ ai-bridge notifier send results/<task_key>/notification_brief.json
 results/<task_key>/notifications/<event>.json
 ```
 
-新自动事件使用 `progress`、`runtime_terminal`、`semantic_completion` 三类 canonical facts。正常 reader 路径从当前 selected `CODEX_HOME` 的 official app-server 解析已启用的 `writing-style@yuukias-ai-skills`、`chinese-prose` 与 `writing-fidelity`，每次 logical delivery 只在 fresh ephemeral reader thread 运行一次；Progress display thread 与邮件复用同一结果。插件、fidelity、预算或注入失败时使用确定性短中文并标记 `DEGRADED_FALLBACK`，不会启动第二个模型，也不会杀掉业务运行。旧结构化摘要与 `send`/`send-test` 仍兼容，重复摘要继续按内容去重。
+现有 automatic owner 已经决定发送后，Notifier 才进入 one-shot Clear Writing adapter。它通过当前 `codex plugin list --json` 唯一绑定 installed/enabled `writing-style@yuukias-ai-skills`，验证 manifest/version，并解析正式 `writing-fidelity` 与 `chinese-prose`。每次 logical delivery 最多运行一次：
+
+```text
+codex exec --ephemeral --json --sandbox read-only --skip-git-repo-check -C <neutral-dir> -
+```
+
+只有 JSONL 恰好包含一个 turn、两个正式 skill 都有真实消费证据、且数字、状态、`UNKNOWN`、路径、版本和结论强度通过机械保真检查时，模型文本才进入现有 transport。plugin、skill、模型、JSONL、turn 或保真检查任一失败，立即使用确定性 fallback，模型 retry 为 0；fallback 仍尝试 transport。表达或邮件失败不改变业务状态，也不恢复 app-server、persistent reader/session、Progress display thread 或跨工作流 event bus。
 
 运行层进展可以报告当前进度或阻塞，但不能声称语义通过、`READY`、发布就绪或最终完成。邮件密码等秘密配置保存在本地私有文件，不应提交到项目仓库。
 

@@ -247,6 +247,7 @@ memories = false
             self.assertIn('pattern = ["ai-bridge", "reviewed-handoff", "materialize-worktree"]', rules_path.read_text(encoding="utf-8"))
             self.assertIn('pattern = ["ai-bridge", "reviewed-handoff", "task", "bootstrap"]', rules_path.read_text(encoding="utf-8"))
             self.assertIn('pattern = ["ai-bridge", "reviewed-handoff", "task", "publish-first"]', rules_path.read_text(encoding="utf-8"))
+            self.assertNotIn("exchange-worktrees", rules_path.read_text(encoding="utf-8"))
             self.assertIn('pattern = ["gh", "pr", "list", "--"]', rules_path.read_text(encoding="utf-8"))
             self.assertIn('pattern = ["ps"]', rules_path.read_text(encoding="utf-8"))
             self.assertIn('pattern = ["git", "fetch", "--all", "--prune"]', rules_path.read_text(encoding="utf-8"))
@@ -300,6 +301,23 @@ memories = false
             (repo / "dirty.txt").write_text("dirty\n", encoding="utf-8")
             with self.assertRaisesRegex(HostPublishError, "DIRTY_WORKTREE"):
                 sync_current_branch(repo, expected_repo=identity, expected_branch="feature", env={"PATH": os.environ["PATH"]})
+
+    def test_sync_current_branch_rejects_executable_mutation_hooks(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo, identity = self.make_publish_repo(tmp)
+            subprocess.check_call(["git", "checkout", "-b", "feature"], cwd=repo, stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "push", "-u", "origin", "feature"], cwd=repo, stdout=subprocess.DEVNULL)
+            hooks = repo / ".git" / "hooks"
+            hook = hooks / "post-merge"
+            hook.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            hook.chmod(0o755)
+            with self.assertRaisesRegex(HostPublishError, "SYNC_HOOK_REQUIRES_APPROVAL: post-merge"):
+                sync_current_branch(
+                    repo,
+                    expected_repo=identity,
+                    expected_branch="feature",
+                    env={"PATH": os.environ["PATH"]},
+                )
 
     def test_existing_managed_block_updates_narrative_policy_and_preserves_user_content(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

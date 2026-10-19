@@ -24,10 +24,6 @@ allow_shell_command: true
 allow_network: false
 allow_external_upload: false
 requires_human_approval: false
-progress_email: "DISABLED"
-runtime_terminal_email: "DISABLED"
-semantic_completion_email: "UNSUPPORTED"
-reader_render_max_turns: 0
 ---
 
 # Task Repo Short Task
@@ -39,16 +35,6 @@ controller sections explicitly.
 ## Goal
 
 State the single outcome Codex must complete.
-
-## Notification and Reader Intent
-
-Progress email: DISABLED
-Runtime terminal email: DISABLED
-Semantic completion email: UNSUPPORTED
-Reader render max turns: 0
-
-Freeze these independently. Runtime terminal notices describe process facts
-only; they cannot claim Goal PASS, READY, or release readiness.
 
 ## Background
 

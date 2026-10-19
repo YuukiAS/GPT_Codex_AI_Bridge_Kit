@@ -2,73 +2,34 @@
 
 ## Unreleased
 
-## 0.11.0 - 2026-10-12 (source candidate; formal release pending)
+## 0.11.0 - 2026-10-19 (source candidate; formal release pending)
 
-- Add a shared startup-readiness core for Bridge-managed entries: effective
-  project instruction byte-budget diagnostics, bound mandatory source metadata,
-  Lite task preflight, Reviewed executor preflight, and isolated control-file
-  reading through a task-local object directory with protected Git state checks.
-- Add `ai-bridge task run` as the thin Lite normal entry. It reads the existing
-  Lite task and required repository sources before launching `codex exec -C`.
-- Move Reviewed watcher readiness checks ahead of `record_event_start` and make
-  direct `run_codex_event` fail closed when mandatory sources, branch identity,
-  or instruction budget are not ready, without consuming Executor attempts.
-- Add `ai-bridge host sync-current-branch` for clean, existing, tracked,
-  non-main branches that can fast-forward from the same-name `origin` branch.
-- Keep `reviewed-handoff exchange-worktrees` approval-gated and harden the
-  helper for explicitly authorized A/B/T linked-worktree swaps, with branch,
-  path, topology, file-manifest, rollback, and post-move checks.
-- Allow Persistent Run progress reports to project an `operational_progress`
-  notification through the existing Generic Notifier only when trusted machine
-  or caller configuration authorizes delivery; task progress data alone cannot
-  self-authorize SMTP.
-- Ensure `AGENTS.md`, README, CHANGELOG, workflow, source, and test changes
-  trigger the test workflow, and keep a controlled `workflow_dispatch` entry for
-  manual CI evidence on frozen candidates.
-- Harden the source candidate after pre-final review: worktree exchanges now
-  persist a machine-local recovery journal, instruction discovery follows the
-  current Codex `project_doc_fallback_filenames` and trust/root-marker model,
-  isolated control-file reads preserve raw Git blob bytes, and Reviewed launch
-  rechecks mandatory preflight at the final spawn boundary.
-- Close the final pre-review Lite/control-file gaps by requiring bound mandatory
-  sources to match current worktree bytes before launch and by accepting only
-  normal-file modes from fixed Git trees for isolated control-file reads.
-- Preserve that source-binding gate for clean CRLF working trees by using Git's
-  path-level `HEAD` comparison after rejecting unsafe source-transform
-  attributes, instead of raw worktree-byte equality.
-- Reject `assume-unchanged` and `skip-worktree` on each mandatory source before
-  trusting that path-level comparison, without changing index flags.
-- Update Host Policy templates with the new bounded sync and worktree-exchange
-  entry rules while keeping raw dangerous Git, arbitrary branch topology,
-  release movement, CODEX_HOME mutation, SMTP, and external paid calls gated.
-- Restore the Control Critic to its initial, contract, and final audit duties;
-  Bridge maintenance-specific low-friction policy is no longer distributed to
-  consumer Control installations, while Host and Persistent Run behavior stays
-  unchanged.
-- Preflight every Bridge-managed root `AGENTS.md` mutation against the actual
-  Codex instruction byte limit and native discovery order, cap each Bridge-owned
-  block, and reduce this repository's root instructions while preserving formal
-  policy locators; user-owned overflow remains diagnostic-only.
-- Prohibit new formal task worktrees under system temporary roots and make the
-  production reciprocal-exchange entry fail closed with
-  `WORKTREE_EXCHANGE_ACTIVITY_UNVERIFIED` before its first move; the transaction
-  and rollback core remains covered only by disposable fixtures.
-- Keep normal fetch/pull behavior low-friction and allow fixed native Git
-  identity/status/branch/worktree/path/tag/origin/diff/log/HEAD/remote reads,
-  while dangerous remotes, helpers, refspecs, topology changes and destructive
-  operations remain gated.
-- Bind bounded human-only operations to a recomputed human-readable effect
-  identity and real current-thread/session lifetime without creating an
-  authorization database or treating repository `authorized` fields as
-  authority.
-- Add independent progress, runtime-terminal and semantic-completion notification
-  intents and canonical events, Gmail machine/project/process configuration,
-  lifecycle-owner dedupe, and fixed Lite/Reviewed/Control/Persistent ownership
-  boundaries while retaining legacy manual Notifier behavior.
-- Add Persistent Run `start/status`, an exact-contract tmux supervisor, a
-  display-only Progress thread adapter, and a fresh stateless Clear Writing
-  reader layer that discovers `writing-style@yuukias-ai-skills`, reuses one
-  result across display/email, and falls back deterministically on failure.
+- Keep approved Host safe reads low-friction and add bounded
+  `host sync-current-branch` for clean, tracked, same-name non-main branches;
+  dangerous remotes, refspecs, helpers, topology changes and destructive Git
+  remain gated.
+- Bind Lite, Reviewed and Control Executor launches to the exact repository,
+  worktree, branch, commit and mandatory source blobs. Local objects are read
+  first with lazy fetch disabled; a genuinely missing blob may use an isolated
+  temporary object directory without changing repository Git state.
+- Preflight Lite/core, Persistent Run and Overleaf root `AGENTS.md` writers
+  against the effective Codex instruction byte limit and Bridge-owned block cap
+  before any project mutation. Overflow leaves the project unchanged.
+- Reduce Persistent Run to one full-hash tmux session, one run-scoped
+  supervisor, one binding JSON and one child while preserving existing
+  progress/report/latest. Stale or partial state never triggers automatic
+  relaunch, takeover or terminal inference.
+- Add one-shot Clear Writing for automatic Notifier deliveries. One fresh
+  `codex exec --ephemeral` must consume the installed `writing-fidelity` and
+  `chinese-prose` skills and pass mechanical fidelity checks; every failure uses
+  deterministic fallback with no model retry. Manual `send` and `send-test`
+  retain 0.10 behavior.
+- Remove the experimental app-server reader/display path,
+  `codex_progress_thread`, production reciprocal worktree exchange,
+  cross-workflow three-intent/event ownership and machine notifier profile.
+- Keep `0.11.0` as a source candidate only. The formal distribution remains
+  `release@9db19b0409816c22042a246b35a33e1d34fedd0a` (`0.10.0`) until separate
+  release authorization and owner closure.
 
 ## 0.10.0 - 2026-10-01
 

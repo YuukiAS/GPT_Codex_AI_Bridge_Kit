@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import io
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 from ai_bridge_kit import bridge_cli
@@ -16,6 +19,25 @@ from ai_bridge_kit import persistent_run
 
 def git_call(cwd: Path, *args: str) -> None:
     subprocess.check_call(["git", *args], cwd=cwd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+class FakeTmux:
+    def __init__(self) -> None:
+        self.sessions: set[str] = set()
+        self.calls: list[list[str]] = []
+        self.fail_create = False
+
+    def __call__(self, command, **_kwargs):
+        self.calls.append(list(command))
+        if command[:2] == ["tmux", "has-session"]:
+            name = command[command.index("-t") + 1].removeprefix("=")
+            return SimpleNamespace(returncode=0 if name in self.sessions else 1, stdout="", stderr="")
+        if command[:2] == ["tmux", "new-session"]:
+            if self.fail_create:
+                return SimpleNamespace(returncode=1, stdout="", stderr="create failed")
+            self.sessions.add(command[command.index("-s") + 1])
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        raise AssertionError(command)
 
 
 class PersistentRunTests(unittest.TestCase):
@@ -38,20 +60,6 @@ class PersistentRunTests(unittest.TestCase):
         git_call(target, "init")
         return target
 
-    def test_install_projected_instruction_overflow_writes_nothing(self) -> None:
-        target = self.make_repo()
-        original = "user-owned\n"
-        (target / "AGENTS.md").write_text(original, encoding="utf-8")
-        codex_home = Path(os.environ["CODEX_HOME"])
-        codex_home.mkdir(parents=True)
-        (codex_home / "config.toml").write_text("project_doc_max_bytes = 64\n", encoding="utf-8")
-
-        with self.assertRaisesRegex(persistent_run.PersistentRunError, "BRIDGE_MANAGED_INSTRUCTION_PROJECTED_OVERFLOW"):
-            persistent_run.install_persistent_run(target)
-
-        self.assertEqual((target / "AGENTS.md").read_text(encoding="utf-8"), original)
-        self.assertFalse((target / "automation" / "persistent_run").exists())
-
     def write_goal(self, target: Path, rel: str = "prompts/tasks/001_goal.md") -> Path:
         goal = target / rel
         goal.parent.mkdir(parents=True, exist_ok=True)
@@ -60,17 +68,10 @@ class PersistentRunTests(unittest.TestCase):
             "Persistent execution: REQUIRED\n"
             "Backend: tmux\n"
             f"Goal source: {rel}\n"
-            "Run/session key: repo--run\n"
+            "Run/session key: test-run\n"
             "Working directory: .\n"
-            'Launch argv JSON: ["python", "-c", "print(1)"]\n'
-            "Resume argv JSON: SAME_AS_LAUNCH\n"
-            "Progress producer: lifecycle-only\n"
-            "Progress source locator: NONE\n"
-            "Report interval: 60 minutes\n"
-            "Reader render max turns: 2\n"
-            "Progress email: DISABLED\n"
-            "Runtime terminal email: ENABLED\n"
-            "Semantic completion email: UNSUPPORTED\n",
+            f"Launch argv: {json.dumps([sys.executable, '-c', 'raise SystemExit(7)'])}\n"
+            "Progress source locator:\n",
             encoding="utf-8",
         )
         return goal
@@ -101,7 +102,7 @@ class PersistentRunTests(unittest.TestCase):
         self.assertEqual(first.count(persistent_run.PERSISTENT_RUN_BEGIN_MARKER), 1)
 
         agents.write_text(
-            first.replace("0.11.0 唯一 persistence backend", "stale managed text"),
+            first.replace("full-launch-id exact tmux session", "stale managed text"),
             encoding="utf-8",
         )
         persistent_run.install_persistent_run(target)
@@ -109,7 +110,7 @@ class PersistentRunTests(unittest.TestCase):
 
         self.assertIn("# User Rules", updated)
         self.assertNotIn("stale managed text", updated)
-        self.assertIn("0.11.0 唯一 persistence backend", updated)
+        self.assertIn("full-launch-id exact tmux session", updated)
         self.assertEqual(updated.count(persistent_run.PERSISTENT_RUN_BEGIN_MARKER), 1)
 
     def test_repeated_install_is_stable_and_does_not_write_codex_home_or_rules(self) -> None:
@@ -164,8 +165,6 @@ class PersistentRunTests(unittest.TestCase):
         prompt = persistent_run.render_kickoff_prompt(target, "prompts/tasks/001_goal.md")
 
         self.assertIn("Goal: `prompts/tasks/001_goal.md`", prompt)
-        self.assertIn("Goal/contract SHA-256", prompt)
-        self.assertIn("--authorization-effect-sha256", prompt)
         self.assertIn("persistent tmux session", prompt)
         self.assertIn("Do not ask again", prompt)
         self.assertIn("does not permit scope expansion", prompt)
@@ -176,106 +175,6 @@ class PersistentRunTests(unittest.TestCase):
             persistent_run.render_kickoff_prompt(target, str(outside))
         with self.assertRaisesRegex(persistent_run.PersistentRunError, "does not exist"):
             persistent_run.render_kickoff_prompt(target, "prompts/tasks/missing.md")
-
-    def test_start_requires_exact_hash_and_effect_then_launches_bounded_supervisor(self) -> None:
-        target = self.make_repo()
-        self.write_goal(target)
-        contract = persistent_run.parse_persistent_contract(target, "prompts/tasks/001_goal.md")
-        effect = persistent_run.persistent_launch_effect(contract)
-        calls: list[list[str]] = []
-
-        class FakeApp:
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *_args):
-                return None
-
-            def request(self, method, params):
-                self.method = method
-                self.params = params
-                return {
-                    "thread": {"id": "progress-thread-1", "ephemeral": False, "environments": []},
-                    "approvalPolicy": "never",
-                    "runtimeWorkspaceRoots": [],
-                    "sandbox": {"type": "readOnly", "networkAccess": False},
-                }
-
-        def runner(argv, **_kwargs):
-            calls.append(argv)
-            return subprocess.CompletedProcess(argv, 1 if argv[1] == "has-session" else 0, "", "")
-
-        result = persistent_run.start_persistent_run(
-            target,
-            "prompts/tasks/001_goal.md",
-            expected_goal_sha256=contract["goal_sha256"],
-            authorization_effect_sha256=effect["sha256"],
-            state_root=self.root / "state",
-            app_factory=FakeApp,
-            runner=runner,
-        )
-
-        self.assertEqual(result["status"], "STARTED_NEW_RUN")
-        self.assertEqual(result["progress_thread_id"], "progress-thread-1")
-        launch = calls[-1]
-        self.assertEqual(launch[:3], ["tmux", "new-session", "-d"])
-        self.assertNotIn("python -c print(1)", launch)
-        self.assertIn("ai_bridge_kit.persistent_run", launch[-1])
-
-        with self.assertRaisesRegex(persistent_run.PersistentRunError, "GOAL_HASH_MISMATCH"):
-            persistent_run.start_persistent_run(
-                target,
-                "prompts/tasks/001_goal.md",
-                expected_goal_sha256="0" * 64,
-                authorization_effect_sha256=effect["sha256"],
-                state_root=self.root / "state-2",
-                app_factory=FakeApp,
-                runner=runner,
-            )
-
-    def test_start_resumes_same_binding_without_second_thread_or_primary(self) -> None:
-        target = self.make_repo()
-        self.write_goal(target)
-        contract = persistent_run.parse_persistent_contract(target, "prompts/tasks/001_goal.md")
-        effect = persistent_run.persistent_launch_effect(contract)
-        active = False
-        app_starts = 0
-
-        class FakeApp:
-            def __enter__(self):
-                nonlocal app_starts
-                app_starts += 1
-                return self
-
-            def __exit__(self, *_args):
-                return None
-
-            def request(self, method, params):
-                return {
-                    "thread": {"id": "progress-thread-1", "ephemeral": False, "environments": []},
-                    "approvalPolicy": "never",
-                    "runtimeWorkspaceRoots": [],
-                    "sandbox": {"type": "readOnly", "networkAccess": False},
-                }
-
-        def runner(argv, **_kwargs):
-            nonlocal active
-            if argv[1] == "has-session":
-                return subprocess.CompletedProcess(argv, 0 if active else 1, "", "")
-            active = True
-            return subprocess.CompletedProcess(argv, 0, "", "")
-
-        kwargs = {
-            "expected_goal_sha256": contract["goal_sha256"],
-            "authorization_effect_sha256": effect["sha256"],
-            "state_root": self.root / "state-resume",
-            "app_factory": FakeApp,
-            "runner": runner,
-        }
-        persistent_run.start_persistent_run(target, "prompts/tasks/001_goal.md", **kwargs)
-        resumed = persistent_run.start_persistent_run(target, "prompts/tasks/001_goal.md", **kwargs)
-        self.assertEqual(resumed["status"], "RESUMED_EXISTING_RUN")
-        self.assertEqual(app_starts, 1)
 
     def test_validate_rejects_codex_rules_created_by_target(self) -> None:
         target = self.make_repo()
@@ -348,6 +247,162 @@ class PersistentRunTests(unittest.TestCase):
                 0,
             )
         self.assertIn("Goal: `prompts/tasks/001_goal.md`", out.getvalue())
+
+    def test_install_projected_overflow_has_zero_project_mutation(self) -> None:
+        target = self.make_repo()
+        agents = target / "AGENTS.md"
+        agents.write_bytes(b"user bytes\n")
+        codex_home = Path(os.environ["CODEX_HOME"])
+        codex_home.mkdir()
+        (codex_home / "config.toml").write_text("project_doc_max_bytes = 32\n", encoding="utf-8")
+        before = agents.read_bytes()
+
+        with self.assertRaisesRegex(persistent_run.PersistentRunError, "PROJECTED_OVERFLOW"):
+            persistent_run.install_persistent_run(target)
+
+        self.assertEqual(agents.read_bytes(), before)
+        self.assertFalse((target / "automation").exists())
+
+    def test_start_status_existing_and_real_wait_observation(self) -> None:
+        target = self.make_repo()
+        goal = self.write_goal(target)
+        digest = hashlib.sha256(goal.read_bytes()).hexdigest()
+        state = self.root / "state-lifecycle"
+        tmux = FakeTmux()
+
+        started = persistent_run.start_persistent_run(
+            target,
+            goal.relative_to(target).as_posix(),
+            expected_goal_sha256=digest,
+            state_root=state,
+            runner=tmux,
+        )
+        self.assertEqual(started["status"], "NEW_START")
+        self.assertRegex(started["session_name"], r"^ai-bridge-pr-[0-9a-f]{64}$")
+        self.assertEqual(sum(call[:2] == ["tmux", "new-session"] for call in tmux.calls), 1)
+
+        status = persistent_run.status_persistent_run(
+            target,
+            goal.relative_to(target).as_posix(),
+            expected_goal_sha256=digest,
+            state_root=state,
+            runner=tmux,
+        )
+        self.assertEqual(status["status"], "STARTING")
+        self.assertEqual(status["progress"]["state"], "UNKNOWN")
+
+        existing = persistent_run.start_persistent_run(
+            target,
+            goal.relative_to(target).as_posix(),
+            expected_goal_sha256=digest,
+            state_root=state,
+            runner=tmux,
+        )
+        self.assertEqual(existing["status"], "RETURN_EXISTING")
+        self.assertEqual(sum(call[:2] == ["tmux", "new-session"] for call in tmux.calls), 1)
+
+        class Child:
+            pid = 12345
+
+            @staticmethod
+            def wait() -> int:
+                return 7
+
+        with mock.patch.object(persistent_run.subprocess, "Popen", return_value=Child()):
+            self.assertEqual(
+                persistent_run.supervise_binding(
+                    Path(started["binding_path"]),
+                    started["launch_id"],
+                ),
+                0,
+            )
+        tmux.sessions.remove(started["session_name"])
+        terminal = persistent_run.status_persistent_run(
+            target,
+            goal.relative_to(target).as_posix(),
+            expected_goal_sha256=digest,
+            state_root=state,
+            runner=tmux,
+        )
+        self.assertEqual(terminal["status"], "TERMINAL")
+        self.assertEqual(terminal["exit_code"], 7)
+        self.assertIn("child_exit_observed_at", terminal["binding"])
+
+    def test_stale_mismatch_partial_and_supervisor_loss_never_relaunch(self) -> None:
+        target = self.make_repo()
+        goal = self.write_goal(target)
+        rel_goal = goal.relative_to(target).as_posix()
+        digest = hashlib.sha256(goal.read_bytes()).hexdigest()
+        state = self.root / "state-negatives"
+        tmux = FakeTmux()
+        started = persistent_run.start_persistent_run(
+            target,
+            rel_goal,
+            expected_goal_sha256=digest,
+            state_root=state,
+            runner=tmux,
+        )
+        tmux.sessions.clear()
+        calls_before = sum(call[:2] == ["tmux", "new-session"] for call in tmux.calls)
+        stale = persistent_run.start_persistent_run(
+            target,
+            rel_goal,
+            expected_goal_sha256=digest,
+            state_root=state,
+            runner=tmux,
+        )
+        self.assertEqual(stale["status"], "NO_RELAUNCH")
+        self.assertEqual(stale["lifecycle_state"], "UNKNOWN/UNAVAILABLE")
+        self.assertEqual(sum(call[:2] == ["tmux", "new-session"] for call in tmux.calls), calls_before)
+        observed = persistent_run.status_persistent_run(
+            target,
+            rel_goal,
+            expected_goal_sha256=digest,
+            state_root=state,
+            runner=tmux,
+        )
+        self.assertEqual(observed["status"], "UNKNOWN/UNAVAILABLE")
+        self.assertNotIn("exit_code", observed["binding"])
+
+        binding_path = Path(started["binding_path"])
+        binding = json.loads(binding_path.read_text(encoding="utf-8"))
+        binding["launch_id"] = "0" * 64
+        binding_path.write_text(json.dumps(binding), encoding="utf-8")
+        mismatch = persistent_run.status_persistent_run(
+            target,
+            rel_goal,
+            expected_goal_sha256=digest,
+            state_root=state,
+            runner=tmux,
+        )
+        self.assertEqual(mismatch["status"], "CONFLICT")
+
+    def test_create_failure_is_recorded_and_same_run_is_not_retried(self) -> None:
+        target = self.make_repo()
+        goal = self.write_goal(target)
+        rel_goal = goal.relative_to(target).as_posix()
+        digest = hashlib.sha256(goal.read_bytes()).hexdigest()
+        state = self.root / "state-create-failure"
+        tmux = FakeTmux()
+        tmux.fail_create = True
+        failed = persistent_run.start_persistent_run(
+            target,
+            rel_goal,
+            expected_goal_sha256=digest,
+            state_root=state,
+            runner=tmux,
+        )
+        self.assertEqual(failed["status"], "CREATE_FAILED")
+        create_calls = sum(call[:2] == ["tmux", "new-session"] for call in tmux.calls)
+        again = persistent_run.start_persistent_run(
+            target,
+            rel_goal,
+            expected_goal_sha256=digest,
+            state_root=state,
+            runner=tmux,
+        )
+        self.assertEqual(again["status"], "ALREADY_TERMINAL")
+        self.assertEqual(sum(call[:2] == ["tmux", "new-session"] for call in tmux.calls), create_calls)
 
     def test_normalize_progress_uses_real_fraction_and_unknown_eta(self) -> None:
         normalized = persistent_run.normalize_progress_evidence(
@@ -462,7 +517,7 @@ class PersistentRunTests(unittest.TestCase):
             )
 
             report = persistent_run.report_progress_file(progress, state_root=state)
-            self.assertEqual(report["notification_projection"], "disabled_by_frozen_intent")
+            self.assertEqual(report["notification_projection"], "unavailable_existing_configuration_not_verified")
             self.assertIsNone(report["notification_result"])
 
             payload = json.loads(progress.read_text(encoding="utf-8"))
@@ -471,20 +526,12 @@ class PersistentRunTests(unittest.TestCase):
             payload["observed_at"] = "2026-09-23T01:20:00+00:00"
             payload["stage"] = "stage-b"
             payload["progress_since_previous"] = "two steps"
-            payload["notification_intents"] = {"progress_email": "ENABLED"}
             progress.write_text(json.dumps(payload), encoding="utf-8")
 
             authorized = persistent_run.report_progress_file(progress, state_root=state)
             self.assertEqual(authorized["notification_projection"], "unavailable_existing_configuration_not_verified")
 
-            with mock.patch.dict(os.environ, {"AI_BRIDGE_PERSISTENT_RUN_NOTIFY_AUTHORIZED": "1"}):
-                payload["observed_at"] = "2026-09-23T01:40:00+00:00"
-                payload["stage"] = "stage-c"
-                payload["progress_since_previous"] = "three steps"
-                progress.write_text(json.dumps(payload), encoding="utf-8")
-                authorized = persistent_run.report_progress_file(progress, state_root=state)
-            self.assertEqual(authorized["notification_projection"], "dry_run")
-            self.assertEqual(authorized["notification_result"]["status"], "dry_run")
+            self.assertIsNone(authorized["notification_result"])
 
     def test_report_unknown_eta_and_stall_without_intervention(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -127,16 +127,13 @@ def managed_span_end(content: bytes, marker_end: int) -> int:
 def projected_agents_snippet(target: Path, force: bool) -> tuple[bytes, str]:
     agents_path = target / "AGENTS.md"
     block = managed_agents_block_bytes()
-
     if not agents_path.exists():
         scaffold_path = kit_root() / "templates" / "repo" / "AGENTS_TEMPLATE.md"
         scaffold = scaffold_path.read_bytes().strip()
         return scaffold + b"\n\n" + block, f"CREATE AGENTS.md with project scaffold and handoff protocol: {agents_path}"
-
     current = agents_path.read_bytes()
     begin = BEGIN_MARKER.encode("utf-8")
     end = END_MARKER.encode("utf-8")
-
     if begin in current and end in current:
         if not force:
             return current, f"SKIP existing handoff block in: {agents_path}"
@@ -144,7 +141,6 @@ def projected_agents_snippet(target: Path, force: bool) -> tuple[bytes, str]:
         marker_end = current.index(end, start)
         span_end = managed_span_end(current, marker_end)
         return current[:start] + block + current[span_end:], f"UPDATE handoff block in: {agents_path}"
-
     return current + b"\n\n" + block, f"APPEND handoff block to: {agents_path}"
 
 
@@ -260,13 +256,6 @@ def init_workspace(
             force,
             actions,
         )
-
-    copy_file(
-        root / "templates" / "notifier" / "DEFAULTS.json",
-        target / "automation" / "notifier" / "DEFAULTS.json",
-        force,
-        actions,
-    )
 
     copy_file(
         root / "templates" / "docs" / "notes" / "NOTE_TEMPLATE.md",
@@ -405,16 +394,6 @@ def validate_workspace(target: Path, strict: bool = False) -> int:
             oks.append(f"OK   {label} exists")
         else:
             errors.append(f"ERROR missing {label}")
-
-    instruction_lines, instruction_errors = readiness.validate_instruction_budget(target, strict=strict)
-    for line in instruction_lines:
-        if line.startswith("WARN "):
-            warnings.append(line)
-        elif line.startswith("ERROR "):
-            errors.append(line)
-        else:
-            oks.append(line)
-    errors.extend(error for error in instruction_errors if error not in errors)
 
     executor_skill = target / ".agents" / "skills" / "agent-task-executor" / "SKILL.md"
     if executor_skill.exists():
@@ -696,7 +675,7 @@ Work only inside the already selected repository:
 - target: `{preflight.get('root')}`
 - branch: `{preflight.get('branch')}`
 - head: `{preflight.get('head')}`
-- origin: `{preflight.get('origin_identity')}`
+- origin: `{preflight.get('repo')}`
 
 Read and follow the bound source text. Do not create a branch or PR unless the
 current user explicitly authorized that exact branch strategy.
@@ -713,15 +692,12 @@ def run_lite_task(
     *,
     codex_bin: str = "codex",
     dry_run: bool = False,
-    notification_effect_sha256: str = "",
 ) -> int:
     target = target.resolve()
     try:
         preflight = readiness.preflight_lite_task(
             target,
             task_key,
-            codex_bin=codex_bin,
-            require_host_ready=not dry_run,
         )
     except readiness.ReadinessError as exc:
         print(f"PRELAUNCH_NOT_READY: {exc}", file=sys.stderr)
@@ -748,35 +724,6 @@ def run_lite_task(
         )
         return 0
     proc = subprocess.run(command, cwd=target, input=prompt, text=True, check=False)
-    from . import notifier
-
-    task_path = target / "prompts" / "tasks" / f"{task_key}.md"
-    task_fields, _error = parse_frontmatter(task_path)
-    intents = {
-        "progress_email": task_fields.get("progress_email", "DISABLED").strip('"\''),
-        "runtime_terminal_email": task_fields.get("runtime_terminal_email", "DISABLED").strip('"\''),
-        "semantic_completion_email": task_fields.get("semantic_completion_email", "UNSUPPORTED").strip('"\''),
-    }
-    event = notifier.canonical_event(
-        event_class="runtime_terminal",
-        project=target.name,
-        task_key=task_key,
-        status="process_exited" if proc.returncode == 0 else "process_failed",
-        key_conclusion=f"Lite task process exited with code {proc.returncode}.",
-        next_step="Inspect the task result and required review evidence; process exit is not semantic completion.",
-        evidence_paths=[task_path.relative_to(target).as_posix()],
-        emitter="lite_task_run",
-        runtime_id=f"lite:{task_key}",
-        lifecycle_owner="lite_task_run",
-    )
-    delivery = notifier.deliver_canonical_event(
-        event,
-        intents=intents,
-        output_dir=target / "results" / task_key / "notifications" / "runtime_terminal",
-        expected_effect_sha256=notification_effect_sha256,
-        reader_render_max_turns=int(task_fields.get("reader_render_max_turns", "0").strip('"\'') or 0),
-    )
-    print(json.dumps({"notification_event": delivery}, ensure_ascii=False, sort_keys=True))
     return proc.returncode
 
 
@@ -811,11 +758,6 @@ def build_parser() -> argparse.ArgumentParser:
     task_run_parser.add_argument("--task-key", required=True, help="Existing prompts/tasks/<task-key>.md task.")
     task_run_parser.add_argument("--codex-bin", default="codex", help="Codex executable to launch.")
     task_run_parser.add_argument("--dry-run", action="store_true", help="Print the launch binding without starting Codex.")
-    task_run_parser.add_argument(
-        "--notification-effect-sha256",
-        default="",
-        help="Exact current-scope Gmail effect assertion; repo fields never grant send authority.",
-    )
 
     host_parser = subparsers.add_parser("host", help="Install, inspect, or validate Codex host policy.")
     host_subparsers = host_parser.add_subparsers(dest="host_command")
@@ -887,7 +829,6 @@ def main(argv: list[str] | None = None) -> int:
                 args.task_key,
                 codex_bin=args.codex_bin,
                 dry_run=args.dry_run,
-                notification_effect_sha256=args.notification_effect_sha256,
             )
         parser.parse_args(["task", "--help"])
         return 0

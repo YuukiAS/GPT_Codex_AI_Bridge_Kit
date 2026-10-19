@@ -107,7 +107,7 @@ ai-bridge validate --target /path/to/project
 ```bash
 ai-bridge host publish-current-branch \
   --expected-repo YuukiAS/GPT_Codex_AI_Bridge_Kit \
-  --expected-branch main
+  --expected-branch work/repo--feature
 ```
 
 这两个参数只是 equality assertion；真实 repo、branch、upstream、remote ref 和
@@ -116,6 +116,17 @@ transport/credential/hook 边界都由 helper 从当前 Git 状态重新读取�
 system/global/gh credential helper 视为可信低打扰路径。SSH、scp-style
 或 custom remote 会回到普通原始 Git push 审批；Bridge Kit 不配置 SSH key、agent
 或 `known_hosts`。
+
+Bridge-managed Lite 执行使用真正的启动入口，而不是手工拼接 `codex exec`：
+
+```bash
+ai-bridge task run \
+  --target /path/to/project \
+  --task-key repo--fix-ci
+```
+
+它先绑定当前 repo/worktree/branch/HEAD 与 `AGENTS.md`、执行规则和 task 的 exact
+commit blob；任一 mandatory source 不一致时不会创建 Codex child。
 
 ## 7. 可选：选择更重的 workflow
 
@@ -162,7 +173,17 @@ ai-bridge persistent-run prompt kickoff \
   --goal prompts/tasks/repo--long-run.md
 ```
 
-这个命令只打印授权文本，不会启动 tmux。Persistent Run 只约束已经选择 tmux 的终端拥有型执行和恢复：使用 canonical `tmux` session，已有兼容 run 时 resume，不把 session/PID/heartbeat 当作完成，不自动 fallback 到 `setsid`、`nohup`、裸后台 `&`、`screen` 或 `sudo`。Lite / Reviewed Mode / Controlled Mode 的 workflow 选择和原 Goal 完成标准保持不变。
+这个命令只打印授权文本，不会启动 tmux。打印结果包含 Goal SHA-256 和 exact
+`persistent-run start` 命令。真正启动后，一个 run identity 只有一个 full-hash tmux
+session、一个 supervisor、一个 binding JSON 和一个 child；用相同 Goal SHA-256 的
+`persistent-run status` 查询运行事实。active run 再次 `start` 不会产生第二个 child；
+stale、mismatch、partial start 或 supervisor loss 不会自动 relaunch、takeover 或猜测
+terminal；没有 progress 时明确返回 `UNKNOWN`。它也不依赖 app-server、Progress
+display thread、Notifier 或持久 Codex thread。
+
+Persistent Run 不把 session/PID/heartbeat 当作完成，也不自动 fallback 到 `setsid`、
+`nohup`、裸后台 `&`、`screen` 或 `sudo`。Lite / Reviewed Mode / Controlled Mode 的
+workflow 选择和原 Goal 完成标准保持不变。
 
 Codex 收到 task 后会在实质执行前检查是否存在可预见的 approval-sensitive effect。
 仓库里的 Goal/Plan/contract 只证明 frozen scope，不等于当前用户授权；如果当前用户

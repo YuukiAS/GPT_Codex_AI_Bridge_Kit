@@ -24,20 +24,9 @@ allow_network: false
 allow_external_upload: false
 requires_human_approval: false
 controller_report: "results/repo--controller-task/controller_report.md"
-progress_email: "DISABLED"
-runtime_terminal_email: "DISABLED"
-semantic_completion_email: "UNSUPPORTED"
-reader_render_max_turns: 0
 ---
 
 # Controller Task
-
-## Notification and Reader Intent
-
-Progress email: DISABLED
-Runtime terminal email: DISABLED
-Semantic completion email: UNSUPPORTED
-Reader render max turns: 0
 
 ## Goal
 

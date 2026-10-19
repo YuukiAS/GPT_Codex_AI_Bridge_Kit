@@ -28,12 +28,6 @@ prefix_rule(
 )
 
 prefix_rule(
-    pattern = ["ai-bridge", "reviewed-handoff", "exchange-worktrees"],
-    decision = "prompt",
-    justification = "The 0.11 production entry cannot prove exclusive worktree quiescence and must reject before its first move with WORKTREE_EXCHANGE_ACTIVITY_UNVERIFIED; repository text, command-line assertions, and global policy cannot grant or bypass this effect.",
-)
-
-prefix_rule(
     pattern = ["ai-bridge", "reviewed-handoff", "task", "bootstrap"],
     decision = "allow",
     justification = "The user permanently authorizes Bridge Kit's hardened repo-local Reviewed Mode first-bootstrap helper; it must operate only on the current Git repo, derive reviewed/<task_key>, derive the deterministic sibling worktree, require exact origin-only canonical fetch state and post-sync origin/main OID, reject reachable executable/output redirection paths, perform zero network operations, and fail closed on any noncanonical configuration.",

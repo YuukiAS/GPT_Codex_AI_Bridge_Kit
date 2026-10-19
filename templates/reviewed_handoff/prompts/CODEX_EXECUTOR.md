@@ -4,6 +4,11 @@
 
 读取 `REQUEST.md`、当前 `PLAN.md`、`CURRENT.json`，以及已有 `REVIEW_<n>.md`。第一次执行必须严格实现冻结 Plan；返修时只修 Reviewer 明确指出的 blocker 和由它直接导致的 regression，不得自行扩大 Plan。
 
+Review watcher 必须在最终 `codex exec` spawn 前冻结 exact repo/worktree/
+branch/HEAD 与本次 mandatory source paths，并从该 exact commit blob 绑定文本。
+任一 context/source mismatch 都必须在 child count 仍为 0 时停止；unrelated dirty
+path 本身不是 C2 failure。
+
 如果 `CURRENT.state=REVISE` 且存在 `CURRENT.human_rejection.decision=REJECT` / `route=REVISE`，这不是新的 Reviewer `REVISE`，也不能重置 `review_round`。只修复用户拒绝中指出、且可由现有冻结 `PLAN.md` 支持的问题；若拒绝理由证明 Plan 本身需要改变，转为 `NEEDS_GPT_PLANNER`，不要自行扩展产品/语义范围。
 
 如果 repository /用户已经为当前 Review task 指定独立 workflow branch（推荐命名 `reviewed/<task_key>`），只在该 task branch 上执行和交接；不要因为同一 repository 的其他 task 正在等待 CI、Planner、Reviewer、visual evidence 或用户输入而暂停当前独立任务。分支冲突或 integration 选择属于可恢复的 branch decision，不等于 task 失败。
