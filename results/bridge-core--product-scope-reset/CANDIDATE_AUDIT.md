@@ -30,7 +30,7 @@ Gate 标准或 recovery 语义。原候选的失败保存在 `C5_C6_NORMAL_HELPE
 | C3 | `c32b910/C3_MANAGED_INSTRUCTION_WRITE.json`：三个 CLI writer under-limit、overflow 全项目快照不变；targeted bank 另含真实并发 writer 与混合换行用户 bytes 断言 | PASS |
 | C4 | `c32b910/C4_*.json`：正式 start/status/repeated start，同一 child 的坏 JSON、恢复、原生 warm-up、真实 exit；负例在 targeted bank | PASS |
 | C5 | `c32b910/C5_MACHINE_NOTIFIER.json`：正式 CLI migrate 同/冲突、不删旧文件；两 repo 同一 config，冲突环境变量无效；真实 helper 并发去重/显式 retry lineage。四 consumer authority/nonfatal/suppression 在 targeted bank | PASS（无真实 SMTP） |
-| C6 non-live | `c32b910/C5_C6_TRANSPORT_DEADLINE.json`：真实 helper 在受控 DNS/SMTP_CONNECT/TLS 挂起阶段被父 deadline 结束；模型与网络被测试审计钩子禁止。确定性 parser/fidelity/fallback 回归通过，但当前安装版本再次不一致 | 确定性回归 PASS；installed readiness UNAVAILABLE |
+| C6 non-live | `c32b910/C5_C6_TRANSPORT_DEADLINE.json`：真实 helper 在受控 DNS/SMTP_CONNECT/TLS 挂起阶段被父 deadline 结束；模型与网络被测试审计钩子禁止。确定性 parser/fidelity/fallback 回归通过；15:34 UTC 主机边界 installed identity 已恢复一致 | PASS；不等于 live skill consumption |
 | C6 live | 尚无模型调用、skill consumption JSONL 或自动 delivery SMTP receipt | NOT_RUN，平台审批拒绝 |
 
 C2 的成功 child 是无模型的计数程序；C5 使用合成凭据、显式隔离 machine root 和
@@ -73,10 +73,12 @@ Codex 仍为 `/users/a/e/aereinh/bin/codex`、0.160.1，
 两个必需 skill `writing-fidelity`、`chinese-prose` 曾在这次刷新后从正式 installed/enabled
 plugin 定位成功，未修改 AI_Skills_Collection 源码。但 15:27 UTC 的后续核验中，
 inventory 又报告 0.4，manifest 仍为 0.5，resolver 返回
-`WRITING_STYLE_PLUGIN_VERSION_MISMATCH`。当前安装 readiness 不成立；此前瞬时成功
-不能覆盖较新的失败。证据见 `c32b910/INSTALL_RUNTIME_IDENTITY.json` 与
-`c32b910/LATEST_WRITING_STYLE_IDENTITY.json`。未反复重装、改 catalog、重启 daemon，
-也未把定位成功冒充 live consumption。
+`WRITING_STYLE_PLUGIN_VERSION_MISMATCH`。15:34 UTC 的续查中，普通读取及实际 C6
+主机边界均已恢复为 inventory/manifest 0.5 一致，两个必需 skill 均可定位，
+machine Notifier 同时保持 VALID/transport_ready。最新证据见
+`c32b910/LATEST_WRITING_STYLE_IDENTITY.json`；15:27 的失败仍可从 evidence commit
+`a2fbd3e07aa1788f1ce261a565beb8d5e72752d3` 读取。此次续查没有再次安装插件，
+也没有改 catalog、重启 daemon 或调用模型；安装身份阻断已关闭，但定位不冒充 live consumption。
 
 机器 Notifier 仍是 `~/.ai-bridge/private/notifier.env`、0600、VALID、
 transport_ready=true。已有用户确认收件的 send-test 是单独的兼容路径证据；它没有
@@ -93,8 +95,8 @@ transport_ready=true。已有用户确认收件的 send-test 是单独的兼容�
 `model-launch`、自动 event claim 或 live receipt。此次 C6 消耗：model=0，Gmail=0，retry=0。
 
 用户在 Goal 中的授权文字已保留，但不能通过更换工具、sandbox 路径、SMTP 脚本或
-间接启动绕过这次拒绝。当前缺的是平台可接受的普通聊天授权及一致的 installed
-writing-style 身份；此外，修复已使生产
+间接启动绕过这次拒绝。当前仅缺平台可接受的普通聊天授权；安装身份阻断已经由
+15:34 UTC 的主机边界证据关闭。此外，修复已使生产
 候选从原 SHA 改为 `c32b910…`，真实 Gate 必须明确绑定这个新候选。
 
 后续最小效果仍为同一 CODEX_HOME/model、同一 machine Gmail account/from/recipient、
