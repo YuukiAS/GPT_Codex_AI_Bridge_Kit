@@ -204,6 +204,29 @@ class NotifierTests(unittest.TestCase):
             self.assertEqual(latest["stage"], "SMTP_ACCEPTED")
             self.assertEqual(latest["model_invocations"], 0)
 
+    def test_production_helper_runs_in_real_process_without_model_or_smtp(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            # A recipient permits claiming; missing auth fails before SMTP.
+            # Empty PATH makes model discovery impossible in the real child.
+            notifier.atomic_write_bytes(
+                notifier.machine_config_path(root),
+                b"AI_BRIDGE_NOTIFY_TO=recipient@example.invalid\n",
+            )
+            with mock.patch.dict(os.environ, {"PATH": ""}):
+                result = notifier.deliver_notification(
+                    self.auto_request(), repo_identity="real-helper-regression",
+                    config_root=root, state_root=root, require_ready=False,
+                    deadline_seconds=5,
+                )
+            self.assertEqual(result.status, "FAILED")
+            self.assertIn("missing email config", result.message)
+            directory = notifier.event_directory(result.event_key, state_root=root)
+            attempt = json.loads((directory / "latest.json").read_text(encoding="utf-8"))
+            self.assertEqual(attempt["stage"], "FAILED")
+            self.assertEqual(attempt["model_invocations"], 0)
+            self.assertEqual(len(list((directory / "attempts").glob("*.json"))), 1)
+
     def test_deadline_after_transport_is_unknown_and_retry_requires_confirmation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
