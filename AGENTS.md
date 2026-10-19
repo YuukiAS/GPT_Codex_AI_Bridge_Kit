@@ -150,8 +150,10 @@ Control、Persistent 只在各自 authority 已经产生合法事实后提交严
 transport failure 不得改变 workflow state 或 primary child。只有 existing automatic
 owner 已决定发送后，才可调用一次 one-shot Clear Writing adapter：从 installed/enabled
 `writing-style@yuukias-ai-skills` 绑定 `writing-fidelity` 与 `chinese-prose`，最多运行
-一次 `codex exec --ephemeral --json --sandbox read-only`。JSONL、skill consumption 或
-机械保真任一失败立即使用 deterministic fallback，模型 retry 为 0；表达或 transport
+一次 `codex exec --ephemeral --json --sandbox read-only`。启动前校验 installed skill 身份，
+prompt 显式使用 `$writing-fidelity` 与 `$chinese-prose`；不要求 JSONL skill-load 事件。
+JSONL、skill 身份或机械保真检查失败时立即使用 deterministic fallback，模型 retry 为 0；
+表达或 transport
 失败不得改变业务状态。不得恢复 app-server client、Progress display thread、持久
 reader/session、three-intent event bus 或 repo-local transport authority。
 

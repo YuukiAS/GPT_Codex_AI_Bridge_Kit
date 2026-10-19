@@ -458,7 +458,7 @@ results/<task_key>/notifications/<event>.json
 codex exec --ephemeral --json --sandbox read-only --skip-git-repo-check -C <neutral-dir> -
 ```
 
-只有 JSONL 恰好包含一个 turn、两个正式 skill 都有真实消费证据、且数字、状态、`UNKNOWN`、路径、版本和结论强度通过机械保真检查时，模型文本才进入现有 transport。plugin、skill、模型、JSONL、turn 或保真检查任一失败，立即使用确定性 fallback，模型 retry 为 0；fallback 仍尝试 transport。一次自动投递有 120 秒总 deadline；transport 开始后结果不明会记录 `DELIVERY_UNKNOWN`，只能显式确认可能重复后 retry。表达或邮件失败不改变业务状态、不杀 primary child，也不恢复 app-server、persistent reader/session、Progress display thread 或跨工作流 event bus。
+两个正式 skill 必须在启动前从 installed/enabled plugin 中唯一解析并确认身份，prompt 显式使用 `$writing-fidelity` 和 `$chinese-prose`。模型成功退出、JSONL 恰好包含一个成功 turn，且数字、状态、`UNKNOWN`、路径、版本和结论强度通过机械保真检查后，模型文本才进入现有 transport。JSONL 用于检查 turn 和错误，不要求它暴露 skill-load event，也不要求模型通过 shell 读取 `SKILL.md` 留证。plugin、skill 身份、模型、JSONL、turn 或保真检查任一失败，立即使用确定性 fallback，模型 retry 为 0；fallback 仍尝试 transport。一次自动投递有 120 秒总 deadline；transport 开始后结果不明会记录 `DELIVERY_UNKNOWN`，只能显式确认可能重复后 retry。表达或邮件失败不改变业务状态、不杀 primary child，也不恢复 app-server、persistent reader/session、Progress display thread 或跨工作流 event bus。
 
 运行层进展可以报告当前进度或阻塞，但不能声称语义通过、`READY`、发布就绪或最终完成。邮件密码等秘密配置保存在本地私有文件，不应提交到项目仓库。
 

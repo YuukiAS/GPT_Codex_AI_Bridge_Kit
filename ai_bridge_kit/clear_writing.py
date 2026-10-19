@@ -174,7 +174,8 @@ def _reader_facts(brief: dict[str, Any]) -> dict[str, Any]:
 def _prompt(brief: dict[str, Any]) -> str:
     facts = json.dumps(_reader_facts(brief), ensure_ascii=False, separators=(",", ":"), sort_keys=True)
     return (
-        "Use $writing-fidelity and $chinese-prose to render one concise natural Simplified Chinese notification. "
+        "Use " + " and ".join(f"${name}" for name in REQUIRED_SKILLS)
+        + " to render one concise natural Simplified Chinese notification. "
         "Preserve the exact status, project, task identity, every number/date/time/version, UNKNOWN, "
         "and the original conclusion strength. Add no facts or numbers. Runtime/operational facts must never become "
         "Goal PASS, READY, RELEASE_READY, or semantic completion. Return only the notification text.\n"
@@ -182,7 +183,7 @@ def _prompt(brief: dict[str, Any]) -> str:
     )
 
 
-def _parse_jsonl(stdout: str, skills: dict[str, str]) -> tuple[str, dict[str, Any]]:
+def _parse_jsonl(stdout: str) -> tuple[str, dict[str, Any]]:
     events: list[dict[str, Any]] = []
     for number, raw in enumerate(stdout.splitlines(), start=1):
         if not raw.strip():
@@ -203,8 +204,11 @@ def _parse_jsonl(stdout: str, skills: dict[str, str]) -> tuple[str, dict[str, An
         )
     if counts["turn.failed"] or counts["error"]:
         raise ClearWritingError("CODEX_TURN_FAILED")
+    boundaries = [event["type"] for event in events
+                  if event.get("type") in {"thread.started", "turn.started", "turn.completed"}]
+    if boundaries != ["thread.started", "turn.started", "turn.completed"]:
+        raise ClearWritingError("CODEX_TURN_BOUNDARY_ORDER_INVALID")
     messages: list[str] = []
-    consumed = {name: False for name in REQUIRED_SKILLS}
     for event in events:
         for item in _walk_dicts(event):
             kind = str(item.get("type") or item.get("kind") or "")
@@ -212,27 +216,17 @@ def _parse_jsonl(stdout: str, skills: dict[str, str]) -> tuple[str, dict[str, An
                 text = item.get("text") or item.get("message")
                 if isinstance(text, str) and text.strip():
                     messages.append(text.strip())
-            if "skill" in kind.lower():
-                name = str(item.get("name") or item.get("skill") or "").split(":")[-1]
-                path = str(item.get("path") or "")
-                if name in consumed and path and Path(path).resolve().as_posix() == skills[name]:
-                    consumed[name] = True
-            if kind in {"command_execution", "commandExecution", "local_shell_call"}:
-                command = str(item.get("command") or item.get("cmd") or "")
-                if not re.search(r"(^|\s)(cat|sed|head|tail|rg|bat)(\s|$)", command):
-                    continue
-                for name, path in skills.items():
-                    if re.search(
-                        rf"(?:^|[;&|]\s*|\s)(?:cat|sed|head|tail|rg|bat)\b[^;&|\n]*{re.escape(path)}",
-                        command,
-                    ):
-                        consumed[name] = True
+            # Codex can emit this startup warning as an error item even when
+            # the single turn succeeds. Other error items remain failures.
+            if kind == "error" and not str(item.get("message") or "").startswith(
+                "Under-development features enabled:"
+            ):
+                raise ClearWritingError("CODEX_TURN_FAILED")
     if not messages:
         raise ClearWritingError("CODEX_FINAL_AGENT_MESSAGE_MISSING")
-    missing = [name for name, value in consumed.items() if not value]
-    if missing:
-        raise ClearWritingError("CODEX_SKILL_CONSUMPTION_UNPROVEN: " + ",".join(missing))
-    return messages[-1], {"event_counts": dict(counts), "skill_consumed": consumed}
+    # Explicit $skill invocation is the supported contract; JSONL does not
+    # guarantee skill-load events or shell reads of SKILL.md.
+    return messages[-1], {"event_counts": dict(counts)}
 
 
 def _numbers(text: str) -> Counter[str]:
@@ -275,8 +269,20 @@ def fidelity_check(brief: dict[str, Any], rendered: str) -> None:
         "awaiting_human",
     }:
         forbidden = ("Goal PASS", "READY", "RELEASE_READY", "目标已完成", "发布就绪")
-        if any(re.search(rf"(?<![A-Za-z_]){re.escape(token)}(?![A-Za-z_])", rendered, re.IGNORECASE) for token in forbidden):
-            raise ClearWritingError("CLEAR_WRITING_CONCLUSION_STRENGTHENED")
+        for token in forbidden:
+            for match in re.finditer(rf"(?<![A-Za-z_]){re.escape(token)}(?![A-Za-z_])", rendered, re.IGNORECASE):
+                prefix = re.split(r"[。！？!?；;\n，,]", rendered[:match.start()])[-1]
+                negative = re.search(
+                    r"(?:不代表|(?:并|尚|仍|还)?不能(?:说明|认定|证明|表明|代表)|"
+                    r"(?:尚|仍|还)?未能(?:说明|认定|证明|表明|代表)|"
+                    r"并非|不是|不等于|尚未达到|未达到)\s*[「『“\"'`]*$",
+                    prefix,
+                )
+                if negative and not re.search(
+                    r"(?:并非|不是|不能|并不|不可能)\s*$", prefix[:negative.start()]
+                ):
+                    continue
+                raise ClearWritingError("CLEAR_WRITING_CONCLUSION_STRENGTHENED")
 
 
 def render_once(
@@ -335,7 +341,12 @@ def render_once(
         )
         if result.returncode != 0:
             raise ClearWritingError(f"CODEX_EXEC_NONZERO: {result.returncode}")
-        rendered, evidence = _parse_jsonl(result.stdout, plugin["skills"])
+        rendered, evidence = _parse_jsonl(result.stdout)
+        evidence["skill_invocation"] = {
+            "method": "explicit_prompt",
+            "names": list(REQUIRED_SKILLS),
+            "jsonl_skill_load_events_required": False,
+        }
         fidelity_check(brief, rendered)
     except (ClearWritingError, OSError, subprocess.SubprocessError) as exc:
         return {

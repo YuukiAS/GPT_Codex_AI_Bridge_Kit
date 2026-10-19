@@ -32,6 +32,10 @@
   `chinese-prose` skills and pass mechanical fidelity checks; every failure uses
   deterministic fallback with no model retry. Manual `send` and `send-test`
   retain 0.10 behavior.
+- Verify installed skill identities and explicit `$skill-name` invocation without
+  requiring undocumented JSONL skill-load events or shell reads. Preserve fatal
+  error and single-turn checks; accept explicit negative completion caveats
+  such as “不代表目标已完成” while still rejecting positive completion upgrades.
 - Remove the experimental app-server reader/display path,
   `codex_progress_thread`, production reciprocal worktree exchange,
   cross-workflow three-intent/event ownership and repo-local notifier authority.
