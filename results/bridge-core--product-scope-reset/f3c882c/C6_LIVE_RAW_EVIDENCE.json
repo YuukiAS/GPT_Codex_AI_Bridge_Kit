@@ -1,0 +1,190 @@
+{
+  "candidate_sha": "f3c882c5302a1889cac62526e8f025ada0f4d1a5",
+  "C6_LIVE": "PASS",
+  "workflow_state": "READY_FOR_FINAL_CRITIC",
+  "authorization": {
+    "source": "latest explicit user message for exact f3c882c",
+    "model_limit": 1,
+    "gmail_limit": 1,
+    "retry_limit": 0,
+    "private_data": "NONE",
+    "provider_account_from_recipient_changed": false,
+    "release_authorized": false
+  },
+  "source_preflight": {
+    "production_working_bytes_match_candidate": true,
+    "source_document_version_identity_match": true,
+    "evidence_head_before_live": "7cb762c262d7abc64893ed5bc347d9d84b56c300",
+    "later_commits_results_only": true,
+    "production_modified_this_round": false
+  },
+  "codex_identity": {
+    "CODEX_HOME": "/users/a/e/aereinh/.codex",
+    "canonical_cli": "/users/a/e/aereinh/bin/codex",
+    "cli_version": "0.160.1",
+    "model": "gpt-5.6-sol",
+    "default_machine_model_observed": "gpt-6.1-sol",
+    "per_invocation_pin": "temporary launcher adds only --model gpt-5.6-sol to canonical CLI exec",
+    "persistent_model_config_modified": false,
+    "official_cli_reference": "https://learn.chatgpt.com/docs/developer-commands?surface=cli",
+    "canonical_wrapper_sha256": "d546914f733a9adb045c63902ae91e52a570c4b56e7986fa91a4352a77d35b74"
+  },
+  "started": {
+    "candidate_sha": "f3c882c5302a1889cac62526e8f025ada0f4d1a5",
+    "started_at": "2026-10-19T16:28:04+00:00",
+    "config_digest": "46cc00d02f541a14f84833c1f0ccd91a3e8ad8ccb2786e48150a1e33c1f7e12d"
+  },
+  "request": {
+    "consumer": "persistent",
+    "decision_authority": "Runtime",
+    "eta": "UNKNOWN",
+    "fact_class": "runtime_progress",
+    "next_action": "等待独立终审。",
+    "project": "Bridge Kit",
+    "recipient_override": "",
+    "runtime_id": "clear-writing-canary",
+    "schema": "ai-bridge.notification_request.v1",
+    "source_event_id": "frozen-candidate-clear-writing-live-gate",
+    "status": "running",
+    "summary": "这是合成通知，用于验证中文表达；不代表目标已完成。",
+    "task_key": "bridge-core--product-scope-reset",
+    "version": "0.11.0"
+  },
+  "model_launch": {
+    "argv": [
+      "/overflow/htzhu/mingcheng_new/GPT_Codex_AI_Bridge_Kit/results/bridge-core--product-scope-reset/f3c882c/live_harness/codex",
+      "exec",
+      "--ephemeral",
+      "--json",
+      "--sandbox",
+      "read-only",
+      "--skip-git-repo-check",
+      "-C",
+      "/users/a/e/aereinh/.ai-bridge/clear-writing",
+      "-"
+    ],
+    "pid": 3522126,
+    "model_retry_count": 0
+  },
+  "canonical_model_launch": {
+    "argv": [
+      "/users/a/e/aereinh/bin/codex",
+      "exec",
+      "--model",
+      "gpt-5.6-sol",
+      "--ephemeral",
+      "--json",
+      "--sandbox",
+      "read-only",
+      "--skip-git-repo-check",
+      "-C",
+      "/users/a/e/aereinh/.ai-bridge/clear-writing",
+      "-"
+    ],
+    "model": "gpt-5.6-sol",
+    "retry": 0
+  },
+  "prompt": {
+    "provenance": "reconstructed from unchanged production _prompt and frozen request; not a captured stdin trace",
+    "text": "Use $writing-fidelity and $chinese-prose to render one concise natural Simplified Chinese notification. Preserve the exact status, project, task identity, every number/date/time/version, UNKNOWN, and the original conclusion strength. Add no facts or numbers. Runtime/operational facts must never become Goal PASS, READY, RELEASE_READY, or semantic completion. Return only the notification text.\nImmutable facts: {\"consumer\":\"persistent\",\"decision_authority\":\"Runtime\",\"eta\":\"UNKNOWN\",\"fact_class\":\"runtime_progress\",\"project\":\"Bridge Kit\",\"runtime_id\":\"clear-writing-canary\",\"source_event_id\":\"frozen-candidate-clear-writing-live-gate\",\"status\":\"running\",\"summary\":\"这是合成通知，用于验证中文表达；不代表目标已完成。\",\"task_key\":\"bridge-core--product-scope-reset\",\"version\":\"0.11.0\"}\n",
+    "sha256": "0bc7aa7ffa32ceb29a1c75e35ded7b17850b213db23dbee3a198b9ebc8620097"
+  },
+  "model_result": {
+    "returncode": 0,
+    "raw_jsonl_sha256": "0b2be74e13485ac545912bc0665ea4597c3451e0d6c2fddad2269edb52913b3e",
+    "event_counts": {
+      "thread.started": 1,
+      "item.completed": 2,
+      "turn.started": 1,
+      "turn.completed": 1
+    },
+    "mode": "NORMAL_WRITING_STYLE",
+    "fidelity": "PASS",
+    "failure": "",
+    "model_invocations": 1,
+    "model_retry_count": 0,
+    "plugin": {
+      "plugin_id": "writing-style@yuukias-ai-skills",
+      "version": "0.5",
+      "root": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style",
+      "manifest": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style/.codex-plugin/plugin.json",
+      "skills": {
+        "writing-fidelity": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style/skills/fidelity/SKILL.md",
+        "chinese-prose": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style/skills/zh/SKILL.md"
+      },
+      "codex_bin": "/overflow/htzhu/mingcheng_new/GPT_Codex_AI_Bridge_Kit/results/bridge-core--product-scope-reset/f3c882c/live_harness/codex"
+    },
+    "skill_invocation": {
+      "method": "explicit_prompt",
+      "names": [
+        "writing-fidelity",
+        "chinese-prose"
+      ],
+      "jsonl_skill_load_events_required": false
+    }
+  },
+  "smtp": {
+    "send_guard": {
+      "candidate_sha": "f3c882c5302a1889cac62526e8f025ada0f4d1a5",
+      "pid": 3522126,
+      "retry": 0
+    },
+    "config_status": "VALID",
+    "config_path": "/users/a/e/aereinh/.ai-bridge/private/notifier.env",
+    "config_mode": "0600",
+    "config_digest": "46cc00d02f541a14f84833c1f0ccd91a3e8ad8ccb2786e48150a1e33c1f7e12d",
+    "smtp_account": "humc2013@gmail.com",
+    "from": "1155246312@link.cuhk.edu.hk",
+    "recipient": "1155246312@link.cuhk.edu.hk",
+    "event_key": "3d98e8c6534c98cb6f89272dce7db828e1341cc599ef97d0142c52f40bd9d6d1",
+    "attempt_count": 1,
+    "attempt": {
+      "attempt_id": "96470c569e1d408f808c2abc78e37565",
+      "config_digest": "46cc00d02f541a14f84833c1f0ccd91a3e8ad8ccb2786e48150a1e33c1f7e12d",
+      "event_key": "3d98e8c6534c98cb6f89272dce7db828e1341cc599ef97d0142c52f40bd9d6d1",
+      "expression_mode": "NORMAL_WRITING_STYLE",
+      "model_invocations": 1,
+      "parent_attempt_id": null,
+      "schema": "ai-bridge.notifier.attempt.v1",
+      "smtp_accepted_at": "2026-10-19T16:28:18+00:00",
+      "stage": "SMTP_ACCEPTED",
+      "started_at": "2026-10-19T16:28:05+00:00",
+      "transport_started_at": "2026-10-19T16:28:16+00:00"
+    },
+    "receipt": {
+      "attempt_id": "96470c569e1d408f808c2abc78e37565",
+      "event_key": "3d98e8c6534c98cb6f89272dce7db828e1341cc599ef97d0142c52f40bd9d6d1",
+      "schema": "ai-bridge.notifier.receipt.v1",
+      "smtp_accepted_at": "2026-10-19T16:28:18+00:00",
+      "status": "SMTP_ACCEPTED"
+    },
+    "gmail_send_calls": 1,
+    "retry": 0,
+    "inbox_delivery_asserted": false
+  },
+  "delivery": {
+    "candidate_sha": "f3c882c5302a1889cac62526e8f025ada0f4d1a5",
+    "elapsed_seconds": 13.973442982882261,
+    "result": {
+      "event_key": "3d98e8c6534c98cb6f89272dce7db828e1341cc599ef97d0142c52f40bd9d6d1",
+      "message": "SMTP accepted; inbox delivery not asserted",
+      "status": "SMTP_ACCEPTED"
+    }
+  },
+  "limits": {
+    "real_model_invocations_this_authorization": 1,
+    "real_gmail_sends_this_authorization": 1,
+    "automatic_retry": 0,
+    "no_further_live_effect_permitted": true
+  },
+  "closure": {
+    "C1_C5_and_C6_non_live_rerun": false,
+    "reason": "already PASS on identical production candidate; no regression exposed",
+    "hosted_ci_run": 39281651220,
+    "hosted_ci_sha": "f3c882c5302a1889cac62526e8f025ada0f4d1a5",
+    "hosted_ci_status": "completed/success",
+    "release_ref_unchanged": "9db19b0409816c22042a246b35a33e1d34fedd0a",
+    "final_critic_decision": "NOT_YET_REQUESTED",
+    "formal_distribution_complete": false
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "attempt_id": "96470c569e1d408f808c2abc78e37565",
+  "event_key": "3d98e8c6534c98cb6f89272dce7db828e1341cc599ef97d0142c52f40bd9d6d1",
+  "schema": "ai-bridge.notifier.receipt.v1",
+  "smtp_accepted_at": "2026-10-19T16:28:18+00:00",
+  "status": "SMTP_ACCEPTED"
+}

@@ -1,0 +1,24 @@
+#!/usr/bin/env python3
+"""C6-only CLI launcher: preserve identity and pin the authorized model."""
+import json
+import os
+from pathlib import Path
+import sys
+
+CLI = '/users/a/e/aereinh/bin/codex'
+AUDIT = Path('/tmp/bridge-c6-audit-f3c882c')
+args = sys.argv[1:]
+if args == ['plugin', 'list', '--json']:
+    os.execv(CLI, [CLI, *args])
+if args != [
+    'exec', '--ephemeral', '--json', '--sandbox', 'read-only',
+    '--skip-git-repo-check', '-C',
+    '/users/a/e/aereinh/.ai-bridge/clear-writing', '-',
+]:
+    raise SystemExit('C6 launcher rejects unexpected argv')
+assert os.environ.get('CODEX_HOME') == '/users/a/e/aereinh/.codex'
+command = [CLI, 'exec', '--model', 'gpt-5.6-sol', *args[1:]]
+fd = os.open(AUDIT / 'canonical-model-launch.json', os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+with os.fdopen(fd, 'w', encoding='utf-8') as handle:
+    json.dump({'argv': command, 'model': 'gpt-5.6-sol', 'retry': 0}, handle, indent=2)
+os.execv(CLI, command)

@@ -1,0 +1,36 @@
+{
+  "mode": "NORMAL_WRITING_STYLE",
+  "text": "Bridge Kit 0.11.0 的任务 bridge-core--product-scope-reset 当前由 Runtime 判定为 running。runtime_id：clear-writing-canary；source_event_id：frozen-candidate-clear-writing-live-gate；fact_class：runtime_progress；consumer：persistent；eta：UNKNOWN。这是合成通知，用于验证中文表达；不代表目标已完成。",
+  "failure": "",
+  "model_invocations": 1,
+  "model_retry_count": 0,
+  "plugin": {
+    "plugin_id": "writing-style@yuukias-ai-skills",
+    "version": "0.5",
+    "root": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style",
+    "manifest": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style/.codex-plugin/plugin.json",
+    "skills": {
+      "writing-fidelity": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style/skills/fidelity/SKILL.md",
+      "chinese-prose": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style/skills/zh/SKILL.md"
+    },
+    "codex_bin": "/overflow/htzhu/mingcheng_new/GPT_Codex_AI_Bridge_Kit/results/bridge-core--product-scope-reset/f3c882c/live_harness/codex"
+  },
+  "jsonl_evidence": {
+    "event_counts": {
+      "thread.started": 1,
+      "item.completed": 2,
+      "turn.started": 1,
+      "turn.completed": 1
+    },
+    "skill_invocation": {
+      "method": "explicit_prompt",
+      "names": [
+        "writing-fidelity",
+        "chinese-prose"
+      ],
+      "jsonl_skill_load_events_required": false
+    }
+  },
+  "raw_jsonl_sha256": "0b2be74e13485ac545912bc0665ea4597c3451e0d6c2fddad2269edb52913b3e",
+  "candidate_sha": "f3c882c5302a1889cac62526e8f025ada0f4d1a5"
+}

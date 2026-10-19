@@ -3,7 +3,10 @@
 两个 Bridge 实现误判已修复。保存的 C6 trace 在修复后的正式 renderer 中离线回放，
 返回 NORMAL_WRITING_STYLE；本地全量回归、C1–C5 与 C6 非 live 验证通过。
 同 SHA 的 hosted CI 已完成并成功，两组执行日志均确认 486 项测试通过。
-本轮没有真实模型调用或 Gmail 发送；旧 live run 不是新候选的 C6 live PASS。
+用户随后明确授权该 exact candidate 最后一次 C6 live；本次一次模型、单 turn、
+NORMAL_WRITING_STYLE、保真检查和一次 Gmail SMTP accepted 全部通过，零重试。
+C1–C6 全部绑定同一生产候选，当前实现 Goal 已达到 READY_FOR_FINAL_CRITIC。
+该状态不是 Final Critic PASS，也不是正式发布；旧 live run 不充当新候选证据。
 
 ## 唯一生产候选
 
@@ -53,7 +56,7 @@ QUICKSTART、templates 和 version 无需行为变更，已按新候选逐字核
 | C4 | C4_PRODUCTION_CANARY.json、C4_*.json：正式 start/status/repeat start、坏进度与恢复、原生 ETA、真实 exit/recover；负例在 TARGETED_TESTS.txt | PASS |
 | C5 | C5_MACHINE_NOTIFIER.json：同机器配置双 repo、process override 无效、迁移同/冲突且保留 legacy、并发去重/跨 repo 隔离/显式 retry；四 consumer 在 TARGETED_TESTS.txt | PASS，隔离 transport |
 | C6 non-live | C6_OFFLINE_REPLAY.json、C5_C6_TRANSPORT_DEADLINE.json、TARGETED_TESTS.txt | PASS |
-| C6 live | 此新候选没有执行；本轮明确禁止第二次模型和第二封 Gmail | NOT_RUN |
+| C6 live | C6_LIVE_RAW_EVIDENCE.json、C6_MODEL_JSONL.json、C6_RENDER_RESULT.json、C6_SMTP_RECEIPT.json：本次 exact candidate 的真实单次调用与发送 | PASS |
 
 C2 的成功子进程是无模型的计数程序。C5 使用显式 temporary config/state root、
 合成凭据和本地 transport 替身；不把这些证据说成真实 Gmail。三个受控 DNS/
@@ -75,13 +78,45 @@ fixture 与生产 recovery/resolve 函数，没有真实重启机器、破坏性
 只把模型 response 替换为保存的 stdout/returncode，其他 parser、fidelity 和 render_once
 均为修复后的生产逻辑。审计钩子禁止 socket 和 model subprocess，唯一允许的 subprocess
 是只读 plugin list。结果为 NORMAL_WRITING_STYLE、failure 为空、retry=0。
-返回字段 model_invocations=1 表示一次被录制 response 替代的逻辑步骤，实际新增模型=0、
+返回字段 model_invocations=1 表示一次被录制 response 替代的逻辑步骤，该离线回放实际新增模型=0、
 SMTP=0；C6_OFFLINE_REPLAY.json 的外层字段明确记录该区别。
 
 保存源来自 `c32b910/C6_LIVE_RAW_EVIDENCE.json` 和 `C6_MODEL_JSONL.json`，
 stdout SHA-256 为 `542bbbe9b012181b10ce70553f6043a644ca3d0e0512a324ad0c4ba144c99c98`。
 旧现场确实发生一次模型、一封 fallback 邮件，SMTP accepted；这些事实及原始记录不改写。
 旧 Bridge 误报已由本轮纠正，但旧 run 不被倒签成新 SHA 的最终 live PASS。
+
+## 新候选的最后一次 C6 live
+
+用户在修复与同 SHA 非 live 证据完成后，明确授权 f3c882c 最多一次真实模型、
+一封现有配置 Gmail、零重试。正式 automatic deliver 从 16:28:04 UTC 到
+16:28:18 UTC，耗时 13.973 秒；没有重跑 C1–C5 或 C6 非 live，没有改生产源码。
+
+CODEX_HOME 仍为 `/users/a/e/aereinh/.codex`，CLI 仍为
+`/users/a/e/aereinh/bin/codex`、0.160.1。预检发现机器默认 model 已变为 gpt-6.1-sol，
+因此测试用临时 CLI 启动器仅在 exec 参数中添加 `--model gpt-5.6-sol`，调用同一
+canonical CLI；没有改机器 config、CODEX_HOME、provider 或候选源码。
+这个启动器是已归档的 Gate harness，不是新增生产组件；plugin list 原样转交，
+正式 deliver helper、render_once、parser、fidelity 与 SMTP sender 均未替换。
+完整启动参数、启动器和 canonical wrapper digest 均保留，未把 shim 隐瞒为原 CLI 路径。
+单次模型参数的正式依据是 [CLI 参数说明](https://learn.chatgpt.com/docs/developer-commands?surface=cli)。
+
+当前 installed/enabled `writing-style@yuukias-ai-skills` inventory/manifest version=0.5，
+真实存在 writing-fidelity 与 chinese-prose；生产 prompt 显式调用两个 `$skill-name`。
+returncode=0，thread.started / turn.started / turn.completed 各一次；正常输出保留
+running、UNKNOWN、任务/运行身份、0.11.0 和“不代表目标已完成”，fidelity 通过。
+stdout SHA-256 为 `0b2be74e13485ac545912bc0665ea4597c3451e0d6c2fddad2269edb52913b3e`。
+JSONL 的 default_mode_request_user_input 启动警告不是 fatal failure；没有把缺少
+skill-load event 误判为未调用 Skill，也没有声称观测到不存在的加载事件。
+
+唯一 machine config 保持 VALID / 0600，digest 与授权前一致；SMTP account、FROM、
+默认 recipient 均未变，App Password 没有输出、复制或写入证据。
+event key=`3d98e8c6534c98cb6f89272dce7db828e1341cc599ef97d0142c52f40bd9d6d1`，
+唯一 attempt=`96470c569e1d408f808c2abc78e37565`，parent_attempt_id=null，
+expression_mode=NORMAL_WRITING_STYLE，16:28:18 UTC 记录 SMTP_ACCEPTED receipt。
+这只证明 SMTP server 接受，不证明 inbox delivered。一次模型、一封邮件的本次预算已耗尽，
+没有任何自动重试，不再执行 live harness。完整原始 JSONL、renderer 返回和 receipt
+归档在新候选目录，旧 c32 证据与机器状态未删除。
 
 ## 全量回归、CI、安装与文档
 
@@ -107,8 +142,10 @@ pyproject、__init__、CI，记录独立 editable 安装指向本仓库、versio
 临时安装目录中的旧 SHA 字样只是路径 locator，不是候选身份。正式机器 0.10.0 安装未切换。
 完整核心 Python 相对 0.10.0 的净非空行增量为 3183；不含 tests/docs/results，不机械压行。
 
-## 剩余边界
+## 收尾与交接
 
-当前只剩另行授权的新候选 C6 live rerun。
-不把本轮离线 replay 或旧邮件 receipt 说成新候选的 live PASS。
-没有新建 Goal，没有改变原 Goal 的最终完成标准；当前尚不能报告整个 Goal 完成。
+当前 implementation Goal 已完成，状态 READY_FOR_FINAL_CRITIC，详见
+`f3c882c/FINAL_IMPLEMENTATION_REPORT.md` 与 `f3c882c/ACCEPTANCE_STATUS.json`。
+不新建 Goal，不改变架构或原完成标准，不用后续 results-only 提交替换生产 candidate。
+Final Critic 尚未给出最终决定；formal release、tag 和 Marketplace 均未推进，
+正式 distribution 仍为 0.10.0。后续评审与正式发布不由本次 live 授权代为完成。
