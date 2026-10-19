@@ -33,8 +33,9 @@ owner 完成闭环前声称 distribution-complete。
   `templates/host/CODEX_CONFIG_PROFILE.md`；
 - Lite/task：`codex/AGENTS_SNIPPET.md`、`templates/prompts/`；
 - 当前 0.11 收口：
-  `docs/design/0.11.0_product_scope_reset_execution_plan_v0.1_2026-10-19.md`
-  及其同版本 Goal/Kickoff；旧 Final Scope Recovery v0.1–v0.8 只作历史证据。
+  `docs/design/0.11.0_integrated_product_architecture_v4_2026-10-19.md`、
+  `docs/design/0.11.0_execution_plan_v4_2026-10-19.md`、同版 Canonical Goal 与
+  Kickoff；更早的 Product Scope Reset 与 Final Scope Recovery 只作历史证据。
 
 修改实现前先按实际 workflow inventory 检查 `automation/reviewed_handoff/`、
 `automation/agent_flow/`、各自 `tasks/*/CURRENT.json`、
