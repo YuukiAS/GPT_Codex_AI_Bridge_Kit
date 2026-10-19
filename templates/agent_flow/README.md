@@ -12,6 +12,14 @@ handoff to the existing Generic Notifier.
 Control installation must not modify `$CODEX_HOME`, create branches, modify
 remotes, start role sessions, or send notifier messages.
 
+Each task REQUEST carries `notification_policy` with notification disabled by
+default. When enabled, `apply_transition` may notify only after the transition
+predicate, required role artifact, state mutation, and post-validation all
+succeed. The semantic authority remains the corresponding Planner, Critic, or
+Final Critic artifact; Controller and Notifier never acquire semantic authority.
+Transport failure is recorded separately and never rolls back a valid
+transition.
+
 ## External GPT wait contract
 
 Control follows the Bridge Kit generic external GPT wait contract. When

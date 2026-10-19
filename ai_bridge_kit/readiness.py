@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import contextlib
 import hashlib
 import os
 import re
@@ -10,6 +11,11 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - Bridge currently supports Unix hosts
+    fcntl = None  # type: ignore[assignment]
 
 try:
     import tomllib  # type: ignore[import-not-found]
@@ -69,6 +75,101 @@ def splice_managed_agents_block(
         raise ReadinessError("BRIDGE_MANAGED_BLOCK_MARKERS_INVALID")
     marker_end = end + len(end_marker)
     return current[:start] + owned_block + current[marker_end:], "UPDATE"
+
+
+def _bridge_state_home(explicit: Path | None = None) -> Path:
+    if explicit is not None:
+        return explicit.expanduser().resolve()
+    configured = os.environ.get("AI_BRIDGE_STATE_HOME")
+    return Path(configured).expanduser().resolve() if configured else (Path.home() / ".ai-bridge").resolve()
+
+
+@contextlib.contextmanager
+def _agents_write_lock(target: Path, *, state_root: Path | None = None):
+    if fcntl is None:
+        raise ReadinessError("BRIDGE_MANAGED_INSTRUCTION_LOCK_UNAVAILABLE")
+    identity = hashlib.sha256(target.resolve().as_posix().encode("utf-8")).hexdigest()
+    lock_path = _bridge_state_home(state_root) / "locks" / "agents" / f"{identity}.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("a+b") as handle:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            yield lock_path
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def _atomic_replace_bytes(path: Path, payload: bytes, *, existing_mode: int | None) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, raw_tmp = tempfile.mkstemp(prefix=f".{path.name}.ai-bridge-", dir=path.parent)
+    tmp = Path(raw_tmp)
+    try:
+        os.fchmod(fd, existing_mode if existing_mode is not None else 0o644)
+        with os.fdopen(fd, "wb") as handle:
+            fd = -1
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp, path)
+        directory_fd = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    finally:
+        if fd >= 0:
+            os.close(fd)
+        try:
+            tmp.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def managed_agents_transaction(
+    target: Path,
+    block: bytes,
+    *,
+    begin_marker: bytes,
+    end_marker: bytes,
+    block_name: str,
+    create_prefix: bytes = b"",
+    skip_existing: bool = False,
+    state_root: Path | None = None,
+) -> dict[str, Any]:
+    """Serialize Bridge-owned AGENTS writes and preserve all marker-external bytes."""
+    target = target.resolve()
+    agents = target / "AGENTS.md"
+    with _agents_write_lock(target, state_root=state_root) as lock_path:
+        current = agents.read_bytes() if agents.is_file() else None
+        if current is not None and skip_existing and begin_marker in current and end_marker in current:
+            projected, action = current, "SKIP"
+        else:
+            projected, action = splice_managed_agents_block(
+                current,
+                block,
+                begin_marker=begin_marker,
+                end_marker=end_marker,
+                create_prefix=create_prefix,
+            )
+        projection = projected_root_agents_budget(
+            target,
+            projected,
+            block_name=block_name,
+            block_bytes=len(block),
+        )
+        if projected != current:
+            observed = agents.read_bytes() if agents.is_file() else None
+            if observed != current:
+                raise ReadinessError("BRIDGE_MANAGED_INSTRUCTION_EXTERNAL_CONFLICT")
+            mode = stat.S_IMODE(agents.stat().st_mode) if agents.exists() else None
+            _atomic_replace_bytes(agents, projected, existing_mode=mode)
+        return {
+            "action": action,
+            "path": agents,
+            "lock_path": lock_path,
+            "projection": projection,
+            "bytes": projected,
+        }
 
 
 @dataclass(frozen=True)

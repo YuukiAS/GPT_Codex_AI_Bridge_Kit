@@ -89,7 +89,7 @@ GPT 先规划，Codex 执行，再由 GPT 独立复核
 | `0.9.2` | 无人值守执行与持久运行选择语义收窄。 | 过夜、无人值守、多小时先触发启动前授权预检，不自动变成 tmux；调度器批处理或已脱离终端的服务由原生 owner 负责寿命；终端拥有且必须断线存活的 orchestrator 仍可使用 Persistent Run/tmux；进度报告继续来自项目原生证据且可独立于 tmux 使用。 |
 | `0.9.3` | 复核模式首次远端发布的受边界约束入口。 | `task bootstrap` 后，全新复核任务的第一份 REQUEST/CURRENT 元数据提交可以用 `ai-bridge reviewed-handoff task publish-first` 创建同名远端分支并绑定上游；它只支持 GitHub HTTPS、空期望 lease、单个首发元数据提交和原始 Git 对象校验，原始 `git push -u`、SSH/自定义传输、已有远端分支或包含任务内容/生产源码的提交仍走普通审批。 |
 | `0.10.0` | 执行可靠性与运行身份诊断闭环。 | 机器策略明确普通 workspace 工作先走 sandbox，拒绝后先分类再恢复；`publish-current-branch` 使用稳定 Git inspection view 和清洗后的网络/push 环境，ambient `SSH_ASKPASS` 不再导致 GitHub HTTPS 正例误拒绝但也不会被执行；`host validate/status` 会报告可执行文件、import source/version、source HEAD/dirty、local release ref 和 distribution metadata。 |
-| `0.11.0` | 执行上下文、指令预算、持久运行与自动通知表达收口（源码候选，正式分发待 `release` 授权）。 | 常用安全读取和当前分支快进保持低打扰；Bridge-managed Executor 启动前绑定 exact repo/worktree/branch/commit 与 mandatory source blob；三类根 `AGENTS.md` writer 写入前检查真实字节预算；Persistent Run 提供一个 exact tmux session 的 `start/status`；自动通知可做一次 one-shot Clear Writing，失败立即回退。旧 app-server reader/display、自动工作树交换和跨工作流 event bus 不再属于当前产品。 |
+| `0.11.0` | 执行上下文、指令预算、持久运行与机器级通知收口（源码候选，正式分发待 `release` 授权）。 | 常用安全读取和当前分支快进保持低打扰；Bridge-managed Executor 启动前绑定 exact repo/worktree/branch/commit 与 mandatory source blob；三类根 `AGENTS.md` writer 共享串行、字节保持的写事务；Persistent Run 提供 exact tmux lifecycle、显式 progress producer、ETA 和保守 recovery；Lite/Review/Control/Persistent 共用机器级一次性 Notifier。旧 app-server reader/display、自动工作树交换和跨工作流 event bus 不再属于当前产品。 |
 
 本项目采用 `0.x` 迭代方式。每个 `0.x` 小版本通常代表一项可独立使用的能力进入稳定工作流；补丁版本主要用于安全性、兼容性和默认行为修正。这不是严格的语义化版本承诺，而是当前阶段的版本阅读方式。
 
@@ -400,7 +400,7 @@ ai-bridge persistent-run prompt kickoff \
 
 这个命令会校验冻结合同并打印 Goal SHA-256 和 exact `persistent-run start` 命令；它本身不会启动 tmux。用户把这段授权发给 Codex 后，`start` 为该 run identity 创建一个 full-hash exact tmux session、一个 run-scoped supervisor、一个 binding JSON 和一个 child。只读诊断使用同一个 Goal SHA-256 调用 `persistent-run status`。兼容 active run 再次 `start` 只返回现有运行，不会创建第二个 child；terminal run 也不会用同一 run key 自动重跑。
 
-`start/status` 不需要 app-server、Progress thread、Notifier 或长期 Codex 会话。stale binding、session/binding mismatch、partial start 或 supervisor loss 都返回冲突或 `UNKNOWN/UNAVAILABLE`，不会自动 relaunch、takeover 或猜测 terminal。`exit_code` 只记录 supervisor 从真实 `child.wait()` 观察到的值。
+`start/status` 不需要 app-server、Progress thread 或长期 Codex 会话。stale binding、session/binding mismatch、partial start 或 supervisor loss 都返回冲突或 `UNKNOWN/UNAVAILABLE`，不会自动 relaunch、takeover 或猜测 terminal。先用 `persistent-run recover` 分类；只有 `SAFE_TO_CLOSE_STALE` 才能用带 exact launch id 的 `persistent-run resolve --close-stale` 关闭重复执行风险。它保留 binding 并写 `STALE_CLOSED_WITHOUT_COMPLETION`，不会伪造 exit code 或完成状态。`exit_code` 只记录 supervisor 从真实 `child.wait()` 观察到的值。
 
 当前持久运行还可以把长期任务的运行状态说清楚：
 
@@ -410,7 +410,7 @@ ai-bridge persistent-run prompt kickoff \
 - 从真实无进展证据推出的停滞状态；
 - latest/history/reconnect 查询。
 
-这些信息只报告运行事实，不是自动控制：Bridge Kit 不会因此自动重启任务、取消任务、扩资源，也不会把心跳、PID、tmux 会话或预计完成时间当成目标完成。没有配置项目原生 progress source，或文件缺失、不可读时，状态明确返回 `UNKNOWN`。
+这些信息只报告运行事实，不是自动控制：Bridge Kit 不会因此自动重启任务、取消任务、扩资源，也不会把心跳、PID、tmux 会话或预计完成时间当成目标完成。`bridge-child` 可用 `persistent-run progress update` 原子写入进度；supervisor 每 60 秒观察一次，坏 JSON、半写或暂时缺失都不会杀死 child，并保留 last-good。count/fraction 至少三个有效点且跨十分钟才会给出 ETA；stage/none、证据不足或进度重置时返回 `UNKNOWN`。
 
 GPT 写长期目标/任务时要先判断执行生命周期和寿命 owner。中文里“跑到明早”“无人值守”“多小时”不等于 tmux；“断线后继续运行一个终端拥有的 orchestrator”“恢复已有持久目标”才通常指向持久运行合同。无论选择哪种寿命 owner，都不代表必须把轻量交接任务改成复核模式 / 控制模式。如果确实需要终端拥有的断线存活能力，而仓库没有安装持久运行，也没有用户选择的等价项目原生合同，不要把任务写成普通实时 Codex 会话。
 
@@ -422,13 +422,15 @@ Codex 收到任务后会在实质执行前检查是否存在可预见、需要�
 
 权责边界是：语义决定者写结构化摘要，通知器负责验证、确定性 fallback、去重和 SMTP 发送。执行者/Codex 不能自行决定 `PASS`，表达层也不能把运行事实升级成 Goal PASS、`READY`、`RELEASE_READY` 或最终完成。
 
-正式 transport 只支持 Gmail SMTP 587 + STARTTLS + App Password。配置保持项目本地和进程环境语义，不新增 machine-scope notifier profile。先把私有配置同步到当前项目，再检查或发送测试邮件：
+正式 transport 只支持 Gmail SMTP 587 + STARTTLS + App Password。一台机器只配置一次，固定保存在 `~/.ai-bridge/private/notifier.env`；运行状态在 `~/.ai-bridge/state/notifier/`。新仓库不会复制 secret，生产入口也不会让进程级 `AI_BRIDGE_NOTIFY_*` 覆盖机器配置。可先从既有 private source 原子导入，再验证并发送测试邮件：
 
 ```bash
-cd /path/to/project
 ai-bridge private sync --profile notifier
+ai-bridge notifier validate
 ai-bridge notifier send-test
 ```
+
+旧项目内的 notifier 配置只可显式迁移：`ai-bridge notifier migrate-legacy --project /path/to/repo`。迁移不会删除旧文件；内容冲突时 fail closed。自动通知默认 `OFF`，只有 task/REQUEST/contract 明确启用并通过 readiness 后才发送。
 
 任务完成后，工作流可以生成：
 
@@ -442,7 +444,7 @@ results/<task_key>/notification_brief.json
 ai-bridge notifier send results/<task_key>/notification_brief.json
 ```
 
-推荐这种一次性发送方式，不要求为了通知常驻一个 tmux、systemd、app-server 或后台轮询进程。manual `send` 与 `send-test` 保持 0.10 行为，不经过 Clear Writing adapter。
+推荐这种一次性发送方式，不要求为了通知常驻一个 tmux、systemd、app-server 或后台轮询进程。manual `send` 与 `send-test` 保持 0.10 行为，不经过 Clear Writing adapter。`send-test` 成功仅证明 SMTP server 已接受消息，不等于邮件已经进入收件箱。
 
 向后兼容的旧 `notification_brief.json` 仍表示终态或人工决策通知。需要工作流继续运行的非阻塞里程碑通知时，可以写入：
 
@@ -456,7 +458,7 @@ results/<task_key>/notifications/<event>.json
 codex exec --ephemeral --json --sandbox read-only --skip-git-repo-check -C <neutral-dir> -
 ```
 
-只有 JSONL 恰好包含一个 turn、两个正式 skill 都有真实消费证据、且数字、状态、`UNKNOWN`、路径、版本和结论强度通过机械保真检查时，模型文本才进入现有 transport。plugin、skill、模型、JSONL、turn 或保真检查任一失败，立即使用确定性 fallback，模型 retry 为 0；fallback 仍尝试 transport。表达或邮件失败不改变业务状态，也不恢复 app-server、persistent reader/session、Progress display thread 或跨工作流 event bus。
+只有 JSONL 恰好包含一个 turn、两个正式 skill 都有真实消费证据、且数字、状态、`UNKNOWN`、路径、版本和结论强度通过机械保真检查时，模型文本才进入现有 transport。plugin、skill、模型、JSONL、turn 或保真检查任一失败，立即使用确定性 fallback，模型 retry 为 0；fallback 仍尝试 transport。一次自动投递有 120 秒总 deadline；transport 开始后结果不明会记录 `DELIVERY_UNKNOWN`，只能显式确认可能重复后 retry。表达或邮件失败不改变业务状态、不杀 primary child，也不恢复 app-server、persistent reader/session、Progress display thread 或跨工作流 event bus。
 
 运行层进展可以报告当前进度或阻塞，但不能声称语义通过、`READY`、发布就绪或最终完成。邮件密码等秘密配置保存在本地私有文件，不应提交到项目仓库。
 
@@ -809,7 +811,9 @@ ai-bridge persistent-run prompt kickoff --target /path/to/project --goal prompts
 
 # 邮件通知
 ai-bridge private sync --profile notifier
+ai-bridge notifier validate
 ai-bridge notifier send-test
+ai-bridge notifier status
 ai-bridge notifier send results/<task_key>/notification_brief.json
 
 # Overleaf

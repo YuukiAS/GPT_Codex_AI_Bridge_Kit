@@ -7,7 +7,9 @@ import os
 import subprocess
 import tempfile
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 from ai_bridge_kit import notifier
@@ -55,6 +57,243 @@ def write_notification(root: Path, brief: dict, name: str = "stage_3_pass.json")
 
 
 class NotifierTests(unittest.TestCase):
+    def machine_config(self, root: Path, *, recipient: str = "recipient@example.org") -> tuple[Path, dict[str, str]]:
+        machine = root / "machine"
+        values = {
+            "AI_BRIDGE_NOTIFY_SMTP_USER": "sender@example.org",
+            "AI_BRIDGE_NOTIFY_SMTP_PASSWORD": "app-password",
+            "AI_BRIDGE_NOTIFY_FROM": "sender@example.org",
+            "AI_BRIDGE_NOTIFY_TO": recipient,
+            "AI_BRIDGE_NOTIFY_SUBJECT_PREFIX": "[Bridge]",
+        }
+        path = notifier.machine_config_path(machine)
+        notifier.atomic_write_bytes(
+            path,
+            "".join(f"{key}={value}\n" for key, value in values.items()).encode("utf-8"),
+            mode=0o600,
+        )
+        return machine, values
+
+    def auto_request(self, *, source_event_id: str = "event-1") -> dict:
+        return notifier.notification_request(
+            project="demo",
+            task_key="repo--task",
+            consumer="lite",
+            fact_class="runtime_terminal",
+            status="EXITED_0",
+            decision_authority="Runtime",
+            summary="Lite process exited; completion is not inferred.",
+            next_action="Check positive completion evidence.",
+            duration_seconds=3,
+            runtime_id="runtime-1",
+            source_event_id=source_event_id,
+            recipient_override="",
+        )
+
+    def test_production_environment_cannot_override_machine_transport_config(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            machine, values = self.machine_config(root)
+            conflicts = {
+                "AI_BRIDGE_NOTIFY_SMTP_USER": "attacker@example.org",
+                "AI_BRIDGE_NOTIFY_SMTP_PASSWORD": "wrong",
+                "AI_BRIDGE_NOTIFY_FROM": "wrong@example.org",
+                "AI_BRIDGE_NOTIFY_TO": "wrong@example.org",
+                "AI_BRIDGE_NOTIFY_SUBJECT_PREFIX": "[WRONG]",
+            }
+            with mock.patch.dict(os.environ, conflicts):
+                effective = notifier.notifier_env(config_root=machine)
+            self.assertEqual(effective, values)
+
+    def test_legacy_migration_same_conflict_and_no_delete(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            project = root / "project"
+            legacy = project / ".ai-bridge/private/notifier.env"
+            legacy.parent.mkdir(parents=True)
+            legacy.write_text(
+                "AI_BRIDGE_NOTIFY_SMTP_USER=sender@example.org\n"
+                "AI_BRIDGE_NOTIFY_SMTP_PASSWORD=secret\n"
+                "AI_BRIDGE_NOTIFY_FROM=sender@example.org\n"
+                "AI_BRIDGE_NOTIFY_TO=recipient@example.org\n",
+                encoding="utf-8",
+            )
+            machine = root / "machine"
+            first = notifier.migrate_legacy(project, config_root=machine)
+            second = notifier.migrate_legacy(project, config_root=machine)
+            self.assertEqual(first.status, "MIGRATED")
+            self.assertEqual(second.status, "NOOP_ALREADY_MIGRATED")
+            self.assertTrue(legacy.exists())
+            legacy.write_text(legacy.read_text(encoding="utf-8").replace("recipient@example.org", "other@example.org"), encoding="utf-8")
+            conflict = notifier.migrate_legacy(project, config_root=machine)
+            self.assertEqual(conflict.status, "MACHINE_CONFIG_CONFLICT")
+            self.assertIn("recipient@example.org", notifier.machine_config_path(machine).read_text(encoding="utf-8"))
+
+    def test_notification_request_allowlist_and_header_injection(self) -> None:
+        request = self.auto_request()
+        self.assertEqual(notifier.validate_notification_request(request), [])
+        unsafe = dict(request, details="private log")
+        self.assertTrue(any("unsupported automatic fields" in item for item in notifier.validate_notification_request(unsafe)))
+        injected = dict(request, recipient_override="person@example.org\nBcc: hidden@example.org")
+        self.assertTrue(any("forbidden newline" in item for item in notifier.validate_notification_request(injected)))
+        self.assertNotIn("recipient_override", notifier.expression_facts(request))
+
+    def test_cross_repo_event_identity_and_concurrent_claim(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            machine, config = self.machine_config(root)
+            request = self.auto_request()
+            key_a = notifier.auto_event_key(request, repo_identity="repo-a", resolved_recipient="recipient@example.org")
+            key_b = notifier.auto_event_key(request, repo_identity="repo-b", resolved_recipient="recipient@example.org")
+            self.assertNotEqual(key_a, key_b)
+
+            def claim() -> str:
+                return notifier.claim_event(request, repo_identity="repo-a", config=config, state_root=machine)[0]
+
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                statuses = sorted(pool.map(lambda _item: claim(), range(2)))
+            self.assertEqual(statuses, ["CLAIMED", "DUPLICATE"])
+
+    def test_send_test_readiness_binds_current_config_digest(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            machine, config = self.machine_config(root)
+            result = notifier.send_test(
+                env=config,
+                config_root=machine,
+                state_root=machine,
+                state_path=machine / "legacy.json",
+                sender=lambda _brief, _env: None,
+            )
+            self.assertEqual(result.status, "sent")
+            self.assertTrue(notifier.notifier_readiness(config_root=machine, state_root=machine)["transport_ready"])
+            notifier.machine_config_path(machine).write_text(
+                notifier.machine_config_path(machine).read_text(encoding="utf-8").replace("recipient@example.org", "new@example.org"),
+                encoding="utf-8",
+            )
+            os.chmod(notifier.machine_config_path(machine), 0o600)
+            self.assertFalse(notifier.notifier_readiness(config_root=machine, state_root=machine)["transport_ready"])
+
+    def test_inline_auto_delivery_falls_back_once_and_records_smtp_accepted(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            machine, config = self.machine_config(root)
+            request = self.auto_request()
+            status, directory, _ = notifier.claim_event(
+                request,
+                repo_identity="repo-a",
+                config=config,
+                state_root=machine,
+            )
+            self.assertEqual(status, "CLAIMED")
+
+            def no_plugin(command, **_kwargs):
+                self.assertEqual(command[1:4], ["plugin", "list", "--json"])
+                return SimpleNamespace(returncode=0, stdout='{"plugins": []}', stderr="")
+
+            sent = []
+            result = notifier.deliver_event_inline(
+                directory,
+                config=config,
+                expression_runner=no_plugin,
+                sender=lambda request, _config, **kwargs: sent.append((request, kwargs)),
+            )
+            self.assertEqual(result.status, "SMTP_ACCEPTED")
+            self.assertEqual(len(sent), 1)
+            latest = json.loads((directory / "latest.json").read_text(encoding="utf-8"))
+            self.assertEqual(latest["stage"], "SMTP_ACCEPTED")
+            self.assertEqual(latest["model_invocations"], 0)
+
+    def test_deadline_after_transport_is_unknown_and_retry_requires_confirmation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            machine, config = self.machine_config(root)
+            request = self.auto_request()
+
+            class HangingProcess:
+                returncode = None
+
+                def __init__(self, command):
+                    directory = Path(command[command.index("--event-dir") + 1])
+                    notifier.write_json(
+                        directory / "latest.json",
+                        {
+                            "schema": "ai-bridge.notifier.attempt.v1",
+                            "attempt_id": "attempt-1",
+                            "event_key": directory.name,
+                            "stage": "TRANSPORT_STARTED",
+                        },
+                    )
+                    self.terminated = False
+
+                def wait(self, timeout=None):
+                    if not self.terminated:
+                        raise subprocess.TimeoutExpired("helper", timeout)
+                    self.returncode = -15
+                    return self.returncode
+
+                def terminate(self):
+                    self.terminated = True
+
+                def kill(self):
+                    self.terminated = True
+
+            unknown = notifier.deliver_notification(
+                request,
+                repo_identity="repo-a",
+                config_root=machine,
+                state_root=machine,
+                deadline_seconds=0.01,
+                require_ready=False,
+                config=config,
+                popen=lambda command, **_kwargs: HangingProcess(command),
+            )
+            self.assertEqual(unknown.status, "DELIVERY_UNKNOWN")
+            duplicate = notifier.deliver_notification(
+                request,
+                repo_identity="repo-a",
+                config_root=machine,
+                state_root=machine,
+                require_ready=False,
+                config=config,
+                popen=lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("must not resend")),
+            )
+            self.assertEqual(duplicate.status, "in_progress_or_requires_retry")
+            refused = notifier.retry_event(unknown.event_key, config_root=machine, state_root=machine)
+            self.assertEqual(refused.status, "CONFIRM_POSSIBLE_DUPLICATE_REQUIRED")
+
+            class AcceptedProcess:
+                returncode = 0
+
+                def __init__(self, command):
+                    directory = Path(command[command.index("--event-dir") + 1])
+                    parent = command[command.index("--parent-attempt-id") + 1]
+                    notifier.write_json(
+                        directory / "latest.json",
+                        {
+                            "schema": "ai-bridge.notifier.attempt.v1",
+                            "attempt_id": "attempt-2",
+                            "parent_attempt_id": parent,
+                            "event_key": directory.name,
+                            "stage": "SMTP_ACCEPTED",
+                            "smtp_accepted_at": notifier.utc_now(),
+                        },
+                    )
+
+                def wait(self, timeout=None):
+                    return 0
+
+            accepted = notifier.retry_event(
+                unknown.event_key,
+                confirm_possible_duplicate=True,
+                config_root=machine,
+                state_root=machine,
+                popen=lambda command, **_kwargs: AcceptedProcess(command),
+            )
+            self.assertEqual(accepted.status, "SMTP_ACCEPTED")
+            latest = json.loads((notifier.event_directory(unknown.event_key, state_root=machine) / "latest.json").read_text(encoding="utf-8"))
+            self.assertEqual(latest["parent_attempt_id"], "attempt-1")
+
     def test_send_terminal_brief_statuses(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

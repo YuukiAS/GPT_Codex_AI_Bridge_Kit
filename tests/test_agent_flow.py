@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import contextlib
 import io
+import os
 import subprocess
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest import mock
 
 from ai_bridge_kit import agent_flow
 from ai_bridge_kit import visual_review
@@ -368,7 +370,9 @@ class AgentFlowTests(unittest.TestCase):
     def test_existing_cli_commands_and_agent_flow_cli_are_available(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "project"
-            with contextlib.redirect_stdout(io.StringIO()):
+            with contextlib.redirect_stdout(io.StringIO()), mock.patch.dict(
+                os.environ, {"AI_BRIDGE_STATE_HOME": str(Path(tmp) / "state")}
+            ):
                 self.assertEqual(main(["init", "--target", str(target)]), 0)
             with contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(main(["validate", "--target", str(target)]), 0)
@@ -1064,6 +1068,24 @@ class AgentFlowTests(unittest.TestCase):
             final["review_target_id"] = "old-target"
             agent_flow.write_json(root / "FINAL_CRITIC_AUDIT.json", final)
             self.assertTrue(any("review_target_id mismatch" in error for error in agent_flow.validate_final_critic_artifact(target, "001_toy")))
+
+    def test_control_notification_failure_does_not_roll_back_valid_semantic_transition(self) -> None:
+        tmp, target = self.make_project()
+        with tmp:
+            root = agent_flow.task_root(target, "001_toy")
+            request_path = root / "REQUEST.json"
+            request = agent_flow.load_json(request_path)
+            request["notification_policy"] = {"notify": True, "recipient_override": ""}
+            agent_flow.write_json(request_path, request)
+            write(root / "PLANNER_DRAFT.md", "# Draft\n")
+            self.apply_next(target, "PLAN_REQUESTED", "PLAN_READY_FOR_CRITIC")
+            self.write_critic_freeze(target)
+            with mock.patch("ai_bridge_kit.notifier.deliver_notification", side_effect=RuntimeError("synthetic transport failure")):
+                result = self.apply_next(target, "PLAN_READY_FOR_CRITIC", "PLAN_FROZEN")
+            stored = agent_flow.load_json(root / "CURRENT.json")
+            self.assertEqual(stored["state"], "PLAN_FROZEN")
+            self.assertEqual(result["state"], "PLAN_FROZEN")
+            self.assertEqual(result["_notification_result"]["status"], "FAILED")
 
     def test_required_evidence_file_and_sha_are_enforced(self) -> None:
         tmp, target = self.make_project()

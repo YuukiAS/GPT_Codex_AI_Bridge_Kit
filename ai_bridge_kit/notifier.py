@@ -5,9 +5,12 @@ import hashlib
 import html
 import json
 import os
+import re
 import smtplib
 import subprocess
+import sys
 import time
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.message import EmailMessage
@@ -32,8 +35,49 @@ COMMON_BRIEF_FIELDS = {
 }
 LEGACY_REQUIRED_BRIEF_FIELDS = COMMON_BRIEF_FIELDS | {"terminal_status"}
 STRUCTURED_REQUIRED_BRIEF_FIELDS = COMMON_BRIEF_FIELDS | {"event_type", "status", "decision_authority"}
-STATE_PATH = Path(".ai-bridge") / "state" / "notifier.json"
-PRIVATE_ENV_PATH = Path(".ai-bridge") / "private" / "notifier.env"
+MACHINE_HOME = Path.home() / ".ai-bridge"
+STATE_PATH = MACHINE_HOME / "state" / "notifier" / "legacy.json"
+PRIVATE_ENV_PATH = MACHINE_HOME / "private" / "notifier.env"
+NOTIFICATION_REQUEST_SCHEMA = "ai-bridge.notification_request.v1"
+AUTO_CONSUMERS = {"lite", "review", "control", "persistent"}
+AUTO_FIELDS = {
+    "schema",
+    "project",
+    "task_key",
+    "consumer",
+    "fact_class",
+    "status",
+    "decision_authority",
+    "summary",
+    "next_action",
+    "stage",
+    "completed",
+    "total",
+    "fraction",
+    "eta",
+    "eta_low",
+    "eta_high",
+    "duration_seconds",
+    "branch",
+    "version",
+    "run_id",
+    "runtime_id",
+    "source_event_id",
+    "recipient_override",
+}
+AUTO_REQUIRED_FIELDS = {
+    "schema",
+    "project",
+    "task_key",
+    "consumer",
+    "fact_class",
+    "status",
+    "decision_authority",
+    "summary",
+    "next_action",
+    "source_event_id",
+}
+AUTO_DELIVER_DEADLINE_SECONDS = 120.0
 STATUS_LABELS = {
     "complete": "完成",
     "blocked": "阻塞",
@@ -62,6 +106,21 @@ class NotifierResult:
     message: str = ""
 
 
+def machine_home(explicit: Path | None = None) -> Path:
+    if explicit is not None:
+        return explicit.expanduser().resolve()
+    configured = os.environ.get("AI_BRIDGE_STATE_HOME")
+    return Path(configured).expanduser().resolve() if configured else (Path.home() / ".ai-bridge").resolve()
+
+
+def machine_config_path(config_root: Path | None = None) -> Path:
+    return machine_home(config_root) / "private" / "notifier.env"
+
+
+def notifier_state_root(state_root: Path | None = None) -> Path:
+    return machine_home(state_root) / "state" / "notifier"
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
@@ -70,11 +129,36 @@ def load_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def write_json(path: Path, payload: dict[str, Any]) -> None:
+def atomic_write_bytes(path: Path, payload: bytes, *, mode: int = 0o600) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    tmp.replace(path)
+    temporary = path.with_name(f".{path.name}.tmp-{os.getpid()}-{uuid.uuid4().hex}")
+    fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            fd = -1
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+        directory_fd = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    finally:
+        if fd >= 0:
+            os.close(fd)
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def write_json(path: Path, payload: dict[str, Any]) -> None:
+    atomic_write_bytes(
+        path,
+        (json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8"),
+    )
 
 
 def load_state(path: Path = STATE_PATH) -> dict[str, Any]:
@@ -117,18 +201,17 @@ def load_env_file(path: Path) -> dict[str, str]:
     return values
 
 
-def notifier_env(env: dict[str, str] | None = None, env_file: Path = PRIVATE_ENV_PATH) -> dict[str, str]:
-    merged = load_env_file(env_file)
-    source = os.environ if env is None else env
-    for key in [
-        "AI_BRIDGE_NOTIFY_SMTP_USER",
-        "AI_BRIDGE_NOTIFY_SMTP_PASSWORD",
-        "AI_BRIDGE_NOTIFY_FROM",
-        "AI_BRIDGE_NOTIFY_TO",
-        "AI_BRIDGE_NOTIFY_SUBJECT_PREFIX",
-    ]:
-        if source.get(key):
-            merged[key] = source[key]
+def notifier_env(
+    env: dict[str, str] | None = None,
+    env_file: Path | None = None,
+    *,
+    config_root: Path | None = None,
+) -> dict[str, str]:
+    """Load the one machine config; explicit ``env`` is test dependency injection only."""
+    path = env_file if env_file is not None else machine_config_path(config_root)
+    merged = load_env_file(path)
+    if env is not None:
+        merged.update(env)
     return merged
 
 
@@ -215,6 +298,264 @@ def require_email_config(env: dict[str, str]) -> list[str]:
     if not recipients(env):
         missing.append("AI_BRIDGE_NOTIFY_TO")
     return missing
+
+
+def validate_machine_config(
+    *,
+    config_root: Path | None = None,
+    config: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    path = machine_config_path(config_root)
+    values = dict(config) if config is not None else load_env_file(path)
+    errors = require_email_config(values)
+    for key, value in values.items():
+        if key.startswith("AI_BRIDGE_NOTIFY_") and ("\r" in value or "\n" in value):
+            errors.append(f"{key} contains a forbidden newline")
+    mode = None
+    if config is None and path.exists():
+        mode = path.stat().st_mode & 0o777
+        if mode != 0o600:
+            errors.append(f"machine config mode must be 0600, found {mode:04o}")
+    return {
+        "status": "VALID" if not errors else "INVALID",
+        "config_path": path.as_posix(),
+        "mode": mode,
+        "missing_or_invalid": sorted(set(errors)),
+        "config": values,
+    }
+
+
+def redacted_config_digest(values: dict[str, str]) -> str:
+    transport = {
+        key: values[key]
+        for key in sorted(values)
+        if key.startswith("AI_BRIDGE_NOTIFY_")
+    }
+    return hashlib.sha256(
+        json.dumps(transport, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
+def readiness_path(state_root: Path | None = None) -> Path:
+    return notifier_state_root(state_root) / "readiness.json"
+
+
+def notifier_readiness(
+    *,
+    config_root: Path | None = None,
+    state_root: Path | None = None,
+    config: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    validation = validate_machine_config(config_root=config_root, config=config)
+    values = validation.pop("config")
+    digest = redacted_config_digest(values) if not validation["missing_or_invalid"] else ""
+    evidence = None
+    path = readiness_path(state_root)
+    if path.is_file():
+        try:
+            evidence = load_json(path)
+        except (OSError, json.JSONDecodeError):
+            evidence = None
+    ready = bool(
+        validation["status"] == "VALID"
+        and evidence
+        and evidence.get("config_digest") == digest
+        and evidence.get("transport_test_accepted_at")
+    )
+    return {
+        **validation,
+        "config_digest": digest,
+        "transport_ready": ready,
+        "transport_test_accepted_at": evidence.get("transport_test_accepted_at") if evidence else None,
+    }
+
+
+def require_notifier_ready(
+    *,
+    config_root: Path | None = None,
+    state_root: Path | None = None,
+    config: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    status = notifier_readiness(config_root=config_root, state_root=state_root, config=config)
+    if not status["transport_ready"]:
+        raise ValueError("NOTIFIER_NOT_READY: run ai-bridge notifier validate and ai-bridge notifier send-test")
+    return status
+
+
+def migrate_legacy(
+    project: Path,
+    *,
+    config_root: Path | None = None,
+) -> NotifierResult:
+    project = project.expanduser().resolve()
+    legacy = project / ".ai-bridge" / "private" / "notifier.env"
+    if not legacy.is_file():
+        return NotifierResult("LEGACY_CONFIG_MISSING", message=legacy.as_posix())
+    values = load_env_file(legacy)
+    validation = validate_machine_config(config=values)
+    if validation["status"] != "VALID":
+        return NotifierResult("LEGACY_CONFIG_INVALID", message="; ".join(validation["missing_or_invalid"]))
+    destination = machine_config_path(config_root)
+    if destination.exists():
+        current_values = load_env_file(destination)
+        if redacted_config_digest(current_values) == redacted_config_digest(values):
+            return NotifierResult("NOOP_ALREADY_MIGRATED", message=destination.as_posix())
+        return NotifierResult("MACHINE_CONFIG_CONFLICT", message="machine config exists with a different digest")
+    atomic_write_bytes(destination, legacy.read_bytes(), mode=0o600)
+    return NotifierResult("MIGRATED", message=destination.as_posix())
+
+
+def _bounded_auto_string(name: str, value: Any, *, maximum: int = 1024, required: bool = False) -> str:
+    text = str(value or "")
+    if required and not text:
+        raise ValueError(f"NotificationRequest {name} is required")
+    if len(text.encode("utf-8")) > maximum:
+        raise ValueError(f"NotificationRequest {name} exceeds {maximum} bytes")
+    if "\r" in text or "\n" in text:
+        raise ValueError(f"NotificationRequest {name} contains a forbidden newline")
+    return text
+
+
+def validate_notification_request(request: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    extra = sorted(set(request) - AUTO_FIELDS)
+    missing = sorted(AUTO_REQUIRED_FIELDS - set(request))
+    if extra:
+        errors.append("unsupported automatic fields: " + ", ".join(extra))
+    if missing:
+        errors.append("missing automatic fields: " + ", ".join(missing))
+    if request.get("schema") != NOTIFICATION_REQUEST_SCHEMA:
+        errors.append(f"schema must be {NOTIFICATION_REQUEST_SCHEMA}")
+    if request.get("consumer") not in AUTO_CONSUMERS:
+        errors.append("consumer must be lite, review, control, or persistent")
+    for name in AUTO_FIELDS & set(request):
+        value = request.get(name)
+        if isinstance(value, str):
+            try:
+                _bounded_auto_string(name, value, maximum=2048 if name in {"summary", "next_action"} else 512)
+            except ValueError as exc:
+                errors.append(str(exc))
+    for name in ("completed", "total"):
+        if name in request and request[name] is not None and (not isinstance(request[name], int) or request[name] < 0):
+            errors.append(f"{name} must be a non-negative integer")
+    if request.get("completed") is not None and request.get("total") is not None and request["completed"] > request["total"]:
+        errors.append("completed must not exceed total")
+    if request.get("fraction") is not None:
+        fraction = request["fraction"]
+        if not isinstance(fraction, (int, float)) or not 0 <= float(fraction) <= 1:
+            errors.append("fraction must be between 0 and 1")
+    consumer = request.get("consumer")
+    authority = request.get("decision_authority")
+    fact_class = str(request.get("fact_class") or "")
+    if consumer in {"lite", "persistent"}:
+        if authority != "Runtime" or not fact_class.startswith("runtime_"):
+            errors.append(f"{consumer} may send runtime facts only with decision_authority=Runtime")
+    if consumer == "review" and authority != "Reviewer":
+        errors.append("review notification authority must be Reviewer")
+    if consumer == "control" and authority not in SEMANTIC_DECISION_AUTHORITIES:
+        errors.append("control notification authority must be an existing semantic role")
+    status = str(request.get("status") or "")
+    if consumer in {"lite", "persistent"} and re.search(r"(?i)(^|\W)(PASS|READY|RELEASE_READY|COMPLETE)(\W|$)", status):
+        errors.append("runtime status must not claim semantic PASS/READY/release completion")
+    return errors
+
+
+def notification_request(**facts: Any) -> dict[str, Any]:
+    request = {"schema": NOTIFICATION_REQUEST_SCHEMA, **facts}
+    errors = validate_notification_request(request)
+    if errors:
+        raise ValueError("; ".join(errors))
+    return request
+
+
+def parse_notification_policy_text(text: str) -> dict[str, str]:
+    match = re.search(r"(?ms)^## Notification\s*$\n(.*?)(?=^## |\Z)", text)
+    if not match:
+        raise ValueError("Notification section missing")
+    fields: dict[str, str] = {}
+    for raw in match.group(1).splitlines():
+        line = raw.strip().removeprefix("-").strip()
+        key, separator, value = line.partition(":")
+        if separator:
+            fields[key.strip().lower().replace(" ", "_")] = value.strip()
+    notify = fields.get("notify", "").upper()
+    recipient = fields.get("recipient_override", "")
+    if notify not in {"OFF", "ON"}:
+        raise ValueError("Notification Notify must be OFF or ON")
+    if not recipient:
+        raise ValueError("Notification Recipient override must be NONE or an explicit address")
+    if recipient != "NONE" and ("@" not in recipient or "\r" in recipient or "\n" in recipient):
+        raise ValueError("Notification Recipient override is invalid")
+    return {"notify": notify, "recipient_override": "" if recipient == "NONE" else recipient}
+
+
+def expression_facts(request: dict[str, Any]) -> dict[str, Any]:
+    errors = validate_notification_request(request)
+    if errors:
+        raise ValueError("; ".join(errors))
+    return {key: value for key, value in request.items() if key != "recipient_override"}
+
+
+def resolve_recipient(request: dict[str, Any], config: dict[str, str]) -> str:
+    override = str(request.get("recipient_override") or "").strip()
+    resolved = override or ",".join(recipients(config))
+    return _bounded_auto_string("resolved_recipient", resolved, maximum=512, required=True)
+
+
+def auto_event_key(request: dict[str, Any], *, repo_identity: str, resolved_recipient: str) -> str:
+    payload = {
+        "repo_identity": repo_identity,
+        "task_key": request["task_key"],
+        "consumer": request["consumer"],
+        "fact_class": request["fact_class"],
+        "source_event_id": request["source_event_id"],
+        "runtime_id": request.get("runtime_id", ""),
+        "resolved_recipient": resolved_recipient,
+    }
+    return hashlib.sha256(
+        json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
+def event_directory(event_key_value: str, *, state_root: Path | None = None) -> Path:
+    if not re.fullmatch(r"[0-9a-f]{64}", event_key_value):
+        raise ValueError("event key must be 64 lowercase hex")
+    return notifier_state_root(state_root) / "events" / event_key_value
+
+
+def claim_event(
+    request: dict[str, Any],
+    *,
+    repo_identity: str,
+    config: dict[str, str],
+    state_root: Path | None = None,
+) -> tuple[str, Path, str]:
+    errors = validate_notification_request(request)
+    if errors:
+        raise ValueError("; ".join(errors))
+    recipient = resolve_recipient(request, config)
+    key = auto_event_key(request, repo_identity=repo_identity, resolved_recipient=recipient)
+    directory = event_directory(key, state_root=state_root)
+    directory.mkdir(parents=True, exist_ok=True)
+    claim = directory / "claim.json"
+    payload = {
+        "schema": "ai-bridge.notifier.claim.v1",
+        "event_key": key,
+        "claimed_at": utc_now(),
+        "repo_identity": repo_identity,
+        "resolved_recipient": recipient,
+        "request": request,
+    }
+    raw = (json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8")
+    try:
+        fd = os.open(claim, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        return "DUPLICATE", directory, recipient
+    with os.fdopen(fd, "wb") as handle:
+        handle.write(raw)
+        handle.flush()
+        os.fsync(handle.fileno())
+    return "CLAIMED", directory, recipient
 
 
 def subject_for_brief(brief: dict[str, Any], env: dict[str, str], *, test: bool = False) -> str:
@@ -334,15 +675,317 @@ def build_email_message(brief: dict[str, Any], env: dict[str, str], *, test: boo
     return message
 
 
-def send_email(brief: dict[str, Any], env: dict[str, str], *, test: bool = False) -> None:
+def send_email(
+    brief: dict[str, Any],
+    env: dict[str, str],
+    *,
+    test: bool = False,
+    timeout: float = 30,
+) -> None:
     missing = require_email_config(env)
     if missing:
         raise ValueError("missing email config: " + ", ".join(missing))
     message = build_email_message(brief, env, test=test)
-    with smtplib.SMTP("smtp.gmail.com", 587, timeout=30) as smtp:
+    with smtplib.SMTP("smtp.gmail.com", 587, timeout=max(0.1, timeout)) as smtp:
         smtp.starttls()
         smtp.login(env["AI_BRIDGE_NOTIFY_SMTP_USER"], env["AI_BRIDGE_NOTIFY_SMTP_PASSWORD"])
         smtp.send_message(message)
+
+
+def render_auto_plain(request: dict[str, Any]) -> str:
+    facts = expression_facts(request)
+    labels = [
+        ("状态", "status"),
+        ("结论", "summary"),
+        ("下一步", "next_action"),
+        ("项目", "project"),
+        ("任务", "task_key"),
+        ("消费者", "consumer"),
+        ("事实类型", "fact_class"),
+        ("事实来源", "decision_authority"),
+        ("阶段", "stage"),
+        ("完成数", "completed"),
+        ("总数", "total"),
+        ("比例", "fraction"),
+        ("ETA", "eta"),
+        ("ETA 下界", "eta_low"),
+        ("ETA 上界", "eta_high"),
+        ("运行秒数", "duration_seconds"),
+        ("branch", "branch"),
+        ("version", "version"),
+        ("run_id", "run_id"),
+        ("runtime_id", "runtime_id"),
+    ]
+    return "\n".join(f"{label}：{facts[key]}" for label, key in labels if facts.get(key) not in {None, ""}) + "\n"
+
+
+def build_auto_email(
+    request: dict[str, Any],
+    config: dict[str, str],
+    *,
+    resolved_recipient: str,
+    expressed: str,
+) -> EmailMessage:
+    errors = validate_notification_request(request)
+    if errors:
+        raise ValueError("; ".join(errors))
+    sender = config.get("AI_BRIDGE_NOTIFY_FROM") or config.get("AI_BRIDGE_NOTIFY_SMTP_USER", "")
+    prefix = _bounded_auto_string(
+        "subject_prefix",
+        config.get("AI_BRIDGE_NOTIFY_SUBJECT_PREFIX", "[AI Bridge]"),
+        maximum=128,
+        required=True,
+    )
+    message = EmailMessage()
+    message["From"] = _bounded_auto_string("from", sender, maximum=320, required=True)
+    message["To"] = _bounded_auto_string("to", resolved_recipient, maximum=512, required=True)
+    message["Subject"] = f"{prefix} {request['status']}：{request['task_key']}"
+    body = expressed.strip() + "\n"
+    message.set_content(body)
+    message.add_alternative(f"<html><body><p>{html.escape(body.strip()).replace(chr(10), '<br>')}</p></body></html>", subtype="html")
+    return message
+
+
+def send_auto_email(
+    request: dict[str, Any],
+    config: dict[str, str],
+    *,
+    resolved_recipient: str,
+    expressed: str,
+    timeout: float,
+) -> None:
+    missing = require_email_config(config)
+    if missing:
+        raise ValueError("missing email config: " + ", ".join(missing))
+    message = build_auto_email(request, config, resolved_recipient=resolved_recipient, expressed=expressed)
+    with smtplib.SMTP("smtp.gmail.com", 587, timeout=max(0.1, timeout)) as smtp:
+        smtp.starttls()
+        smtp.login(config["AI_BRIDGE_NOTIFY_SMTP_USER"], config["AI_BRIDGE_NOTIFY_SMTP_PASSWORD"])
+        smtp.send_message(message)
+
+
+def _attempt_path(directory: Path, attempt_id: str) -> Path:
+    return directory / "attempts" / f"{attempt_id}.json"
+
+
+def _write_attempt(directory: Path, attempt: dict[str, Any]) -> None:
+    write_json(_attempt_path(directory, str(attempt["attempt_id"])), attempt)
+    write_json(directory / "latest.json", attempt)
+
+
+def _read_latest_attempt(directory: Path) -> dict[str, Any] | None:
+    path = directory / "latest.json"
+    if not path.is_file():
+        return None
+    try:
+        payload = load_json(path)
+    except (OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def deliver_event_inline(
+    directory: Path,
+    *,
+    config_root: Path | None = None,
+    config: dict[str, str] | None = None,
+    deadline_seconds: float = AUTO_DELIVER_DEADLINE_SECONDS,
+    expression_runner: Callable[..., Any] = subprocess.run,
+    sender: Callable[..., None] | None = None,
+    parent_attempt_id: str | None = None,
+    monotonic: Callable[[], float] = time.monotonic,
+) -> NotifierResult:
+    claim = load_json(directory / "claim.json")
+    request = claim.get("request")
+    if not isinstance(request, dict):
+        return NotifierResult("FAILED", event_key=str(claim.get("event_key") or ""), message="frozen request missing")
+    errors = validate_notification_request(request)
+    if errors:
+        return NotifierResult("FAILED", event_key=str(claim.get("event_key") or ""), message="; ".join(errors))
+    active_config = dict(config) if config is not None else notifier_env(config_root=config_root)
+    attempt_id = uuid.uuid4().hex
+    attempt = {
+        "schema": "ai-bridge.notifier.attempt.v1",
+        "attempt_id": attempt_id,
+        "parent_attempt_id": parent_attempt_id,
+        "event_key": claim["event_key"],
+        "stage": "CLAIMED",
+        "started_at": utc_now(),
+        "config_digest": redacted_config_digest(active_config),
+    }
+    _write_attempt(directory, attempt)
+    started = monotonic()
+    fallback = render_auto_plain(request)
+    attempt["stage"] = "EXPRESSION"
+    _write_attempt(directory, attempt)
+    from .clear_writing import render_once
+
+    remaining = max(0.0, deadline_seconds - (monotonic() - started))
+    rendered = render_once(
+        expression_facts(request),
+        fallback_text=fallback,
+        runner=expression_runner,
+        timeout_seconds=min(90.0, remaining),
+    )
+    attempt["expression_mode"] = rendered["mode"]
+    attempt["model_invocations"] = rendered["model_invocations"]
+    remaining = max(0.0, deadline_seconds - (monotonic() - started))
+    if remaining <= 0:
+        attempt.update(stage="FAILED_TIMEOUT_BEFORE_TRANSPORT", failed_at=utc_now())
+        _write_attempt(directory, attempt)
+        return NotifierResult("FAILED", event_key=claim["event_key"], message="deadline before transport")
+    attempt["stage"] = "TRANSPORT_STARTED"
+    attempt["transport_started_at"] = utc_now()
+    _write_attempt(directory, attempt)
+    send_func = sender or send_auto_email
+    try:
+        send_func(
+            request,
+            active_config,
+            resolved_recipient=claim["resolved_recipient"],
+            expressed=rendered["text"],
+            timeout=remaining,
+        )
+    except Exception as exc:
+        attempt.update(stage="FAILED", failed_at=utc_now(), error=f"{type(exc).__name__}: {exc}")
+        _write_attempt(directory, attempt)
+        return NotifierResult("FAILED", event_key=claim["event_key"], message=attempt["error"])
+    attempt.update(stage="SMTP_ACCEPTED", smtp_accepted_at=utc_now())
+    _write_attempt(directory, attempt)
+    write_json(
+        directory / "receipt.json",
+        {
+            "schema": "ai-bridge.notifier.receipt.v1",
+            "event_key": claim["event_key"],
+            "status": "SMTP_ACCEPTED",
+            "smtp_accepted_at": attempt["smtp_accepted_at"],
+            "attempt_id": attempt_id,
+        },
+    )
+    return NotifierResult("SMTP_ACCEPTED", event_key=claim["event_key"], message="SMTP accepted; inbox delivery not asserted")
+
+
+def _terminate_helper(process: Any) -> None:
+    process.terminate()
+    try:
+        process.wait(timeout=2)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=2)
+
+
+def _run_delivery_helper(
+    directory: Path,
+    *,
+    config_root: Path,
+    deadline_seconds: float,
+    parent_attempt_id: str | None = None,
+    popen: Callable[..., Any] = subprocess.Popen,
+) -> NotifierResult:
+    claim = load_json(directory / "claim.json")
+    command = [
+        sys.executable,
+        "-m",
+        "ai_bridge_kit.notifier",
+        "_deliver-helper",
+        "--event-dir",
+        directory.as_posix(),
+        "--config-root",
+        config_root.as_posix(),
+        "--deadline-seconds",
+        str(deadline_seconds),
+    ]
+    if parent_attempt_id:
+        command.extend(["--parent-attempt-id", parent_attempt_id])
+    process = popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        process.wait(timeout=deadline_seconds)
+    except subprocess.TimeoutExpired:
+        _terminate_helper(process)
+        latest = _read_latest_attempt(directory) or {}
+        if latest.get("stage") == "SMTP_ACCEPTED":
+            return NotifierResult("SMTP_ACCEPTED", event_key=claim["event_key"], message="SMTP accepted before helper timeout")
+        if latest.get("stage") == "TRANSPORT_STARTED":
+            latest.update(stage="DELIVERY_UNKNOWN", failed_at=utc_now(), error="helper deadline after transport started")
+            _write_attempt(directory, latest)
+            return NotifierResult("DELIVERY_UNKNOWN", event_key=claim["event_key"], message=latest["error"])
+        if latest:
+            latest.update(stage="FAILED_TIMEOUT_BEFORE_TRANSPORT", failed_at=utc_now(), error="helper deadline before transport")
+            _write_attempt(directory, latest)
+        return NotifierResult("FAILED", event_key=claim["event_key"], message="helper deadline before transport")
+    latest = _read_latest_attempt(directory) or {}
+    stage = str(latest.get("stage") or "FAILED")
+    if stage == "SMTP_ACCEPTED":
+        return NotifierResult("SMTP_ACCEPTED", event_key=claim["event_key"], message="SMTP accepted; inbox delivery not asserted")
+    return NotifierResult(stage if stage in {"FAILED", "DELIVERY_UNKNOWN"} else "FAILED", event_key=claim["event_key"], message=str(latest.get("error") or f"helper exited {process.returncode}"))
+
+
+def deliver_notification(
+    request: dict[str, Any],
+    *,
+    repo_identity: str,
+    config_root: Path | None = None,
+    state_root: Path | None = None,
+    deadline_seconds: float = AUTO_DELIVER_DEADLINE_SECONDS,
+    popen: Callable[..., Any] = subprocess.Popen,
+    require_ready: bool = True,
+    config: dict[str, str] | None = None,
+) -> NotifierResult:
+    started = time.monotonic()
+    active_config = dict(config) if config is not None else notifier_env(config_root=config_root)
+    if require_ready:
+        require_notifier_ready(config_root=config_root, state_root=state_root, config=config)
+    status, directory, _recipient = claim_event(
+        request,
+        repo_identity=repo_identity,
+        config=active_config,
+        state_root=state_root,
+    )
+    key = directory.name
+    if status == "DUPLICATE":
+        latest = _read_latest_attempt(directory)
+        duplicate_status = "duplicate" if latest and latest.get("stage") == "SMTP_ACCEPTED" else "in_progress_or_requires_retry"
+        return NotifierResult(duplicate_status, event_key=key, message="event already claimed")
+    remaining = deadline_seconds - (time.monotonic() - started)
+    if remaining <= 0:
+        return NotifierResult("FAILED", event_key=key, message="deadline before helper launch")
+    return _run_delivery_helper(
+        directory,
+        config_root=machine_home(config_root),
+        deadline_seconds=remaining,
+        popen=popen,
+    )
+
+
+def retry_event(
+    event_key_value: str,
+    *,
+    confirm_possible_duplicate: bool = False,
+    config_root: Path | None = None,
+    state_root: Path | None = None,
+    deadline_seconds: float = AUTO_DELIVER_DEADLINE_SECONDS,
+    popen: Callable[..., Any] = subprocess.Popen,
+) -> NotifierResult:
+    started = time.monotonic()
+    directory = event_directory(event_key_value, state_root=state_root)
+    latest = _read_latest_attempt(directory)
+    if latest is None:
+        return NotifierResult("NOT_RETRYABLE", event_key=event_key_value, message="event or attempt missing")
+    stage = str(latest.get("stage") or "")
+    if stage == "DELIVERY_UNKNOWN" and not confirm_possible_duplicate:
+        return NotifierResult("CONFIRM_POSSIBLE_DUPLICATE_REQUIRED", event_key=event_key_value)
+    if stage not in {"FAILED", "FAILED_TIMEOUT_BEFORE_TRANSPORT", "DELIVERY_UNKNOWN"}:
+        return NotifierResult("NOT_RETRYABLE", event_key=event_key_value, message=f"stage={stage}")
+    remaining = deadline_seconds - (time.monotonic() - started)
+    if remaining <= 0:
+        return NotifierResult("FAILED", event_key=event_key_value, message="deadline before retry helper launch")
+    return _run_delivery_helper(
+        directory,
+        config_root=machine_home(config_root),
+        deadline_seconds=remaining,
+        parent_attempt_id=str(latest.get("attempt_id") or ""),
+        popen=popen,
+    )
 
 
 def send_brief(
@@ -462,6 +1105,8 @@ def send_test(
     *,
     state_path: Path = STATE_PATH,
     env: dict[str, str] | None = None,
+    config_root: Path | None = None,
+    state_root: Path | None = None,
     dry_run: bool = False,
     sender: Callable[[dict[str, Any], dict[str, str]], None] | None = None,
 ) -> NotifierResult:
@@ -471,12 +1116,12 @@ def send_test(
         "task_key": "send_test",
         "terminal_status": "complete",
         "key_conclusion": "Generic Notifier 的 Gmail SMTP 测试邮件已经从当前机器发出。",
-        "next_step": "只有确认真实邮件送达后，才标记 NOTIFIER_READY。",
+        "next_step": "SMTP accepted 会建立与当前配置 digest 绑定的 transport readiness；不据此声称收件箱已投递。",
         "evidence_paths": ["ai-bridge notifier send-test"],
     }
     if dry_run:
         return NotifierResult("dry_run", event_key=event_key(brief), message="dry-run; no email sent")
-    active_env = notifier_env(env)
+    active_env = notifier_env(env, config_root=config_root)
     send_func = sender or (lambda payload, merged_env: send_email(payload, merged_env, test=True))
     try:
         send_func(brief, active_env)
@@ -490,7 +1135,18 @@ def send_test(
         }
         write_json(state_path, state)
         return NotifierResult("failed", event_key=event_key(brief), message=state["last_failure"]["error"])
-    return NotifierResult("sent", event_key=event_key(brief), message="sent")
+    validation = validate_machine_config(config_root=config_root, config=active_env if env is not None else None)
+    if validation["status"] == "VALID":
+        write_json(
+            readiness_path(state_root),
+            {
+                "schema": "ai-bridge.notifier.readiness.v1",
+                "transport_test_accepted_at": utc_now(),
+                "config_digest": redacted_config_digest(active_env),
+                "transport_result": "SMTP_ACCEPTED",
+            },
+        )
+    return NotifierResult("sent", event_key=event_key(brief), message="SMTP accepted; inbox delivery not asserted")
 
 
 def status_text(state_path: Path = STATE_PATH) -> str:
@@ -505,6 +1161,28 @@ def status_text(state_path: Path = STATE_PATH) -> str:
     return "\n".join(lines)
 
 
+def machine_status(
+    *,
+    config_root: Path | None = None,
+    state_root: Path | None = None,
+) -> dict[str, Any]:
+    readiness = notifier_readiness(config_root=config_root, state_root=state_root)
+    events_root = notifier_state_root(state_root) / "events"
+    recoverable: list[dict[str, str]] = []
+    if events_root.is_dir():
+        for directory in sorted(path for path in events_root.iterdir() if path.is_dir()):
+            latest = _read_latest_attempt(directory)
+            if not latest:
+                continue
+            stage = str(latest.get("stage") or "")
+            if stage in {"FAILED", "FAILED_TIMEOUT_BEFORE_TRANSPORT", "DELIVERY_UNKNOWN"}:
+                command = f"ai-bridge notifier retry --event-key {directory.name}"
+                if stage == "DELIVERY_UNKNOWN":
+                    command += " --confirm-possible-duplicate"
+                recoverable.append({"event_key": directory.name, "stage": stage, "next_command": command})
+    return {"schema": "ai-bridge.notifier.status.v1", **readiness, "recoverable_events": recoverable}
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="ai-bridge notifier")
     subparsers = parser.add_subparsers(dest="notifier_command")
@@ -514,11 +1192,22 @@ def build_parser() -> argparse.ArgumentParser:
     send_parser.add_argument("--dry-run", action="store_true")
 
     subparsers.add_parser("send-test", help="Send a real SMTP test email.").add_argument("--dry-run", action="store_true")
+    subparsers.add_parser("validate", help="Validate the machine notifier config without sending email.")
+    migrate = subparsers.add_parser("migrate-legacy", help="Copy one legacy project config into the machine config if safe.")
+    migrate.add_argument("--project", type=Path, required=True)
+    retry = subparsers.add_parser("retry", help="Explicitly retry one failed or unknown logical event.")
+    retry.add_argument("--event-key", required=True)
+    retry.add_argument("--confirm-possible-duplicate", action="store_true")
     subparsers.add_parser("once", help="Scan notification briefs once.").add_argument("--dry-run", action="store_true")
     run_parser = subparsers.add_parser("run", help="Optional polling compatibility mode.")
     run_parser.add_argument("--poll-seconds", type=float, default=60.0)
     run_parser.add_argument("--dry-run", action="store_true")
     subparsers.add_parser("status", help="Show local notifier state.")
+    helper = subparsers.add_parser("_deliver-helper", help=argparse.SUPPRESS)
+    helper.add_argument("--event-dir", type=Path, required=True)
+    helper.add_argument("--config-root", type=Path, required=True)
+    helper.add_argument("--deadline-seconds", type=float, required=True)
+    helper.add_argument("--parent-attempt-id")
     return parser
 
 
@@ -533,6 +1222,19 @@ def main(argv: list[str] | None = None) -> int:
         result = send_test(dry_run=args.dry_run)
         print(f"{result.status}: {result.message}")
         return 0 if result.status in {"sent", "dry_run"} else 1
+    if args.notifier_command == "validate":
+        result = validate_machine_config()
+        result.pop("config", None)
+        print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
+        return 0 if result["status"] == "VALID" else 1
+    if args.notifier_command == "migrate-legacy":
+        result = migrate_legacy(args.project)
+        print(f"{result.status}: {result.message}")
+        return 0 if result.status in {"MIGRATED", "NOOP_ALREADY_MIGRATED"} else 1
+    if args.notifier_command == "retry":
+        result = retry_event(args.event_key, confirm_possible_duplicate=args.confirm_possible_duplicate)
+        print(f"{result.status}: {result.message}")
+        return 0 if result.status in {"SMTP_ACCEPTED", "duplicate"} else 1
     if args.notifier_command == "once":
         results = notifier_once(dry_run=args.dry_run)
         print(json.dumps([result.__dict__ for result in results], indent=2, sort_keys=True))
@@ -545,7 +1247,15 @@ def main(argv: list[str] | None = None) -> int:
                 print(json.dumps([result.__dict__ for result in failures], indent=2, sort_keys=True))
             time.sleep(args.poll_seconds)
     if args.notifier_command == "status":
-        print(status_text())
+        print(json.dumps(machine_status(), ensure_ascii=False, indent=2, sort_keys=True))
         return 0
+    if args.notifier_command == "_deliver-helper":
+        result = deliver_event_inline(
+            args.event_dir.resolve(),
+            config_root=args.config_root,
+            deadline_seconds=args.deadline_seconds,
+            parent_attempt_id=args.parent_attempt_id,
+        )
+        return 0 if result.status == "SMTP_ACCEPTED" else 1
     parser.print_help()
     return 0

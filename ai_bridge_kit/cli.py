@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
+import time
+import uuid
 from pathlib import Path
 
 from . import readiness
@@ -115,45 +118,28 @@ def managed_agents_block_bytes() -> bytes:
     )
 
 
-def projected_agents_snippet(target: Path, force: bool) -> tuple[bytes, str]:
-    agents_path = target / "AGENTS.md"
-    block = managed_agents_block_bytes()
-    begin = BEGIN_MARKER.encode("utf-8")
-    end = END_MARKER.encode("utf-8")
-    current = agents_path.read_bytes() if agents_path.exists() else None
-    if current is not None and begin in current and end in current:
-        if not force:
-            return current, f"SKIP existing handoff block in: {agents_path}"
-    scaffold = (kit_root() / "templates" / "repo" / "AGENTS_TEMPLATE.md").read_bytes().strip()
-    desired, action = readiness.splice_managed_agents_block(
-        current,
-        block,
-        begin_marker=begin,
-        end_marker=end,
-        create_prefix=scaffold,
-    )
-    descriptions = {
-        "CREATE": f"CREATE AGENTS.md with project scaffold and handoff protocol: {agents_path}",
-        "UPDATE": f"UPDATE handoff block in: {agents_path}",
-        "APPEND": f"APPEND handoff block to: {agents_path}",
-    }
-    return desired, descriptions[action]
-
-
 def install_agents_snippet(
     target: Path,
     force: bool,
     actions: list[str],
-    *,
-    projected: bytes | None = None,
-    projected_action: str = "",
 ) -> None:
-    agents_path = target / "AGENTS.md"
-    desired, action = projected_agents_snippet(target, force) if projected is None else (projected, projected_action)
-    if desired != (agents_path.read_bytes() if agents_path.exists() else None):
-        agents_path.parent.mkdir(parents=True, exist_ok=True)
-        agents_path.write_bytes(desired)
-    actions.append(action)
+    block = managed_agents_block_bytes()
+    result = readiness.managed_agents_transaction(
+        target,
+        block,
+        begin_marker=BEGIN_MARKER.encode("utf-8"),
+        end_marker=END_MARKER.encode("utf-8"),
+        block_name="core",
+        create_prefix=(kit_root() / "templates" / "repo" / "AGENTS_TEMPLATE.md").read_bytes().strip(),
+        skip_existing=not force,
+    )
+    descriptions = {
+        "CREATE": f"CREATE AGENTS.md with project scaffold and handoff protocol: {result['path']}",
+        "UPDATE": f"UPDATE handoff block in: {result['path']}",
+        "APPEND": f"APPEND handoff block to: {result['path']}",
+        "SKIP": f"SKIP existing handoff block in: {result['path']}",
+    }
+    actions.append(descriptions[str(result["action"])])
 
 
 def init_workspace(
@@ -171,23 +157,15 @@ def init_workspace(
         )
         return 2
 
-    projected_agents: bytes | None = None
-    projected_agents_action = ""
+    actions: list[str] = []
     if install_agents:
         try:
-            projected_agents, projected_agents_action = projected_agents_snippet(target, force)
-            readiness.preflight_root_agents_mutation(
-                target,
-                projected_agents,
-                block_name="core",
-                block_bytes=len(managed_agents_block_bytes()),
-            )
+            install_agents_snippet(target, force, actions)
         except readiness.ReadinessError as exc:
             print(f"ERROR: {exc}", file=sys.stderr)
             return 2
-
-    target.mkdir(parents=True, exist_ok=True)
-    actions: list[str] = []
+    else:
+        target.mkdir(parents=True, exist_ok=True)
 
     for directory in [
         target / "prompts",
@@ -271,15 +249,6 @@ def init_workspace(
     ]:
         copy_file(root / src_rel, target / dst_rel, force, actions)
 
-    if install_agents:
-        install_agents_snippet(
-            target,
-            force,
-            actions,
-            projected=projected_agents,
-            projected_action=projected_agents_action,
-        )
-
     if install_skill:
         copy_file(
             root / "codex" / "skills" / "agent-task-executor" / "SKILL.md",
@@ -318,7 +287,10 @@ def init_workspace(
 
 
 def parse_frontmatter(path: Path) -> tuple[dict[str, str], str | None]:
-    text = read_text(path)
+    return parse_frontmatter_text(read_text(path))
+
+
+def parse_frontmatter_text(text: str) -> tuple[dict[str, str], str | None]:
     if not text.startswith("---\n"):
         return {}, "missing opening YAML frontmatter marker"
     end = text.find("\n---", 4)
@@ -698,6 +670,25 @@ def run_lite_task(
     except readiness.ReadinessError as exc:
         print(f"PRELAUNCH_NOT_READY: {exc}", file=sys.stderr)
         return 1
+    bound = preflight.get("source_texts")
+    task_source = next(
+        (item.text for item in bound if getattr(item, "label", "") == "task"),
+        "",
+    ) if isinstance(bound, list) else ""
+    policy, policy_error = parse_frontmatter_text(task_source)
+    if policy_error:
+        print(f"PRELAUNCH_NOT_READY: task notification policy unreadable: {policy_error}", file=sys.stderr)
+        return 1
+    notify = boolish(policy.get("notify"))
+    persistent_owner = os.environ.get("AI_BRIDGE_RUNTIME_OWNER") == "persistent"
+    if notify and not persistent_owner:
+        from .notifier import require_notifier_ready
+
+        try:
+            require_notifier_ready()
+        except ValueError as exc:
+            print(f"PRELAUNCH_NOT_READY: {exc}", file=sys.stderr)
+            return 1
     prompt = _lite_task_prompt(target, task_key, preflight)
     command = [codex_bin, "exec", "-C", str(target), "-"]
     if dry_run:
@@ -719,7 +710,38 @@ def run_lite_task(
             )
         )
         return 0
+    runtime_id = uuid.uuid4().hex
+    started = time.monotonic()
     proc = subprocess.run(command, cwd=target, input=prompt, text=True, check=False)
+    duration = max(0.0, time.monotonic() - started)
+    if notify and not persistent_owner:
+        from .notifier import deliver_notification, notification_request
+
+        request = notification_request(
+            project=str(policy.get("project") or target.name),
+            task_key=task_key,
+            consumer="lite",
+            fact_class="runtime_terminal",
+            status=f"EXITED_{proc.returncode}",
+            decision_authority="Runtime",
+            summary=f"Lite Codex process exited with code {proc.returncode}; this is not semantic task completion.",
+            next_action="Evaluate the task's original positive completion evidence.",
+            duration_seconds=round(duration, 3),
+            branch=str(preflight.get("branch") or ""),
+            runtime_id=runtime_id,
+            source_event_id=runtime_id,
+            recipient_override=str(policy.get("recipient_override") or ""),
+        )
+        try:
+            delivery = deliver_notification(
+                request,
+                repo_identity=f"{preflight.get('repo')}|{preflight.get('root')}",
+            )
+        except Exception as exc:
+            print(f"NOTIFICATION_FAILED: {exc}", file=sys.stderr)
+        else:
+            if delivery.status not in {"SMTP_ACCEPTED", "duplicate"}:
+                print(f"NOTIFICATION_{delivery.status}: {delivery.message}", file=sys.stderr)
     return proc.returncode
 
 

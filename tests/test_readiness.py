@@ -10,7 +10,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-from ai_bridge_kit import agent_flow, cli, readiness, reviewed_runner
+from ai_bridge_kit import agent_flow, cli, notifier, readiness, reviewed_runner
 
 
 def git(cwd: Path, *args: str) -> str:
@@ -163,6 +163,61 @@ class ReadinessTests(unittest.TestCase):
                 code = cli.run_lite_task(root, "repo--feature", codex_bin="codex", dry_run=False)
             self.assertEqual(code, 1)
             self.assertEqual(len(calls), 0)
+
+    def test_lite_notification_is_runtime_only_and_failure_does_not_change_exit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self.make_repo(Path(tmp) / "repo")
+            task = root / "prompts/tasks/repo--feature.md"
+            write(task, "---\ntask_key: repo--feature\nnotify: true\nrecipient_override: ''\n---\n# Task\n")
+            git(root, "add", str(task.relative_to(root)))
+            git(root, "commit", "-m", "enable notification")
+            captured: list[dict[str, object]] = []
+
+            def capture(request, **_kwargs):
+                captured.append(request)
+                raise RuntimeError("synthetic transport failure")
+
+            real_run = subprocess.run
+
+            def dispatch(command, *args, **kwargs):
+                if command and command[0] == "codex":
+                    return SimpleNamespace(returncode=7)
+                return real_run(command, *args, **kwargs)
+
+            with mock.patch.object(cli.subprocess, "run", side_effect=dispatch), mock.patch(
+                "ai_bridge_kit.notifier.require_notifier_ready"
+            ), mock.patch("ai_bridge_kit.notifier.deliver_notification", side_effect=capture):
+                code = cli.run_lite_task(root, "repo--feature", codex_bin="codex", dry_run=False)
+            self.assertEqual(code, 7)
+            self.assertEqual(len(captured), 1)
+            self.assertEqual(captured[0]["decision_authority"], "Runtime")
+            self.assertEqual(captured[0]["fact_class"], "runtime_terminal")
+            self.assertEqual(captured[0]["status"], "EXITED_7")
+            self.assertEqual(notifier.validate_notification_request(captured[0]), [])
+
+    def test_persistent_runtime_owner_suppresses_lite_notification(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self.make_repo(Path(tmp) / "repo")
+            task = root / "prompts/tasks/repo--feature.md"
+            write(task, "---\ntask_key: repo--feature\nnotify: true\nrecipient_override: ''\n---\n# Task\n")
+            git(root, "add", str(task.relative_to(root)))
+            git(root, "commit", "-m", "enable notification")
+            real_run = subprocess.run
+
+            def dispatch(command, *args, **kwargs):
+                if command and command[0] == "codex":
+                    return SimpleNamespace(returncode=0)
+                return real_run(command, *args, **kwargs)
+
+            with mock.patch.dict(os.environ, {"AI_BRIDGE_RUNTIME_OWNER": "persistent"}), mock.patch.object(
+                cli.subprocess, "run", side_effect=dispatch
+            ), mock.patch("ai_bridge_kit.notifier.require_notifier_ready") as ready, mock.patch(
+                "ai_bridge_kit.notifier.deliver_notification"
+            ) as deliver:
+                code = cli.run_lite_task(root, "repo--feature", codex_bin="codex", dry_run=False)
+            self.assertEqual(code, 0)
+            ready.assert_not_called()
+            deliver.assert_not_called()
 
     def test_reviewed_normal_entry_source_failure_keeps_codex_count_zero(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

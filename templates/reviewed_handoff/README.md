@@ -115,6 +115,12 @@ Executor 成功发布实现并把 `CURRENT` 推进到 GPT-owned state 后，外�
 
 Review 刻意不使用 Control 的 Requirement Ledger、Stable Review Snapshot、角色 receipt graph 或 provenance hash graph。`base_commit` 与 `implementation_commit` 只作为 Git 定位信息；review 是否通过取决于冻结 Plan、当前 diff、真实测试/CI 和 regression risk。
 
+每个 REQUEST 的 `## Notification` 小节默认 `Notify: OFF`。设为 `ON` 时，watcher
+只能在 `CURRENT.json` 已记录 Reviewer decision 且整项 task validation 通过后，向机器级
+Notifier 提交 Reviewer-authority 的结构化事实；transport failure 只记录投递结果，不能
+改写 Reviewer decision、CURRENT state 或 repair budget。启动新的 Executor 前必须先通过
+Notifier readiness；Review watcher 不因此改成 Persistent Run。
+
 如果 `CURRENT.ci_required=true`，Executor 只能发布 `WAITING_FOR_CI` 且保持 `CURRENT.ci_status=PENDING`。Scheduled GPT 读取 GitHub 上当前授权 branch tip 的真实 checks；该 branch tip 是普通 CI locator，不要求等于 `implementation_commit`，也不会写入 hash/receipt 链。`CURRENT.ci_status` 是唯一机器 CI 真值，`RESULT.md` 只负责说明本地执行和验证。
 
 每个任务的机器状态位于：

@@ -36,6 +36,7 @@ class PrivateSyncTests(unittest.TestCase):
                     code, lines = private.sync_private(
                         "notifier",
                         env={"AI_BRIDGE_PRIVATE_RCLONE_SOURCE": "secretremote:Private/GPT_Codex_AI_Bridge_Kit/notifier.env"},
+                        config_root=Path(tmp) / ".ai-bridge",
                     )
                 finally:
                     os.chdir(cwd)
@@ -64,7 +65,11 @@ class PrivateSyncTests(unittest.TestCase):
                 cwd = os.getcwd()
                 os.chdir(root)
                 try:
-                    code, lines = private.sync_private("notifier", env={"AI_BRIDGE_PRIVATE_RCLONE_SOURCE": "remote:private/notifier.env"})
+                    code, lines = private.sync_private(
+                        "notifier",
+                        env={"AI_BRIDGE_PRIVATE_RCLONE_SOURCE": "remote:private/notifier.env"},
+                        config_root=root / ".ai-bridge",
+                    )
                     target = root / ".ai-bridge" / "private" / "notifier.env"
                     target_exists = target.exists()
                     target_mode = target.stat().st_mode & 0o777

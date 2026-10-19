@@ -1,23 +1,16 @@
 ## Persistent Run
 
-本仓库已启用 AI Bridge Kit 的 Persistent Run。
+本仓库已启用 AI Bridge Kit Persistent Run。它是 terminal-owned、必须 survive disconnect 的可选执行层，不是 Lite / Review / Control 之外的新 workflow、role、watcher 或 state machine。overnight、unattended、multi-hour 本身不选择 tmux；scheduler-owned batch 或 already-detached service 保持原生寿命 owner。
 
-Persistent Run 是可选项目能力，不是 Lite / Review / Control 之外的第四套 workflow，也不是新的 Planner / Reviewer / Critic / Verifier / watcher / state machine。它只约束明确标记为 persistent execution、且实际进程或 orchestrator 由终端拥有并必须 survive Codex/SSH/terminal disconnect 的 Goal 如何通过 canonical tmux session 启动、恢复和观察。
+使用前分别判断 upfront authorization、process lifetime owner 和 project-native progress。仅当 Goal/task 写明 `Persistent execution: REQUIRED` 时：
 
-长时间、overnight、unattended 或 multi-hour 本身不是 tmux 选择条件。执行前先分开判断：upfront authorization readiness、process persistence topology、project-native progress reporting。scheduler-owned batch job（例如已接受的 `sbatch`）或 already-detached service/job 不应仅因 duration 增加 tmux；它们仍要按普通规则处理调度器/资源授权和项目原生进度证据。
+- 读取当前 Goal 和 contract；仓库模板不能代替当前用户对同一 frozen Goal 的 explicit kickoff。缺少授权时，用 `ai-bridge persistent-run prompt kickoff --target <repo> --goal <goal>` 生成并等待用户发送；启动 tmux 或昂贵前置工作前完成此检查。
+- normal entry 仅用 `persistent-run start/status`。每个 run 只有一个 full-launch-id exact tmux session、一个 run-scoped supervisor、一个 machine-local binding 和一个 child；使用 Goal 冻结的 launch argv，不发明通用科研 orchestrator。
+- compatible active run 只返回 existing。stale、mismatch、partial start 或 supervisor loss 返回 UNKNOWN/UNAVAILABLE 或 CONFLICT，不 relaunch、takeover 或猜 terminal。
+- 异常先用 `persistent-run recover` 分类；只有 `SAFE_TO_CLOSE_STALE` 才能带 exact launch id 执行 `persistent-run resolve --close-stale`。不得删除 binding；resolve 不写 exit code 或 semantic completion。exit code 只能来自 supervisor 对真实 child 的 `wait()`。
+- 进度只取 contract 的 `Progress source locator`。`bridge-child` 通过 `persistent-run progress update` 原子写入 Bridge 注入路径；supervisor 每 60 秒观察，missing/半写/坏 JSON 不杀 child。count/fraction 至少三个有效点且跨十分钟才估算 ETA。`report/latest` 不需要对应的 tmux session；不要从 tmux/PID 存在推断进度或 ETA。
+- `Notify: ON` 只发送运行事实；不得把 start/progress/stall/exit 升级成 Goal PASS/READY/完成。Notifier 未 ready 时不启动新 child；通知失败不杀 child。
+- disconnect、optional diagnostic failure 不等于任务失败；优先使用 lock、heartbeat、stage-state、checkpoint、output 等更强证据。同一 frozen Goal 不因长期或 detached 反复授权；artifact、recipient/provider、resource、purpose、backend 或 Goal 外 effect 变化仍需新授权。
+- session、Slurm job、PID、heartbeat、checkpoint 只证明活动或状态；原 Goal positive completion criteria 才能证明完成。
 
-当当前 Goal/task/contract 明确写明 `Persistent execution: REQUIRED` 时：
-
-- 先读取当前 Goal/task 和其中的 Persistent Run contract；不要把仓库模板本身当成已经获得当前用户授权。
-- 在任何 substantive execution、expensive/long-running precursor work 或 canonical launch 前，确认当前用户可见请求中已经包含针对同一个 frozen Goal 的 explicit persistent kickoff authorization。用户可用 `ai-bridge persistent-run prompt kickoff --target <repo> --goal <repo-relative-goal>` 生成这段授权。
-- 如果当前用户消息没有这段 bounded kickoff authorization，应先生成并显示该 kickoff prompt，然后等待用户把它作为当前消息发送回来；不要先启动 tmux，也不要先做大量前置工作。
-- 使用 `ai-bridge persistent-run start/status` 作为 normal entry。每个 run 只有一个 full-launch-id exact tmux session、一个 run-scoped supervisor、一个 machine-local binding 和一个 child。
-- compatible active run 只返回 existing；stale binding、mismatch、partial start 或 supervisor loss 返回 UNKNOWN/UNAVAILABLE 或 CONFLICT，不自动 relaunch、不 takeover、不猜 terminal。
-- exit code 只能来自 supervisor 对真实 child 的 `wait()` observation；使用 Goal 冻结的 launch argv，不发明 Bridge Kit 通用科研 orchestrator。
-- 启动后检查 tmux session 和最强的项目原生进度证据；Codex / SSH disconnect 不得被解释为实验或任务失败。
-- 进度报告应来自 Persistent Run contract 中的 `Progress source locator` 或项目原生 progress source。使用 `ai-bridge persistent-run report --progress <path>` 记录本机 latest/history，用 `ai-bridge persistent-run latest --progress <path>` 做 reconnect 查询；这些命令不需要对应的 tmux session，不要从 tmux/PID 存在推断领域进展、百分比或 ETA。
-- 后续恢复同一个 frozen Goal 时，不要仅因为任务长期运行、detached 或 unattended 而反复要求相同批准；新的 artifact、recipient/provider、resource、purpose、backend 或 Goal 外副作用仍按正常审批规则处理。
-- optional diagnostic failure 不得自动终止整个 Goal；如果 lock、heartbeat、stage-state、checkpoint 或 output evidence 提供了更强状态，应以这些证据为准。
-- tmux session、Slurm job、PID、heartbeat 或 checkpoint 只证明活动或状态，不证明 Goal 完成；原 Goal 的 positive completion criteria 仍是完成声明的唯一依据。
-
-禁止因为 tmux 启动或诊断不方便而自动 fallback 到 `setsid`、`nohup`、裸后台 `&`、`screen`、`sudo`、新 allocation、cancellation 或其他 persistence mechanism。若 explicit kickoff 后 canonical tmux launch 仍被拒绝，报告 exact rejected command 和 exact rejection reason，不要绕过。
+不得因 tmux 启动或诊断失败而 fallback 到 `setsid`、`nohup`、裸 `&`、`screen`、`sudo`、新 allocation/cancellation 或其他 backend。canonical launch 被拒绝时报告 exact command/reason，不绕过。

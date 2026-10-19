@@ -1877,6 +1877,15 @@ def validate_task(target: Path, task_key: str) -> list[str]:
     request_path = root / "REQUEST.md"
     if not request_path.exists():
         errors.append("REQUEST.md missing")
+    else:
+        request_text = read_text(request_path)
+        if "## Notification" in request_text:
+            from .notifier import parse_notification_policy_text
+
+            try:
+                parse_notification_policy_text(request_text)
+            except ValueError as exc:
+                errors.append(str(exc))
     if not current_path.exists():
         return errors + ["CURRENT.json missing"]
     try:

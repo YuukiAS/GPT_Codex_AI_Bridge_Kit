@@ -45,13 +45,19 @@ class PersistentRunTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
         self.previous_codex_home = os.environ.get("CODEX_HOME")
+        self.previous_state_home = os.environ.get("AI_BRIDGE_STATE_HOME")
         os.environ["CODEX_HOME"] = str(self.root / "codex-home")
+        os.environ["AI_BRIDGE_STATE_HOME"] = str(self.root / "bridge-state")
 
     def tearDown(self) -> None:
         if self.previous_codex_home is None:
             os.environ.pop("CODEX_HOME", None)
         else:
             os.environ["CODEX_HOME"] = self.previous_codex_home
+        if self.previous_state_home is None:
+            os.environ.pop("AI_BRIDGE_STATE_HOME", None)
+        else:
+            os.environ["AI_BRIDGE_STATE_HOME"] = self.previous_state_home
         self.tmp.cleanup()
 
     def make_repo(self) -> Path:
@@ -71,7 +77,13 @@ class PersistentRunTests(unittest.TestCase):
             "Run/session key: test-run\n"
             "Working directory: .\n"
             f"Launch argv: {json.dumps([sys.executable, '-c', 'raise SystemExit(7)'])}\n"
-            "Progress source locator:\n",
+            "Progress mode: none\n"
+            "Progress owner: none\n"
+            "Progress source locator: NONE\n"
+            "Expected progress update seconds: UNKNOWN\n"
+            "Notify: OFF\n"
+            "Recipient override: NONE\n"
+            "Notification cadence minutes: 60\n",
             encoding="utf-8",
         )
         return goal
@@ -87,6 +99,33 @@ class PersistentRunTests(unittest.TestCase):
         self.assertTrue((target / "automation" / "persistent_run" / "KICKOFF_TEMPLATE.md").is_file())
         self.assertFalse((target / "prompts" / "AGENT_RULES.md").exists())
         self.assertFalse((target / ".agents" / "skills" / "agent-task-executor" / "SKILL.md").exists())
+
+    def test_persistent_notifications_are_runtime_only_and_failure_is_nonfatal(self) -> None:
+        binding = {
+            "notify": "ON",
+            "repo_realpath": str(self.root / "project"),
+            "run_key": "test-run",
+            "launch_id": "a" * 64,
+            "recipient_override": "",
+            "child_started_at": "2026-10-19T12:00:00+00:00",
+        }
+        captured: list[dict[str, object]] = []
+
+        def fail_delivery(request, **_kwargs):
+            captured.append(request)
+            raise RuntimeError("synthetic transport failure")
+
+        with mock.patch("ai_bridge_kit.notifier.deliver_notification", side_effect=fail_delivery):
+            persistent_run._persistent_notification(
+                binding,
+                fact_class="runtime_start",
+                status="STARTED",
+                summary="Persistent child started.",
+                next_action="Observe runtime progress.",
+            )
+        self.assertEqual(captured[0]["consumer"], "persistent")
+        self.assertEqual(captured[0]["decision_authority"], "Runtime")
+        self.assertEqual(binding["last_notification"]["status"], "FAILED")
 
     def test_install_preserves_user_agents_content_and_updates_managed_block(self) -> None:
         target = self.make_repo()
@@ -345,6 +384,126 @@ class PersistentRunTests(unittest.TestCase):
         self.assertEqual(terminal["status"], "TERMINAL")
         self.assertEqual(terminal["exit_code"], 7)
         self.assertIn("child_exit_observed_at", terminal["binding"])
+
+    def test_progress_update_atomic_and_eta_warmup_reset(self) -> None:
+        progress = self.root / "progress.json"
+        env = {
+            "AI_BRIDGE_PROGRESS_PATH": str(progress),
+            "AI_BRIDGE_PROGRESS_MODE": "count",
+            "AI_BRIDGE_PROGRESS_OWNER": "bridge-child",
+            "AI_BRIDGE_RUN_KEY": "run-a",
+            "AI_BRIDGE_RUNTIME_ID": "a" * 64,
+        }
+        payload = persistent_run.update_run_progress(stage="fit", completed=2, total=10, env=env)
+        self.assertEqual(payload["completed"], 2)
+        self.assertEqual(json.loads(progress.read_text(encoding="utf-8"))["runtime_id"], "a" * 64)
+        self.assertEqual(list(progress.parent.glob(".progress.json.tmp-*")), [])
+
+        history = [
+            {"observed_at": "2026-10-19T00:00:00+00:00", "stage": "fit", "completed": 1, "total": 10},
+            {"observed_at": "2026-10-19T00:05:00+00:00", "stage": "fit", "completed": 3, "total": 10},
+            {"observed_at": "2026-10-19T00:10:00+00:00", "stage": "fit", "completed": 5, "total": 10},
+        ]
+        eta = persistent_run.estimate_progress_eta(history, mode="count", expected_update_seconds=300)
+        self.assertNotEqual(eta["eta"], "UNKNOWN")
+        reset = persistent_run.estimate_progress_eta(
+            [*history, {"observed_at": "2026-10-19T00:15:00+00:00", "stage": "evaluate", "completed": 6, "total": 10}],
+            mode="count",
+            expected_update_seconds=300,
+        )
+        self.assertEqual(reset["eta"], "UNKNOWN")
+
+    def test_malformed_progress_is_nonfatal_and_last_good_recovers(self) -> None:
+        progress = self.root / "project-progress.json"
+        binding = {
+            "progress_source_path": str(progress),
+            "progress_mode": "fraction",
+            "expected_progress_update_seconds": 300,
+        }
+        progress.write_text(
+            json.dumps({"observed_at": "2026-10-19T00:00:00+00:00", "stage": "fit", "fraction": 0.2}),
+            encoding="utf-8",
+        )
+        persistent_run.observe_binding_progress(binding)
+        last_good = dict(binding["last_good_progress"])
+        progress.write_text('{"half":', encoding="utf-8")
+        persistent_run.observe_binding_progress(binding)
+        self.assertEqual(binding["progress_observation"]["state"], "UNAVAILABLE")
+        self.assertEqual(binding["last_good_progress"], last_good)
+        progress.write_text(
+            json.dumps({"observed_at": "2026-10-19T00:05:00+00:00", "stage": "fit", "fraction": 0.4}),
+            encoding="utf-8",
+        )
+        persistent_run.observe_binding_progress(binding)
+        self.assertEqual(binding["progress_observation"]["state"], "AVAILABLE")
+        self.assertEqual(binding["last_good_progress"]["fraction"], 0.4)
+
+    def test_recover_and_resolve_require_proven_dead_child(self) -> None:
+        target = self.make_repo()
+        goal = self.write_goal(target)
+        rel_goal = goal.relative_to(target).as_posix()
+        digest = hashlib.sha256(goal.read_bytes()).hexdigest()
+        state = self.root / "state-recover"
+        tmux = FakeTmux()
+        started = persistent_run.start_persistent_run(
+            target,
+            rel_goal,
+            expected_goal_sha256=digest,
+            state_root=state,
+            runner=tmux,
+        )
+        tmux.sessions.clear()
+        binding_path = Path(started["binding_path"])
+        binding = json.loads(binding_path.read_text(encoding="utf-8"))
+        binding["host_boot_id"] = "boot-a"
+        binding["child_process_identity"] = {
+            "pid": 123,
+            "boot_id": "boot-a",
+            "start_ticks": "7",
+            "argv_digest": "digest",
+        }
+        binding_path.write_text(json.dumps(binding), encoding="utf-8")
+        with mock.patch.object(persistent_run, "_boot_identity", return_value="boot-a"), mock.patch.object(
+            persistent_run,
+            "_process_identity",
+            return_value={"pid": 123, "boot_id": "boot-a", "start_ticks": "7", "argv_digest": "digest"},
+        ):
+            active = persistent_run.recover_persistent_run(
+                target, rel_goal, expected_goal_sha256=digest, state_root=state, runner=tmux
+            )
+        self.assertEqual(active["classification"], "ORPHAN_CHILD_ALIVE")
+        with self.assertRaisesRegex(persistent_run.PersistentRunError, "ORPHAN_CHILD_ALIVE"):
+            with mock.patch.object(persistent_run, "_boot_identity", return_value="boot-a"), mock.patch.object(
+                persistent_run, "_process_identity", return_value=active["binding"]["child_process_identity"]
+            ):
+                persistent_run.resolve_persistent_run(
+                    target,
+                    rel_goal,
+                    expected_goal_sha256=digest,
+                    expected_launch_id=started["launch_id"],
+                    close_stale=True,
+                    state_root=state,
+                    runner=tmux,
+                )
+        with mock.patch.object(persistent_run, "_boot_identity", return_value="boot-a"), mock.patch.object(
+            persistent_run, "_process_identity", return_value=None
+        ):
+            safe = persistent_run.recover_persistent_run(
+                target, rel_goal, expected_goal_sha256=digest, state_root=state, runner=tmux
+            )
+            closed = persistent_run.resolve_persistent_run(
+                target,
+                rel_goal,
+                expected_goal_sha256=digest,
+                expected_launch_id=started["launch_id"],
+                close_stale=True,
+                state_root=state,
+                runner=tmux,
+            )
+        self.assertEqual(safe["classification"], "SAFE_TO_CLOSE_STALE")
+        self.assertEqual(closed["status"], "STALE_CLOSED_WITHOUT_COMPLETION")
+        self.assertFalse(closed["semantic_completion_claim"])
+        self.assertNotIn("exit_code", json.loads(binding_path.read_text(encoding="utf-8")))
 
     def test_stale_mismatch_partial_and_supervisor_loss_never_relaunch(self) -> None:
         target = self.make_repo()

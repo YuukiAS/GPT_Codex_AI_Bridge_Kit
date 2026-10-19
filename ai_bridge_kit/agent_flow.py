@@ -674,6 +674,16 @@ def validate_task_envelope(target: Path, task_key: str) -> tuple[dict[str, Any] 
         errors.append("REQUEST/CURRENT integration_branch mismatch")
     if not isinstance(request.get("max_repair_rounds"), int) or request.get("max_repair_rounds") < 0:
         errors.append("REQUEST.max_repair_rounds must be a non-negative integer")
+    policy = request.get("notification_policy")
+    if policy is not None:
+        if not isinstance(policy, dict) or not isinstance(policy.get("notify"), bool):
+            errors.append("REQUEST.notification_policy.notify must be boolean")
+        elif not isinstance(policy.get("recipient_override", ""), str):
+            errors.append("REQUEST.notification_policy.recipient_override must be a string")
+        elif policy.get("recipient_override") and (
+            "@" not in policy["recipient_override"] or "\r" in policy["recipient_override"] or "\n" in policy["recipient_override"]
+        ):
+            errors.append("REQUEST.notification_policy.recipient_override is invalid")
     if current.get("critic_mode") not in CRITIC_MODES:
         errors.append("CURRENT.critic_mode invalid")
     if current.get("state") not in TASK_STATES:
@@ -710,6 +720,7 @@ def init_task(
                 "max_repair_rounds": max_repair_rounds,
                 "status": "PLAN_REQUESTED",
                 "contract_frozen": False,
+                "notification_policy": {"notify": False, "recipient_override": ""},
             },
         )
         actions.append(f"CREATE {request_path}")
@@ -2508,6 +2519,7 @@ def plan_transition(target: Path, task_key: str) -> dict[str, Any]:
 def apply_transition(target: Path, task_key: str, *, expected_state: str, next_state: str, next_action: str = "") -> dict[str, Any]:
     path = task_root(target, task_key) / "CURRENT.json"
     current = load_json(path)
+    original = dict(current)
     if current.get("state") != expected_state:
         raise ValueError(f"transition expected {expected_state}, found {current.get('state')}")
     if not transition_allowed(expected_state, next_state):
@@ -2567,6 +2579,57 @@ def apply_transition(target: Path, task_key: str, *, expected_state: str, next_s
     if next_action:
         current["next_action"] = next_action
     write_json(path, current)
+    post_errors = validate_task_state(target, task_key)
+    if post_errors:
+        write_json(path, original)
+        raise ValueError("transition post-validation failed: " + "; ".join(post_errors))
+    authority_by_state = {
+        "PLAN_FROZEN": "Critic",
+        "PLANNER_REVISE_BOTH": "Planner",
+        "PLANNER_REVISE_EXECUTOR": "Planner",
+        "PLANNER_REVISE_VERIFIER": "Planner",
+        "PLANNER_PASS_CANDIDATE": "Planner",
+        "NEEDS_USER_SCIENTIFIC_OR_PRODUCT_CHOICE": "Planner",
+        "CRITIC_FINAL_REVISE": "Final Critic",
+        "PLANNER_PASS": "Final Critic",
+    }
+    authority = authority_by_state.get(next_state)
+    request = load_json(task_root(target, task_key) / "REQUEST.json")
+    policy = request.get("notification_policy") if isinstance(request.get("notification_policy"), dict) else {}
+    if authority and policy.get("notify") is True:
+        try:
+            from .notifier import deliver_notification, notification_request
+
+            try:
+                origin = git_output(target, ["remote", "get-url", "origin"])
+            except Exception:
+                origin = "NO_ORIGIN"
+            source_id = "|".join(
+                [
+                    str(request.get("request_nonce") or ""),
+                    expected_state,
+                    next_state,
+                    str(current.get("current_review_target_id") or ""),
+                ]
+            )
+            auto_request = notification_request(
+                project=target.name,
+                task_key=task_key,
+                consumer="control",
+                fact_class="semantic_decision",
+                status=next_state,
+                decision_authority=authority,
+                summary=f"{authority} authoritative artifact allowed Control transition {expected_state} -> {next_state}.",
+                next_action=str(current.get("next_action") or "Inspect the validated Control state."),
+                branch=current_branch(target),
+                version="",
+                source_event_id=source_id,
+                recipient_override=str(policy.get("recipient_override") or ""),
+            )
+            delivery = deliver_notification(auto_request, repo_identity=f"{origin}|{target.resolve()}")
+            current["_notification_result"] = {"status": delivery.status, "event_key": delivery.event_key}
+        except Exception as exc:
+            current["_notification_result"] = {"status": "FAILED", "error": f"{type(exc).__name__}: {exc}"}
     return current
 
 

@@ -143,14 +143,16 @@ loss 不自动 relaunch、takeover 或猜测 terminal，`exit_code` 只能来自
 `child.wait()`。项目原生 progress 缺失时返回 `UNKNOWN`；既有 progress/report/latest
 继续可用，且不依赖 app-server、Notifier 或 Codex thread。
 
-Notifier 保持 0.10 的 project-local private config、SMTP transport、去重与 manual
-`send`/`send-test` 行为。只有 existing automatic owner 已决定发送后，才可调用一次
-one-shot Clear Writing adapter：从当前 installed/enabled
+Notifier 使用 machine-only `~/.ai-bridge/private/notifier.env` 和 machine-local event
+state；production `AI_BRIDGE_NOTIFY_*` 环境变量不得覆盖 transport config。Lite、Review、
+Control、Persistent 只在各自 authority 已经产生合法事实后提交严格 allowlist request，
+transport failure 不得改变 workflow state 或 primary child。只有 existing automatic
+owner 已决定发送后，才可调用一次 one-shot Clear Writing adapter：从 installed/enabled
 `writing-style@yuukias-ai-skills` 绑定 `writing-fidelity` 与 `chinese-prose`，最多运行
 一次 `codex exec --ephemeral --json --sandbox read-only`。JSONL、skill consumption 或
 机械保真任一失败立即使用 deterministic fallback，模型 retry 为 0；表达或 transport
 失败不得改变业务状态。不得恢复 app-server client、Progress display thread、持久
-reader/session、three-intent event bus 或 machine notifier profile。
+reader/session、three-intent event bus 或 repo-local transport authority。
 
 ## 7. Overleaf 与外部边界
 

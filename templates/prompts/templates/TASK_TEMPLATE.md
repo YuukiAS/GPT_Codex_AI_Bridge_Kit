@@ -24,6 +24,8 @@ allow_shell_command: true
 allow_network: false
 allow_external_upload: false
 requires_human_approval: false
+notify: false
+recipient_override: ""
 ---
 
 # Task Repo Short Task

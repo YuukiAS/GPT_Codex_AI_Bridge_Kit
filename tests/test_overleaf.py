@@ -7,10 +7,13 @@ import os
 import subprocess
 import tempfile
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from pathlib import PurePosixPath
 
 from ai_bridge_kit import bridge_cli
 from ai_bridge_kit import overleaf
+from ai_bridge_kit import persistent_run
 
 
 def git(cwd: Path, *args: str) -> str:
@@ -150,6 +153,32 @@ class OverleafBridgeTests(unittest.TestCase):
         self.assertEqual(updated[:start], prefix)
         self.assertEqual(updated[marker_end:], suffix)
         self.assertNotIn(b"stale managed bytes", updated)
+
+    def test_persistent_and_overleaf_writers_are_serialized_without_lost_block(self) -> None:
+        target = self.make_project()
+        user_bytes = "# 用户规则\r\n\r\n连续空行\n尾随空白  \t".encode("utf-8")
+        (target / "AGENTS.md").write_bytes(user_bytes)
+        cfg = overleaf.OverleafConfig(
+            target=target,
+            paper_root=PurePosixPath("paper/manuscript"),
+            main_document=PurePosixPath("main.tex"),
+            exclude_paths=(),
+        )
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(
+                pool.map(
+                    lambda writer: writer(),
+                    [
+                        lambda: persistent_run.install_agents_block(target),
+                        lambda: overleaf.install_agents_block(target, cfg),
+                    ],
+                )
+            )
+        self.assertEqual(len(results), 2)
+        updated = (target / "AGENTS.md").read_bytes()
+        self.assertTrue(updated.startswith(user_bytes))
+        self.assertEqual(updated.count(persistent_run.PERSISTENT_RUN_BEGIN_MARKER.encode()), 1)
+        self.assertEqual(updated.count(overleaf.OVERLEAF_BEGIN_MARKER.encode()), 1)
 
     def test_unsafe_paths_and_symlink_escape_are_rejected(self) -> None:
         target = self.make_project()

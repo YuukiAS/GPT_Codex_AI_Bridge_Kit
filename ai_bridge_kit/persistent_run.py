@@ -5,8 +5,11 @@ import hashlib
 import json
 import os
 import re
+import statistics
 import subprocess
 import sys
+import time
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -35,9 +38,27 @@ def _sha256_bytes(data: bytes) -> str:
 
 def _atomic_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.tmp-{os.getpid()}")
-    temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    os.replace(temporary, path)
+    temporary = path.with_name(f".{path.name}.tmp-{os.getpid()}-{uuid.uuid4().hex}")
+    fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            fd = -1
+            handle.write((json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8"))
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+        directory_fd = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    finally:
+        if fd >= 0:
+            os.close(fd)
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
 
 
 def _contract_fields(text: str) -> dict[str, str]:
@@ -107,6 +128,8 @@ def normalize_progress_evidence(payload: dict[str, Any], *, stalled_after_second
     fraction: float | None = None
     if isinstance(completed, int) and isinstance(total, int) and total > 0 and 0 <= completed <= total:
         fraction = completed / total
+    elif isinstance(payload.get("fraction"), (int, float)) and 0 <= float(payload["fraction"]) <= 1:
+        fraction = float(payload["fraction"])
     eta = payload.get("eta") or payload.get("expected_finish")
     eta_basis = str(payload.get("eta_basis") or "").strip()
     uncertainty = payload.get("eta_uncertainty")
@@ -350,45 +373,28 @@ def _managed_block() -> bytes:
     )
 
 
-def projected_agents_block(target: Path) -> tuple[bytes, str]:
-    from .readiness import splice_managed_agents_block
+def install_agents_block(target: Path) -> str:
+    from .readiness import managed_agents_transaction
 
-    agents = target / "AGENTS.md"
-    block = _managed_block()
-    updated, action = splice_managed_agents_block(
-        agents.read_bytes() if agents.exists() else None,
-        block,
+    result = managed_agents_transaction(
+        target,
+        _managed_block(),
         begin_marker=PERSISTENT_RUN_BEGIN_MARKER.encode("utf-8"),
         end_marker=PERSISTENT_RUN_END_MARKER.encode("utf-8"),
+        block_name="persistent_run",
     )
-    return updated, f"{action} Persistent Run managed block in {agents}"
-
-
-def install_agents_block(target: Path, *, projected: bytes | None = None, projected_action: str = "") -> str:
-    agents = target / "AGENTS.md"
-    updated, action = projected_agents_block(target) if projected is None else (projected, projected_action)
-    current = agents.read_bytes() if agents.exists() else None
-    if updated != current:
-        agents.parent.mkdir(parents=True, exist_ok=True)
-        agents.write_bytes(updated)
-    return action
+    return f"{result['action']} Persistent Run managed block in {result['path']}"
 
 
 def install_persistent_run(target: Path) -> list[str]:
     target = ensure_git_repo(target.resolve())
-    from .readiness import ReadinessError, preflight_root_agents_mutation
+    from .readiness import ReadinessError
 
     try:
-        projected_agents, projected_action = projected_agents_block(target)
-        preflight_root_agents_mutation(
-            target,
-            projected_agents,
-            block_name="persistent_run",
-            block_bytes=len(_managed_block()),
-        )
+        agents_action = install_agents_block(target)
     except ReadinessError as exc:
         raise PersistentRunError(str(exc)) from exc
-    actions: list[str] = []
+    actions: list[str] = [agents_action]
     source_root = template_root()
     destination_root = persistent_run_root(target)
     for name in REQUIRED_TEMPLATE_FILES:
@@ -402,13 +408,6 @@ def install_persistent_run(target: Path) -> list[str]:
             actions.append(f"{'UPDATE' if existed else 'CREATE'} {destination}")
         else:
             actions.append(f"SKIP unchanged {destination}")
-    actions.append(
-        install_agents_block(
-            target,
-            projected=projected_agents,
-            projected_action=projected_action,
-        )
-    )
     return actions
 
 
@@ -471,25 +470,85 @@ def parse_persistent_contract(target: Path, goal: str, *, expected_goal_sha256: 
     if not working_directory.is_relative_to(target) or not working_directory.is_dir():
         raise PersistentRunError("Working directory is missing or outside target")
     launch_argv = _json_argv(fields.get("Launch argv", ""))
+    progress_mode = fields.get("Progress mode", "").strip().lower()
+    if progress_mode not in {"count", "fraction", "stage", "none"}:
+        raise PersistentRunError("Progress mode must be count, fraction, stage, or none")
+    progress_owner = fields.get("Progress owner", "").strip().lower()
+    if progress_owner not in {"bridge-child", "project-native", "none"}:
+        raise PersistentRunError("Progress owner must be bridge-child, project-native, or none")
+    if progress_mode in {"count", "fraction"} and progress_owner == "none":
+        raise PersistentRunError("count/fraction progress requires a real producer")
     progress_raw = fields.get("Progress source locator", "").replace("\\", "/").strip()
+    if not progress_raw:
+        raise PersistentRunError("Progress source locator is required")
     progress_path: Path | None = None
-    progress_rel = ""
-    if progress_raw and not progress_raw.startswith("<"):
+    progress_rel = progress_raw
+    if progress_owner == "bridge-child":
+        if progress_raw != "bridge-state":
+            raise PersistentRunError("bridge-child progress source must be bridge-state")
+    elif progress_owner == "project-native":
         progress = PurePosixPath(progress_raw)
-        if progress.is_absolute() or ".." in progress.parts:
+        if progress_raw in {"NONE", "bridge-state"} or progress.is_absolute() or ".." in progress.parts:
             raise PersistentRunError("Progress source locator must be repo-relative")
         progress_path = (target / progress.as_posix()).resolve()
         if not progress_path.is_relative_to(target):
             raise PersistentRunError("Progress source locator resolves outside target")
         progress_rel = progress.as_posix()
+    elif progress_raw != "NONE":
+        raise PersistentRunError("progress owner none requires Progress source locator: NONE")
+    cadence_raw = fields.get("Expected progress update seconds", "").strip()
+    if cadence_raw == "UNKNOWN":
+        expected_update_seconds: int | str = "UNKNOWN"
+    elif cadence_raw.isdigit() and int(cadence_raw) > 0:
+        expected_update_seconds = int(cadence_raw)
+    else:
+        raise PersistentRunError("Expected progress update seconds must be a positive integer or UNKNOWN")
+    notify = fields.get("Notify", "").strip().upper()
+    if notify not in {"OFF", "ON"}:
+        raise PersistentRunError("Notify must be OFF or ON")
+    recipient_raw = fields.get("Recipient override", "").strip()
+    if not recipient_raw:
+        raise PersistentRunError("Recipient override must be NONE or an explicit address")
+    if recipient_raw == "NONE":
+        recipient_override = ""
+    else:
+        if "\r" in recipient_raw or "\n" in recipient_raw or "@" not in recipient_raw:
+            raise PersistentRunError("Recipient override is invalid")
+        recipient_override = recipient_raw
+    notification_cadence_raw = fields.get("Notification cadence minutes", "60").strip()
+    if not notification_cadence_raw.isdigit() or int(notification_cadence_raw) < 15:
+        raise PersistentRunError("Notification cadence minutes must be an integer >= 15")
+    notification_cadence_minutes = int(notification_cadence_raw)
+    try:
+        branch = git_output(target, ["branch", "--show-current"]) or "DETACHED"
+    except PersistentRunError:
+        branch = "UNKNOWN"
+    try:
+        expected_commit = git_output(target, ["rev-parse", "--verify", "HEAD"])
+    except PersistentRunError:
+        expected_commit = "UNBORN"
+    try:
+        repo_origin = git_output(target, ["remote", "get-url", "origin"])
+    except PersistentRunError:
+        repo_origin = "NO_ORIGIN"
     identity = {
         "repo_realpath": target.as_posix(),
+        "repo_origin": repo_origin,
+        "branch": branch,
+        "expected_commit": expected_commit,
         "run_key": run_key,
         "goal_repo_relative_path": rel_goal,
         "goal_sha256": goal_sha256,
         "working_directory_repo_relative_path": working_path.as_posix(),
         "launch_argv": launch_argv,
         "backend": "tmux",
+        "progress_mode": progress_mode,
+        "progress_owner": progress_owner,
+        "progress_source_locator": progress_rel,
+        "expected_progress_update_seconds": expected_update_seconds,
+        "notify": notify,
+        "recipient_override": recipient_override,
+        "notification_cadence_minutes": notification_cadence_minutes,
     }
     launch_id = _sha256_bytes(
         json.dumps(identity, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode("utf-8")
@@ -499,7 +558,6 @@ def parse_persistent_contract(target: Path, goal: str, *, expected_goal_sha256: 
         "launch_id": launch_id,
         "session_name": f"ai-bridge-pr-{launch_id}",
         "working_directory": working_directory.as_posix(),
-        "progress_source_locator": progress_rel,
         "progress_source_path": progress_path.as_posix() if progress_path else "",
     }
 
@@ -523,6 +581,9 @@ def _tmux_has_session(session_name: str, *, runner: Any = subprocess.run) -> boo
 def _binding_matches(binding: dict[str, Any], contract: dict[str, Any]) -> bool:
     immutable = [
         "repo_realpath",
+        "repo_origin",
+        "branch",
+        "expected_commit",
         "run_key",
         "goal_repo_relative_path",
         "goal_sha256",
@@ -531,12 +592,257 @@ def _binding_matches(binding: dict[str, Any], contract: dict[str, Any]) -> bool:
         "backend",
         "launch_id",
         "session_name",
+        "progress_mode",
+        "progress_owner",
+        "progress_source_locator",
+        "expected_progress_update_seconds",
+        "notify",
+        "recipient_override",
+        "notification_cadence_minutes",
     ]
     return all(binding.get(key) == contract.get(key) for key in immutable)
 
 
+def _boot_identity() -> str:
+    try:
+        value = Path("/proc/sys/kernel/random/boot_id").read_text(encoding="ascii").strip()
+    except OSError:
+        return "UNKNOWN"
+    return value if re.fullmatch(r"[0-9a-f-]{36}", value) else "UNKNOWN"
+
+
+def _process_identity(pid: int) -> dict[str, Any] | None:
+    if pid <= 0:
+        return None
+    proc = Path("/proc") / str(pid)
+    try:
+        stat_text = (proc / "stat").read_text(encoding="utf-8")
+        _prefix, separator, suffix = stat_text.rpartition(")")
+        if not separator:
+            return None
+        stat_fields = suffix.strip().split()
+        start_ticks = stat_fields[19]
+        cmdline = (proc / "cmdline").read_bytes()
+    except (OSError, IndexError):
+        return None
+    return {
+        "pid": pid,
+        "boot_id": _boot_identity(),
+        "start_ticks": start_ticks,
+        "argv_digest": _sha256_bytes(cmdline),
+    }
+
+
+def _quantitative_value(progress: dict[str, Any], mode: str) -> tuple[float, float] | None:
+    if mode == "count":
+        completed, total = progress.get("completed"), progress.get("total")
+        if isinstance(completed, int) and isinstance(total, int) and total > 0 and 0 <= completed <= total:
+            return float(completed), float(total)
+    if mode == "fraction":
+        value = progress.get("fraction")
+        if isinstance(value, (int, float)) and 0 <= float(value) <= 1:
+            return float(value), 1.0
+    return None
+
+
+def _iso_from_seconds(value: float) -> str:
+    return datetime.fromtimestamp(value, tz=timezone.utc).replace(microsecond=0).isoformat()
+
+
+def estimate_progress_eta(
+    history: list[dict[str, Any]],
+    *,
+    mode: str,
+    expected_update_seconds: int | str,
+) -> dict[str, Any]:
+    result = {"eta": "UNKNOWN", "eta_low": "UNKNOWN", "eta_high": "UNKNOWN", "eta_confidence": "INSUFFICIENT"}
+    points: list[tuple[float, float, float, str]] = []
+    for item in history[-12:]:
+        observed = _timestamp_seconds(item.get("observed_at"))
+        value_total = _quantitative_value(item, mode)
+        if observed is None or value_total is None:
+            continue
+        value, total = value_total
+        points.append((observed, value, total, str(item.get("stage") or "UNKNOWN")))
+    if not points:
+        return result
+    newest = points[-1][0]
+    points = [point for point in points if newest - point[0] <= 3600]
+    segment = [points[-1]]
+    max_gap = max(900, 3 * expected_update_seconds) if isinstance(expected_update_seconds, int) else 900
+    for point in reversed(points[:-1]):
+        newer = segment[-1]
+        if point[3] != newer[3] or point[2] != newer[2] or point[1] > newer[1] or newer[0] - point[0] > max_gap:
+            break
+        segment.append(point)
+    segment.reverse()
+    if len(segment) < 3 or segment[-1][0] - segment[0][0] < 600:
+        return result
+    rates = [
+        (right[1] - left[1]) / (right[0] - left[0])
+        for left, right in zip(segment, segment[1:])
+        if right[0] > left[0] and right[1] > left[1]
+    ]
+    if not rates:
+        return result
+    center_rate = statistics.median(rates)
+    if center_rate <= 0:
+        return result
+    remaining = segment[-1][2] - segment[-1][1]
+    if remaining < 0:
+        return result
+    eta_seconds = remaining / center_rate
+    result["eta"] = _iso_from_seconds(segment[-1][0] + eta_seconds)
+    if len(rates) >= 2:
+        ordered = sorted(rates)
+        low_rate = ordered[max(0, int((len(ordered) - 1) * 0.25))]
+        high_rate = ordered[min(len(ordered) - 1, int((len(ordered) - 1) * 0.75 + 0.999999))]
+        if low_rate > 0 and high_rate > 0:
+            result["eta_low"] = _iso_from_seconds(segment[-1][0] + remaining / high_rate)
+            result["eta_high"] = _iso_from_seconds(segment[-1][0] + remaining / low_rate)
+            result["eta_confidence"] = "ESTIMATED_RANGE"
+        else:
+            result["eta_confidence"] = "LOW"
+    else:
+        result["eta_confidence"] = "LOW"
+    return result
+
+
+def update_run_progress(
+    *,
+    stage: str,
+    status: str = "normal",
+    message: str = "",
+    completed: int | None = None,
+    total: int | None = None,
+    fraction: float | None = None,
+    env: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    active = os.environ if env is None else env
+    path_raw = active.get("AI_BRIDGE_PROGRESS_PATH", "")
+    mode = active.get("AI_BRIDGE_PROGRESS_MODE", "")
+    owner = active.get("AI_BRIDGE_PROGRESS_OWNER", "")
+    run_key = active.get("AI_BRIDGE_RUN_KEY", "")
+    runtime_id = active.get("AI_BRIDGE_RUNTIME_ID", "")
+    if owner != "bridge-child" or mode not in {"count", "fraction", "stage", "none"}:
+        raise PersistentRunError("progress update requires a bridge-child Persistent environment")
+    if not path_raw or not run_key or not re.fullmatch(r"[0-9a-f]{64}", runtime_id):
+        raise PersistentRunError("progress update environment is incomplete")
+    if mode == "count" and not (
+        isinstance(completed, int) and isinstance(total, int) and total > 0 and 0 <= completed <= total
+    ):
+        raise PersistentRunError("count progress requires 0 <= completed <= total")
+    if mode == "fraction" and not (isinstance(fraction, (int, float)) and 0 <= float(fraction) <= 1):
+        raise PersistentRunError("fraction progress requires 0 <= fraction <= 1")
+    payload = {
+        "schema": "ai-bridge.persistent_run.progress.v2",
+        "run_key": run_key,
+        "runtime_id": runtime_id,
+        "observed_at": _utc_now(),
+        "stage": stage or "UNKNOWN",
+        "status": status,
+        "message": message,
+        "completed": completed,
+        "total": total,
+        "fraction": float(fraction) if fraction is not None else None,
+    }
+    _atomic_json(Path(path_raw).expanduser().resolve(), payload)
+    return payload
+
+
+def observe_binding_progress(binding: dict[str, Any]) -> dict[str, Any]:
+    path_raw = str(binding.get("progress_source_path") or "")
+    observed_at = _utc_now()
+    if not path_raw or binding.get("progress_mode") == "none":
+        binding["progress_observation"] = {"state": "UNAVAILABLE", "observed_at": observed_at, "reason": "progress source not configured"}
+        return binding
+    try:
+        normalized = normalize_progress_file(Path(path_raw))
+    except PersistentRunError as exc:
+        binding["progress_observation"] = {"state": "UNAVAILABLE", "observed_at": observed_at, "reason": str(exc)}
+        return binding
+    history = binding.get("progress_history") if isinstance(binding.get("progress_history"), list) else []
+    point = dict(normalized)
+    if not history or history[-1] != point:
+        history.append(point)
+    history = history[-12:]
+    eta = estimate_progress_eta(
+        history,
+        mode=str(binding.get("progress_mode") or "none"),
+        expected_update_seconds=binding.get("expected_progress_update_seconds", "UNKNOWN"),
+    )
+    normalized.update(eta)
+    binding["progress_history"] = history
+    binding["last_good_progress"] = normalized
+    binding["progress_observation"] = {"state": "AVAILABLE", "observed_at": observed_at}
+    return binding
+
+
+def _persistent_notification(
+    binding: dict[str, Any],
+    *,
+    fact_class: str,
+    status: str,
+    summary: str,
+    next_action: str,
+    progress: dict[str, Any] | None = None,
+) -> None:
+    if binding.get("notify") != "ON":
+        return
+    try:
+        from .notifier import deliver_notification, notification_request
+
+        progress = progress or {}
+        source_id = "|".join(
+            [
+                str(binding.get("launch_id") or ""),
+                fact_class,
+                str(progress.get("observed_at") or binding.get("child_exit_observed_at") or binding.get("child_started_at") or ""),
+                status,
+            ]
+        )
+        request = notification_request(
+            project=Path(str(binding["repo_realpath"])).name,
+            task_key=str(binding["run_key"]),
+            consumer="persistent",
+            fact_class=fact_class,
+            status=status,
+            decision_authority="Runtime",
+            summary=summary,
+            next_action=next_action,
+            stage=str(progress.get("stage") or ""),
+            completed=progress.get("completed"),
+            total=progress.get("total"),
+            fraction=progress.get("fraction"),
+            eta=progress.get("eta", "UNKNOWN"),
+            eta_low=progress.get("eta_low", "UNKNOWN"),
+            eta_high=progress.get("eta_high", "UNKNOWN"),
+            run_id=str(binding.get("run_key") or ""),
+            runtime_id=str(binding.get("launch_id") or ""),
+            source_event_id=source_id,
+            recipient_override=str(binding.get("recipient_override") or ""),
+        )
+        delivery = deliver_notification(
+            request,
+            repo_identity=str(binding.get("repo_realpath") or ""),
+        )
+        binding["last_notification"] = {
+            "status": delivery.status,
+            "event_key": delivery.event_key,
+            "recorded_at": _utc_now(),
+            "fact_class": fact_class,
+        }
+    except Exception as exc:
+        binding["last_notification"] = {
+            "status": "FAILED",
+            "error": f"{type(exc).__name__}: {exc}",
+            "recorded_at": _utc_now(),
+            "fact_class": fact_class,
+        }
+
+
 def _binding_terminal(binding: dict[str, Any]) -> bool:
-    return bool(binding.get("child_exit_observed_at") or binding.get("create_failure_observed_at"))
+    return bool(binding.get("child_exit_observed_at") or binding.get("create_failure_observed_at") or binding.get("resolved_at"))
 
 
 def _progress_status(contract: dict[str, Any]) -> dict[str, Any]:
@@ -571,6 +877,13 @@ def _run_status(
     if _binding_terminal(binding):
         if exact_active:
             return {"status": "CONFLICT", "reason": "terminal binding has active session", "binding": binding}
+        if binding.get("resolved_at"):
+            return {
+                "status": "STALE_CLOSED_WITHOUT_COMPLETION",
+                "binding": binding,
+                "progress": progress,
+                "semantic_completion_claim": False,
+            }
         return {
             "status": "TERMINAL" if binding.get("child_exit_observed_at") else "CREATE_FAILED",
             "exit_code": binding.get("exit_code"),
@@ -601,6 +914,8 @@ def start_persistent_run(
 ) -> dict[str, Any]:
     contract = parse_persistent_contract(target, goal, expected_goal_sha256=expected_goal_sha256)
     binding_path = _run_binding_path(contract, state_root=state_root)
+    if contract["progress_owner"] == "bridge-child":
+        contract["progress_source_path"] = binding_path.with_suffix(".progress.json").as_posix()
     binding = _read_json_if_exists(binding_path)
     exact_active = _tmux_has_session(contract["session_name"], runner=runner)
     observed = _run_status(contract, binding, exact_active)
@@ -617,12 +932,25 @@ def start_persistent_run(
         if original in {"RUNNING", "STARTING", "UNKNOWN/UNAVAILABLE"}:
             observed["lifecycle_state"] = original
         return observed
+    if contract["notify"] == "ON":
+        from .notifier import require_notifier_ready
+
+        try:
+            require_notifier_ready(state_root=state_root)
+        except ValueError as exc:
+            return {
+                "status": "NOTIFIER_NOT_READY",
+                "reason": str(exc),
+                "launch_id": contract["launch_id"],
+                "session_name": contract["session_name"],
+            }
     binding = {
-        "schema": "ai-bridge.persistent-run.binding.v1",
+        "schema": "ai-bridge.persistent-run.binding.v2",
         **contract,
         "binding_path": binding_path.as_posix(),
         "start_requested_at": _utc_now(),
         "lifecycle_state": "START_REQUESTED",
+        "host_boot_id": _boot_identity(),
     }
     _atomic_json(binding_path, binding)
     supervisor = [
@@ -679,12 +1007,117 @@ def status_persistent_run(
 ) -> dict[str, Any]:
     contract = parse_persistent_contract(target, goal, expected_goal_sha256=expected_goal_sha256)
     binding_path = _run_binding_path(contract, state_root=state_root)
+    if contract["progress_owner"] == "bridge-child":
+        contract["progress_source_path"] = binding_path.with_suffix(".progress.json").as_posix()
     binding = _read_json_if_exists(binding_path)
     exact_active = _tmux_has_session(contract["session_name"], runner=runner)
     return _run_status(contract, binding, exact_active)
 
 
-def supervise_binding(binding_path: Path, launch_id: str) -> int:
+def recover_persistent_run(
+    target: Path,
+    goal: str,
+    *,
+    expected_goal_sha256: str,
+    state_root: Path | None = None,
+    runner: Any = subprocess.run,
+) -> dict[str, Any]:
+    contract = parse_persistent_contract(target, goal, expected_goal_sha256=expected_goal_sha256)
+    binding_path = _run_binding_path(contract, state_root=state_root)
+    if contract["progress_owner"] == "bridge-child":
+        contract["progress_source_path"] = binding_path.with_suffix(".progress.json").as_posix()
+    binding = _read_json_if_exists(binding_path)
+    exact_active = _tmux_has_session(contract["session_name"], runner=runner)
+    base = {"launch_id": contract["launch_id"], "session_name": contract["session_name"], "binding_path": binding_path.as_posix()}
+    if binding is None:
+        if exact_active:
+            return {**base, "classification": "IDENTITY_CONFLICT", "next_action": "resolve the independently authorized conflicting exact session, then recover again"}
+        return {**base, "classification": "NOT_STARTED", "next_action": "start only with current user kickoff authorization"}
+    if not _binding_matches(binding, contract):
+        return {**base, "classification": "IDENTITY_CONFLICT", "next_action": "do not takeover; resolve the conflicting binding/session independently"}
+    if _binding_terminal(binding):
+        return {**base, "classification": "TERMINAL", "next_action": "evaluate the original Goal completion criteria; do not infer completion from runtime state", "binding": binding}
+    if exact_active:
+        return {**base, "classification": "ACTIVE", "next_action": "continue with persistent-run status", "binding": binding}
+    current_boot = _boot_identity()
+    recorded_boot = str(binding.get("host_boot_id") or "UNKNOWN")
+    if recorded_boot != "UNKNOWN" and current_boot != "UNKNOWN" and recorded_boot != current_boot:
+        return {**base, "classification": "SAFE_TO_CLOSE_STALE", "next_action": f"persistent-run resolve --expected-launch-id {contract['launch_id']} --close-stale", "binding": binding}
+    recorded_process = binding.get("child_process_identity")
+    if isinstance(recorded_process, dict) and isinstance(recorded_process.get("pid"), int):
+        current_process = _process_identity(recorded_process["pid"])
+        if current_process is None:
+            proc_root = Path("/proc")
+            proc_pid = proc_root / str(recorded_process["pid"])
+            if proc_root.is_dir() and not proc_pid.exists():
+                return {**base, "classification": "SAFE_TO_CLOSE_STALE", "next_action": f"persistent-run resolve --expected-launch-id {contract['launch_id']} --close-stale", "binding": binding}
+            return {
+                **base,
+                "classification": "DUPLICATE_RISK_UNRESOLVED",
+                "next_action": "process identity is unavailable; obtain proof the old child ended before resolving stale state",
+                "binding": binding,
+            }
+        comparable = ("boot_id", "start_ticks", "argv_digest")
+        if all(recorded_process.get(key) == current_process.get(key) for key in comparable):
+            return {**base, "classification": "ORPHAN_CHILD_ALIVE", "next_action": "wait and run persistent-run recover again; destructive termination requires separate authorization", "binding": binding}
+        return {**base, "classification": "SAFE_TO_CLOSE_STALE", "next_action": f"persistent-run resolve --expected-launch-id {contract['launch_id']} --close-stale", "binding": binding}
+    return {
+        **base,
+        "classification": "DUPLICATE_RISK_UNRESOLVED",
+        "next_action": "obtain host evidence that the old child ended, or separately authorize termination, then recover again",
+        "binding": binding,
+    }
+
+
+def resolve_persistent_run(
+    target: Path,
+    goal: str,
+    *,
+    expected_goal_sha256: str,
+    expected_launch_id: str,
+    close_stale: bool,
+    state_root: Path | None = None,
+    runner: Any = subprocess.run,
+) -> dict[str, Any]:
+    if not close_stale:
+        raise PersistentRunError("resolve requires --close-stale")
+    recovered = recover_persistent_run(
+        target,
+        goal,
+        expected_goal_sha256=expected_goal_sha256,
+        state_root=state_root,
+        runner=runner,
+    )
+    if recovered["launch_id"] != expected_launch_id:
+        raise PersistentRunError("expected launch identity mismatch")
+    if recovered["classification"] != "SAFE_TO_CLOSE_STALE":
+        raise PersistentRunError(f"close stale refused: {recovered['classification']}")
+    if _tmux_has_session(recovered["session_name"], runner=runner):
+        raise PersistentRunError("close stale refused: exact session is active")
+    binding_path = Path(recovered["binding_path"])
+    binding = _read_json_if_exists(binding_path)
+    if binding is None or binding.get("launch_id") != expected_launch_id:
+        raise PersistentRunError("close stale refused: binding identity changed")
+    if binding != recovered.get("binding") or _binding_terminal(binding):
+        raise PersistentRunError("close stale refused: binding state changed during recovery")
+    binding["resolved_at"] = _utc_now()
+    binding["lifecycle_state"] = "STALE_CLOSED_WITHOUT_COMPLETION"
+    binding["semantic_completion_claim"] = False
+    _atomic_json(binding_path, binding)
+    return {
+        "status": "STALE_CLOSED_WITHOUT_COMPLETION",
+        "launch_id": expected_launch_id,
+        "binding_path": binding_path.as_posix(),
+        "semantic_completion_claim": False,
+    }
+
+
+def supervise_binding(
+    binding_path: Path,
+    launch_id: str,
+    *,
+    observation_seconds: float = 60.0,
+) -> int:
     binding = _read_json_if_exists(binding_path)
     if binding is None:
         return 2
@@ -701,8 +1134,20 @@ def supervise_binding(binding_path: Path, launch_id: str) -> int:
         binding["lifecycle_state"] = "UNKNOWN/UNAVAILABLE"
         _atomic_json(binding_path, binding)
         return 2
+    child_env = os.environ.copy()
+    child_env.update(
+        {
+            "AI_BRIDGE_RUN_KEY": str(binding["run_key"]),
+            "AI_BRIDGE_PROGRESS_PATH": str(binding.get("progress_source_path") or ""),
+            "AI_BRIDGE_PROGRESS_MODE": str(binding.get("progress_mode") or "none"),
+            "AI_BRIDGE_PROGRESS_OWNER": str(binding.get("progress_owner") or "none"),
+            "AI_BRIDGE_PROGRESS_EXPECTED_UPDATE_SECONDS": str(binding.get("expected_progress_update_seconds") or "UNKNOWN"),
+            "AI_BRIDGE_RUNTIME_OWNER": "persistent",
+            "AI_BRIDGE_RUNTIME_ID": launch_id,
+        }
+    )
     try:
-        child = subprocess.Popen(argv, cwd=working_directory)
+        child = subprocess.Popen(argv, cwd=working_directory, env=child_env)
     except OSError as exc:
         binding["child_spawn_failure_observed_at"] = _utc_now()
         binding["child_spawn_error"] = str(exc)
@@ -711,12 +1156,58 @@ def supervise_binding(binding_path: Path, launch_id: str) -> int:
         return 2
     binding["child_started_at"] = _utc_now()
     binding["child_pid"] = child.pid
+    binding["child_process_identity"] = _process_identity(child.pid) or {"state": "UNAVAILABLE"}
     binding["lifecycle_state"] = "RUNNING"
+    observe_binding_progress(binding)
+    _persistent_notification(
+        binding,
+        fact_class="runtime_start",
+        status="RUNNING",
+        summary="Persistent primary child started; this is a runtime fact, not semantic completion.",
+        next_action="Use persistent-run status to observe the same launch identity.",
+    )
     _atomic_json(binding_path, binding)
-    exit_code = child.wait()
+    if not hasattr(child, "poll"):
+        exit_code = child.wait()
+    else:
+        while True:
+            try:
+                exit_code = child.wait(timeout=observation_seconds)
+                break
+            except subprocess.TimeoutExpired:
+                previous = binding.get("last_good_progress") if isinstance(binding.get("last_good_progress"), dict) else None
+                observe_binding_progress(binding)
+                current = binding.get("last_good_progress") if isinstance(binding.get("last_good_progress"), dict) else None
+                if current is not None:
+                    decision, _reason = _delivery_decision(
+                        previous,
+                        current,
+                        interval_seconds=int(binding.get("notification_cadence_minutes", 60)) * 60,
+                    )
+                    if decision == "deliver":
+                        runtime_status = str(current.get("status") or "RUNNING").upper()
+                        if runtime_status == "COMPLETE":
+                            runtime_status = "SOURCE_REPORTED_TERMINAL"
+                        _persistent_notification(
+                            binding,
+                            fact_class="runtime_progress",
+                            status=runtime_status,
+                            summary="Persistent supervisor observed project-owned progress; this is not semantic completion.",
+                            next_action="Continue observing the same runtime unless the original Goal requires action.",
+                            progress=current,
+                        )
+                _atomic_json(binding_path, binding)
     binding["child_exit_observed_at"] = _utc_now()
     binding["exit_code"] = exit_code
     binding["lifecycle_state"] = "TERMINAL"
+    _persistent_notification(
+        binding,
+        fact_class="runtime_terminal",
+        status=f"EXITED_{exit_code}",
+        summary=f"Persistent primary child exited with code {exit_code}; Goal completion is not inferred.",
+        next_action="Evaluate the original Goal's positive completion evidence.",
+        progress=binding.get("last_good_progress") if isinstance(binding.get("last_good_progress"), dict) else None,
+    )
     _atomic_json(binding_path, binding)
     return 0
 
@@ -804,9 +1295,29 @@ def build_parser() -> argparse.ArgumentParser:
     status.add_argument("--goal", required=True)
     status.add_argument("--expected-goal-sha256", required=True)
     status.add_argument("--state-home", type=Path)
-    progress = sub.add_parser("progress", help="Normalize project-native Persistent Run progress evidence.")
-    progress.add_argument("--evidence", type=Path, required=True)
+    progress = sub.add_parser("progress", help="Normalize evidence or update bridge-child progress.")
+    progress.add_argument("--evidence", type=Path)
     progress.add_argument("--stalled-after-seconds", type=int)
+    progress_sub = progress.add_subparsers(dest="progress_command")
+    update = progress_sub.add_parser("update", help="Atomically update progress for the current bridge-child run.")
+    update.add_argument("--stage", required=True)
+    update.add_argument("--status", default="normal")
+    update.add_argument("--message", default="")
+    update.add_argument("--completed", type=int)
+    update.add_argument("--total", type=int)
+    update.add_argument("--fraction", type=float)
+    recover = sub.add_parser("recover", help="Classify one abnormal Persistent Run without relaunching it.")
+    recover.add_argument("--target", type=Path, default=Path.cwd())
+    recover.add_argument("--goal", required=True)
+    recover.add_argument("--expected-goal-sha256", required=True)
+    recover.add_argument("--state-home", type=Path)
+    resolve = sub.add_parser("resolve", help="Explicitly close a proven stale binding without claiming completion.")
+    resolve.add_argument("--target", type=Path, default=Path.cwd())
+    resolve.add_argument("--goal", required=True)
+    resolve.add_argument("--expected-goal-sha256", required=True)
+    resolve.add_argument("--expected-launch-id", required=True)
+    resolve.add_argument("--close-stale", action="store_true")
+    resolve.add_argument("--state-home", type=Path)
     report = sub.add_parser("report", help="Record and compare a project-native Persistent Run progress event.")
     report.add_argument("--progress", type=Path, required=True)
     report.add_argument("--state-home", type=Path)
@@ -867,8 +1378,59 @@ def main(argv: list[str] | None = None) -> int:
                 )
             )
             return 0
+        if args.command == "progress" and args.progress_command == "update":
+            print(
+                json.dumps(
+                    update_run_progress(
+                        stage=args.stage,
+                        status=args.status,
+                        message=args.message,
+                        completed=args.completed,
+                        total=args.total,
+                        fraction=args.fraction,
+                    ),
+                    ensure_ascii=False,
+                    indent=2,
+                    sort_keys=True,
+                )
+            )
+            return 0
         if args.command == "progress":
+            if args.evidence is None:
+                raise PersistentRunError("progress requires --evidence or the update subcommand")
             print(json.dumps(normalize_progress_file(args.evidence, stalled_after_seconds=args.stalled_after_seconds), ensure_ascii=False, indent=2, sort_keys=True))
+            return 0
+        if args.command == "recover":
+            print(
+                json.dumps(
+                    recover_persistent_run(
+                        args.target,
+                        args.goal,
+                        expected_goal_sha256=args.expected_goal_sha256,
+                        state_root=args.state_home,
+                    ),
+                    ensure_ascii=False,
+                    indent=2,
+                    sort_keys=True,
+                )
+            )
+            return 0
+        if args.command == "resolve":
+            print(
+                json.dumps(
+                    resolve_persistent_run(
+                        args.target,
+                        args.goal,
+                        expected_goal_sha256=args.expected_goal_sha256,
+                        expected_launch_id=args.expected_launch_id,
+                        close_stale=args.close_stale,
+                        state_root=args.state_home,
+                    ),
+                    ensure_ascii=False,
+                    indent=2,
+                    sort_keys=True,
+                )
+            )
             return 0
         if args.command == "report":
             print(

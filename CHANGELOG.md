@@ -13,12 +13,20 @@
   first with lazy fetch disabled; a genuinely missing blob may use an isolated
   temporary object directory without changing repository Git state.
 - Preflight Lite/core, Persistent Run and Overleaf root `AGENTS.md` writers
-  against the effective Codex instruction byte limit and Bridge-owned block cap
-  before any project mutation. Overflow leaves the project unchanged.
+  through one machine-local serialized transaction against the effective Codex
+  instruction byte limit and Bridge-owned block cap before any project mutation.
+  Managed-block replacement preserves every byte outside its markers; overflow
+  or detected external conflict leaves the project unchanged.
 - Reduce Persistent Run to one full-hash tmux session, one run-scoped
   supervisor, one binding JSON and one child while preserving existing
-  progress/report/latest. Stale or partial state never triggers automatic
-  relaunch, takeover or terminal inference.
+  progress/report/latest. Add atomic bridge-child progress, conservative ETA,
+  and explicit recover/resolve classifications. Stale or partial state never
+  triggers automatic relaunch, takeover or terminal inference.
+- Move production Notifier transport authority to one machine-only private
+  config, ignoring process `AI_BRIDGE_NOTIFY_*` overrides. Add atomic legacy
+  migration, readiness, per-event claims/receipts, explicit retry lineage, and
+  real Lite/Review/Control/Persistent consumers without changing their semantic
+  authority or primary lifecycle.
 - Add one-shot Clear Writing for automatic Notifier deliveries. One fresh
   `codex exec --ephemeral` must consume the installed `writing-fidelity` and
   `chinese-prose` skills and pass mechanical fidelity checks; every failure uses
@@ -26,7 +34,7 @@
   retain 0.10 behavior.
 - Remove the experimental app-server reader/display path,
   `codex_progress_thread`, production reciprocal worktree exchange,
-  cross-workflow three-intent/event ownership and machine notifier profile.
+  cross-workflow three-intent/event ownership and repo-local notifier authority.
 - Keep `0.11.0` as a source candidate only. The formal distribution remains
   `release@9db19b0409816c22042a246b35a33e1d34fedd0a` (`0.10.0`) until separate
   release authorization and owner closure.

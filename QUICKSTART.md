@@ -178,8 +178,12 @@ ai-bridge persistent-run prompt kickoff \
 session、一个 supervisor、一个 binding JSON 和一个 child；用相同 Goal SHA-256 的
 `persistent-run status` 查询运行事实。active run 再次 `start` 不会产生第二个 child；
 stale、mismatch、partial start 或 supervisor loss 不会自动 relaunch、takeover 或猜测
-terminal；没有 progress 时明确返回 `UNKNOWN`。它也不依赖 app-server、Progress
-display thread、Notifier 或持久 Codex thread。
+terminal；没有 progress 时明确返回 `UNKNOWN`。异常状态先用 `persistent-run recover`
+分类，只有 `SAFE_TO_CLOSE_STALE` 才能用带 exact launch id 的
+`persistent-run resolve --close-stale` 关闭重复执行风险；不要删除 machine state。
+`bridge-child` 用 `persistent-run progress update` 原子写进度，count/fraction 至少三个
+有效点且跨十分钟后才会出现 ETA。它不依赖 app-server、Progress display thread 或
+持久 Codex thread。
 
 Persistent Run 不把 session/PID/heartbeat 当作完成，也不自动 fallback 到 `setsid`、
 `nohup`、裸后台 `&`、`screen` 或 `sudo`。Lite / Reviewed Mode / Controlled Mode 的
@@ -190,7 +194,25 @@ Codex 收到 task 后会在实质执行前检查是否存在可预见的 approva
 消息没有包含同一个 frozen Goal 的 bounded kickoff 授权，Codex 应先显示 kickoff 并
 等待用户发送，而不是先启动 tmux 或做大量前置工作。
 
-## 9. 可选：同步论文目录到 Overleaf
+## 9. 可选：启用机器级邮件通知
+
+Notifier 一台机器只配置一次，secret 固定保存在
+`~/.ai-bridge/private/notifier.env`，不会复制进新仓库，也不能被生产进程的
+`AI_BRIDGE_NOTIFY_*` 环境变量覆盖。自动通知默认 `OFF`；只有 Lite task、Review
+REQUEST、Control REQUEST 或 Persistent contract 明确启用才会发送。
+
+```bash
+ai-bridge private sync --profile notifier
+ai-bridge notifier validate
+ai-bridge notifier send-test
+ai-bridge notifier status
+```
+
+`send-test` 成功只表示 SMTP server 接受消息，不保证收件箱已投递。Clear Writing、
+SMTP 或通知 helper 失败都不会回滚 workflow、改变语义结论或杀死 primary child；
+`DELIVERY_UNKNOWN` 只能在明确接受可能重复后显式 retry。
+
+## 10. 可选：同步论文目录到 Overleaf
 
 如果项目是科研 monorepo，Codex 仍应在整个 repository 根目录工作；Overleaf 只应接收论文 publication root，例如 `paper/manuscript`。Overleaf 本身不能从一个 GitHub monorepo 中只 Pull 某个子目录，Overleaf Bridge 是在本机把该目录投影到 Overleaf Git project。
 

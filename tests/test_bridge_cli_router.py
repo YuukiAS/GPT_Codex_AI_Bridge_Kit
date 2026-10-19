@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -10,6 +11,18 @@ from ai_bridge_kit import bridge_cli
 
 
 class BridgeCliRouterTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.state_tmp = tempfile.TemporaryDirectory()
+        self.previous_state_home = os.environ.get("AI_BRIDGE_STATE_HOME")
+        os.environ["AI_BRIDGE_STATE_HOME"] = str(Path(self.state_tmp.name) / "state")
+
+    def tearDown(self) -> None:
+        if self.previous_state_home is None:
+            os.environ.pop("AI_BRIDGE_STATE_HOME", None)
+        else:
+            os.environ["AI_BRIDGE_STATE_HOME"] = self.previous_state_home
+        self.state_tmp.cleanup()
+
     def managed_span(self, content: bytes) -> tuple[int, int]:
         begin = b"<!-- ai-bridge-kit:start -->"
         end = b"<!-- ai-bridge-kit:end -->"

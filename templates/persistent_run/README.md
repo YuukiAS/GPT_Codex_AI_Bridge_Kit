@@ -60,6 +60,11 @@ existing；stale binding、identity mismatch、partial start 或 supervisor loss
 不自动 relaunch、不 takeover、不猜 terminal。exit code 只来自 supervisor
 观察到的真实 `child.wait()`。
 
+异常状态不要删除 machine state。先运行 `persistent-run recover`；只有结果为
+`SAFE_TO_CLOSE_STALE` 时，才可用带 exact launch id 的
+`persistent-run resolve --close-stale`。`resolve` 只关闭重复执行风险，写入
+`STALE_CLOSED_WITHOUT_COMPLETION`，不伪造 exit code 或 Goal 完成。
+
 ```bash
 ai-bridge persistent-run status \
   --target /path/to/repo \
@@ -82,5 +87,16 @@ ai-bridge persistent-run latest \
 ```
 
 `report` 会把 normalized latest 和 bounded recent history 写入 `${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}/persistent-run/`。它只比较项目原生事件：stage、真实 completed/total、ETA/UNKNOWN、stall/blocked/complete/failed 等。重复或非实质变化会更新本机 latest/history，但会被标记为 suppressed delivery。
+
+`bridge-child` producer 使用：
+
+```bash
+ai-bridge persistent-run progress update --stage fit --completed 3 --total 10
+```
+
+supervisor 每 60 秒读取一次。missing、半写、坏 JSON 或暂时不可读只把当前
+observation 标为 unavailable，child 与 supervisor 继续，last-good 不被伪造覆盖。
+count/fraction 至少三个有效点且跨十分钟后才形成主动 ETA；stage/none 或证据不足时
+诚实保持 `UNKNOWN`。
 
 如果 contract 的 `Delivery mode` 选择 Notifications，只有在当前机器已经有合法 provider/recipient 配置时才能投射一次 operational-progress brief；不得为了报告进展而新建 credential、recipient、daemon、watcher 或 controller。

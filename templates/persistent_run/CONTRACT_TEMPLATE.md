@@ -12,6 +12,13 @@ Goal source: <repo-relative path>
 Run/session key: <project-owned stable key>
 Working directory: .
 Launch argv: ["python", "-m", "<project-owned-entrypoint>"]
+Progress mode: none
+Progress owner: none
+Progress source locator: NONE
+Expected progress update seconds: UNKNOWN
+Notify: OFF
+Recipient override: NONE
+Notification cadence minutes: 60
 
 ## Authorized Effects
 
@@ -54,12 +61,20 @@ Launch argv: ["python", "-m", "<project-owned-entrypoint>"]
 
 ## Progress Reporting
 
-- Progress source locator: <repo-relative JSON path, or leave unset>
+- Progress mode: count | fraction | stage | none
+- Progress owner: bridge-child | project-native | none
+- Progress source locator: bridge-state | <repo-relative JSON path> | NONE
+- Expected progress update seconds: positive integer | UNKNOWN
+- Notify: OFF | ON
+- Recipient override: NONE | explicit address frozen by the user
+- Notification cadence minutes: integer >= 15; default 60
 - Report interval: 60 minutes unless the task contract gives a defensible shorter cadence; do not default below 15 minutes.
 - Delivery mode: local latest/history, or Notifications only when an existing authorized provider/recipient is already configured.
 - Stall threshold:
 
 Progress truth is owned by the project-native source above. Bridge may normalize, compare, persist latest/history, and optionally project a one-shot operational-progress Notification, but it must not infer domain progress from tmux/session/PID existence alone.
+
+For `bridge-child`, the child writes progress only through `ai-bridge persistent-run progress update`; Bridge injects the run key, progress path, mode, owner, expected cadence and runtime identity. `count` and `fraction` require a real producer. ETA remains `UNKNOWN` until at least three valid quantitative points span at least ten minutes.
 
 ## Completion
 

@@ -930,6 +930,65 @@ def publish_operational_blocker(
         return {"published": False, "error": str(exc), "state": "BLOCKED", "final_report": rel_final}
 
 
+def review_notification_policy(target: Path, task_key: str) -> dict[str, str]:
+    from .notifier import parse_notification_policy_text
+
+    text = (rh.task_root(target, task_key) / "REQUEST.md").read_text(encoding="utf-8")
+    if "## Notification" not in text:
+        return {"notify": "OFF", "recipient_override": ""}
+    return parse_notification_policy_text(text)
+
+
+def notify_valid_review_decisions(target: Path) -> list[dict[str, str]]:
+    from .notifier import deliver_notification, notification_request
+
+    results: list[dict[str, str]] = []
+    tasks = rh.reviewed_root(target) / "tasks"
+    if not tasks.is_dir():
+        return results
+    try:
+        origin = git_output(target, ["remote", "get-url", "origin"])
+    except Exception:
+        origin = "NO_ORIGIN"
+    try:
+        branch = git_output(target, ["branch", "--show-current"])
+    except Exception:
+        branch = ""
+    for task_dir in sorted(path for path in tasks.iterdir() if path.is_dir()):
+        task_key = task_dir.name
+        policy = review_notification_policy(target, task_key)
+        if policy["notify"] != "ON" or rh.validate_task(target, task_key):
+            continue
+        current = rh.load_json(task_dir / "CURRENT.json")
+        decision = str(current.get("last_review_decision") or "")
+        round_value = current.get("review_round")
+        commit = str(current.get("implementation_commit") or "")
+        if decision not in rh.REVIEW_DECISIONS or not isinstance(round_value, int) or round_value < 1 or not commit:
+            continue
+        source_id = f"review:{task_key}:{round_value}:{decision}:{commit}"
+        request = notification_request(
+            project=target.name,
+            task_key=task_key,
+            consumer="review",
+            fact_class="semantic_decision",
+            status=decision,
+            decision_authority="Reviewer",
+            summary=f"Reviewer recorded {decision} for implementation commit {commit}.",
+            next_action=str(current.get("next_action") or "Inspect the validated Review state."),
+            branch=branch,
+            version="",
+            source_event_id=source_id,
+            recipient_override=policy["recipient_override"],
+        )
+        try:
+            delivery = deliver_notification(request, repo_identity=f"{origin}|{target.resolve()}")
+        except Exception as exc:
+            results.append({"task_key": task_key, "status": "FAILED", "message": str(exc)})
+        else:
+            results.append({"task_key": task_key, "status": delivery.status, "event_key": delivery.event_key})
+    return results
+
+
 def watcher_once(
     target: Path,
     *,
@@ -957,9 +1016,25 @@ def watcher_once(
         record_watcher_status(target, "invalid_workflow", branch=selected_branch, errors=validation_lines)
         return {"status": "invalid_workflow", "branch": selected_branch, "errors": validation_lines}
 
+    notification_results = notify_valid_review_decisions(target)
+
     local = load_local_state(target)
     events = local.setdefault("events", {})
     for task_key, current in eligible_events(target):
+        policy = review_notification_policy(target, task_key)
+        if policy["notify"] == "ON":
+            from .notifier import require_notifier_ready
+
+            try:
+                require_notifier_ready()
+            except ValueError as exc:
+                return {
+                    "status": "notifier_not_ready",
+                    "branch": selected_branch,
+                    "task_key": task_key,
+                    "reason": str(exc),
+                    "notification_results": notification_results,
+                }
         event = event_identity(task_key, current)
         prior = events.get(event, {}) if isinstance(events.get(event), dict) else {}
         attempts = int(prior.get("attempts", 0))

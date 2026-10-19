@@ -5,6 +5,7 @@ import os
 import re
 import shutil
 import subprocess
+import time
 from collections import Counter
 from pathlib import Path
 from typing import Any, Callable
@@ -13,7 +14,7 @@ from typing import Any, Callable
 WRITING_PLUGIN_ID = "writing-style@yuukias-ai-skills"
 REQUIRED_SKILLS = ("writing-fidelity", "chinese-prose")
 MAX_OUTPUT_BYTES = 4096
-MODEL_TIMEOUT_SECONDS = 180
+MODEL_TIMEOUT_SECONDS = 90
 
 
 class ClearWritingError(ValueError):
@@ -98,6 +99,7 @@ def resolve_installed_writing_style(
     *,
     codex_bin: str = "codex",
     runner: Callable[..., Any] = subprocess.run,
+    timeout_seconds: float = 30,
 ) -> dict[str, Any]:
     executable = shutil.which(codex_bin) if not Path(codex_bin).is_absolute() else codex_bin
     if not executable:
@@ -108,7 +110,7 @@ def resolve_installed_writing_style(
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
-        timeout=30,
+        timeout=max(0.1, min(30.0, timeout_seconds)),
     )
     if result.returncode != 0:
         raise ClearWritingError("WRITING_STYLE_PLUGIN_INVENTORY_FAILED")
@@ -138,22 +140,28 @@ def _reader_facts(brief: dict[str, Any]) -> dict[str, Any]:
     keys = [
         "project",
         "task_key",
+        "consumer",
+        "fact_class",
         "event_type",
         "terminal_status",
         "status",
         "decision_authority",
+        "summary",
         "key_conclusion",
         "next_step",
-        "evidence_paths",
-        "commit_status",
-        "push_status",
-        "duration",
+        "stage",
+        "completed",
+        "total",
+        "fraction",
+        "eta",
+        "eta_low",
+        "eta_high",
+        "duration_seconds",
         "branch",
         "version",
         "run_id",
         "runtime_id",
-        "jobs",
-        "details",
+        "source_event_id",
     ]
     return {key: brief[key] for key in keys if key in brief}
 
@@ -162,7 +170,7 @@ def _prompt(brief: dict[str, Any]) -> str:
     facts = json.dumps(_reader_facts(brief), ensure_ascii=False, separators=(",", ":"), sort_keys=True)
     return (
         "Use $writing-fidelity and $chinese-prose to render one concise natural Simplified Chinese notification. "
-        "Preserve the exact status, project, task identity, evidence paths, every number/date/time/version, UNKNOWN, "
+        "Preserve the exact status, project, task identity, every number/date/time/version, UNKNOWN, "
         "and the original conclusion strength. Add no facts or numbers. Runtime/operational facts must never become "
         "Goal PASS, READY, RELEASE_READY, or semantic completion. Return only the notification text.\n"
         f"Immutable facts: {facts}\n"
@@ -240,7 +248,6 @@ def fidelity_check(brief: dict[str, Any], rendered: str) -> None:
             facts.get("version"),
             facts.get("run_id"),
             facts.get("runtime_id"),
-            *(facts.get("evidence_paths") if isinstance(facts.get("evidence_paths"), list) else []),
             *(brief.get("required_exact_literals") if isinstance(brief.get("required_exact_literals"), list) else []),
         ]
         if value not in {None, ""}
@@ -274,9 +281,15 @@ def render_once(
     codex_bin: str = "codex",
     state_root: Path | None = None,
     runner: Callable[..., Any] = subprocess.run,
+    timeout_seconds: float = MODEL_TIMEOUT_SECONDS,
 ) -> dict[str, Any]:
+    started = time.monotonic()
     try:
-        plugin = resolve_installed_writing_style(codex_bin=codex_bin, runner=runner)
+        plugin = resolve_installed_writing_style(
+            codex_bin=codex_bin,
+            runner=runner,
+            timeout_seconds=timeout_seconds,
+        )
     except (ClearWritingError, OSError, subprocess.SubprocessError) as exc:
         return {
             "mode": "DETERMINISTIC_FALLBACK",
@@ -303,6 +316,9 @@ def render_once(
         "-",
     ]
     try:
+        remaining = timeout_seconds - (time.monotonic() - started)
+        if remaining <= 0:
+            raise ClearWritingError("CLEAR_WRITING_DEADLINE_EXHAUSTED")
         result = runner(
             command,
             input=_prompt(brief),
@@ -310,7 +326,7 @@ def render_once(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            timeout=MODEL_TIMEOUT_SECONDS,
+            timeout=max(0.1, min(MODEL_TIMEOUT_SECONDS, remaining)),
         )
         if result.returncode != 0:
             raise ClearWritingError(f"CODEX_EXEC_NONZERO: {result.returncode}")

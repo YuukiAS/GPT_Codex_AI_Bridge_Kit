@@ -18,3 +18,7 @@ ai-bridge persistent-run start --target <exact-repo> --goal __GOAL_PATH__ --expe
 Reconnect with the same Goal identity through `persistent-run status`. A
 stale/mismatched/partial run must remain UNKNOWN/UNAVAILABLE or CONFLICT; it
 must not be relaunched or taken over automatically.
+
+If recovery is needed, use `persistent-run recover` first. Only
+`SAFE_TO_CLOSE_STALE` may be closed with `persistent-run resolve --close-stale`
+and the exact launch id; closing stale state does not mean the Goal completed.

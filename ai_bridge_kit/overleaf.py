@@ -274,45 +274,32 @@ def migrate_legacy_config(path: Path) -> bool:
     return changed
 
 
-def projected_agents_block(target: Path, cfg: OverleafConfig) -> tuple[bytes, str, int]:
-    from .readiness import splice_managed_agents_block
+def install_agents_block(
+    target: Path,
+    cfg: OverleafConfig,
+) -> str:
+    from .readiness import managed_agents_transaction
 
     snippet = read_text(kit_root() / "templates" / "overleaf" / "AGENTS_SNIPPET.md").strip()
     snippet = snippet.replace("__PAPER_ROOT__", cfg.paper_root.as_posix()).replace(
         "__MAIN_DOCUMENT__", cfg.main_document.as_posix()
     )
     block = f"{OVERLEAF_BEGIN_MARKER}\n{snippet}\n{OVERLEAF_END_MARKER}\n".encode("utf-8")
-    agents = target / "AGENTS.md"
-    updated, action = splice_managed_agents_block(
-        agents.read_bytes() if agents.exists() else None,
+    result = managed_agents_transaction(
+        target,
         block,
         begin_marker=OVERLEAF_BEGIN_MARKER.encode("utf-8"),
         end_marker=OVERLEAF_END_MARKER.encode("utf-8"),
+        block_name="overleaf",
     )
-    return updated, f"{action} Overleaf managed block in {agents}", len(block)
-
-
-def install_agents_block(
-    target: Path,
-    cfg: OverleafConfig,
-    *,
-    projected: bytes | None = None,
-    projected_action: str = "",
-) -> str:
-    agents = target / "AGENTS.md"
-    updated, action, _size = projected_agents_block(target, cfg) if projected is None else (projected, projected_action, 0)
-    current = agents.read_bytes() if agents.exists() else None
-    if updated != current:
-        agents.parent.mkdir(parents=True, exist_ok=True)
-        agents.write_bytes(updated)
-    return action
+    return f"{result['action']} Overleaf managed block in {result['path']}"
 
 
 def install_overleaf(target: Path, *, paper_root: str, main_document: str = "main.tex") -> list[str]:
     target = ensure_git_repo(target.resolve())
     paper = _safe_posix_path(paper_root, label="paper_root")
     main = normalize_main_document(main_document, paper)
-    from .readiness import ReadinessError, preflight_root_agents_mutation
+    from .readiness import ReadinessError
 
     cfg_path = config_path(target)
     future_cfg = (
@@ -321,16 +308,10 @@ def install_overleaf(target: Path, *, paper_root: str, main_document: str = "mai
         else OverleafConfig(target=target, paper_root=paper, main_document=main, exclude_paths=())
     )
     try:
-        projected_agents, projected_action, block_bytes = projected_agents_block(target, future_cfg)
-        preflight_root_agents_mutation(
-            target,
-            projected_agents,
-            block_name="overleaf",
-            block_bytes=block_bytes,
-        )
+        agents_action = install_agents_block(target, future_cfg)
     except ReadinessError as exc:
         raise OverleafError(str(exc)) from exc
-    actions: list[str] = []
+    actions: list[str] = [agents_action]
     if not cfg_path.exists():
         write_config(cfg_path, paper_root=paper, main_document=main)
         actions.append(f"CREATE {cfg_path}")
@@ -347,7 +328,6 @@ def install_overleaf(target: Path, *, paper_root: str, main_document: str = "mai
         actions.append(f"CREATE {readme_path}")
     else:
         actions.append(f"SKIP existing {readme_path}")
-    actions.append(install_agents_block(target, cfg, projected=projected_agents, projected_action=projected_action))
     return actions
 
 

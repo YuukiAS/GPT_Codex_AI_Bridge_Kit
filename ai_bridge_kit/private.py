@@ -3,11 +3,11 @@ from __future__ import annotations
 import argparse
 import os
 import shutil
-import stat
 import subprocess
+import tempfile
 from pathlib import Path
 
-from .notifier import require_email_config, load_env_file
+from .notifier import atomic_write_bytes, load_env_file, machine_config_path, require_email_config
 
 
 REQUIRED_NOTIFIER_KEYS = {
@@ -18,7 +18,12 @@ REQUIRED_NOTIFIER_KEYS = {
 }
 
 
-def sync_private(profile: str, env: dict[str, str] | None = None) -> tuple[int, list[str]]:
+def sync_private(
+    profile: str,
+    env: dict[str, str] | None = None,
+    *,
+    config_root: Path | None = None,
+) -> tuple[int, list[str]]:
     env = os.environ if env is None else env
     if profile != "notifier":
         return 2, [f"UNSUPPORTED_PROFILE: {profile}"]
@@ -27,27 +32,26 @@ def sync_private(profile: str, env: dict[str, str] | None = None) -> tuple[int, 
     source = env.get("AI_BRIDGE_PRIVATE_RCLONE_SOURCE", "").strip()
     if not source:
         return 1, ["PRIVATE_SOURCE_UNAVAILABLE: AI_BRIDGE_PRIVATE_RCLONE_SOURCE is not set"]
-    target = Path(".ai-bridge") / "private" / "notifier.env"
+    target = machine_config_path(config_root)
     target.parent.mkdir(parents=True, exist_ok=True)
-    result = subprocess.run(
-        ["rclone", "copyto", source, str(target)],
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
-    if result.returncode != 0:
-        return 1, ["PRIVATE_SOURCE_UNAVAILABLE"]
-    try:
-        target.chmod(stat.S_IRUSR | stat.S_IWUSR)
-    except OSError:
-        pass
-    values = load_env_file(target)
-    missing = sorted(REQUIRED_NOTIFIER_KEYS - set(values))
-    email_missing = require_email_config(values)
-    missing = sorted(set(missing) | set(email_missing))
-    if missing:
-        return 1, ["PRIVATE_KEYS_MISSING: " + ", ".join(missing)]
+    with tempfile.TemporaryDirectory(prefix="ai-bridge-private-") as tmp:
+        downloaded = Path(tmp) / "notifier.env"
+        result = subprocess.run(
+            ["rclone", "copyto", source, str(downloaded)],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        if result.returncode != 0:
+            return 1, ["PRIVATE_SOURCE_UNAVAILABLE"]
+        values = load_env_file(downloaded)
+        missing = sorted(REQUIRED_NOTIFIER_KEYS - set(values))
+        email_missing = require_email_config(values)
+        missing = sorted(set(missing) | set(email_missing))
+        if missing:
+            return 1, ["PRIVATE_KEYS_MISSING: " + ", ".join(missing)]
+        atomic_write_bytes(target, downloaded.read_bytes(), mode=0o600)
     return 0, [f"Synced profile: {profile}", f"Target: {target}", "Mode: pull-only", "Secrets: redacted"]
 
 

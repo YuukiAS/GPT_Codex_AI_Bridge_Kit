@@ -22,6 +22,38 @@ def disable_git_auto_maintenance(target: Path) -> None:
 
 
 class ReviewedRunnerTests(unittest.TestCase):
+    def test_review_notification_uses_reviewer_authority_and_transport_failure_is_isolated(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "project"
+            task = target / "automation/reviewed_handoff/tasks/repo--feature"
+            task.mkdir(parents=True)
+            rh.write_json(
+                task / "CURRENT.json",
+                {
+                    "task_key": "repo--feature",
+                    "last_review_decision": "PASS",
+                    "review_round": 1,
+                    "implementation_commit": "a" * 40,
+                    "next_action": "AWAIT_HUMAN_DECISION",
+                },
+            )
+            captured: list[dict[str, object]] = []
+
+            def fail_delivery(request, **_kwargs):
+                captured.append(request)
+                raise RuntimeError("synthetic transport failure")
+
+            with mock.patch.object(runner, "review_notification_policy", return_value={"notify": "ON", "recipient_override": ""}), mock.patch.object(
+                rh, "validate_task", return_value=[]
+            ), mock.patch.object(runner, "git_output", side_effect=["https://github.com/Example/project.git", "main"]), mock.patch(
+                "ai_bridge_kit.notifier.deliver_notification", side_effect=fail_delivery
+            ):
+                results = runner.notify_valid_review_decisions(target)
+            self.assertEqual(results[0]["status"], "FAILED")
+            self.assertEqual(captured[0]["consumer"], "review")
+            self.assertEqual(captured[0]["decision_authority"], "Reviewer")
+            self.assertEqual(captured[0]["status"], "PASS")
+
     def make_project(self) -> tuple[tempfile.TemporaryDirectory[str], Path, Path]:
         try:
             tmp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
