@@ -122,6 +122,41 @@ class ClearWritingTests(unittest.TestCase):
         self.assertEqual(result["model_invocations"], 0)
         self.assertEqual(fake.model_calls, 0)
 
+    def test_current_codex_inventory_nested_source_and_name_manifest_resolve(self) -> None:
+        manifest = self.plugin / ".codex-plugin" / "plugin.json"
+        manifest.write_text(
+            json.dumps({"name": "writing-style", "version": "0.4.0"}),
+            encoding="utf-8",
+        )
+
+        def current_inventory(command, **_kwargs):
+            self.assertEqual(command[1:4], ["plugin", "list", "--json"])
+            return SimpleNamespace(
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "installed": [
+                            {
+                                "pluginId": clear_writing.WRITING_PLUGIN_ID,
+                                "marketplaceName": "yuukias-ai-skills",
+                                "installed": True,
+                                "enabled": True,
+                                "version": "0.4.0",
+                                "source": {"source": "local", "path": self.plugin.as_posix()},
+                            }
+                        ]
+                    }
+                ),
+                stderr="",
+            )
+
+        resolved = clear_writing.resolve_installed_writing_style(
+            codex_bin="/usr/bin/codex",
+            runner=current_inventory,
+        )
+        self.assertEqual(resolved["plugin_id"], clear_writing.WRITING_PLUGIN_ID)
+        self.assertEqual(set(resolved["skills"]), set(clear_writing.REQUIRED_SKILLS))
+
     def test_jsonl_turn_or_fidelity_failure_never_retries(self) -> None:
         cases = [
             self.jsonl(self.good_text(), turns=2),
@@ -200,4 +235,3 @@ class ClearWritingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

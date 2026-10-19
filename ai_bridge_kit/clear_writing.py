@@ -42,6 +42,8 @@ def _plugin_items(payload: Any) -> list[dict[str, Any]]:
 def _plugin_root(item: dict[str, Any]) -> Path:
     for key in ("installedPath", "installed_path", "path", "source"):
         value = item.get(key)
+        if isinstance(value, dict):
+            value = value.get("path")
         if isinstance(value, str) and value.strip():
             path = Path(value).expanduser().resolve()
             if path.is_dir():
@@ -55,8 +57,11 @@ def _manifest_identity(root: Path, item: dict[str, Any]) -> tuple[str, str]:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise ClearWritingError("WRITING_STYLE_PLUGIN_MANIFEST_INVALID") from exc
-    plugin_id = payload.get("id") or payload.get("pluginId") or payload.get("name")
-    if plugin_id != WRITING_PLUGIN_ID:
+    plugin_id = payload.get("id") or payload.get("pluginId")
+    plugin_name = payload.get("name")
+    if plugin_id not in {None, WRITING_PLUGIN_ID} or plugin_name not in {None, "writing-style"}:
+        raise ClearWritingError("WRITING_STYLE_PLUGIN_MANIFEST_ID_MISMATCH")
+    if plugin_id is None and plugin_name != "writing-style":
         raise ClearWritingError("WRITING_STYLE_PLUGIN_MANIFEST_ID_MISMATCH")
     inventory_version = item.get("localVersion") or item.get("version")
     manifest_version = payload.get("version")
