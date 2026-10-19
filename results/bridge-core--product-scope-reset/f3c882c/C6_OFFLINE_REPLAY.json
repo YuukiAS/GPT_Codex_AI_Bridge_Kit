@@ -1,0 +1,48 @@
+{
+  "candidate_sha": "f3c882c5302a1889cac62526e8f025ada0f4d1a5",
+  "exit_code": 0,
+  "evidence": {
+    "candidate_sha": "f3c882c5302a1889cac62526e8f025ada0f4d1a5",
+    "source_live_candidate_sha": "c32b9100c673ac3c9472d52271709989438bbf99",
+    "result": "PASS_OFFLINE_REPLAY_NOT_LIVE_ACCEPTANCE",
+    "render_result": {
+      "mode": "NORMAL_WRITING_STYLE",
+      "text": "Bridge Kit 0.11.0 的任务 `bridge-core--product-scope-reset` 当前状态为 `running`：运行时 `clear-writing-canary` 正在运行，消费模式为 `persistent`，决策权归 `Runtime`，预计完成时间为 `UNKNOWN`；来源事件为 `frozen-candidate-clear-writing-live-gate`。这是合成通知，用于验证中文表达；不代表目标已完成。",
+      "failure": "",
+      "model_invocations": 1,
+      "model_retry_count": 0,
+      "plugin": {
+        "plugin_id": "writing-style@yuukias-ai-skills",
+        "version": "0.5",
+        "root": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style",
+        "manifest": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style/.codex-plugin/plugin.json",
+        "skills": {
+          "writing-fidelity": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style/skills/fidelity/SKILL.md",
+          "chinese-prose": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style/skills/zh/SKILL.md"
+        },
+        "codex_bin": "/users/a/e/aereinh/bin/codex"
+      },
+      "jsonl_evidence": {
+        "event_counts": {
+          "thread.started": 1,
+          "item.completed": 2,
+          "turn.started": 1,
+          "turn.completed": 1
+        },
+        "skill_invocation": {
+          "method": "explicit_prompt",
+          "names": [
+            "writing-fidelity",
+            "chinese-prose"
+          ],
+          "jsonl_skill_load_events_required": false
+        }
+      }
+    },
+    "raw_jsonl_sha256": "542bbbe9b012181b10ce70553f6043a644ca3d0e0512a324ad0c4ba144c99c98",
+    "recorded_response_uses": 1,
+    "real_model_invocations": 0,
+    "real_smtp_sends": 0,
+    "new_candidate_c6_live_status": "NOT_RUN"
+  }
+}

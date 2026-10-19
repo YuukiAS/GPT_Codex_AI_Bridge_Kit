@@ -1,0 +1,117 @@
+{
+  "candidate_sha": "f3c882c5302a1889cac62526e8f025ada0f4d1a5",
+  "version": "0.11.0",
+  "files": [
+    {
+      "path": "README.md",
+      "sha256": "c5716bc5f45dd05aba59e429ea1a1d84052c8e458256018e80fbf5cb40b3f7fd",
+      "working_bytes_match_candidate": true
+    },
+    {
+      "path": "QUICKSTART.md",
+      "sha256": "cc0b99cf357c88835a31a1518f77e08fbe31c32946e83ab407885a7b569846ee",
+      "working_bytes_match_candidate": true
+    },
+    {
+      "path": "AGENTS.md",
+      "sha256": "596c4d34cd343668bf175c7661efdad78fede0dda6ddcd60b4c06635189e8384",
+      "working_bytes_match_candidate": true
+    },
+    {
+      "path": "CHANGELOG.md",
+      "sha256": "0773af0468e3bd24fa27b745994837df42438a131cd5e5911e68ca9c0e0f5866",
+      "working_bytes_match_candidate": true
+    },
+    {
+      "path": "pyproject.toml",
+      "sha256": "1d7030826c3aad242f69b86f888724f5a468cb0aa708ae015e6f993029681308",
+      "working_bytes_match_candidate": true
+    },
+    {
+      "path": "ai_bridge_kit/__init__.py",
+      "sha256": "fc8de73fec9f54108f2ef6a6a7b815de63e6a5b6a7ff781b9d7fe1027540978e",
+      "working_bytes_match_candidate": true
+    },
+    {
+      "path": ".github/workflows/tests.yml",
+      "sha256": "da36ca9e9f66a9bc68635e86c9b4787013854c607e2e63153a1a7da377b9b734",
+      "working_bytes_match_candidate": true
+    }
+  ],
+  "candidate_install": "/tmp/bridge-011-1472791-final-install/bin/ai-bridge",
+  "direct_url": {
+    "dir_info": {
+      "editable": true
+    },
+    "url": "file:///overflow/htzhu/mingcheng_new/GPT_Codex_AI_Bridge_Kit"
+  },
+  "gitignore_sha256": "6c5827da670763f9d295187f04ed652baa2f4f4cf2e80432c529400cc6ea2ae7",
+  "core_python_nonblank": {
+    "baseline_sha": "9db19b0409816c22042a246b35a33e1d34fedd0a",
+    "rows": {
+      "ai_bridge_kit/__init__.py": {
+        "added_nonblank": 1,
+        "removed_nonblank": 1,
+        "net": 0
+      },
+      "ai_bridge_kit/agent_flow.py": {
+        "added_nonblank": 91,
+        "removed_nonblank": 0,
+        "net": 91
+      },
+      "ai_bridge_kit/clear_writing.py": {
+        "added_nonblank": 337,
+        "removed_nonblank": 0,
+        "net": 337
+      },
+      "ai_bridge_kit/cli.py": {
+        "added_nonblank": 191,
+        "removed_nonblank": 35,
+        "net": 156
+      },
+      "ai_bridge_kit/host.py": {
+        "added_nonblank": 90,
+        "removed_nonblank": 4,
+        "net": 86
+      },
+      "ai_bridge_kit/notifier.py": {
+        "added_nonblank": 713,
+        "removed_nonblank": 29,
+        "net": 684
+      },
+      "ai_bridge_kit/overleaf.py": {
+        "added_nonblank": 25,
+        "removed_nonblank": 28,
+        "net": -3
+      },
+      "ai_bridge_kit/persistent_run.py": {
+        "added_nonblank": 928,
+        "removed_nonblank": 34,
+        "net": 894
+      },
+      "ai_bridge_kit/private.py": {
+        "added_nonblank": 27,
+        "removed_nonblank": 23,
+        "net": 4
+      },
+      "ai_bridge_kit/readiness.py": {
+        "added_nonblank": 782,
+        "removed_nonblank": 0,
+        "net": 782
+      },
+      "ai_bridge_kit/reviewed_handoff.py": {
+        "added_nonblank": 18,
+        "removed_nonblank": 0,
+        "net": 18
+      },
+      "ai_bridge_kit/reviewed_runner.py": {
+        "added_nonblank": 145,
+        "removed_nonblank": 11,
+        "net": 134
+      }
+    },
+    "added": 3348,
+    "removed": 165,
+    "net": 3183
+  }
+}

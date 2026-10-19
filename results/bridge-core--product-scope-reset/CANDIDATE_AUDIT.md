@@ -1,134 +1,110 @@
-# Bridge Kit 0.11.0 候选复核与恢复点
+# Bridge Kit 0.11.0 修复候选与 Gate 记录
 
-普通 helper 入口缺陷已修复，候选已通过 C1–C5 和确定性回归。用户在普通聊天授权后，
-C6 已真实执行一次模型和一次 Gmail SMTP 发送，零重试；但两个必需 skill 的实际消费
-无法由 JSONL 证明，生产路径按合同改用 deterministic fallback。因此 C6 未通过，
-Goal 尚未完成，也不能交为 final Critic PASS。本次调用与发送额度已经用尽，不再尝试。
+两个 Bridge 实现误判已修复。保存的 C6 trace 在修复后的正式 renderer 中离线回放，
+返回 NORMAL_WRITING_STYLE；本地全量回归、C1–C5 与 C6 非 live 验证通过。
+新的 hosted CI 尚未全部完成，因此当前还不能说所有 Gate 已通过。
+本轮没有真实模型调用或 Gmail 发送；旧 live run 不是新候选的 C6 live PASS。
 
-## 候选身份与纠错
+## 唯一生产候选
 
-- 用户指定的原候选：`147279107e3811dee279a337b85febb4e6c468b8`。
-- 复核撤销原候选的 C5/C6 完整 PASS：生产父进程执行
-  `python -m ai_bridge_kit.notifier _deliver-helper`，而模块没有 `__main__`
-  入口；helper 退出码为 0，但不执行 delivery，也不生成 attempt。
-- 修复后的生产候选：`c32b9100c673ac3c9472d52271709989438bbf99`。
-  修复仅为 `notifier.py` 的模块入口和一项真实 helper 子进程回归。
-- 同一分支：`work/bridge-core--product-scope-reset`，普通 non-force push。
-- 旧 SHA 不被重新解释为修复后的源码；旧证据保留在本目录根部，新证据统一在
-  `c32b910/`。后续只添加本目录证据时，被测生产候选仍是 `c32b910…`，不是证据提交。
-- 原有 `.gitignore` 不暂存、不提交、不修改；SHA-256 保持
+- FINAL_CANDIDATE_SHA：`f3c882c5302a1889cac62526e8f025ada0f4d1a5`。
+- 分支：`work/bridge-core--product-scope-reset`，普通 non-force 发布。
+- 后续 results-only 证据提交不是新生产候选。生产代码、tests、templates、
+  README/QUICKSTART/AGENTS/CHANGELOG、双版本源、CI 与候选 Git bytes 核对一致。
+- 版本仍为 0.11.0 source candidate；没有宣称正式发行。
+- 用户原有 `.gitignore` 未修改、未暂存，SHA-256 为
   `6c5827da670763f9d295187f04ed652baa2f4f4cf2e80432c529400cc6ea2ae7`。
+- `refs/heads/release` 仍为正式 0.10.0：
+  `9db19b0409816c22042a246b35a33e1d34fedd0a`。没有移动 release、tag 或 Marketplace。
 
-此次撤销来自真实 helper 子进程检查，不是因代码行数，也没有改变 v4 产品架构、
-Gate 标准或 recovery 语义。原候选的失败保存在 `C5_C6_NORMAL_HELPER_FAILURE.json`。
+## 本轮修复及原判断纠正
 
-## 当前 Gate 证据
+先前 c32b910 的模型 returncode=0，installed writing-style v0.5 和两个必需 skill 身份
+均有效，prompt 已显式使用两个 `$skill-name`。该次 JSONL 没有单独的 skill-load 事件，
+也没有 shell 读取 SKILL.md；这不应被 Bridge 反推为 skill invocation 失败。
 
-| Gate | 修复后候选的证据 | 当前判断 |
+根据用户本轮明确批准的证据语义，启动前仍唯一解析 installed/enabled
+`writing-style@yuukias-ai-skills`，验证 manifest/version 与必需 skill 身份；
+prompt 从 REQUIRED_SKILLS 生成显式 `$writing-fidelity` 和 `$chinese-prose` 调用。
+JSONL 继续用于单 thread/turn、成功边界、顺序和错误校验，不再要求不存在保证的加载事件。
+保留 plugin/version/path 和 explicit_prompt invocation metadata，不伪造 skill-load 观测。
+正式用法参考 [OpenAI skill invocation 文档](https://learn.chatgpt.com/docs/build-skills#how-chatgpt-and-codex-use-skills)。
+
+fidelity checker 只放行紧邻目标表述的明确否定/限制语义。“不代表目标已完成”、
+“并不能说明目标已完成”、“尚不能认定目标已完成”均合法；正向“目标已完成”、
+“发布就绪”、READY、RELEASE_READY、Goal PASS 仍被拒绝。否定句后再附加正向升级、
+跨句正向声明和双重否定也有拒绝回归。当前 runtime startup warning 不冒充 fatal failure；
+真正的顶层/嵌套 error、turn.failed、非法 JSONL 和边界错误仍触发 fallback。
+
+只修改 clear_writing.py、对应 tests 和同步的 README/AGENTS/CHANGELOG；
+没有修改 AI_Skills_Collection、provider/recipient、Persistent recovery 语义或产品架构。
+QUICKSTART、templates 和 version 无需行为变更，已按新候选逐字核对。
+本轮两个已命名写作 Skill 用于报告的中文表达与候选/证据保真，不扩大实现范围。
+
+## 同 SHA 的证据
+
+以下 locator 均在 `f3c882c/`，每份机器证据携带完整 candidate_sha。
+
+| Gate | 正常入口或确定性证据 | 状态 |
 | --- | --- | --- |
-| C1 | 真实 Codex `execpolicy check` 正负例，真实受限同步与 dirty/main 拒绝；`c32b910/C1_C3_C4_C5_C6_TARGETED.txt` | PASS |
-| C2 | `c32b910/C2_CONTEXT_AND_SOURCE_TRUTH.json`：Lite、Review 的计数 executable，Control 真实 launch adapter；错误 context/source 时零 child，partial clone 隔离 fallback | PASS |
-| C3 | `c32b910/C3_MANAGED_INSTRUCTION_WRITE.json`：三个 CLI writer under-limit、overflow 全项目快照不变；targeted bank 另含真实并发 writer 与混合换行用户 bytes 断言 | PASS |
-| C4 | `c32b910/C4_*.json`：正式 start/status/repeated start，同一 child 的坏 JSON、恢复、原生 warm-up、真实 exit；负例在 targeted bank | PASS |
-| C5 | `c32b910/C5_MACHINE_NOTIFIER.json`：正式 CLI migrate 同/冲突、不删旧文件；两 repo 同一 config，冲突环境变量无效；真实 helper 并发去重/显式 retry lineage。四 consumer authority/nonfatal/suppression 在 targeted bank | PASS（无真实 SMTP） |
-| C6 non-live | `c32b910/C5_C6_TRANSPORT_DEADLINE.json`：真实 helper 在受控 DNS/SMTP_CONNECT/TLS 挂起阶段被父 deadline 结束；模型与网络被测试审计钩子禁止。确定性 parser/fidelity/fallback 回归通过；15:34 UTC 主机边界 installed identity 已恢复一致 | PASS；不等于 live skill consumption |
-| C6 live | `c32b910/C6_LIVE_SUMMARY.json`、`C6_LIVE_RAW_EVIDENCE.json`、`C6_MODEL_JSONL.json`：一 turn、模型一次、SMTP accepted 一次、retry 0；两个必需 skill 消费无证据，触发 fallback | FAIL：skill consumption 未证实；transport/fallback 单项通过 |
+| C1 | TARGETED_TESTS.txt：真实 Codex execpolicy 正负例、受限同步及 main/dirty 拒绝 | PASS |
+| C2 | C2_CONTEXT_AND_SOURCE_TRUTH.json：Lite/Review/Control launch 边界、wrong context/source 零 child、隔离 blob fallback | PASS |
+| C3 | C3_MANAGED_INSTRUCTION_WRITE.json：三个 CLI writer、用户 bytes 保留、overflow 零项目 mutation；TARGETED_TESTS.txt 包含并发写锁 | PASS |
+| C4 | C4_PRODUCTION_CANARY.json、C4_*.json：正式 start/status/repeat start、坏进度与恢复、原生 ETA、真实 exit/recover；负例在 TARGETED_TESTS.txt | PASS |
+| C5 | C5_MACHINE_NOTIFIER.json：同机器配置双 repo、process override 无效、迁移同/冲突且保留 legacy、并发去重/跨 repo 隔离/显式 retry；四 consumer 在 TARGETED_TESTS.txt | PASS，隔离 transport |
+| C6 non-live | C6_OFFLINE_REPLAY.json、C5_C6_TRANSPORT_DEADLINE.json、TARGETED_TESTS.txt | PASS |
+| C6 live | 此新候选没有执行；本轮明确禁止第二次模型和第二封 Gmail | NOT_RUN |
 
-C2 的成功 child 是无模型的计数程序；C5 使用合成凭据、显式隔离 machine root 和
-本地 SMTP 替身。它们只验证被冻结的执行/transport 边界，不伪称真实模型或 Gmail。
-三个 hang 探针注入 1.5 秒测试 deadline；生产常量仍为 120 秒。测试不把网络故障
-标成业务失败，也不自动重发 `DELIVERY_UNKNOWN`。
+C2 的成功子进程是无模型的计数程序。C5 使用显式 temporary config/state root、
+合成凭据和本地 transport 替身；不把这些证据说成真实 Gmail。三个受控 DNS/
+SMTP_CONNECT/TLS hang 在 1.5 秒注入 deadline 下均被父进程终止并 reaped，业务继续，
+记 DELIVERY_UNKNOWN；生产 deadline 仍为 120 秒，没有自动重发。
 
-C4 canary 的唯一 child PID 为 3028502，15:18:11 UTC 启动，15:29:41 UTC 自然退出。
-进度点时间为 15:18:11、15:23:26、15:28:26，跨 615 秒；中途 child 自己写入坏 JSON，
-正式 status 返回进度 UNKNOWN 但仍 RUNNING，随后同一 child 恢复合法数据。
-supervisor 形成 ETA `2026-10-19T15:33:33+00:00`，区间为
-`15:33:26–15:33:41 UTC`。终态 exit_code=0，recover=TERMINAL，并明确要求另验原 Goal
-完成标准。机器重启/丢失 supervisor/stale/mismatch/partial-start 的负例是受控 binding
-身份注入与正常 recovery 函数验证，没有真实重启机器或破坏生产进程。
+C4 使用新的 disposable Git repo `/tmp/bridge-c4-f3c882c`，Notify OFF。
+唯一 child PID=3320602，15:56:34 UTC 启动、16:08:19 UTC 自然退出，exit_code=0。
+15:56:49、16:02:04、16:07:04 三个真实 count 点跨 615 秒；中途 child 自己写坏 JSON，
+supervisor 记录 UNAVAILABLE、status 返回进度 UNKNOWN，但同一 child/supervisor 继续，
+随后恢复 AVAILABLE。原生 ETA=16:12:11 UTC，区间 16:12:04–16:12:19 UTC。
+repeat start 返回 RETURN_EXISTING；终态 recover 要求另验原 Goal 完成标准。
+stale/mismatch/partial-start/supervisor-loss/machine-identity recovery 负例使用受控身份
+fixture 与生产 recovery/resolve 函数，没有真实重启机器、破坏性 kill 或手工删除 state。
 
-## 测试、CI 和安装核对
+## 离线 replay 与真实预算
 
-本地 Python 3.12：481 项，exit 0，8 项 age 相关可选测试跳过；Python 3.9：481 项，
-exit 0，同样跳过 8 项。另有 25 项针对性验证全部通过，其中真实 Codex execpolicy
-正负例未跳过。各 stdout 摘要在 `c32b910/LOCAL_*_TESTS.txt`。
+`verify_c6_recorded_trace.py` 用当前安装的真实 plugin inventory/manifest/skill 身份，
+只把模型 response 替换为保存的 stdout/returncode，其他 parser、fidelity 和 render_once
+均为修复后的生产逻辑。审计钩子禁止 socket 和 model subprocess，唯一允许的 subprocess
+是只读 plugin list。结果为 NORMAL_WRITING_STYLE、failure 为空、retry=0。
+返回字段 model_invocations=1 表示一次被录制 response 替代的逻辑步骤，实际新增模型=0、
+SMTP=0；C6_OFFLINE_REPLAY.json 的外层字段明确记录该区别。
 
-Hosted CI 为 [run 39276862997](https://github.com/YuukiAS/GPT_Codex_AI_Bridge_Kit/actions/runs/39276862997)，
-`headSha=c32b9100c673ac3c9472d52271709989438bbf99`，Python 3.9 和 3.x 均 success。
-两个 job 各跑 481 项、跳过 4 项 Codex CLI 不存在的可选检查；这些在 Longleaf 的
-targeted bank 实际执行。CI 的 age 测试没有借用本地 skip 作为 PASS。
+保存源来自 `c32b910/C6_LIVE_RAW_EVIDENCE.json` 和 `C6_MODEL_JSONL.json`，
+stdout SHA-256 为 `542bbbe9b012181b10ce70553f6043a644ca3d0e0512a324ad0c4ba144c99c98`。
+旧现场确实发生一次模型、一封 fallback 邮件，SMTP accepted；这些事实及原始记录不改写。
+旧 Bridge 误报已由本轮纠正，但旧 run 不被倒签成新 SHA 的最终 live PASS。
 
-README、QUICKSTART、AGENTS、CHANGELOG、双版本源及 CI 文件逐字与候选 Git blob
-一致，hash 记录在 `c32b910/SOURCE_DOCUMENT_IDENTITY.json`。文档已核对 machine-only
-Notifier、notify 默认 OFF、三点/十分钟 ETA、UNKNOWN/recover/resolve、SMTP accepted
-边界、Clear Writing fallback/nonfatal 行为和原 Review/Control authority。
+## 全量回归、CI、安装与文档
 
-独立候选安装入口为 `/tmp/bridge-011-1472791-final-install/bin/ai-bridge`；目录名只是
-安装环境 locator，不是候选 SHA。editable direct_url 绑定本仓库，版本为 0.11.0，
-生产 bytes 与修复后候选一致；分支 HEAD 另含本目录证据提交，不冒充被测源码 SHA。
-正式机器分发的 0.10.0 安装没有被切换。
+本地 Python 3.12 全量 486 项，120.637 秒、exit 0，8 项 age 可选测试因环境依赖缺失跳过；
+Python 3.9 同样 486 项、123.403 秒、exit 0，跳过相同 8 项。
+30 项针对性测试 25.727 秒全部通过，真实 Codex execpolicy 检查未跳过。
+初次普通 sandbox 跑全量时有 8 个默认机器状态目录只读错误；按正式显式
+AI_BRIDGE_STATE_HOME 测试隔离后重跑通过，没有修改 HOME、CODEX_HOME 或生产 transport config。
+准备阶段的拒绝与修正记录在 REPAIR_SCOPE_AND_AUTHORITY.json。
 
-Codex 仍为 `/users/a/e/aereinh/bin/codex`、0.160.1，
-`CODEX_HOME=/users/a/e/aereinh/.codex`、OpenAI / `gpt-5.6-sol`。
-复核期间发现 writing-style inventory 0.4 与 marketplace manifest 0.5 不一致；已用
-`codex plugin add writing-style@yuukias-ai-skills --json` 刷新本机安装到一致的 0.5。
-两个必需 skill `writing-fidelity`、`chinese-prose` 曾在这次刷新后从正式 installed/enabled
-plugin 定位成功，未修改 AI_Skills_Collection 源码。但 15:27 UTC 的后续核验中，
-inventory 又报告 0.4，manifest 仍为 0.5，resolver 返回
-`WRITING_STYLE_PLUGIN_VERSION_MISMATCH`。15:34 UTC 的续查中，普通读取及实际 C6
-主机边界均已恢复为 inventory/manifest 0.5 一致，两个必需 skill 均可定位，
-machine Notifier 同时保持 VALID/transport_ready。最新证据见
-`c32b910/LATEST_WRITING_STYLE_IDENTITY.json`；15:27 的失败仍可从 evidence commit
-`a2fbd3e07aa1788f1ce261a565beb8d5e72752d3` 读取。此次续查没有再次安装插件，
-也没有改 catalog、重启 daemon 或调用模型；安装身份阻断已关闭，但定位不冒充 live consumption。
+Hosted CI：
+[run 39281651220](https://github.com/YuukiAS/GPT_Codex_AI_Bridge_Kit/actions/runs/39281651220)，
+headSha=`f3c882c5302a1889cac62526e8f025ada0f4d1a5`。直接 job API 已确认 Python 3.9
+completed/success；Python 3.x 仍 queued、runner 未分配。run 汇总暂未完成，无 failure
+annotation；等待全部真实结果，不引用旧 c32b910 的绿色 run。
 
-机器 Notifier 仍是 `~/.ai-bridge/private/notifier.env`、0600、VALID、
-transport_ready=true。已有用户确认收件的 send-test 是单独的兼容路径证据；它没有
-调用 Clear Writing，不能用来关闭 C6 自动 production Gate。没有复制或记录 App Password。
+SOURCE_DOCUMENT_INSTALL_IDENTITY.json 逐字绑定 README、QUICKSTART、AGENTS、CHANGELOG、
+pyproject、__init__、CI，记录独立 editable 安装指向本仓库、version=0.11.0。
+临时安装目录中的旧 SHA 字样只是路径 locator，不是候选身份。正式机器 0.10.0 安装未切换。
+完整核心 Python 相对 0.10.0 的净非空行增量为 3183；不含 tests/docs/results，不机械压行。
 
-核心生产 Python 相对正式 0.10.0 基线的非空行统计在
-`c32b910/CORE_PYTHON_DELTA.json`：新增 3337、删除 165、净增 3172；不计 tests/docs/results。
-这反映 v4 的后续范围，不把旧 checkpoint 的 1754 统计冒充当前值，也不机械压缩代码。
+## 剩余边界
 
-## C6 实际执行、失败证据与恢复点
-
-此前平台自动审批两次拒绝 live 命令，未创建进程，未消耗额度。随后用户在普通聊天
-明确回复“授权对 c32b910 执行上述 C6 live，一次模型、一封邮件、零重试，并完成收尾”，
-该授权阻断已经解除，不能继续把本轮失败归因于平台审批或用户没有授权。
-
-本轮执行绑定 `c32b9100c673ac3c9472d52271709989438bbf99`，使用已核对的 Codex
-0.160.1 / `gpt-5.6-sol`、原 CODEX_HOME 和原 machine Notifier。15:41:49 UTC 开始，
-15:42:02 UTC 记录 `SMTP_ACCEPTED`，总用时 12.370465 秒，未超过生产 120 秒 deadline。
-只创建一个 logical event、一个 attempt、一份 accepted receipt；模型 invocation=1，
-turn=1，automatic retry=0。SMTP accepted 不证明 inbox delivered，也未要求用户确认收件。
-
-安全合成 NotificationRequest、实际模型 JSONL、render result、claim/attempt/receipt 已归档
-到 `c32b910/C6_LIVE_RAW_EVIDENCE.json`。未输出或记录 App Password；请求不含私有正文、
-日志、凭据、review body 或任意 evidence_paths。正式父进程/真实 helper 未被替换；
-临时观察钩子仅记录 render 返回与 JSONL，并用 O_EXCL marker 阻止第二次模型启动。
-
-实际模型 exit 0，JSONL 有一个 thread.started、turn.started、turn.completed，但仅有一条
-agent_message 和一条 runtime warning，没有 skill/command_execution 消费事件。正式 parser
-返回 `CODEX_SKILL_CONSUMPTION_UNPROVEN: writing-fidelity,chinese-prose`。因此不能因为
-installed/enabled identity 正确、模型文本可读或 SMTP 成功，就宣称两个 skill 已被消费。
-当前 prompt 只引用 skill 名，没有在 prompt 中明确绑定 resolver 得到的 exact skill paths；
-这是后续修复需要处理的正常入口缺口，不能用宽松 parser 把缺失证据改判 PASS。
-
-对同一已保存模型文本做纯离线 fidelity replay，还复现了
-`CLEAR_WRITING_CONCLUSION_STRENGTHENED`：原 request 与模型都包含“不代表目标已完成”，
-但当前 substring 检查把否定句里的“目标已完成”判为增强结论。这是独立误报，不是实际
-模型宣称完成。本轮运行首先被 skill parser 拒绝；离线 replay 只揭示后续检查的问题，
-没有绕过生产检查或发送模型文本。
-
-`verify_c6_recorded_trace.py` 可重现上述两个结果，并验证实际发送文本逐字等于正式
-`render_auto_plain(request)`；脚本 audit hook 禁止 subprocess 和 socket，新增模型/SMTP=0。
-fallback 与非致命 transport 单项成立，但不能替代 v4 要求的正常 skill consumption。
-
-本次授权的一次模型、一封邮件已全部消耗。需要先修复 exact installed-skill 消费和
-否定句保真处理、冻结并验证修复候选；若继续关闭 live Gate，必然需要第二次真实模型
-验证，因此停在用户明确规定的次数边界。不修改当前冻结 production bytes、不自动 retry，
-也不再次运行 send-test。现有 C1–C5/CI 结果不被偷换到未来修复 SHA。
-
-尚未达到 `C1–C6 完整证据已准备，可交 final Critic`。Goal 未完成；不把本报告
-作为终态通过，不移动 `refs/heads/release`、tag 或 Marketplace。正式 release 仍为
-`9db19b0409816c22042a246b35a33e1d34fedd0a`。
+当前还需 hosted CI 完成，以及另行授权的新候选 C6 live rerun。
+不把本轮离线 replay 或旧邮件 receipt 说成新候选的 live PASS。
+没有新建 Goal，没有改变原 Goal 的最终完成标准；当前尚不能报告整个 Goal 完成。

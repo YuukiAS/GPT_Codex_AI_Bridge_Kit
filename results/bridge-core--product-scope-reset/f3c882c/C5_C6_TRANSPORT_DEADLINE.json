@@ -1,0 +1,40 @@
+{
+  "candidate_sha": "f3c882c5302a1889cac62526e8f025ada0f4d1a5",
+  "exit_code": 0,
+  "evidence": {
+    "candidate_sha": "f3c882c5302a1889cac62526e8f025ada0f4d1a5",
+    "cases": [
+      {
+        "hang_stage": "DNS",
+        "status": "DELIVERY_UNKNOWN",
+        "elapsed_seconds": 1.5119357937946916,
+        "deadline_seconds": 1.5,
+        "helper_reaped": true,
+        "primary_continued": true,
+        "model_invocations": 0,
+        "smtp_sends": 0
+      },
+      {
+        "hang_stage": "SMTP_CONNECT",
+        "status": "DELIVERY_UNKNOWN",
+        "elapsed_seconds": 1.5305878454819322,
+        "deadline_seconds": 1.5,
+        "helper_reaped": true,
+        "primary_continued": true,
+        "model_invocations": 0,
+        "smtp_sends": 0
+      },
+      {
+        "hang_stage": "TLS",
+        "status": "DELIVERY_UNKNOWN",
+        "elapsed_seconds": 1.508394604548812,
+        "deadline_seconds": 1.5,
+        "helper_reaped": true,
+        "primary_continued": true,
+        "model_invocations": 0,
+        "smtp_sends": 0
+      }
+    ],
+    "result": "PASS"
+  }
+}

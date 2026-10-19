@@ -1,0 +1,40 @@
+{
+  "candidate_sha": "f3c882c5302a1889cac62526e8f025ada0f4d1a5",
+  "repair_scope": [
+    "Native explicit $skill invocation; installed/enabled identity still required",
+    "Negated completion caveats accepted; positive upgrades rejected"
+  ],
+  "official_contract_source": "https://learn.chatgpt.com/docs/build-skills#how-chatgpt-and-codex-use-skills",
+  "official_contract_observation": "Codex CLI/IDE explicit invocation uses $ to mention a skill. JSONL skill-load or shell SKILL.md-read events are not required by the current user-approved Bridge evidence contract.",
+  "previous_live_source_candidate": "c32b9100c673ac3c9472d52271709989438bbf99",
+  "previous_jsonl_sha256": "542bbbe9b012181b10ce70553f6043a644ca3d0e0512a324ad0c4ba144c99c98",
+  "new_candidate_live_model_invocations": 0,
+  "new_candidate_live_smtp_sends": 0,
+  "new_candidate_c6_live_status": "NOT_RUN_NOT_AUTHORIZED_THIS_ROUND",
+  "setup_retries": [
+    {
+      "step": "C4 disposable fixture",
+      "failure": "target is not inside a Git repository",
+      "child_launched": false,
+      "resolution": "Initialize and commit only the disposable canary fixture; same Goal and one later successful launch"
+    },
+    {
+      "step": "C2 and C3 sandbox probes",
+      "failure": "Default machine log/lock root is read-only in workspace-write",
+      "resolution": "Rerun with explicit temporary AI_BRIDGE_STATE_HOME, no production config/env override"
+    },
+    {
+      "step": "Local full unittest initial run",
+      "result": "486 tests, errors=8, skipped=8",
+      "failure": "All errors are read-only machine state/log/lock writes in sandbox",
+      "resolution": "Rerun unchanged source with isolated temporary AI_BRIDGE_STATE_HOME"
+    }
+  ],
+  "preserved": [
+    "User .gitignore unchanged and unstaged",
+    "No AI_Skills_Collection modifications",
+    "No provider/recipient change",
+    "No second live model invocation or Gmail",
+    "No release/tag movement"
+  ]
+}

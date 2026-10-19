@@ -1,0 +1,507 @@
+CANDIDATE_SHA=f3c882c5302a1889cac62526e8f025ada0f4d1a5
+EXIT_CODE=0
+COMMAND=LD_LIBRARY_PATH=/nas/longleaf/rhel9/apps/python/3.12.4/lib AI_BRIDGE_STATE_HOME=/tmp/bridge-gates-f3c882c/full-suite-state /tmp/bridge-011-1472791-final-install/bin/python -m unittest discover -v
+OUTPUT_KIND=tool-captured stdout/stderr excerpt; tool truncation markers retained
+test_adversarial_transition_edges_are_rejected (tests.test_agent_flow.AgentFlowTests.test_adversarial_transition_edges_are_rejected) ... ok
+test_agent_flow_critic_wait_is_external_wait (tests.test_agent_flow.AgentFlowTests.test_agent_flow_critic_wait_is_external_wait) ... ok
+test_agent_flow_install_distributes_canonical_critic_without_bridge_maintenance_policy (tests.test_agent_flow.AgentFlowTests.test_agent_flow_install_distributes_canonical_critic_without_bridge_maintenance_policy) ... ok
+test_agent_flow_validate_consumes_role_and_authority_artifacts (tests.test_agent_flow.AgentFlowTests.test_agent_flow_validate_consumes_role_and_authority_artifacts) ... ok
+test_change_classification_and_incremental_invalidation (tests.test_agent_flow.AgentFlowTests.test_change_classification_and_incremental_invalidation) ... ok
+test_ci_required_uses_ci_evidence_artifact (tests.test_agent_flow.AgentFlowTests.test_ci_required_uses_ci_evidence_artifact) ... ok
+test_contract_and_ledger_changes_after_snapshot_are_rejected (tests.test_agent_flow.AgentFlowTests.test_contract_and_ledger_changes_after_snapshot_are_rejected) ... ok
+test_contract_review_requires_refreeze_and_new_snapshot_target (tests.test_agent_flow.AgentFlowTests.test_contract_review_requires_refreeze_and_new_snapshot_target) ... Warning: truncated output (original token count: 23586)
+Total output lines: 843
+
+ok
+test_contract_review_same_snapshot_target_is_rejected (tests.test_agent_flow.AgentFlowTests.test_contract_review_same_snapshot_target_is_rejected) ... ok
+test_control_notification_failure_does_not_roll_back_valid_semantic_transition (tests.test_agent_flow.AgentFlowTests.test_control_notification_failure_does_not_roll_back_valid_semantic_transition) ... ok
+test_control_roles_and_legacy_identifiers_stay_unchanged (tests.test_agent_flow.AgentFlowTests.test_control_roles_and_legacy_identifiers_stay_unchanged) ... ok
+test_controller_cannot_turn_verifier_fail_into_user_choice (tests.test_agent_flow.AgentFlowTests.test_controller_cannot_turn_verifier_fail_into_user_choice) ... ok
+test_controller_restart_recovers_executor_commit_before_integration_publication (tests.test_agent_flow.AgentFlowTests.test_controller_restart_recovers_executor_commit_before_integration_publication) ... ok
+test_current_finding_must_validate_before_route (tests.test_agent_flow.AgentFlowTests.test_current_finding_must_validate_before_route) ... ok
+test_detached_worktree_plan_does_not_create_branch (tests.test_agent_flow.AgentFlowTests.test_detached_worktree_plan_does_not_create_branch) ... ok
+test_evidence_artifact_status_is_authoritative (tests.test_agent_flow.AgentFlowTests.test_evidence_artifact_status_is_authoritative) ... ok
+test_exact_role_receipt_rejects_resume_last (tests.test_agent_flow.AgentFlowTests.test_exact_role_receipt_rejects_resume_last) ... ok
+test_executor_test_aware_alternate_path_is_rejected (tests.test_agent_flow.AgentFlowTests.test_executor_test_aware_alternate_path_is_rejected) ... ok
+test_existing_cli_commands_and_agent_flow_cli_are_available (tests.test_agent_flow.AgentFlowTests.test_existing_cli_commands_and_agent_flow_cli_are_available) ... ok
+test_fake_verifier_freeze_is_rejected (tests.test_agent_flow.AgentFlowTests.test_fake_verifier_freeze_is_rejected) ... ok
+test_final_critic_gate_and_no_write_authority (tests.test_agent_flow.AgentFlowTests.test_final_critic_gate_and_no_write_authority) ... ok
+test_final_critic_waits_for_real_artifact (tests.test_agent_flow.AgentFlowTests.test_final_critic_waits_for_real_artifact) ... ok
+test_generic_schema_has_no_care_required_fields (tests.test_agent_flow.AgentFlowTests.test_generic_schema_has_no_care_required_fields) ... ok
+test_implementation_or_verifier_source_changes_alter_review_target (tests.test_agent_flow.AgentFlowTests.test_implementation_or_verifier_source_changes_alter_review_target) ... ok
+test_install_force_preserves_custom_project_profile (tests.test_agent_flow.AgentFlowTests.test_install_force_preserves_custom_project_profile) ... ok
+test_install_status_validate_and_task_init_do_not_create_branch (tests.test_agent_flow.AgentFlowTests.test_install_status_validate_and_task_init_do_not_create_branch) ... ok
+test_integration_requires_valid_git_receipt_and_exact_diff (tests.test_agent_flow.AgentFlowTests.test_integration_requires_valid_git_receipt_and_exact_diff) ... ok
+test_legacy_findings_materialize_to_authoritative_artifact (tests.test_agent_flow.AgentFlowTests.test_legacy_findings_materialize_to_authoritative_artifact) ... ok
+test_missing_executor_receipt_and_stale_verifier_freeze_nonce_rejected (tests.test_agent_flow.AgentFlowTests.test_missing_executor_receipt_and_stale_verifier_freeze_nonce_rejected) ... ok
+test_old_nonce_and_old_target_artifacts_rejected (tests.test_agent_flow.AgentFlowTests.test_old_nonce_and_old_target_artifacts_rejected) ... ok
+test_optional_visual_source_policy_disabled_preserves_existing_flow (tests.test_agent_flow.AgentFlowTests.test_optional_visual_source_policy_disabled_preserves_existing_flow) ... ok
+test_ordinary_planner_revise_both_keeps_critic_standby (tests.test_agent_flow.AgentFlowTests.test_ordinary_planner_revise_both_keeps_critic_standby) ... ok
+test_planner_wait_is_not_blocked_before_or_after_two_hours (tests.test_agent_flow.AgentFlowTests.test_planner_wait_is_not_blocked_before_or_after_two_hours) ... ok
+test_production_transitions_reject_fake_test_role_receipts (tests.test_agent_flow.AgentFlowTests.test_production_transitions_reject_fake_test_role_receipts) ... ok
+test_project_adapter_returns_typed_evidence_without_authority_expansion (tests.test_agent_flow.AgentFlowTests.test_project_adapter_returns_typed_evidence_without_authority_expansion) ... ok
+test_required_evidence_file_and_sha_are_enforced (tests.test_agent_flow.AgentFlowTests.test_required_evidence_file_and_sha_are_enforced) ... ok
+test_review_bundle_is_current_small_and_target_bound (tests.test_agent_flow.AgentFlowTests.test_review_bundle_is_current_small_and_target_bound) ... ok
+test_role_git_commit_diff_must_match_touched_paths (tests.test_agent_flow.AgentFlowTests.test_role_git_commit_diff_must_match_touched_paths) ... ok
+test_role_provenance_and_machine_review_authority_are_enforced (tests.test_agent_flow.AgentFlowTests.test_role_provenance_and_machine_review_authority_are_enforced) ... ok
+test_second_heavy_verifier_for_same_target_requires_reason (tests.test_agent_flow.AgentFlowTests.test_second_heavy_verifier_for_same_target_requires_reason) ... ok
+test_snapshot_uses_canonical_manifests_and_ignores_receipts_current_docs (tests.test_agent_flow.AgentFlowTests.test_snapshot_uses_canonical_manifests_and_ignores_receipts_current_docs) ... ok
+test_snapshot_uses_tracked_content_when_git_is_available (tests.test_agent_flow.AgentFlowTests.test_snapshot_uses_tracked_content_when_git_is_available) ... ok
+test_stale_agent_flow_planner_findings_do_not_route_repair (tests.test_agent_flow.AgentFlowTests.test_stale_agent_flow_planner_findings_do_not_route_repair) ... ok
+test_stale_visual_review_target_is_rejected (tests.test_agent_flow.AgentFlowTests.test_stale_visual_review_target_is_rejected) ... ok
+test_terminal_notifier_brief_only_for_terminal_user_states (tests.test_agent_flow.AgentFlowTests.test_terminal_notifier_brief_only_for_terminal_user_states) ... ok
+test_toy_a_control_plane_path (tests.test_agent_flow.AgentFlowTests.test_toy_a_control_plane_path) ... ok
+test_toy_a_e2e_controller_transition_chain (tests.test_agent_flow.AgentFlowTests.test_toy_a_e2e_controller_transition_chain) ... ok
+test_toy_b_control_plane_change_and_contract_ambiguity (tests.test_agent_flow.AgentFlowTests.test_toy_b_control_plane_change_and_contract_ambiguity) ... ok
+test_tracked_semantic_changes_after_snapshot_are_rejected (tests.test_agent_flow.AgentFlowTests.test_tracked_semantic_changes_after_snapshot_are_rejected) ... ok
+test_typed_routes_keep_ordinary_bug_out_of_critic (tests.test_agent_flow.AgentFlowTests.test_typed_routes_keep_ordinary_bug_out_of_critic) ... ok
+test_verifier_cannot_create_uncited_blocking_threshold (tests.test_agent_flow.AgentFlowTests.test_verifier_cannot_create_uncited_blocking_threshold) ... ok
+test_visual_evidence_only_change_does_not_require_heavy_verifier (tests.test_agent_flow.AgentFlowTests.test_visual_evidence_only_change_does_not_require_heavy_verifier) ... ok
+test_visual_review_binds_current_review_target_and_bundle (tests.test_agent_flow.AgentFlowTests.test_visual_review_binds_current_review_target_and_bundle) ... ok
+test_agent_flow_still_routes_to_legacy_cli (tests.test_bridge_cli_router.BridgeCliRouterTests.test_agent_flow_still_routes_to_legacy_cli) ... ok
+test_force_init_preserves_raw_bytes_around_existing_managed_block (tests.test_bridge_cli_router.BridgeCliRouterTests.test_force_init_preserves_raw_bytes_around_existing_managed_block) ... ok
+test_init_preserves_existing_project_root_under_normal_and_force (tests.test_bridge_cli_router.BridgeCliRouterTests.test_init_preserves_existing_project_root_under_normal_and_force) ... ok
+test_legacy_init_and_validate_delegate_unchanged (tests.test_bridge_cli_router.BridgeCliRouterTests.test_legacy_init_and_validate_delegate_unchanged) ... ok
+test_legacy_where_and_prompt_delegate_unchanged (tests.test_bridge_cli_router.BridgeCliRouterTests.test_legacy_where_and_prompt_delegate_unchanged) ... ok
+test_overleaf_routes_to_dedicated_cli_without_breaking_legacy (tests.test_bridge_cli_router.BridgeCliRouterTests.test_overleaf_routes_to_dedicated_cli_without_breaking_legacy) ... ok
+test_repeated_normal_init_preserves_mixed_newline_existing_root_bytes (tests.test_bridge_cli_router.BridgeCliRouterTests.test_repeated_normal_init_preserves_mixed_newline_existing_root_bytes) ... ok
+test_code_test_workflow_and_config_changes_still_trigger_tests_workflow (tests.test_ci_workflow_triggers.TestsWorkflowTriggerTests.test_code_test_workflow_and_config_changes_still_trigger_tests_workflow) ... ok
+test_docs_and_results_only_changes_are_ignored_for_tests_workflow (tests.test_ci_workflow_triggers.TestsWorkflowTriggerTests.test_docs_and_results_only_changes_are_ignored_for_tests_workflow) ... ok
+test_tests_workflow_keeps_superseded_run_cancellation (tests.test_ci_workflow_triggers.TestsWorkflowTriggerTests.test_tests_workflow_keeps_superseded_run_cancellation) ... ok
+test_automatic_send_uses_adapter_but_manual_send_stays_legacy (tests.test_clear_writing.ClearWritingTests.test_automatic_send_uses_adapter_but_manual_send_stays_legacy) ... ok
+test_current_codex_inventory_nested_source_and_name_manifest_resolve (tests.test_clear_writing.ClearWritingTests.test_current_codex_inventory_nested_source_and_name_manifest_resolve) ... ok
+test_jsonl_errors_and_invalid_boundary_order_are_not_accepted (tests.test_clear_writing.ClearWritingTests.test_jsonl_errors_and_invalid_boundary_order_are_not_accepted) ... ok
+test_jsonl_turn_or_fidelity_failure_never_retries (tests.test_clear_writing.ClearWritingTests.test_jsonl_turn_or_fidelity_failure_never_retries) ... ok
+test_missing_required_skill_prevents_model_launch (tests.test_clear_writing.ClearWritingTests.test_missing_required_skill_prevents_model_launch) ... ok
+test_normal_path_uses_one_model_turn_and_both_exact_skills (tests.test_clear_writing.ClearWritingTests.test_normal_path_uses_one_model_turn_and_both_exact_skills) ... ok
+test_plugin_failure_uses_zero_model_fallback (tests.test_clear_writing.ClearWritingTests.test_plugin_failure_uses_zero_model_fallback) ... ok
+test_plugin_identity_failures_keep_model_count_zero (tests.test_clear_writing.ClearWritingTests.test_plugin_identity_failures_keep_model_count_zero) ... ok
+test_positive_completion_still_fails_but_explicit_negation_passes (tests.test_clear_writing.ClearWritingTests.test_positive_completion_still_fails_but_explicit_negation_passes) ... ok
+test_saved_real_one_turn_trace_uses_normal_style_without_load_events (tests.test_clear_writing.ClearWritingTests.test_saved_real_one_turn_trace_uses_normal_style_without_load_events) ... ok
+test_transport_failure_does_not_trigger_second_model_call (tests.test_clear_writing.ClearWritingTests.test_transport_failure_does_not_trigger_second_model_call) ... ok
+test_next_action_can_identify_external_wait_without_fixed_state (tests.test_external_wait.ExternalWaitContractTests.test_next_action_can_identify_external_wait_without_fixed_state) ... ok
+test_timeout_alone_does_not_block_but_observed_failure_can (tests.test_external_wait.ExternalWaitContractTests.test_timeout_alone_does_not_block_but_observed_failure_can) ... ok
+test_agents_block_create_append_update_preserves_user_content (tests.test_host_policy.HostPolicyTests.test_agents_block_create_append_update_preserves_user_content) ... ok
+test_codex_home_resolution_priority (tests.test_host_policy.HostPolicyTests.test_codex_home_resolution_priority) ... ok
+test_config_merge_preserves_unrelated_fields (tests.test_host_policy.HostPolicyTests.test_config_merge_preserves_unrelated_fields) ... ok
+test_execpolicy_does_not_trust_repo_local_fake_ai_bridge (tests.test_host_policy.HostPolicyTests.test_execpolicy_does_not_trust_repo_local_fake_ai_bridge) ... ok
+test_execpolicy_git_authorization_semantics_with_real_codex_cli_when_available (tests.test_host_policy.HostPolicyTests.test_execpolicy_git_authorization_semantics_with_real_codex_cli_when_available) ... ok
+test_existing_features_section_updates_only_target_keys (tests.test_host_policy.HostPolicyTests.test_existing_features_section_updates_only_target_keys) ... ok
+test_existing_managed_block_updates_narrative_policy_and_preserves_user_content (tests.test_host_policy.HostPolicyTests.test_existing_managed_block_updates_narrative_policy_and_preserves_user_content) ... ok
+test_existing_sandbox_section_updates_network_access (tests.test_host_policy.HostPolicyTests.test_existing_sandbox_section_updates_network_access) ... ok
+test_install_is_idempotent (tests.test_host_policy.HostPolicyTests.test_install_is_idempotent) ... ok
+test_new_config_install_values (tests.test_host_policy.HostPolicyTests.test_new_config_install_values) ... ok
+test_new_install_agents_block_contains_narrative_language_policy (tests.test_host_policy.HostPolicyTests.test_new_install_agents_block_contains_narrative_language_policy) ... ok
+test_publish_current_branch_allows_ambient_ssh_askpass_but_never_exports_it_to_network (tests.test_host_policy.HostPolicyTests.test_publish_current_branch_allows_ambient_ssh_askpass_but_never_exports_it_to_network) ... To /tmp/tmp6yjqlgu4/remote.git
+ * [new branch]      main -> main
+ok
+test_publish_current_branch_allows_local_builtin_credential_helper (tests.test_host_policy.HostPolicyTests.test_publish_current_branch_allows_local_builtin_credential_helper) ... To /tmp/tmp31z3o9cj/remote.git
+ * [new branch]      main -> main
+ok
+test_publish_current_branch_cli_entrypoint (tests.test_host_policy.HostPolicyTests.test_publish_current_branch_cli_entrypoint) ... To /tmp/tmp2mb5aeb4/remote.git
+ * [new branch]      main -> main
+ok
+test_publish_current_branch_pushes_existing_same_name_branch (tests.test_host_policy.HostPolicyTests.test_publish_current_branch_pushes_existing_same_name_branch) ... To /tmp/tmpt77av5f1/remote.git
+ * [new branch]      main -> main
+ok
+test_publish_current_branch_rejects_https_fetch_ssh_push_before_network (tests.test_host_policy.HostPolicyTests.test_publish_current_branch_rejects_https_fetch_ssh_push_before_network) ... To /tmp/tmptnu_urg3/remote.git
+ * [new branch]      main -> main
+ok
+test_publish_current_branch_rejects_non_https_effective_transports_before_network (tests.test_host_policy.HostPolicyTests.test_publish_current_branch_rejects_non_https_effective_transports_before_network) ... To /tmp/tmpv7tf5rip/remote.git
+ * [new branch]      main -> main
+To /tmp/tmpap4aybnb/remote.git
+ * [new branch]      main -> main
+To /tmp/tmpkjk_8pgy/remote.git
+ * [new branch]      main -> main
+To /tmp/tmpyffmr0yl/remote.git
+ * [new branch]      main -> main
+ok
+test_publish_current_branch_rejects_real_reviewed_runner_guard_environment (tests.test_host_policy.HostPolicyTests.test_publish_current_branch_rejects_real_reviewed_runner_guard_environment) ... To /tmp/tmpsx71mgl_/remote.git
+ * [new branch]      main -> main
+ok
+test_publish_current_branch_rejects_repo_config_injection_and_hook (tests.test_host_policy.HostPolicyTests.test_publish_current_branch_rejects_repo_config_injection_and_hook) ... To /tmp/tmpl0gcak5i/core-ssh-command/remote.git
+ * [new branch]      main -> main
+To /tmp/tmpl0gcak5i/credential-shell-helper/remote.git
+ * [new branch]      main -> main
+To /tmp/tmpl0gcak5i/credential-path-helper/remote.git
+ * [new branch]      main -> main
+To /tmp/tmpl0gcak5i/core-ask-pass/remote.git
+ * [new branch]      main -> main
+To /tmp/tmpl0gcak5i/push-follow-tags/remote.git
+ * [new branch]      main -> main
+To /tmp/tmpl0gcak5i/push-recurse-submodules/remote.git
+ * [new branch]      main -> main
+To /tmp/tmpl0gcak5i/push-option/remote.git
+ * [new branch]      main -> main
+To /tmp/tmpl0gcak5i/push-signing/remote.git
+ * [new branch]      main -> main
+ok
+test_publish_current_branch_rejects_review_executor_guard (tests.test_host_policy.HostPolicyTests.test_publish_current_branch_rejects_review_executor_guard) ... To /tmp/tmpmese2pz3/remote.git
+ * [new branch]      main -> main
+ok
+test_publish_current_branch_rejects_worktree_config_canaries_before_remote (tests.test_host_policy.HostPolicyTests.test_publish_current_branch_rejects_worktree_config_canaries_before_remote) ... To /tmp/tmp85563opv/remote.git
+ * [new branch]      main -> main
+To /tmp/tmp4h7x50_e/remote.git
+ * [new branch]      main -> main
+ok
+test_publish_current_branch_rejects_wrong_repo_branch_and_remote_ahead (tests.test_host_policy.HostPolicyTests.test_publish_current_branch_rejects_wrong_repo_branch_and_remote_ahead) ... To /tmp/tmpkac2h3zy/remote.git
+ * [new branch]      main -> main
+ok
+test_publish_current_branch_transport_fence_negatives (tests.test_host_policy.HostPolicyTests.test_publish_current_branch_transport_fence_negatives) ... To /tmp/tmpo_teb789/remote.git
+ * [new branch]      main -> main
+ok
+test_rules_install_and_repeat (tests.test_host_policy.HostPolicyTests.test_rules_install_and_repeat) ... ok
+test_shared_repo_identity_still_supports_reviewed_and_local_shapes (tests.test_host_policy.HostPolicyTests.test_shared_repo_identity_still_supports_reviewed_and_local_shapes) ... ok
+test_status_missing_configured_drifted (tests.test_host_policy.HostPolicyTests.test_status_missing_configured_drifted) ... ok
+test_status_reports_narrative_language_policy (tests.test_host_policy.HostPolicyTests.test_status_reports_narrative_language_policy) ... ok
+test_sync_current_branch_fast_forwards_existing_non_main_branch (tests.test_host_policy.HostPolicyTests.test_sync_current_branch_fast_forwards_existing_non_main_branch) ... To /tmp/tmp67sbkxwr/remote.git
+ * [new branch]      main -> main
+Switched to a new branch 'feature'
+To /tmp/tmp67sbkxwr/remote.git
+ * [new branch]      feature -> feature
+Cloning into '/tmp/tmp67sbkxwr/peer'...
+done.
+Switched to a new branch 'feature'
+To /tmp/tmp67sbkxwr/remote.git
+   d14c33d..c1c519c  feature -> feature
+ok
+test_sync_current_branch_rejects_executable_mutation_hooks (tests.test_host_policy.HostPolicyTests.test_sync_current_branch_rejects_executable_mutation_hooks) ... To /tmp/tmpla79dbzm/remote.git
+ * [new branch]      main -> main
+Switched to a new branch 'feature'
+To /tmp/tmpla79dbzm/remote.git
+ * [new branch]      feature -> feature
+ok
+test_sync_current_branch_rejects_main_and_dirty_tree (tests.test_host_policy.HostPolicyTests.test_sync_current_branch_rejects_main_and_dirty_tree) ... To /tmp/tmpclijp1yo/remote.git
+ * [new branch]      main -> main
+Switched to a new branch 'feature'
+To /tmp/tmpclijp1yo/remote.git
+ * [new branch]      feature -> feature
+ok
+test_validate_reports_drift_when_narrative_policy_is_removed (tests.test_host_policy.HostPolicyTests.test_validate_reports_drift_when_narrative_policy_is_removed) ... ok
+test_validate_with_real_codex_cli_when_available (tests.test_host_policy.HostPolicyTests.test_validate_with_real_codex_cli_when_available) ... ok
+test_bridge_does_not_ship_parallel_human_gate_state_machine (tests.test_human_gate_contract.HumanGateContractTests.test_bridge_does_not_ship_parallel_human_gate_state_machine) ... ok
+test_default_human_only_contract_uses_existing_legal_recovery_states (tests.test_human_gate_contract.HumanGateContractTests.test_default_human_only_contract_uses_existing_legal_recovery_states) ... ok
+test_blocked_subject_is_chinese_and_literals_preserved (tests.test_notifier.NotifierTests.test_blocked_subject_is_chinese_and_literals_preserved) ... ok
+test_cli_send_dry_run (tests.test_notifier.NotifierTests.test_cli_send_dry_run) ... ok
+test_cross_repo_event_identity_and_concurrent_claim (tests.test_notifier.NotifierTests.test_cross_repo_event_identity_and_concurrent_claim) ... ok
+test_deadline_after_transport_is_unknown_and_retry_requires_confirmation (tests.test_notifier.NotifierTests.test_deadline_after_transport_is_unknown_and_retry_requires_confirmation) ... ok
+test_dedup_digest_is_only_notifier_state (tests.test_notifier.NotifierTests.test_dedup_digest_is_only_notifier_state) ... ok
+test_dry_run_does_not_send_or_write_state (tests.test_notifier.NotifierTests.test_dry_run_does_not_send_or_write_state) ... ok
+test_duplicate_brief_does_not_send_twice (tests.test_notifier.NotifierTests.test_duplicate_brief_does_not_send_twice) ... ok
+test_email_message_plain_plus_html_without_secret (tests.test_notifier.NotifierTests.test_email_message_plain_plus_html_without_secret) ... ok
+test_executor_cannot_forge_semantic_pass_notification (tests.test_notifier.NotifierTests.test_executor_cannot_forge_semantic_pass_notification) ... ok
+test_generic_notifier_does_not_require_slurm_or_care_routes (tests.test_notifier.NotifierTests.test_generic_notifier_does_not_require_slurm_or_care_routes) ... ok
+test_inline_auto_delivery_falls_back_once_and_records_smtp_accepted (tests.test_notifier.NotifierTests.test_inline_auto_delivery_falls_back_once_and_records_smtp_accepted) ... ok
+test_invalid_nonterminal_brief_rejected (tests.test_notifier.NotifierTests.test_invalid_nonterminal_brief_rejected) ... ok
+test_legacy_migration_same_conflict_and_no_delete (tests.test_notifier.NotifierTests.test_legacy_migration_same_conflict_and_no_delete) ... ok
+test_milestone_notification_is_non_blocking_and_deduped (tests.test_notifier.NotifierTests.test_milestone_notification_is_non_blocking_and_deduped) ... ok
+test_notification_request_allowlist_and_header_injection (tests.test_notifier.NotifierTests.test_notification_request_allowlist_and_header_injection) ... ok
+test_once_after_baseline_sends_new_brief (tests.test_notifier.NotifierTests.test_once_after_baseline_sends_new_brief) ... ok
+test_once_first_start_baselines_without_backfill (tests.test_notifier.NotifierTests.test_once_first_start_baselines_without_backfill) ... ok
+test_once_scans_milestone_notifications_after_baseline (tests.test_notifier.NotifierTests.test_once_scans_milestone_notifications_after_baseline) ... ok
+test_operational_failure_can_be_sent_by_machine_layer (tests.test_notifier.NotifierTests.test_operational_failure_can_be_sent_by_machine_layer) ... ok
+test_operational_progress_is_transport_only (tests.test_notifier.NotifierTests.test_operational_progress_is_transport_only) ... ok
+test_planner_reviewer_structured_notifications_send_through_generic_notifier (tests.test_notifier.NotifierTests.test_planner_reviewer_structured_notifications_send_through_generic_notifier) ... ok
+test_private_secret_fixture_not_in_tracked_files (tests.test_notifier.NotifierTests.test_private_secret_fixture_not_in_tracked_files) ... ok
+test_production_environment_cannot_override_machine_transport_config (tests.test_notifier.NotifierTests.test_production_environment_cannot_override_machine_transport_config) ... ok
+test_production_helper_runs_in_real_process_without_model_or_smtp (tests.test_notifier.NotifierTests.test_production_helper_runs_in_real_process_without_model_or_smtp) ... ok
+test_run_is_not_default_install_requirement_and_tmux_not_needed (tests.test_notifier.NotifierTests.test_run_is_not_default_install_requirement_and_tmux_not_needed) ... ok
+test_send_terminal_brief_statuses (tests.test_notifier.NotifierTests.test_send_terminal_brief_statuses) ... ok
+test_send_test_calls_backend_interface (tests.test_notifier.NotifierTests.test_send_test_calls_backend_interface) ... ok
+test_send_test_readiness_binds_current_config_digest (tests.test_notifier.NotifierTests.test_send_test_readiness_binds_current_config_digest) ... ok
+test_smtp_failure_not_marked_sent_and_can_retry (tests.test_notifier.NotifierTests.test_smtp_failure_not_marked_sent_and_can_retry) ... ok
+test_structured_milestone_template_validates (tests.test_notifier.NotifierTests.test_structured_milestone_template_validates) ... ok
+test_bootstrap_empty_remote_flattens_publication_root_only (tests.test_overleaf.OverleafBridgeTests.test_bootstrap_empty_remote_flattens_publication_root_only) ... ok
+test_bootstrap_refuses_non_empty_remote_and_preserves_content (tests.test_overleaf.OverleafBridgeTests.test_bootstrap_refuses_non_empty_remote_and_preserves_content) ... ok
+test_cli_help_and_router_are_available (tests.test_overleaf.OverleafBridgeTests.test_cli_help_and_router_are_available) ... ok
+test_connect_bootstrap_allows_arbitrary_remote_branch_name (tests.test_overleaf.OverleafBridgeTests.test_connect_bootstrap_allows_arbitrary_remote_branch_name) ... ok
+test_connect_bootstrap_refuses_dirty_publication_root (tests.test_overleaf.OverleafBridgeTests.test_connect_bootstrap_refuses_dirty_publication_root) ... ok
+test_connect_bootstrap_resolves_main_remote_without_creating_master (tests.test_overleaf.OverleafBridgeTests.test_connect_bootstrap_resolves_main_remote_without_creating_master) ... ok
+test_connect_bootstrap_resolves_master_remote (tests.test_overleaf.OverleafBridgeTests.test_connect_bootstrap_resolves_master_remote) ... ok
+test_connect_without_bootstrap_refuses_dirty_publication_root (tests.test_overleaf.OverleafBridgeTests.test_connect_without_bootstrap_refuses_dirty_publication_root) ... ok
+test_connect_without_bootstrap_requires_equivalent_content (tests.test_overleaf.OverleafBridgeTests.test_connect_without_bootstrap_requires_equivalent_content) ... ok
+test_connection_secret_like_fields_fail_closed_without_leakage (tests.test_overleaf.OverleafBridgeTests.test_connection_secret_like_fields_fail_closed_without_leakage) ... ok
+test_diverged_local_and_remote_fail_closed (tests.test_overleaf.OverleafBridgeTests.test_diverged_local_and_remote_fail_closed) ... ok
+test_equivalent_content_refreshes_baseline_without_spurious_commit (tests.test_overleaf.OverleafBridgeTests.test_equivalent_content_refreshes_baseline_without_spurious_commit) ... ok
+test_excluded_dirty_paths_do_not_block_status_or_sync (tests.test_overleaf.OverleafBridgeTests.test_excluded_dirty_paths_do_not_block_status_or_sync) ... ok
+test_install_creates_config_readme_and_agents_block_idempotently (tests.test_overleaf.OverleafBridgeTests.test_install_creates_config_readme_and_agents_block_idempotently) ... ok
+test_install_migrates_legacy_tracked_remote_branch_config (tests.test_overleaf.OverleafBridgeTests.test_install_migrates_legacy_tracked_remote_branch_config) ... ok
+test_install_projected_instruction_overflow_writes_nothing…10586 tokens truncated…ning into '/tmp/tmpr0xyfs9l/reachable-global-filter'...
+done.
+ok
+test_task_bootstrap_cli_rejects_selector_arguments (tests.test_reviewed_handoff.ReviewedHandoffTests.test_task_bootstrap_cli_rejects_selector_arguments) ... usage: ai-bridge reviewed-handoff [-h]
+                                  {install,status,validate,task,transition,review,human,materialize-worktree,prompt}
+                                  ...
+ai-bridge reviewed-handoff: error: unrecognized arguments: --target /tmp/project
+ok
+test_task_bootstrap_creates_exact_first_worktree_without_polluting_main (tests.test_reviewed_handoff.ReviewedHandoffTests.test_task_bootstrap_creates_exact_first_worktree_without_polluting_main) ... To /tmp/tmpdih5586y/remote.git
+ * [new branch]      main -> main
+To /tmp/tmpdih5586y/remote.git
+   a0d26b5..fd6c309  main -> main
+ok
+test_task_bootstrap_performs_zero_network_operations (tests.test_reviewed_handoff.ReviewedHandoffTests.test_task_bootstrap_performs_zero_network_operations) ... To /tmp/tmpet_tp0b4/remote.git
+ * [new branch]      main -> main
+To /tmp/tmpet_tp0b4/remote.git
+   a0d26b5..cad3b38  main -> main
+ok
+test_task_bootstrap_rejects_cross_repo_and_stale_base_assertions (tests.test_reviewed_handoff.ReviewedHandoffTests.test_task_bootstrap_rejects_cross_repo_and_stale_base_assertions) ... To /tmp/tmpn9fqfgbn/remote.git
+ * [new branch]      main -> main
+To /tmp/tmpn9fqfgbn/remote.git
+   a0d26b5..b1df372  main -> main
+ok
+test_task_bootstrap_rejects_hooks_path_filters_and_fsmonitor (tests.test_reviewed_handoff.ReviewedHandoffTests.test_task_bootstrap_rejects_hooks_path_filters_and_fsmonitor) ... To /tmp/tmpw08c12ig/remote.git
+ * [new branch]      main -> main
+To /tmp/tmpw08c12ig/remote.git
+   a0d26b5..bf7da19  main -> main
+Cloning into '/tmp/tmpw08c12ig/exec-hooksPath'...
+done.
+Cloning into '/tmp/tmpw08c12ig/exec-smudge'...
+done.
+Cloning into '/tmp/tmpw08c12ig/exec-process'...
+done.
+Cloning into '/tmp/tmpw08c12ig/exec-fsmonitor'...
+done.
+ok
+test_task_bootstrap_rejects_noncanonical_remote_profiles (tests.test_reviewed_handoff.ReviewedHandoffTests.test_task_bootstrap_rejects_noncanonical_remote_profiles) ... To /tmp/tmpfx13y_hz/remote.git
+ * [new branch]      main -> main
+To /tmp/tmpfx13y_hz/remote.git
+   552fff6..f3e7c44  main -> main
+Cloning into '/tmp/tmpfx13y_hz/clone-second-remote'...
+done.
+Cloning into '/tmp/tmpfx13y_hz/clone-skipFetchAll'...
+done.
+Cloning into '/tmp/tmpfx13y_hz/clone-skipDefaultUpdate'...
+done.
+Cloning into '/tmp/tmpfx13y_hz/clone-main-only-refspec'...
+done.
+Cloning into '/tmp/tmpfx13y_hz/clone-multiple-refspecs'...
+done.
+Cloning into '/tmp/tmpfx13y_hz/clone-negative-refspec'...
+done.
+Cloning into '/tmp/tmpfx13y_hz/clone-custom-destination'...
+done.
+ok
+test_task_bootstrap_rejects_reachable_executable_paths (tests.test_reviewed_handoff.ReviewedHandoffTests.test_task_bootstrap_rejects_reachable_executable_paths) ... To /tmp/tmps6ygz30h/remote.git
+ * [new branch]      main -> main
+To /tmp/tmps6ygz30h/remote.git
+   32f25aa..9eb3b0e  main -> main
+Cloning into '/tmp/tmps6ygz30h/hook-reference-transaction'...
+done.
+Cloning into '/tmp/tmps6ygz30h/hook-post-checkout'...
+done.
+Cloning into '/tmp/tmps6ygz30h/hook-post-index-change'...
+done.
+ok
+test_task_bootstrap_rejects_task_output_redirection (tests.test_reviewed_handoff.ReviewedHandoffTests.test_task_bootstrap_rejects_task_output_redirection) ... To /tmp/tmpd3j5tghp/remote.git
+ * [new branch]      main -> main
+To /tmp/tmpd3j5tghp/remote.git
+   32f25aa..83ced69  main -> main
+ok
+test_task_bootstrap_uses_post_fetch_local_reviewed_ref_state (tests.test_reviewed_handoff.ReviewedHandoffTests.test_task_bootstrap_uses_post_fetch_local_reviewed_ref_state) ... To /tmp/tmp0fr0rq5u/remote.git
+ * [new branch]      main -> main
+To /tmp/tmp0fr0rq5u/remote.git
+   32f25aa..dcdb4a3  main -> main
+To /tmp/tmp0fr0rq5u/remote.git
+ * [new branch]      reviewed/repo--remote-presence -> reviewed/repo--remote-presence
+To /tmp/tmp0fr0rq5u/remote.git
+ - [deleted]         reviewed/repo--remote-presence
+ok
+test_task_init_can_require_text_review_without_changing_state_graph (tests.test_reviewed_handoff.ReviewedHandoffTests.test_task_init_can_require_text_review_without_changing_state_graph) ... ok
+test_task_key_lexical_contract_separates_new_and_existing_keys (tests.test_reviewed_handoff.ReviewedHandoffTests.test_task_key_lexical_contract_separates_new_and_existing_keys) ... ok
+test_text_pass_states_require_current_pass_evidence (tests.test_reviewed_handoff.ReviewedHandoffTests.test_text_pass_states_require_current_pass_evidence) ... ok
+test_text_review_pending_does_not_consume_review_round (tests.test_reviewed_handoff.ReviewedHandoffTests.test_text_review_pending_does_not_consume_review_round) ... ok
+test_text_review_revise_blocks_reviewer_pass (tests.test_reviewed_handoff.ReviewedHandoffTests.test_text_review_revise_blocks_reviewer_pass) ... ok
+test_unknown_plan_schema_fails_compatible_validation (tests.test_reviewed_handoff.ReviewedHandoffTests.test_unknown_plan_schema_fails_compatible_validation) ... ok
+test_valid_legacy_v1_plan_passes_compatible_validation_without_goal_fidelity_sections (tests.test_reviewed_handoff.ReviewedHandoffTests.test_valid_legacy_v1_plan_passes_compatible_validation_without_goal_fidelity_sections) ... ok
+test_visual_input_manifest_can_be_published_before_github_visual_review (tests.test_reviewed_handoff.ReviewedHandoffTests.test_visual_input_manifest_can_be_published_before_github_visual_review) ... ok
+test_visual_pass_states_require_current_pass_evidence (tests.test_reviewed_handoff.ReviewedHandoffTests.test_visual_pass_states_require_current_pass_evidence) ... ok
+test_visual_pending_is_allowed_for_ci_failures_and_non_pass_terminal_states (tests.test_reviewed_handoff.ReviewedHandoffTests.test_visual_pending_is_allowed_for_ci_failures_and_non_pass_terminal_states) ... ok
+test_visual_review_pending_does_not_consume_review_round (tests.test_reviewed_handoff.ReviewedHandoffTests.test_visual_review_pending_does_not_consume_review_round) ... ok
+test_visual_review_pending_requires_published_input_manifest (tests.test_reviewed_handoff.ReviewedHandoffTests.test_visual_review_pending_requires_published_input_manifest) ... ok
+test_waiting_for_ci_pending_has_no_side_effect_plan (tests.test_reviewed_handoff.ReviewedHandoffTests.test_waiting_for_ci_pending_has_no_side_effect_plan) ... ok
+test_different_repositories_can_have_independent_watchers (tests.test_reviewed_runner.ReviewedRunnerTests.test_different_repositories_can_have_independent_watchers) ... To /tmp/tmpqxghv5h7/origin.git
+ * [new branch]      main -> main
+To /tmp/tmp5iava45s/origin.git
+ * [new branch]      main -> main
+To /tmp/tmpqxghv5h7/origin.git
+   5708cbb..96b79eb  main -> main
+To /tmp/tmp5iava45s/origin.git
+   5708cbb..96b79eb  main -> main
+ok
+test_dirty_work_from_current_codex_event_blocks_without_retrying_over_it (tests.test_reviewed_runner.ReviewedRunnerTests.test_dirty_work_from_current_codex_event_blocks_without_retrying_over_it) ... ok
+test_executor_authority_rejects_request_plan_review_and_protected_current (tests.test_reviewed_runner.ReviewedRunnerTests.test_executor_authority_rejects_request_plan_review_and_protected_current) ... ok
+test_executor_direct_push_is_blocked_by_process_guard (tests.test_reviewed_runner.ReviewedRunnerTests.test_executor_direct_push_is_blocked_by_process_guard) ... To /tmp/tmp3ww7_061/origin.git
+ * [new branch]      main -> main
+ok
+test_exit_zero_without_state_progress_is_not_marked_complete (tests.test_reviewed_runner.ReviewedRunnerTests.test_exit_zero_without_state_progress_is_not_marked_complete) ... ok
+test_machine_state_is_outside_repository (tests.test_reviewed_runner.ReviewedRunnerTests.test_machine_state_is_outside_repository) ... ok
+test_prelaunch_not_ready_does_not_record_executor_attempt (tests.test_reviewed_runner.ReviewedRunnerTests.test_prelaunch_not_ready_does_not_record_executor_attempt) ... ok
+test_publish_clean_progress_pushes_authorized_branch_without_creating_branch (tests.test_reviewed_runner.ReviewedRunnerTests.test_publish_clean_progress_pushes_authorized_branch_without_creating_branch) ... To /tmp/tmp_lamk07t/origin.git
+ * [new branch]      main -> main
+ok
+test_publish_clean_progress_rejects_diverged_branch (tests.test_reviewed_runner.ReviewedRunnerTests.test_publish_clean_progress_rejects_diverged_branch) ... To /tmp/tmp90q8h3cf/origin.git
+ * [new branch]      main -> main
+Cloning into '/tmp/tmp90q8h3cf/other'...
+done.
+To /tmp/tmp90q8h3cf/origin.git
+   8251bae..74553f0  main -> main
+ok
+test_review_notification_uses_reviewer_authority_and_transport_failure_is_isolated (tests.test_reviewed_runner.ReviewedRunnerTests.test_review_notification_uses_reviewer_authority_and_transport_failure_is_isolated) ... ok
+test_run_codex_event_preflights_at_final_spawn_boundary (tests.test_reviewed_runner.ReviewedRunnerTests.test_run_codex_event_preflights_at_final_spawn_boundary) ... ok
+test_stale_watcher_pid_marker_is_recovered (tests.test_reviewed_runner.ReviewedRunnerTests.test_stale_watcher_pid_marker_is_recovered) ... ok
+test_state_progress_requires_committed_clean_state (tests.test_reviewed_runner.ReviewedRunnerTests.test_state_progress_requires_committed_clean_state) ... ok
+test_stop_refuses_unverified_pid_and_does_not_kill_process (tests.test_reviewed_runner.ReviewedRunnerTests.test_stop_refuses_unverified_pid_and_does_not_kill_process) ... ok
+test_unpublished_recovery_rejects_dirty_tree (tests.test_reviewed_runner.ReviewedRunnerTests.test_unpublished_recovery_rejects_dirty_tree) ... To /tmp/tmp5nq6p3p8/origin.git
+ * [new branch]      main -> main
+ok
+test_unpublished_recovery_rejects_diverged_branch (tests.test_reviewed_runner.ReviewedRunnerTests.test_unpublished_recovery_rejects_diverged_branch) ... To /tmp/tmpm19wcdtc/origin.git
+ * [new branch]      main -> main
+Cloning into '/tmp/tmpm19wcdtc/other'...
+done.
+To /tmp/tmpm19wcdtc/origin.git
+   f3deae3..5ed37ce  main -> main
+ok
+test_unpublished_recovery_rejects_executor_authority_violation (tests.test_reviewed_runner.ReviewedRunnerTests.test_unpublished_recovery_rejects_executor_authority_violation) ... To /tmp/tmpqpcm5xuw/origin.git
+ * [new branch]      main -> main
+ok
+test_watcher_dry_run_accepts_clean_crlf_bound_sources (tests.test_reviewed_runner.ReviewedRunnerTests.test_watcher_dry_run_accepts_clean_crlf_bound_sources) ... warning: in the working copy of '.gitattributes', LF will be replaced by CRLF the next time Git touches it
+ok
+test_watcher_dry_run_accepts_legacy_v1_plan_frozen_event (tests.test_reviewed_runner.ReviewedRunnerTests.test_watcher_dry_run_accepts_legacy_v1_plan_frozen_event) ... ok
+test_watcher_dry_run_only_targets_executor_states (tests.test_reviewed_runner.ReviewedRunnerTests.test_watcher_dry_run_only_targets_executor_states) ... ok
+test_watcher_dry_run_rejects_hidden_mandatory_source_index_flags (tests.test_reviewed_runner.ReviewedRunnerTests.test_watcher_dry_run_rejects_hidden_mandatory_source_index_flags) ... ok
+test_watcher_dry_run_rejects_mandatory_source_filter_attribute (tests.test_reviewed_runner.ReviewedRunnerTests.test_watcher_dry_run_rejects_mandatory_source_filter_attribute) ... ok
+test_watcher_event_identity_is_plain_operational_locator (tests.test_reviewed_runner.ReviewedRunnerTests.test_watcher_event_identity_is_plain_operational_locator) ... ok
+test_watcher_refuses_preexisting_dirty_tree_before_launch (tests.test_reviewed_runner.ReviewedRunnerTests.test_watcher_refuses_preexisting_dirty_tree_before_launch) ... ok
+test_watcher_reports_external_wait_without_consuming_executor_attempts (tests.test_reviewed_runner.ReviewedRunnerTests.test_watcher_reports_external_wait_without_consuming_executor_attempts) ... ok
+test_watcher_reports_text_review_wait_without_launching_executor (tests.test_reviewed_runner.ReviewedRunnerTests.test_watcher_reports_text_review_wait_without_launching_executor) ... ok
+test_watcher_restart_recovers_crash_after_executor_commit_before_push (tests.test_reviewed_runner.ReviewedRunnerTests.test_watcher_restart_recovers_crash_after_executor_commit_before_push) ... To /tmp/tmpwpq4w_8g/origin.git
+ * [new branch]      main -> main
+ok
+test_watcher_run_refuses_second_instance_for_same_repo_branch (tests.test_reviewed_runner.ReviewedRunnerTests.test_watcher_run_refuses_second_instance_for_same_repo_branch) ... To /tmp/tmp3xpzvjux/origin.git
+ * [new branch]      main -> main
+To /tmp/tmp3xpzvjux/origin.git
+   f0dc823..dcde928  main -> main
+ok
+test_watcher_run_returns_failure_for_process_level_error (tests.test_reviewed_runner.ReviewedRunnerTests.test_watcher_run_returns_failure_for_process_level_error) ... ok
+test_watcher_run_survives_invalid_workflow_until_remote_plan_fix (tests.test_reviewed_runner.ReviewedRunnerTests.test_watcher_run_survives_invalid_workflow_until_remote_plan_fix) ... To /tmp/tmp0127m8b8/origin.git
+ * [new branch]      main -> main
+To /tmp/tmp0127m8b8/origin.git
+   65423d8..325f786  main -> main
+Cloning into '/tmp/tmp0127m8b8/planner'...
+done.
+To /tmp/tmp0127m8b8/origin.git
+   325f786..e266391  main -> main
+ok
+test_watcher_run_waits_on_preexisting_dirty_tree_then_resumes_same_event (tests.test_reviewed_runner.ReviewedRunnerTests.test_watcher_run_waits_on_preexisting_dirty_tree_then_resumes_same_event) ... To /tmp/tmpm_nczde2/origin.git
+ * [new branch]      main -> main
+ok
+test_watcher_status_cli_prints_json (tests.test_reviewed_runner.ReviewedRunnerTests.test_watcher_status_cli_prints_json) ... ok
+test_watcher_status_marks_restart_required_after_bridge_commit_change (tests.test_reviewed_runner.ReviewedRunnerTests.test_watcher_status_marks_restart_required_after_bridge_commit_change) ... ok
+test_watcher_status_reports_executor_runtime_and_wait_owner (tests.test_reviewed_runner.ReviewedRunnerTests.test_watcher_status_reports_executor_runtime_and_wait_owner) ... ok
+test_write_local_state_replaces_atomically_without_truncating_existing_state (tests.test_reviewed_runner.ReviewedRunnerTests.test_write_local_state_replaces_atomically_without_truncating_existing_state) ... ok
+test_age_encrypt_decrypt_roundtrip_and_wrong_key_fail_closed (tests.test_text_review.TextReviewTests.test_age_encrypt_decrypt_roundtrip_and_wrong_key_fail_closed) ... skipped 'age CLI is not installed'
+test_billing_quota_error_fails_without_paid_retry (tests.test_text_review.TextReviewTests.test_billing_quota_error_fails_without_paid_retry) ... ok
+test_ciphertext_sha_mismatch_fails_closed (tests.test_text_review.TextReviewTests.test_ciphertext_sha_mismatch_fails_closed) ... ok
+test_cli_contract_preflight_resolves_narrowed_contract_without_reservation_or_secret (tests.test_text_review.TextReviewTests.test_cli_contract_preflight_resolves_narrowed_contract_without_reservation_or_secret) ... ok
+test_cli_routes_text_review_preflight_and_install (tests.test_text_review.TextReviewTests.test_cli_routes_text_review_preflight_and_install) ... ok
+test_default_model_and_unsupported_environment_override_fails_closed (tests.test_text_review.TextReviewTests.test_default_model_and_unsupported_environment_override_fails_closed) ... ok
+test_extension_manifest_uses_child_campaign_and_receipt (tests.test_text_review.TextReviewTests.test_extension_manifest_uses_child_campaign_and_receipt) ... ok
+test_extension_reservation_failure_never_sends_model_request (tests.test_text_review.TextReviewTests.test_extension_reservation_failure_never_sends_model_request) ... ok
+test_main_ci_installs_age_so_transport_tests_do_not_skip (tests.test_text_review.TextReviewTests.test_main_ci_installs_age_so_transport_tests_do_not_skip) ... ok
+test_manifest_initial_contract_narrows_reservation_and_receipt (tests.test_text_review.TextReviewTests.test_manifest_initial_contract_narrows_reservation_and_receipt) ... ok
+test_mock_responses_api_reads_complete_plaintext_and_uses_store_false (tests.test_text_review.TextReviewTests.test_mock_responses_api_reads_complete_plaintext_and_uses_store_false) ... ok
+test_openai_review_key_is_used_without_cross_review_fallback (tests.test_text_review.TextReviewTests.test_openai_review_key_is_used_without_cross_review_fallback) ... ok
+test_plaintext_sha_stale_detection_fails_closed (tests.test_text_review.TextReviewTests.test_plaintext_sha_stale_detection_fails_closed) ... ok
+test_text_evidence_writeback_stages_shared_campaign_budget (tests.test_text_review.TextReviewTests.test_text_evidence_writeback_stages_shared_campaign_budget) ... ok
+test_text_review_rejects_visual_and_generic_api_key_fallback (tests.test_text_review.TextReviewTests.test_text_review_rejects_visual_and_generic_api_key_fallback) ... ok
+test_text_review_workflow_is_manual_repo_wide_and_uses_canonical_secret (tests.test_text_review.TextReviewTests.test_text_review_workflow_is_manual_repo_wide_and_uses_canonical_secret) ... ok
+test_validate_rejects_stale_manifest_identity (tests.test_text_review.TextReviewTests.test_validate_rejects_stale_manifest_identity) ... ok
+test_api_error_and_empty_output_fail_closed (tests.test_text_transform.TextTransformTests.test_api_error_and_empty_output_fail_closed) ... skipped 'age CLI is not installed'
+test_cli_routes_text_transform_preflight_and_install (tests.test_text_transform.TextTransformTests.test_cli_routes_text_transform_preflight_and_install) ... ok
+test_default_model_and_review_key_precedence (tests.test_text_transform.TextTransformTests.test_default_model_and_review_key_precedence) ... skipped 'age CLI is not installed'
+test_json_instruction_file_is_allowed_but_private_json_source_is_not (tests.test_text_transform.TextTransformTests.test_json_instruction_file_is_allowed_but_private_json_source_is_not) ... skipped 'age CLI is not installed'
+test_mock_responses_api_uses_store_false_and_writes_only_encrypted_output_metadata (tests.test_text_transform.TextTransformTests.test_mock_responses_api_uses_store_false_and_writes_only_encrypted_output_metadata) ... skipped 'age CLI is not installed'
+test_output_receiver_private_identity_refuses_target_repo_path (tests.test_text_transform.TextTransformTests.test_output_receiver_private_identity_refuses_target_repo_path) ... skipped 'age CLI is not installed'
+test_source_sha_and_instruction_sha_mismatch_fail_closed (tests.test_text_transform.TextTransformTests.test_source_sha_and_instruction_sha_mismatch_fail_closed) ... skipped 'age CLI is not installed'
+test_text_transform_workflow_triggers_only_for_input_manifest (tests.test_text_transform.TextTransformTests.test_text_transform_workflow_triggers_only_for_input_manifest) ... ok
+test_writeback_stages_only_output_age_and_result (tests.test_text_transform.TextTransformTests.test_writeback_stages_only_output_age_and_result) ... skipped 'age CLI is not installed'
+test_acceptance_fixture_installed_repo_gets_authorable_persistent_goal (tests.test_upfront_authorization_persistent_authoring.UpfrontAuthorizationPersistentAuthoringTests.test_acceptance_fixture_installed_repo_gets_authorable_persistent_goal) ... ok
+test_chatgpt_rules_cover_authoring_and_carry_forward (tests.test_upfront_authorization_persistent_authoring.UpfrontAuthorizationPersistentAuthoringTests.test_chatgpt_rules_cover_authoring_and_carry_forward) ... ok
+test_codex_start_preflights_declared_effects_before_substantial_work (tests.test_upfront_authorization_persistent_authoring.UpfrontAuthorizationPersistentAuthoringTests.test_codex_start_preflights_declared_effects_before_substantial_work) ... ok
+test_execpolicy_still_prompts_tmux_mutation_and_fallbacks (tests.test_upfront_authorization_persistent_authoring.UpfrontAuthorizationPersistentAuthoringTests.test_execpolicy_still_prompts_tmux_mutation_and_fallbacks) ... ok
+test_gpt_repo_instructions_read_persistent_templates_in_order (tests.test_upfront_authorization_persistent_authoring.UpfrontAuthorizationPersistentAuthoringTests.test_gpt_repo_instructions_read_persistent_templates_in_order) ... ok
+test_host_agents_preflight_guidance_without_execpolicy_expansion (tests.test_upfront_authorization_persistent_authoring.UpfrontAuthorizationPersistentAuthoringTests.test_host_agents_preflight_guidance_without_execpolicy_expansion) ... ok
+test_next_task_prompt_carries_forward_persistent_requirement (tests.test_upfront_authorization_persistent_authoring.UpfrontAuthorizationPersistentAuthoringTests.test_next_task_prompt_carries_forward_persistent_requirement) ... ok
+test_normal_authoring_surfaces_cover_topology_not_duration (tests.test_upfront_authorization_persistent_authoring.UpfrontAuthorizationPersistentAuthoringTests.test_normal_authoring_surfaces_cover_topology_not_duration) ... ok
+test_scheduler_native_authoring_does_not_select_tmux_for_duration (tests.test_upfront_authorization_persistent_authoring.UpfrontAuthorizationPersistentAuthoringTests.test_scheduler_native_authoring_does_not_select_tmux_for_duration) ... ok
+test_task_template_can_author_harmless_persistent_goal_without_new_workflow (tests.test_upfront_authorization_persistent_authoring.UpfrontAuthorizationPersistentAuthoringTests.test_task_template_can_author_harmless_persistent_goal_without_new_workflow) ... ok
+test_task_writer_classifies_persistence_independent_of_workflow (tests.test_upfront_authorization_persistent_authoring.UpfrontAuthorizationPersistentAuthoringTests.test_task_writer_classifies_persistence_independent_of_workflow) ... ok
+test_terminal_owned_survive_disconnect_still_selects_persistent_run (tests.test_upfront_authorization_persistent_authoring.UpfrontAuthorizationPersistentAuthoringTests.test_terminal_owned_survive_disconnect_still_selects_persistent_run) ... ok
+test_runtime_version_matches_project_metadata_version (tests.test_version_parity.VersionParityTests.test_runtime_version_matches_project_metadata_version) ... ok
+test_api_failure_fails_closed_without_secret_in_error (tests.test_visual_review.VisualReviewTests.test_api_failure_fails_closed_without_secret_in_error) ... ok
+test_arbitrary_visual_review_output_paths_are_rejected (tests.test_visual_review.VisualReviewTests.test_arbitrary_visual_review_output_paths_are_rejected) ... ok
+test_cli_routes_visual_review_preflight (tests.test_visual_review.VisualReviewTests.test_cli_routes_visual_review_preflight) ... ok
+test_default_model_uses_shared_production_default (tests.test_visual_review.VisualReviewTests.test_default_model_uses_shared_production_default) ... ok
+test_environment_model_override_fails_closed_before_network (tests.test_visual_review.VisualReviewTests.test_environment_model_override_fails_closed_before_network) ... ok
+test_explicit_unknown_model_override_fails_closed_before_network (tests.test_visual_review.VisualReviewTests.test_explicit_unknown_model_override_fails_closed_before_network) ... ok
+test_identity_and_image_sha_mismatch_are_rejected (tests.test_visual_review.VisualReviewTests.test_identity_and_image_sha_mismatch_are_rejected) ... ok
+test_install_renders_pinned_bridge_kit_source_for_consumer_repo (tests.test_visual_review.VisualReviewTests.test_install_renders_pinned_bridge_kit_source_for_consumer_repo) ... ok
+test_malformed_model_output_fails_closed (tests.test_visual_review.VisualReviewTests.test_malformed_model_output_fails_closed) ... ok
+test_missing_api_key_fails_closed_before_network (tests.test_visual_review.VisualReviewTests.test_missing_api_key_fails_closed_before_network) ... ok
+test_mock_responses_api_generates_schema_compliant_review (tests.test_visual_review.VisualReviewTests.test_mock_responses_api_generates_schema_compliant_review) ... ok
+test_visual_evidence_writeback_detects_untracked_unchanged_and_modified (tests.test_visual_review.VisualReviewTests.test_visual_evidence_writeback_detects_untracked_unchanged_and_modified) ... ok
+test_visual_evidence_writeback_stages_shared_campaign_budget (tests.test_visual_review.VisualReviewTests.test_visual_evidence_writeback_stages_shared_campaign_budget) ... ok
+test_visual_review_rejects_text_and_generic_api_key_fallback (tests.test_visual_review.VisualReviewTests.test_visual_review_rejects_text_and_generic_api_key_fallback) ... ok
+test_visual_review_workflow_is_manual_and_repo_wide (tests.test_visual_review.VisualReviewTests.test_visual_review_workflow_is_manual_and_repo_wide) ... ok
+
+----------------------------------------------------------------------
+Ran 486 tests in 120.637s
+
+OK (skipped=8)
+{
+  "branch": "main",
+  "destination": "origin/refs/heads/main",
+  "pushed_oid": "de688246f72cdde3d7852b14e7fc0977c83e1323",
+  "repo": "YuukiAS/GPT_Codex_AI_Bridge_Kit",
+  "status": "published"
+}
+COPY create: /tmp/tmpi5v319ii/project/automation/reviewed_handoff/README.md
+COPY create: /tmp/tmpi5v319ii/project/automation/reviewed_handoff/schema.json
+COPY create: /tmp/tmpi5v319ii/project/automation/reviewed_handoff/prompts/PLANNER.md
+COPY create: /tmp/tmpi5v319ii/project/automation/reviewed_handoff/prompts/REVIEWER_SCHEDULED_TASK.md
+COPY create: /tmp/tmpi5v319ii/project/automation/reviewed_handoff/prompts/CODEX_EXECUTOR.md
+COPY create: /tmp/tmpi5v319ii/project/automation/reviewed_handoff/templates/REQUEST.md
+COPY create: /tmp/tmpi5v319ii/project/automation/reviewed_handoff/templates/PLAN.md
+COPY create: /tmp/tmpi5v319ii/project/automation/reviewed_handoff/templates/RESULT.md
+COPY create: /tmp/tmpi5v319ii/project/automation/reviewed_handoff/templates/REVIEW.md
+COPY create: /tmp/tmpi5v319ii/project/automation/reviewed_handoff/templates/FINAL_REPORT.md
+
+Review: configured
+Target: /tmp/tmpi5v319ii/project
+Tasks: 0
+{
+  "default_model": "gpt-5.6-terra",
+  "github_workflow": {
+    "paths": [],
+    "status": "MISSING"
+  },
+  "model_env": "OPENAI_VISUAL_REVIEW_MODEL",
+  "openai_project_recommendation": "AI Bridge Visual Review",
+  "schema": "AI_BRIDGE_VISUAL_REVIEW_PREFLIGHT_V1",
+  "secret": {
+    "expected_name": "OPENAI_VISUAL_REVIEW_API_KEY",
+    "metadata_status": {
+      "reason": "repository slug unavailable",
+      "status": "UNKNOWN"
+    },
+    "value_read": false
+  },
+  "target": "/tmp/tmpsvxhw0q4/project",
+  "visual_review": {
+    "agent_flow_optional_visual_source_policy": {
+      "enabled": false
+    },
+    "enabled": false,
+    "reviewed_handoff_tasks": []
+  }
+}

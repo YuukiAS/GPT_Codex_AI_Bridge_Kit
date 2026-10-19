@@ -1,0 +1,24 @@
+{
+  "candidate_sha": "f3c882c5302a1889cac62526e8f025ada0f4d1a5",
+  "exit_code": 0,
+  "evidence": {
+    "candidate_sha": "f3c882c5302a1889cac62526e8f025ada0f4d1a5",
+    "result": "PASS",
+    "normal_cli_migration": [
+      "MIGRATED",
+      "NOOP_ALREADY_MIGRATED",
+      "MACHINE_CONFIG_CONFLICT"
+    ],
+    "legacy_retained": true,
+    "conflict_no_overwrite": true,
+    "two_unrelated_repos_share_single_machine_config": true,
+    "conflicting_process_overrides_ignored": true,
+    "mode": "0600",
+    "concurrent_single_repo_acceptances": 1,
+    "cross_repo_event_keys_differ": true,
+    "explicit_retry_parent_lineage": true,
+    "model_invocations": 0,
+    "real_smtp_sends": 0,
+    "synthetic_transport_acceptances": 3
+  }
+}

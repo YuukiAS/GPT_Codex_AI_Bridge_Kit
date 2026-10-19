@@ -1,0 +1,48 @@
+{
+  "candidate_sha": "f3c882c5302a1889cac62526e8f025ada0f4d1a5",
+  "result": "PASS",
+  "fixture": "/tmp/bridge-c4-f3c882c",
+  "goal_sha256": "50167674810296906b3f3a5de16077d9a3367e4d8aa6dbae55eb20fcad931573",
+  "launch_id": "0d2418419b9562609885723be5021dc5852f7635681fc4b3067dc2e1a99d50e1",
+  "session": "ai-bridge-pr-0d2418419b9562609885723be5021dc5852f7635681fc4b3067dc2e1a99d50e1",
+  "child_pid": 3320602,
+  "repeat_start_status": "RETURN_EXISTING",
+  "initial_progress": "UNKNOWN",
+  "malformed_progress": "UNKNOWN",
+  "malformed_supervisor_observation": {
+    "observed_at": "2026-10-19T16:01:34+00:00",
+    "reason": "progress evidence unreadable: Expecting value: line 1 column 9 (char 8)",
+    "state": "UNAVAILABLE"
+  },
+  "recovered_supervisor_observation": {
+    "observed_at": "2026-10-19T16:02:34+00:00",
+    "state": "AVAILABLE"
+  },
+  "progress_points": [
+    {
+      "completed": 1,
+      "observed_at": "2026-10-19T15:56:49+00:00"
+    },
+    {
+      "completed": 2,
+      "observed_at": "2026-10-19T16:02:04+00:00"
+    },
+    {
+      "completed": 3,
+      "observed_at": "2026-10-19T16:07:04+00:00"
+    }
+  ],
+  "native_window_span_seconds": 615,
+  "eta": "2026-10-19T16:12:11+00:00",
+  "eta_low": "2026-10-19T16:12:04+00:00",
+  "eta_high": "2026-10-19T16:12:19+00:00",
+  "child_started_at": "2026-10-19T15:56:34+00:00",
+  "child_exit_observed_at": "2026-10-19T16:08:19+00:00",
+  "exit_code": 0,
+  "recovery_classification": "TERMINAL",
+  "semantic_completion_claim": false,
+  "notification": "OFF",
+  "live_model_invocations": 0,
+  "live_smtp_sends": 0,
+  "negative_recovery_and_resolve_evidence": "TARGETED_TESTS.txt; controlled identity/session fixtures, no actual machine reboot or destructive kill"
+}

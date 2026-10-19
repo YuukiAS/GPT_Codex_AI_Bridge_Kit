@@ -1,0 +1,32 @@
+{
+  "candidate_sha": "f3c882c5302a1889cac62526e8f025ada0f4d1a5",
+  "exit_code": 0,
+  "evidence": {
+    "binding_path": "/tmp/bridge-c4-f3c882c/state/persistent-run/runs/74873c645eb9bbd5366a1f0db78c83700ed09ee40b8a4458c6f9483f3b69fd7d.json",
+    "command": [
+      "tmux",
+      "new-session",
+      "-d",
+      "-s",
+      "ai-bridge-pr-0d2418419b9562609885723be5021dc5852f7635681fc4b3067dc2e1a99d50e1",
+      "-c",
+      "/tmp/bridge-c4-f3c882c",
+      "/tmp/bridge-011-1472791-final-install/bin/python",
+      "-m",
+      "ai_bridge_kit.persistent_run",
+      "_supervise",
+      "--binding",
+      "/tmp/bridge-c4-f3c882c/state/persistent-run/runs/74873c645eb9bbd5366a1f0db78c83700ed09ee40b8a4458c6f9483f3b69fd7d.json",
+      "--launch-id",
+      "0d2418419b9562609885723be5021dc5852f7635681fc4b3067dc2e1a99d50e1"
+    ],
+    "launch_id": "0d2418419b9562609885723be5021dc5852f7635681fc4b3067dc2e1a99d50e1",
+    "progress": {
+      "path": "/tmp/bridge-c4-f3c882c/state/persistent-run/runs/74873c645eb9bbd5366a1f0db78c83700ed09ee40b8a4458c6f9483f3b69fd7d.progress.json",
+      "reason": "progress source missing",
+      "state": "UNKNOWN"
+    },
+    "session_name": "ai-bridge-pr-0d2418419b9562609885723be5021dc5852f7635681fc4b3067dc2e1a99d50e1",
+    "status": "NEW_START"
+  }
+}

@@ -1,0 +1,99 @@
+{
+  "candidate_sha": "f3c882c5302a1889cac62526e8f025ada0f4d1a5",
+  "exit_code": 0,
+  "evidence": {
+    "binding": {
+      "backend": "tmux",
+      "binding_path": "/tmp/bridge-c4-f3c882c/state/persistent-run/runs/74873c645eb9bbd5366a1f0db78c83700ed09ee40b8a4458c6f9483f3b69fd7d.json",
+      "branch": "main",
+      "child_pid": 3320602,
+      "child_process_identity": {
+        "argv_digest": "363da2cee1caf70656a4b6393b1bb16ef8d1aaa0c9cfb7636480c3df1857db83",
+        "boot_id": "66c85413-0565-4e97-a2e7-7d3a9fa6370c",
+        "pid": 3320602,
+        "start_ticks": "524328442"
+      },
+      "child_started_at": "2026-10-19T15:56:34+00:00",
+      "expected_commit": "47c520ef369246410300f8431edb362b0d25360b",
+      "expected_progress_update_seconds": 300,
+      "goal_repo_relative_path": "prompts/tasks/c4_canary.md",
+      "goal_sha256": "50167674810296906b3f3a5de16077d9a3367e4d8aa6dbae55eb20fcad931573",
+      "host_boot_id": "66c85413-0565-4e97-a2e7-7d3a9fa6370c",
+      "last_good_progress": {
+        "completed": 1,
+        "eta": "UNKNOWN",
+        "eta_basis": "UNKNOWN",
+        "eta_confidence": "INSUFFICIENT",
+        "eta_high": "UNKNOWN",
+        "eta_low": "UNKNOWN",
+        "eta_uncertainty": "UNKNOWN",
+        "fraction": 0.25,
+        "last_progress_at": "UNKNOWN",
+        "observed_at": "2026-10-19T15:56:49+00:00",
+        "progress_event_count": 0,
+        "progress_since_previous": false,
+        "progress_summary": "",
+        "run_locator": "c4-production-entry-canary-f3c882c",
+        "schema": "ai-bridge.persistent_run.progress.v1",
+        "semantic_completion_claim": false,
+        "stage": "canary",
+        "status": "normal",
+        "total": 4,
+        "unit": null
+      },
+      "launch_argv": [
+        "/tmp/bridge-011-1472791-final-install/bin/python",
+        "canary.py"
+      ],
+      "launch_id": "0d2418419b9562609885723be5021dc5852f7635681fc4b3067dc2e1a99d50e1",
+      "lifecycle_state": "RUNNING",
+      "notification_cadence_minutes": 60,
+      "notify": "OFF",
+      "progress_history": [
+        {
+          "completed": 1,
+          "eta": "UNKNOWN",
+          "eta_basis": "UNKNOWN",
+          "eta_uncertainty": "UNKNOWN",
+          "fraction": 0.25,
+          "last_progress_at": "UNKNOWN",
+          "observed_at": "2026-10-19T15:56:49+00:00",
+          "progress_event_count": 0,
+          "progress_since_previous": false,
+          "progress_summary": "",
+          "run_locator": "c4-production-entry-canary-f3c882c",
+          "schema": "ai-bridge.persistent_run.progress.v1",
+          "semantic_completion_claim": false,
+          "stage": "canary",
+          "status": "normal",
+          "total": 4,
+          "unit": null
+        }
+      ],
+      "progress_mode": "count",
+      "progress_observation": {
+        "observed_at": "2026-10-19T16:01:34+00:00",
+        "reason": "progress evidence unreadable: Expecting value: line 1 column 9 (char 8)",
+        "state": "UNAVAILABLE"
+      },
+      "progress_owner": "bridge-child",
+      "progress_source_locator": "bridge-state",
+      "progress_source_path": "/tmp/bridge-c4-f3c882c/state/persistent-run/runs/74873c645eb9bbd5366a1f0db78c83700ed09ee40b8a4458c6f9483f3b69fd7d.progress.json",
+      "recipient_override": "",
+      "repo_origin": "NO_ORIGIN",
+      "repo_realpath": "/tmp/bridge-c4-f3c882c",
+      "run_key": "c4-production-entry-canary-f3c882c",
+      "schema": "ai-bridge.persistent-run.binding.v2",
+      "session_name": "ai-bridge-pr-0d2418419b9562609885723be5021dc5852f7635681fc4b3067dc2e1a99d50e1",
+      "start_requested_at": "2026-10-19T15:56:34+00:00",
+      "working_directory": "/tmp/bridge-c4-f3c882c",
+      "working_directory_repo_relative_path": "."
+    },
+    "progress": {
+      "path": "/tmp/bridge-c4-f3c882c/state/persistent-run/runs/74873c645eb9bbd5366a1f0db78c83700ed09ee40b8a4458c6f9483f3b69fd7d.progress.json",
+      "reason": "progress evidence unreadable: Expecting value: line 1 column 9 (char 8)",
+      "state": "UNKNOWN"
+    },
+    "status": "RUNNING"
+  }
+}
