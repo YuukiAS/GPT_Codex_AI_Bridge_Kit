@@ -1,0 +1,120 @@
+{
+  "candidate_sha": "c32b9100c673ac3c9472d52271709989438bbf99",
+  "evidence": {
+    "request.json": {
+      "consumer": "persistent",
+      "decision_authority": "Runtime",
+      "eta": "UNKNOWN",
+      "fact_class": "runtime_progress",
+      "next_action": "等待独立终审。",
+      "project": "Bridge Kit",
+      "recipient_override": "",
+      "runtime_id": "clear-writing-canary",
+      "schema": "ai-bridge.notification_request.v1",
+      "source_event_id": "frozen-candidate-clear-writing-live-gate",
+      "status": "running",
+      "summary": "这是合成通知，用于验证中文表达；不代表目标已完成。",
+      "task_key": "bridge-core--product-scope-reset",
+      "version": "0.11.0"
+    },
+    "delivery-started.json": {
+      "candidate_sha": "c32b9100c673ac3c9472d52271709989438bbf99",
+      "config_digest": "46cc00d02f541a14f84833c1f0ccd91a3e8ad8ccb2786e48150a1e33c1f7e12d",
+      "started_at": "2026-10-19T15:41:49+00:00"
+    },
+    "delivery-result.json": {
+      "candidate_sha": "c32b9100c673ac3c9472d52271709989438bbf99",
+      "elapsed_seconds": 12.370465124025941,
+      "result": {
+        "event_key": "ecf5429f96f20b6c77fe40ff39b46ba28e6426cd8348f923e34b8b0ed3ad7587",
+        "message": "SMTP accepted; inbox delivery not asserted",
+        "status": "SMTP_ACCEPTED"
+      }
+    },
+    "model-launch.json": {
+      "argv": [
+        "/users/a/e/aereinh/bin/codex",
+        "exec",
+        "--ephemeral",
+        "--json",
+        "--sandbox",
+        "read-only",
+        "--skip-git-repo-check",
+        "-C",
+        "/users/a/e/aereinh/.ai-bridge/clear-writing",
+        "-"
+      ],
+      "pid": 3224747,
+      "model_retry_count": 0
+    },
+    "render-result.json": {
+      "mode": "DETERMINISTIC_FALLBACK",
+      "text": "状态：running\n结论：这是合成通知，用于验证中文表达；不代表目标已完成。\n下一步：等待独立终审。\n项目：Bridge Kit\n任务：bridge-core--product-scope-reset\n消费者：persistent\n事实类型：runtime_progress\n事实来源：Runtime\nETA：UNKNOWN\nversion：0.11.0\nruntime_id：clear-writing-canary\n",
+      "failure": "ClearWritingError: CODEX_SKILL_CONSUMPTION_UNPROVEN: writing-fidelity,chinese-prose",
+      "model_invocations": 1,
+      "model_retry_count": 0,
+      "plugin": {
+        "plugin_id": "writing-style@yuukias-ai-skills",
+        "version": "0.5",
+        "root": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style",
+        "manifest": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style/.codex-plugin/plugin.json",
+        "skills": {
+          "writing-fidelity": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style/skills/fidelity/SKILL.md",
+          "chinese-prose": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style/skills/zh/SKILL.md"
+        },
+        "codex_bin": "/users/a/e/aereinh/bin/codex"
+      },
+      "raw_jsonl_sha256": "542bbbe9b012181b10ce70553f6043a644ca3d0e0512a324ad0c4ba144c99c98",
+      "candidate_sha": "c32b9100c673ac3c9472d52271709989438bbf99"
+    },
+    "model-jsonl.json": {
+      "stdout": "{\"type\":\"thread.started\",\"thread_id\":\"01a154d3-8ab4-79e0-a210-5a38d846d4de\"}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"error\",\"message\":\"Under-development features enabled: default_mode_request_user_input. Under-development features are incomplete and may behave unpredictably. To suppress this warning, set `suppress_unstable_features_warning = true` in /users/a/e/aereinh/.codex/config.toml.\"}}\n{\"type\":\"turn.started\"}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_1\",\"type\":\"agent_message\",\"text\":\"Bridge Kit 0.11.0 的任务 `bridge-core--product-scope-reset` 当前状态为 `running`：运行时 `clear-writing-canary` 正在运行，消费模式为 `persistent`，决策权归 `Runtime`，预计完成时间为 `UNKNOWN`；来源事件为 `frozen-candidate-clear-writing-live-gate`。这是合成通知，用于验证中文表达；不代表目标已完成。\"}}\n{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":29356,\"cached_input_tokens\":0,\"cache_write_input_tokens\":0,\"output_tokens\":361,\"reasoning_output_tokens\":263}}\n",
+      "returncode": 0
+    },
+    "claim.json": {
+      "claimed_at": "2026-10-19T15:41:50+00:00",
+      "event_key": "ecf5429f96f20b6c77fe40ff39b46ba28e6426cd8348f923e34b8b0ed3ad7587",
+      "repo_identity": "YuukiAS/GPT_Codex_AI_Bridge_Kit@c32b9100c673ac3c9472d52271709989438bbf99",
+      "request": {
+        "consumer": "persistent",
+        "decision_authority": "Runtime",
+        "eta": "UNKNOWN",
+        "fact_class": "runtime_progress",
+        "next_action": "等待独立终审。",
+        "project": "Bridge Kit",
+        "recipient_override": "",
+        "runtime_id": "clear-writing-canary",
+        "schema": "ai-bridge.notification_request.v1",
+        "source_event_id": "frozen-candidate-clear-writing-live-gate",
+        "status": "running",
+        "summary": "这是合成通知，用于验证中文表达；不代表目标已完成。",
+        "task_key": "bridge-core--product-scope-reset",
+        "version": "0.11.0"
+      },
+      "resolved_recipient": "1155246312@link.cuhk.edu.hk",
+      "schema": "ai-bridge.notifier.claim.v1"
+    },
+    "receipt.json": {
+      "attempt_id": "348401450d254ef3a0192be9cb8be9ae",
+      "event_key": "ecf5429f96f20b6c77fe40ff39b46ba28e6426cd8348f923e34b8b0ed3ad7587",
+      "schema": "ai-bridge.notifier.receipt.v1",
+      "smtp_accepted_at": "2026-10-19T15:42:02+00:00",
+      "status": "SMTP_ACCEPTED"
+    },
+    "attempts": [
+      {
+        "attempt_id": "348401450d254ef3a0192be9cb8be9ae",
+        "config_digest": "46cc00d02f541a14f84833c1f0ccd91a3e8ad8ccb2786e48150a1e33c1f7e12d",
+        "event_key": "ecf5429f96f20b6c77fe40ff39b46ba28e6426cd8348f923e34b8b0ed3ad7587",
+        "expression_mode": "DETERMINISTIC_FALLBACK",
+        "model_invocations": 1,
+        "parent_attempt_id": null,
+        "schema": "ai-bridge.notifier.attempt.v1",
+        "smtp_accepted_at": "2026-10-19T15:42:02+00:00",
+        "stage": "SMTP_ACCEPTED",
+        "started_at": "2026-10-19T15:41:50+00:00",
+        "transport_started_at": "2026-10-19T15:42:00+00:00"
+      }
+    ]
+  }
+}

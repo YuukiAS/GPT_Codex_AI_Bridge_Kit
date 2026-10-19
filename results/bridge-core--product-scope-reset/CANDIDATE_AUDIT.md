@@ -1,8 +1,9 @@
 # Bridge Kit 0.11.0 候选复核与恢复点
 
-普通 helper 入口缺陷已修复，修复后的候选已通过 C1–C5 和确定性回归。当前仍缺 C6
-真实模型与 Gmail 联合证据，因此本报告不是 Goal completion 或 final Critic PASS。
-真实 C6 命令两次在进程创建前被平台自动审批拒绝；模型与邮件额度均未消耗。
+普通 helper 入口缺陷已修复，候选已通过 C1–C5 和确定性回归。用户在普通聊天授权后，
+C6 已真实执行一次模型和一次 Gmail SMTP 发送，零重试；但两个必需 skill 的实际消费
+无法由 JSONL 证明，生产路径按合同改用 deterministic fallback。因此 C6 未通过，
+Goal 尚未完成，也不能交为 final Critic PASS。本次调用与发送额度已经用尽，不再尝试。
 
 ## 候选身份与纠错
 
@@ -31,7 +32,7 @@ Gate 标准或 recovery 语义。原候选的失败保存在 `C5_C6_NORMAL_HELPE
 | C4 | `c32b910/C4_*.json`：正式 start/status/repeated start，同一 child 的坏 JSON、恢复、原生 warm-up、真实 exit；负例在 targeted bank | PASS |
 | C5 | `c32b910/C5_MACHINE_NOTIFIER.json`：正式 CLI migrate 同/冲突、不删旧文件；两 repo 同一 config，冲突环境变量无效；真实 helper 并发去重/显式 retry lineage。四 consumer authority/nonfatal/suppression 在 targeted bank | PASS（无真实 SMTP） |
 | C6 non-live | `c32b910/C5_C6_TRANSPORT_DEADLINE.json`：真实 helper 在受控 DNS/SMTP_CONNECT/TLS 挂起阶段被父 deadline 结束；模型与网络被测试审计钩子禁止。确定性 parser/fidelity/fallback 回归通过；15:34 UTC 主机边界 installed identity 已恢复一致 | PASS；不等于 live skill consumption |
-| C6 live | 尚无模型调用、skill consumption JSONL 或自动 delivery SMTP receipt | NOT_RUN，平台审批拒绝 |
+| C6 live | `c32b910/C6_LIVE_SUMMARY.json`、`C6_LIVE_RAW_EVIDENCE.json`、`C6_MODEL_JSONL.json`：一 turn、模型一次、SMTP accepted 一次、retry 0；两个必需 skill 消费无证据，触发 fallback | FAIL：skill consumption 未证实；transport/fallback 单项通过 |
 
 C2 的成功 child 是无模型的计数程序；C5 使用合成凭据、显式隔离 machine root 和
 本地 SMTP 替身。它们只验证被冻结的执行/transport 边界，不伪称真实模型或 Gmail。
@@ -64,7 +65,8 @@ Notifier、notify 默认 OFF、三点/十分钟 ETA、UNKNOWN/recover/resolve、
 
 独立候选安装入口为 `/tmp/bridge-011-1472791-final-install/bin/ai-bridge`；目录名只是
 安装环境 locator，不是候选 SHA。editable direct_url 绑定本仓库，版本为 0.11.0，
-源码 HEAD 为修复后的候选。正式机器分发的 0.10.0 安装没有被切换。
+生产 bytes 与修复后候选一致；分支 HEAD 另含本目录证据提交，不冒充被测源码 SHA。
+正式机器分发的 0.10.0 安装没有被切换。
 
 Codex 仍为 `/users/a/e/aereinh/bin/codex`、0.160.1，
 `CODEX_HOME=/users/a/e/aereinh/.codex`、OpenAI / `gpt-5.6-sol`。
@@ -88,21 +90,45 @@ transport_ready=true。已有用户确认收件的 send-test 是单独的兼容�
 `c32b910/CORE_PYTHON_DELTA.json`：新增 3337、删除 165、净增 3172；不计 tests/docs/results。
 这反映 v4 的后续范围，不把旧 checkpoint 的 1754 统计冒充当前值，也不机械压缩代码。
 
-## C6 阻断与准确恢复点
+## C6 实际执行、失败证据与恢复点
 
-平台自动审批两次拒绝相同 live 命令，第二次明确表示：Goal/get_goal 中的授权不被
-该审批器当作普通当前用户批准消息。命令没有创建进程；没有 `delivery-started`、
-`model-launch`、自动 event claim 或 live receipt。此次 C6 消耗：model=0，Gmail=0，retry=0。
+此前平台自动审批两次拒绝 live 命令，未创建进程，未消耗额度。随后用户在普通聊天
+明确回复“授权对 c32b910 执行上述 C6 live，一次模型、一封邮件、零重试，并完成收尾”，
+该授权阻断已经解除，不能继续把本轮失败归因于平台审批或用户没有授权。
 
-用户在 Goal 中的授权文字已保留，但不能通过更换工具、sandbox 路径、SMTP 脚本或
-间接启动绕过这次拒绝。当前仅缺平台可接受的普通聊天授权；安装身份阻断已经由
-15:34 UTC 的主机边界证据关闭。此外，修复已使生产
-候选从原 SHA 改为 `c32b910…`，真实 Gate 必须明确绑定这个新候选。
+本轮执行绑定 `c32b9100c673ac3c9472d52271709989438bbf99`，使用已核对的 Codex
+0.160.1 / `gpt-5.6-sol`、原 CODEX_HOME 和原 machine Notifier。15:41:49 UTC 开始，
+15:42:02 UTC 记录 `SMTP_ACCEPTED`，总用时 12.370465 秒，未超过生产 120 秒 deadline。
+只创建一个 logical event、一个 attempt、一份 accepted receipt；模型 invocation=1，
+turn=1，automatic retry=0。SMTP accepted 不证明 inbox delivered，也未要求用户确认收件。
 
-后续最小效果仍为同一 CODEX_HOME/model、同一 machine Gmail account/from/recipient、
-仅 v4 安全合成字段；最多一次模型、零 retry、一封 Gmail。输入不得包含私有正文、
-日志、凭据、review body、任意 evidence_paths。若需要超过次数，必须先停。
+安全合成 NotificationRequest、实际模型 JSONL、render result、claim/attempt/receipt 已归档
+到 `c32b910/C6_LIVE_RAW_EVIDENCE.json`。未输出或记录 App Password；请求不含私有正文、
+日志、凭据、review body 或任意 evidence_paths。正式父进程/真实 helper 未被替换；
+临时观察钩子仅记录 render 返回与 JSONL，并用 O_EXCL marker 阻止第二次模型启动。
 
-尚未达到 `C1–C6 完整证据已准备，可交 final Critic`。Goal 保持未完成；不把本报告
+实际模型 exit 0，JSONL 有一个 thread.started、turn.started、turn.completed，但仅有一条
+agent_message 和一条 runtime warning，没有 skill/command_execution 消费事件。正式 parser
+返回 `CODEX_SKILL_CONSUMPTION_UNPROVEN: writing-fidelity,chinese-prose`。因此不能因为
+installed/enabled identity 正确、模型文本可读或 SMTP 成功，就宣称两个 skill 已被消费。
+当前 prompt 只引用 skill 名，没有在 prompt 中明确绑定 resolver 得到的 exact skill paths；
+这是后续修复需要处理的正常入口缺口，不能用宽松 parser 把缺失证据改判 PASS。
+
+对同一已保存模型文本做纯离线 fidelity replay，还复现了
+`CLEAR_WRITING_CONCLUSION_STRENGTHENED`：原 request 与模型都包含“不代表目标已完成”，
+但当前 substring 检查把否定句里的“目标已完成”判为增强结论。这是独立误报，不是实际
+模型宣称完成。本轮运行首先被 skill parser 拒绝；离线 replay 只揭示后续检查的问题，
+没有绕过生产检查或发送模型文本。
+
+`verify_c6_recorded_trace.py` 可重现上述两个结果，并验证实际发送文本逐字等于正式
+`render_auto_plain(request)`；脚本 audit hook 禁止 subprocess 和 socket，新增模型/SMTP=0。
+fallback 与非致命 transport 单项成立，但不能替代 v4 要求的正常 skill consumption。
+
+本次授权的一次模型、一封邮件已全部消耗。需要先修复 exact installed-skill 消费和
+否定句保真处理、冻结并验证修复候选；若继续关闭 live Gate，必然需要第二次真实模型
+验证，因此停在用户明确规定的次数边界。不修改当前冻结 production bytes、不自动 retry，
+也不再次运行 send-test。现有 C1–C5/CI 结果不被偷换到未来修复 SHA。
+
+尚未达到 `C1–C6 完整证据已准备，可交 final Critic`。Goal 未完成；不把本报告
 作为终态通过，不移动 `refs/heads/release`、tag 或 Marketplace。正式 release 仍为
 `9db19b0409816c22042a246b35a33e1d34fedd0a`。
