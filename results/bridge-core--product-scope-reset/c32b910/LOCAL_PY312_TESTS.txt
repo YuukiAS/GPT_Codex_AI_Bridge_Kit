@@ -1,0 +1,108 @@
+CANDIDATE_SHA=c32b9100c673ac3c9472d52271709989438bbf99
+COMMAND=AI_BRIDGE_STATE_HOME=/tmp/bridge-011-c32b910-full /tmp/bridge-011-1472791-final-install/bin/python -m unittest discover -v
+EXIT_CODE=0
+Captured tool-output excerpt; this is not a complete raw transcript.
+Warning: truncated output (original token count: 7792)
+Total output lines: 326
+
+ok
+test_publish_first_rejects_non_metadata_commit_scope_before_network (tests.test_reviewed_handoff.ReviewedHandoffTests.test_publish_first_rejects_non_metadata_commit_scope_before_network) ... To /tmp/tmpfkqwq5xe/remote.git
+ * [new branch]      main -> main
+To /tmp/tmpfkqwq5xe/remote.git
+   f9d5120..c6ebc82  main -> main
+ok
+test_publish_first_rejects_ssh_transport_before_network (tests.test_reviewed_handoff.ReviewedHandoffTests.test_publish_first_rejects_ssh_transport_before_network) ... To /tmp/tmpemss_39z/remote.git
+ * [new branch]      main -> main
+To /tmp/tmpemss_39z/remote.git
+   f9d5120..b8b7bf0  main -> main
+ok
+test_publish_first_rejects_two_commit_metadata_branch_before_network (tests.test_reviewed_handoff.ReviewedHandoffTests.test_publish_first_rejects_two_commit_metadata_branch_before_network) ... To /tmp/tmp4yf2169x/remote.git
+ * [new branch]      main -> main
+To /tmp/tmp4yf2169x/remote.git
+   3756908..a26d46d  main -> main
+ok
+test_publish_first_uses_raw_objects_against_replace_ref_spoofing (tests.test_reviewed_handoff.ReviewedHandoffTests.test_publish_first_uses_raw_objects_against_replace_ref_spoofing) ... To /tmp/tmpfo1mhzry/remote.git
+ * [new branch]      main -> main
+To /tmp/tmpfo1mhzry/remote.git
+   f4915fe..7e44a29  main -> main
+ok
+test_ready_for_review_requires_result_locator_and_ci_when_required (tests.test_reviewed_handoff.ReviewedHandoffTests.test_ready_for_review_requires_result_locator_and_ci_when_required) ... ok
+test_remote_ci_fail_transactions_use_review_budget (tests.test_reviewed_handoff.ReviewedHandoffTests.test_remote_ci_fail_transactions_use_review_budget) ... ok
+test_remote_ci_pass_transaction_matches_valid_ready_state (tests.test_reviewed_handoff.ReviewedHandoffTests.test_remote_ci_pass_transaction_matches_valid_ready_state) ... ok
+test_remote_ci_unavailable_routes_blocked_with_final_report (tests.test_reviewed_handoff.ReviewedHandoffTests.test_remote_ci_unavailable_routes_blocked_with_final_report) ... ok
+test_remote_planner_transactions_validate_revision_and_human_gate (tests.test_reviewed_handoff.ReviewedHandoffTests.test_remote_planner_transactions_validate_revision_and_human_gate) ... ok
+test_remote_reviewer_pass_and_revise_transactions_validate (tests.test_reviewed_handoff.ReviewedHandoffTests.test_remote_reviewer_pass_and_revise_transactions_validate) ... ok
+test_repository_validation_accepts_legacy_v1_with_compatibility_warning (tests.test_reviewed_handoff.ReviewedHandoffTests.test_repository_validation_accepts_legacy_v1_with_compatibility_warning) ... ok
+test_result_frontmatter_cannot_override_current_ci_truth (tests.test_reviewed_handoff.ReviewedHandoffTests.test_result_frontmatter_cannot_override_current_ci_truth) ... ok
+test_review_goal_fidelity_prompts_keep_legacy_identifiers (tests.test_reviewed_handoff.ReviewedHandoffTests.test_review_goal_fidelity_prompts_keep_legacy_identifiers) ... ok
+test_review_limit_human_gate_still_rejects_stale_review (tests.test_reviewed_handoff.ReviewedHandoffTests.test_review_limit_human_gate_still_rejects_stale_review) ... ok
+test_review_record_first_revise_then_second_revise_human_gate (tests.test_reviewed_handoff.ReviewedHandoffTests.test_review_record_first_revise_then_second_revise_human_gate) ... ok
+test_reviewed_handoff_contains_no_agent_flow_provenance_machinery (tests.test_reviewed_handoff.ReviewedHandoffTests.test_reviewed_handoff_contains_no_agent_flow_provenance_machinery) ... ok
+test_reviewed_handoff_e2e_revise_repair_pass (tests.test_reviewed_handoff.ReviewedHandoffTests.test_reviewed_handoff_e2e_revise_repair_pass) ... ok
+test_reviewed_handoff_state_graph_matches_schema (tests.test_reviewed_handoff.ReviewedHandoffTests.test_reviewed_handoff_state_graph_matches_schema) ... ok
+test_scheduled_prompt_requires_final_report_preflight_before_terminal_current (tests.test_reviewed_handoff.ReviewedHandoffTests.test_scheduled_prompt_requires_final_report_preflight_before_terminal_current) ... ok
+test_scheduled_prompt_uses_github_transactions_not_…5792 tokens truncated…preflight (tests.test_visual_review.VisualReviewTests.test_cli_routes_visual_review_preflight) ... ok
+test_default_model_uses_shared_production_default (tests.test_visual_review.VisualReviewTests.test_default_model_uses_shared_production_default) ... ok
+test_environment_model_override_fails_closed_before_network (tests.test_visual_review.VisualReviewTests.test_environment_model_override_fails_closed_before_network) ... ok
+test_explicit_unknown_model_override_fails_closed_before_network (tests.test_visual_review.VisualReviewTests.test_explicit_unknown_model_override_fails_closed_before_network) ... ok
+test_identity_and_image_sha_mismatch_are_rejected (tests.test_visual_review.VisualReviewTests.test_identity_and_image_sha_mismatch_are_rejected) ... ok
+test_install_renders_pinned_bridge_kit_source_for_consumer_repo (tests.test_visual_review.VisualReviewTests.test_install_renders_pinned_bridge_kit_source_for_consumer_repo) ... ok
+test_malformed_model_output_fails_closed (tests.test_visual_review.VisualReviewTests.test_malformed_model_output_fails_closed) ... ok
+test_missing_api_key_fails_closed_before_network (tests.test_visual_review.VisualReviewTests.test_missing_api_key_fails_closed_before_network) ... ok
+test_mock_responses_api_generates_schema_compliant_review (tests.test_visual_review.VisualReviewTests.test_mock_responses_api_generates_schema_compliant_review) ... ok
+test_visual_evidence_writeback_detects_untracked_unchanged_and_modified (tests.test_visual_review.VisualReviewTests.test_visual_evidence_writeback_detects_untracked_unchanged_and_modified) ... ok
+test_visual_evidence_writeback_stages_shared_campaign_budget (tests.test_visual_review.VisualReviewTests.test_visual_evidence_writeback_stages_shared_campaign_budget) ... ok
+test_visual_review_rejects_text_and_generic_api_key_fallback (tests.test_visual_review.VisualReviewTests.test_visual_review_rejects_text_and_generic_api_key_fallback) ... ok
+test_visual_review_workflow_is_manual_and_repo_wide (tests.test_visual_review.VisualReviewTests.test_visual_review_workflow_is_manual_and_repo_wide) ... {
+  "branch": "main",
+  "destination": "origin/refs/heads/main",
+  "pushed_oid": "af44da942b584f7f3cc667408e1a0085b75916ac",
+  "repo": "YuukiAS/GPT_Codex_AI_Bridge_Kit",
+  "status": "published"
+}
+COPY create: /tmp/tmpnq2pu6iu/project/automation/reviewed_handoff/README.md
+COPY create: /tmp/tmpnq2pu6iu/project/automation/reviewed_handoff/schema.json
+COPY create: /tmp/tmpnq2pu6iu/project/automation/reviewed_handoff/prompts/PLANNER.md
+COPY create: /tmp/tmpnq2pu6iu/project/automation/reviewed_handoff/prompts/REVIEWER_SCHEDULED_TASK.md
+COPY create: /tmp/tmpnq2pu6iu/project/automation/reviewed_handoff/prompts/CODEX_EXECUTOR.md
+COPY create: /tmp/tmpnq2pu6iu/project/automation/reviewed_handoff/templates/REQUEST.md
+COPY create: /tmp/tmpnq2pu6iu/project/automation/reviewed_handoff/templates/PLAN.md
+COPY create: /tmp/tmpnq2pu6iu/project/automation/reviewed_handoff/templates/RESULT.md
+COPY create: /tmp/tmpnq2pu6iu/project/automation/reviewed_handoff/templates/REVIEW.md
+COPY create: /tmp/tmpnq2pu6iu/project/automation/reviewed_handoff/templates/FINAL_REPORT.md
+
+Review: configured
+Target: /tmp/tmpnq2pu6iu/project
+Tasks: 0
+{
+  "default_model": "gpt-5.6-terra",
+  "github_workflow": {
+    "paths": [],
+    "status": "MISSING"
+  },
+  "model_env": "OPENAI_VISUAL_REVIEW_MODEL",
+  "openai_project_recommendation": "AI Bridge Visual Review",
+  "schema": "AI_BRIDGE_VISUAL_REVIEW_PREFLIGHT_V1",
+  "secret": {
+    "expected_name": "OPENAI_VISUAL_REVIEW_API_KEY",
+    "metadata_status": {
+      "reason": "repository slug unavailable",
+      "status": "UNKNOWN"
+    },
+    "value_read": false
+  },
+  "target": "/tmp/tmp3eyva0w5/project",
+  "visual_review": {
+    "agent_flow_optional_visual_source_policy": {
+      "enabled": false
+    },
+    "enabled": false,
+    "reviewed_handoff_tasks": []
+  }
+}
+ok
+
+----------------------------------------------------------------------
+Ran 481 tests in 168.242s
+
+OK (skipped=8)

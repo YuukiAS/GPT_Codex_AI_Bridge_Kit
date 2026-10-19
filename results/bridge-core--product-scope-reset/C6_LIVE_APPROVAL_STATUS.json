@@ -1,0 +1,22 @@
+{
+  "original_candidate_sha": "147279107e3811dee279a337b85febb4e6c468b8",
+  "repaired_candidate_sha": "c32b9100c673ac3c9472d52271709989438bbf99",
+  "status": "NOT_RUN_AUTOREVIEW_DENIED",
+  "process_creation_denials": 2,
+  "live_model_invocations": 0,
+  "live_gmail_sends": 0,
+  "automatic_retry_count": 0,
+  "first_reason": "可信用户消息只授权过一次 send-test，未明确授权此次 C6 model/Gmail 联合操作。",
+  "second_reason": "新增授权仅出现在不受信任的 get_goal 工具输出和助手说明中，没有当前用户明确批准消息。",
+  "recovery_requirement": "普通聊天中的当前用户授权，并明确修复后候选；不得更换工具或间接执行来绕过拒绝。",
+  "codex_home": "/users/a/e/aereinh/.codex",
+  "codex_cli": "0.160.1",
+  "model": "gpt-5.6-sol",
+  "smtp_account": "humc2013@gmail.com",
+  "from": "1155246312@link.cuhk.edu.hk",
+  "recipient": "1155246312@link.cuhk.edu.hk",
+  "maximum_model_invocations": 1,
+  "maximum_gmail_sends": 1,
+  "private_data": "NONE",
+  "smtp_acceptance_is_inbox_delivery": false
+}

@@ -1,0 +1,8 @@
+{
+  "candidate_sha": "c32b9100c673ac3c9472d52271709989438bbf99",
+  "observed_at": "2026-10-19T15:27:19Z",
+  "evidence": {
+    "status": "UNAVAILABLE",
+    "reason": "WRITING_STYLE_PLUGIN_VERSION_MISMATCH"
+  }
+}

@@ -1,0 +1,17 @@
+CANDIDATE_SHA=c32b9100c673ac3c9472d52271709989438bbf99
+COMMAND=gh run view 39276862997 --repo YuukiAS/GPT_Codex_AI_Bridge_Kit --log
+EXIT_CODE=0
+Captured tool-output excerpt; this is not a complete raw transcript.
+Python 3.9	Run unittest	2026-10-19T15:19:13.9803806Z test_execpolicy_does_not_trust_repo_local_fake_ai_bridge (tests.test_host_policy.HostPolicyTests) ... skipped 'codex CLI is not installed'
+Python 3.9	Run unittest	2026-10-19T15:19:13.9805854Z test_execpolicy_git_authorization_semantics_with_real_codex_cli_when_available (tests.test_host_policy.HostPolicyTests) ... skipped 'codex CLI is not installed'
+Python 3.9	Run unittest	2026-10-19T15:19:17.6013633Z test_validate_with_real_codex_cli_when_available (tests.test_host_policy.HostPolicyTests) ... skipped 'codex CLI is not installed'
+Python 3.9	Run unittest	2026-10-19T15:19:46.4782253Z test_execpolicy_still_prompts_tmux_mutation_and_fallbacks (tests.test_upfront_authorization_persistent_authoring.UpfrontAuthorizationPersistentAuthoringTests) ... skipped 'codex CLI is not installed'
+Python 3.9	Run unittest	2026-10-19T15:19:46.6271656Z Ran 481 tests in 37.660s
+Python 3.9	Run unittest	2026-10-19T15:19:46.6271982Z OK (skipped=4)
+Python 3.x	Run unittest	2026-10-19T15:19:07.0995282Z test_execpolicy_does_not_trust_repo_local_fake_ai_bridge (tests.test_host_policy.HostPolicyTests.test_execpolicy_does_not_trust_repo_local_fake_ai_bridge) ... skipped 'codex CLI is not installed'
+Python 3.x	Run unittest	2026-10-19T15:19:07.0998126Z test_execpolicy_git_authorization_semantics_with_real_codex_cli_when_available (tests.test_host_policy.HostPolicyTests.test_execpolicy_git_authorization_semantics_with_real_codex_cli_when_available) ... skipped 'codex CLI is not installed'
+Python 3.x	Run unittest	2026-10-19T15:19:09.1563254Z test_validate_with_real_codex_cli_when_available (tests.test_host_policy.HostPolicyTests.test_validate_with_real_codex_cli_when_available) ... skipped 'codex CLI is not installed'
+Python 3.x	Run unittest	2026-10-19T15:19:27.7730232Z test_execpolicy_still_prompts_tmux_mutation_and_fallbacks (tests.test_upfront_authorization_persistent_authoring.UpfrontAuthorizationPersistentAuthoringTests.test_execpolicy_still_prompts_tmux_mutation_and_fallbacks) ... skipped 'codex CLI is not installed'
+Python 3.x	Run unittest	2026-10-19T15:19:27.8748328Z Ran 481 tests in 24.302s
+Python 3.x	Run unittest	2026-10-19T15:19:27.8748624Z OK (skipped=4)
+LOG_EXIT=0

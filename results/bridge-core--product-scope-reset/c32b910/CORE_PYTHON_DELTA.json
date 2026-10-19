@@ -1,0 +1,97 @@
+{
+  "candidate_sha": "c32b9100c673ac3c9472d52271709989438bbf99",
+  "exit_code": 0,
+  "evidence": {
+    "baseline_sha": "9db19b0409816c22042a246b35a33e1d34fedd0a",
+    "candidate_sha": "c32b9100c673ac3c9472d52271709989438bbf99",
+    "rows": [
+      {
+        "file": "ai_bridge_kit/__init__.py",
+        "added_nonblank": 1,
+        "removed_nonblank": 1,
+        "net_nonblank": 0,
+        "capability": "compatibility"
+      },
+      {
+        "file": "ai_bridge_kit/agent_flow.py",
+        "added_nonblank": 91,
+        "removed_nonblank": 0,
+        "net_nonblank": 91,
+        "capability": "C2/C5"
+      },
+      {
+        "file": "ai_bridge_kit/clear_writing.py",
+        "added_nonblank": 326,
+        "removed_nonblank": 0,
+        "net_nonblank": 326,
+        "capability": "C6"
+      },
+      {
+        "file": "ai_bridge_kit/cli.py",
+        "added_nonblank": 191,
+        "removed_nonblank": 35,
+        "net_nonblank": 156,
+        "capability": "C2/C3/C5"
+      },
+      {
+        "file": "ai_bridge_kit/host.py",
+        "added_nonblank": 90,
+        "removed_nonblank": 4,
+        "net_nonblank": 86,
+        "capability": "C1"
+      },
+      {
+        "file": "ai_bridge_kit/notifier.py",
+        "added_nonblank": 713,
+        "removed_nonblank": 29,
+        "net_nonblank": 684,
+        "capability": "C5/C6"
+      },
+      {
+        "file": "ai_bridge_kit/overleaf.py",
+        "added_nonblank": 25,
+        "removed_nonblank": 28,
+        "net_nonblank": -3,
+        "capability": "C3"
+      },
+      {
+        "file": "ai_bridge_kit/persistent_run.py",
+        "added_nonblank": 928,
+        "removed_nonblank": 34,
+        "net_nonblank": 894,
+        "capability": "C2/C4/C5"
+      },
+      {
+        "file": "ai_bridge_kit/private.py",
+        "added_nonblank": 27,
+        "removed_nonblank": 23,
+        "net_nonblank": 4,
+        "capability": "C5"
+      },
+      {
+        "file": "ai_bridge_kit/readiness.py",
+        "added_nonblank": 782,
+        "removed_nonblank": 0,
+        "net_nonblank": 782,
+        "capability": "C2/C3"
+      },
+      {
+        "file": "ai_bridge_kit/reviewed_handoff.py",
+        "added_nonblank": 18,
+        "removed_nonblank": 0,
+        "net_nonblank": 18,
+        "capability": "C5/compatibility"
+      },
+      {
+        "file": "ai_bridge_kit/reviewed_runner.py",
+        "added_nonblank": 145,
+        "removed_nonblank": 11,
+        "net_nonblank": 134,
+        "capability": "C2/C5"
+      }
+    ],
+    "total_added": 3337,
+    "total_removed": 165,
+    "total_net": 3172
+  }
+}

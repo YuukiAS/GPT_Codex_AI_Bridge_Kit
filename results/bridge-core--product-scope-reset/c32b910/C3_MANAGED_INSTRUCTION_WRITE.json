@@ -1,0 +1,47 @@
+{
+  "candidate_sha": "c32b9100c673ac3c9472d52271709989438bbf99",
+  "exit_code": 0,
+  "evidence": {
+    "block_cap_overflow": {
+      "diagnostic": "BRIDGE_MANAGED_INSTRUCTION_BLOCK_OVERFLOW",
+      "project_snapshot_unchanged": true,
+      "writer": "overleaf"
+    },
+    "candidate_sha": "c32b9100c673ac3c9472d52271709989438bbf99",
+    "fixture_root": "/tmp/bridge-c3-a609599-zcuga2dq",
+    "projected_overflow": [
+      {
+        "diagnostic": "BRIDGE_MANAGED_INSTRUCTION_PROJECTED_OVERFLOW",
+        "exit_code": 2,
+        "project_snapshot_unchanged": true,
+        "writer": "core"
+      },
+      {
+        "diagnostic": "BRIDGE_MANAGED_INSTRUCTION_PROJECTED_OVERFLOW",
+        "exit_code": 1,
+        "project_snapshot_unchanged": true,
+        "writer": "persistent"
+      },
+      {
+        "diagnostic": "BRIDGE_MANAGED_INSTRUCTION_PROJECTED_OVERFLOW",
+        "exit_code": 1,
+        "project_snapshot_unchanged": true,
+        "writer": "overleaf"
+      }
+    ],
+    "under_limit": {
+      "core": {
+        "exit_code": 0,
+        "external_bytes_preserved": true
+      },
+      "overleaf": {
+        "exit_code": 0,
+        "external_bytes_preserved": true
+      },
+      "persistent": {
+        "exit_code": 0,
+        "external_bytes_preserved": true
+      }
+    }
+  }
+}

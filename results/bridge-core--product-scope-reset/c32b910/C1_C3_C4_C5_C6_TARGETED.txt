@@ -1,0 +1,51 @@
+CANDIDATE_SHA=c32b9100c673ac3c9472d52271709989438bbf99
+COMMAND=python -m unittest -v <25 targeted normal-boundary and deterministic tests>
+EXIT_CODE=0
+Captured tool-output excerpt; this is not a complete raw transcript.
+ok
+test_sync_current_branch_fast_forwards_existing_non_main_branch (tests.test_host_policy.HostPolicyTests.test_sync_current_branch_fast_forwards_existing_non_main_branch) ... To /tmp/tmplalqox2o/remote.git
+ * [new branch]      main -> main
+Switched to a new branch 'feature'
+To /tmp/tmplalqox2o/remote.git
+ * [new branch]      feature -> feature
+Cloning into '/tmp/tmplalqox2o/peer'...
+done.
+Switched to a new branch 'feature'
+To /tmp/tmplalqox2o/remote.git
+   0e0f735..60ac085  feature -> feature
+ok
+test_sync_current_branch_rejects_main_and_dirty_tree (tests.test_host_policy.HostPolicyTests.test_sync_current_branch_rejects_main_and_dirty_tree) ... To /tmp/tmpm8e7u9iw/remote.git
+ * [new branch]      main -> main
+Switched to a new branch 'feature'
+To /tmp/tmpm8e7u9iw/remote.git
+ * [new branch]      feature -> feature
+ok
+test_context_and_mandatory_source_mismatch_fail_closed (tests.test_readiness.ReadinessTests.test_context_and_mandatory_source_mismatch_fail_closed) ... ok
+test_control_adapter_launch_is_after_exact_preflight (tests.test_readiness.ReadinessTests.test_control_adapter_launch_is_after_exact_preflight) ... ok
+test_hidden_index_flags_and_transforms_are_rejected (tests.test_readiness.ReadinessTests.test_hidden_index_flags_and_transforms_are_rejected) ... ok
+test_lite_normal_entry_spawns_once_or_zero (tests.test_readiness.ReadinessTests.test_lite_normal_entry_spawns_once_or_zero) ... PRELAUNCH_NOT_READY: MANDATORY_SOURCE_WORKTREE_MISMATCH: prompts/tasks/repo--feature.md
+ok
+test_lite_notification_is_runtime_only_and_failure_does_not_change_exit (tests.test_readiness.ReadinessTests.test_lite_notification_is_runtime_only_and_failure_does_not_change_exit) ... NOTIFICATION_FAILED: synthetic transport failure
+ok
+test_local_exact_blob_allows_unrelated_dirty_and_binds_commit (tests.test_readiness.ReadinessTests.test_local_exact_blob_allows_unrelated_dirty_and_binds_commit) ... ok
+test_persistent_runtime_owner_suppresses_lite_notification (tests.test_readiness.ReadinessTests.test_persistent_runtime_owner_suppresses_lite_notification) ... ok
+test_projected_writer_budget_uses_actual_limit_and_zero_mutation (tests.test_readiness.ReadinessTests.test_projected_writer_budget_uses_actual_limit_and_zero_mutation) ... ok
+test_real_partial_clone_uses_isolated_fallback_without_repo_mutation (tests.test_readiness.ReadinessTests.test_real_partial_clone_uses_isolated_fallback_without_repo_mutation) ... ok
+test_reviewed_normal_entry_source_failure_keeps_codex_count_zero (tests.test_readiness.ReadinessTests.test_reviewed_normal_entry_source_failure_keeps_codex_count_zero) ... ok
+test_stale_mismatch_partial_and_supervisor_loss_never_relaunch (tests.test_persistent_run.PersistentRunTests.test_stale_mismatch_partial_and_supervisor_loss_never_relaunch) ... ok
+test_recover_and_resolve_require_proven_dead_child (tests.test_persistent_run.PersistentRunTests.test_recover_and_resolve_require_proven_dead_child) ... ok
+test_persistent_and_overleaf_writers_are_serialized_without_lost_block (tests.test_overleaf.OverleafBridgeTests.test_persistent_and_overleaf_writers_are_serialized_without_lost_block) ... ok
+test_review_notification_uses_reviewer_authority_and_transport_failure_is_isolated (tests.test_reviewed_runner.ReviewedRunnerTests.test_review_notification_uses_reviewer_authority_and_transport_failure_is_isolated) ... ok
+test_control_notification_failure_does_not_roll_back_valid_semantic_transition (tests.test_agent_flow.AgentFlowTests.test_control_notification_failure_does_not_roll_back_valid_semantic_transition) ... ok
+test_persistent_notifications_are_runtime_only_and_failure_is_nonfatal (tests.test_persistent_run.PersistentRunTests.test_persistent_notifications_are_runtime_only_and_failure_is_nonfatal) ... ok
+test_automatic_send_uses_adapter_but_manual_send_stays_legacy (tests.test_clear_writing.ClearWritingTests.test_automatic_send_uses_adapter_but_manual_send_stays_legacy) ... ok
+test_current_codex_inventory_nested_source_and_name_manifest_resolve (tests.test_clear_writing.ClearWritingTests.test_current_codex_inventory_nested_source_and_name_manifest_resolve) ... ok
+test_jsonl_turn_or_fidelity_failure_never_retries (tests.test_clear_writing.ClearWritingTests.test_jsonl_turn_or_fidelity_failure_never_retries) ... ok
+test_normal_path_uses_one_model_turn_and_both_exact_skills (tests.test_clear_writing.ClearWritingTests.test_normal_path_uses_one_model_turn_and_both_exact_skills) ... ok
+test_plugin_failure_uses_zero_model_fallback (tests.test_clear_writing.ClearWritingTests.test_plugin_failure_uses_zero_model_fallback) ... ok
+test_transport_failure_does_not_trigger_second_model_call (tests.test_clear_writing.ClearWritingTests.test_transport_failure_does_not_trigger_second_model_call) ... ok
+
+----------------------------------------------------------------------
+Ran 25 tests in 28.230s
+
+OK

@@ -1,0 +1,162 @@
+{
+  "candidate_sha": "c32b9100c673ac3c9472d52271709989438bbf99",
+  "exit_code": 0,
+  "evidence": {
+    "conclusion": "success",
+    "headSha": "c32b9100c673ac3c9472d52271709989438bbf99",
+    "jobs": [
+      {
+        "completedAt": "2026-10-19T15:19:49Z",
+        "conclusion": "success",
+        "databaseId": 118143320845,
+        "name": "Python 3.9",
+        "startedAt": "2026-10-19T15:18:47Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-10-19T15:18:49Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-10-19T15:18:49Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-19T15:18:51Z",
+            "conclusion": "success",
+            "name": "Check out repository",
+            "number": 2,
+            "startedAt": "2026-10-19T15:18:49Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-19T15:18:59Z",
+            "conclusion": "success",
+            "name": "Set up Python",
+            "number": 3,
+            "startedAt": "2026-10-19T15:18:51Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-19T15:19:08Z",
+            "conclusion": "success",
+            "name": "Install age transport dependency",
+            "number": 4,
+            "startedAt": "2026-10-19T15:18:59Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-19T15:19:46Z",
+            "conclusion": "success",
+            "name": "Run unittest",
+            "number": 5,
+            "startedAt": "2026-10-19T15:19:08Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-19T15:19:46Z",
+            "conclusion": "success",
+            "name": "Post Set up Python",
+            "number": 9,
+            "startedAt": "2026-10-19T15:19:46Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-19T15:19:47Z",
+            "conclusion": "success",
+            "name": "Post Check out repository",
+            "number": 10,
+            "startedAt": "2026-10-19T15:19:46Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-19T15:19:47Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 11,
+            "startedAt": "2026-10-19T15:19:47Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/YuukiAS/GPT_Codex_AI_Bridge_Kit/actions/runs/39276862997/job/118143320845"
+      },
+      {
+        "completedAt": "2026-10-19T15:19:31Z",
+        "conclusion": "success",
+        "databaseId": 118143321367,
+        "name": "Python 3.x",
+        "startedAt": "2026-10-19T15:18:48Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-10-19T15:18:50Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-10-19T15:18:49Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-19T15:18:51Z",
+            "conclusion": "success",
+            "name": "Check out repository",
+            "number": 2,
+            "startedAt": "2026-10-19T15:18:50Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-19T15:18:51Z",
+            "conclusion": "success",
+            "name": "Set up Python",
+            "number": 3,
+            "startedAt": "2026-10-19T15:18:51Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-19T15:19:01Z",
+            "conclusion": "success",
+            "name": "Install age transport dependency",
+            "number": 4,
+            "startedAt": "2026-10-19T15:18:51Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-19T15:19:27Z",
+            "conclusion": "success",
+            "name": "Run unittest",
+            "number": 5,
+            "startedAt": "2026-10-19T15:19:01Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-19T15:19:28Z",
+            "conclusion": "success",
+            "name": "Post Set up Python",
+            "number": 9,
+            "startedAt": "2026-10-19T15:19:27Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-19T15:19:28Z",
+            "conclusion": "success",
+            "name": "Post Check out repository",
+            "number": 10,
+            "startedAt": "2026-10-19T15:19:28Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-19T15:19:28Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 11,
+            "startedAt": "2026-10-19T15:19:28Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/YuukiAS/GPT_Codex_AI_Bridge_Kit/actions/runs/39276862997/job/118143321367"
+      }
+    ],
+    "status": "completed",
+    "url": "https://github.com/YuukiAS/GPT_Codex_AI_Bridge_Kit/actions/runs/39276862997"
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "candidate_sha": "147279107e3811dee279a337b85febb4e6c468b8",
+  "exit_code": 1,
+  "chunk_id": "702870",
+  "evidence": {
+    "candidate_sha": "147279107e3811dee279a337b85febb4e6c468b8",
+    "cases": [
+      {
+        "hang_stage": "DNS",
+        "status": "FAIL",
+        "helper_entry_executed": false,
+        "reason": "helper exited 0",
+        "helper_exit_codes": [
+          0
+        ],
+        "model_invocations": 0,
+        "smtp_sends": 0,
+        "attempt_record_present": false
+      },
+      {
+        "hang_stage": "SMTP_CONNECT",
+        "status": "FAIL",
+        "helper_entry_executed": false,
+        "reason": "helper exited 0",
+        "helper_exit_codes": [
+          0
+        ],
+        "model_invocations": 0,
+        "smtp_sends": 0,
+        "attempt_record_present": false
+      },
+      {
+        "hang_stage": "TLS",
+        "status": "FAIL",
+        "helper_entry_executed": false,
+        "reason": "helper exited 0",
+        "helper_exit_codes": [
+          0
+        ],
+        "model_invocations": 0,
+        "smtp_sends": 0,
+        "attempt_record_present": false
+      }
+    ],
+    "result": "FAIL"
+  }
+}

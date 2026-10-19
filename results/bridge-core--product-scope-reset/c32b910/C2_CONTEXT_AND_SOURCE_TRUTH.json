@@ -1,0 +1,67 @@
+{
+  "candidate_sha": "c32b9100c673ac3c9472d52271709989438bbf99",
+  "exit_code": 0,
+  "evidence": {
+    "candidate_sha": "c32b9100c673ac3c9472d52271709989438bbf99",
+    "context_negatives": [
+      {
+        "case": "wrong_repo",
+        "error": "EXECUTION_REPO_MISMATCH",
+        "launch_count": 0
+      },
+      {
+        "case": "wrong_worktree",
+        "error": "TARGET_NOT_GIT_REPOSITORY",
+        "launch_count": 0
+      },
+      {
+        "case": "wrong_branch",
+        "error": "EXECUTION_BRANCH_MISMATCH",
+        "launch_count": 0
+      },
+      {
+        "case": "wrong_head",
+        "error": "EXECUTION_HEAD_MISMATCH",
+        "launch_count": 0
+      },
+      {
+        "case": "wrong_path",
+        "error": "MANDATORY_SOURCE_PATH_UNSAFE",
+        "launch_count": 0
+      },
+      {
+        "case": "mandatory_source_mismatch",
+        "error": "MANDATORY_SOURCE_WORKTREE_MISMATCH",
+        "launch_count": 0
+      }
+    ],
+    "control_true_launcher_local": {
+      "launch_count": 1,
+      "read_mode": "local",
+      "sha256": "302138a33483d7ec94752977aedff8360f4316f10d167be281603adeb65352e0"
+    },
+    "fallback_negative": {
+      "case": "isolated_fallback_failure",
+      "error": "MANDATORY_SOURCE_ISOLATED_FETCH_FAILED",
+      "launch_count": 0,
+      "protected_git_snapshot_unchanged": 1
+    },
+    "fixture_root": "/tmp/bridge-c2-a609599-neacxxsb",
+    "lite_true_launcher": {
+      "mismatch_diagnostic": "PRELAUNCH_NOT_READY: MANDATORY_SOURCE_WORKTREE_MISMATCH: prompts/tasks/repo--feature.md",
+      "mismatch_spawn_count": 0,
+      "positive_spawn_count": 1,
+      "unrelated_dirty_present": true
+    },
+    "partial_clone_true_control_launcher": {
+      "launch_count": 1,
+      "protected_git_snapshot_unchanged": true,
+      "read_mode": "isolated_fallback"
+    },
+    "reviewed_true_launcher": {
+      "mismatch_error": "MANDATORY_SOURCE_WORKTREE_MISMATCH",
+      "mismatch_spawn_count": 0,
+      "positive_spawn_count": 1
+    }
+  }
+}

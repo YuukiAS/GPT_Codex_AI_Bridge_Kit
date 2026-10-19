@@ -1,0 +1,53 @@
+{
+  "candidate_sha": "c32b9100c673ac3c9472d52271709989438bbf99",
+  "exit_code": 0,
+  "evidence": {
+    "candidate_sha": "c32b9100c673ac3c9472d52271709989438bbf99",
+    "version": "0.11.0",
+    "source": "/overflow/htzhu/mingcheng_new/GPT_Codex_AI_Bridge_Kit/ai_bridge_kit/__init__.py",
+    "files": [
+      {
+        "path": "README.md",
+        "git_blob": "506de690355c7b1bb79cf854950d9f0a0ab279e8",
+        "sha256": "826467c5cc0eac3a614c00b8832ed7e6acfe489083d7771a97371f5e1984a376",
+        "working_bytes_match_candidate": true
+      },
+      {
+        "path": "QUICKSTART.md",
+        "git_blob": "fa53f2b17cb2331d6864f64e4b4f3b61e8016d64",
+        "sha256": "cc0b99cf357c88835a31a1518f77e08fbe31c32946e83ab407885a7b569846ee",
+        "working_bytes_match_candidate": true
+      },
+      {
+        "path": "AGENTS.md",
+        "git_blob": "e6c85d33870449e32d47c4027beb324c5bbb0e89",
+        "sha256": "7f011667f64104b2cec5adc7b159a7478cc5cc7d37672498fe0e52605435782a",
+        "working_bytes_match_candidate": true
+      },
+      {
+        "path": "CHANGELOG.md",
+        "git_blob": "6e54cd1ad3a71cb05b413ee3cb4d6c666cc41079",
+        "sha256": "e4a158477af21f9895be305e603af832e73699a1ce4aa9692204fea46b5648b5",
+        "working_bytes_match_candidate": true
+      },
+      {
+        "path": "pyproject.toml",
+        "git_blob": "89a4ff428aed79924791a3e15b09fd29aacc7344",
+        "sha256": "1d7030826c3aad242f69b86f888724f5a468cb0aa708ae015e6f993029681308",
+        "working_bytes_match_candidate": true
+      },
+      {
+        "path": "ai_bridge_kit/__init__.py",
+        "git_blob": "ccc120ca5ef90208248e2dac808e3141cfad7c1e",
+        "sha256": "fc8de73fec9f54108f2ef6a6a7b815de63e6a5b6a7ff781b9d7fe1027540978e",
+        "working_bytes_match_candidate": true
+      },
+      {
+        "path": ".github/workflows/tests.yml",
+        "git_blob": "6c92472c6fe437656098c5909182e87e33508540",
+        "sha256": "da36ca9e9f66a9bc68635e86c9b4787013854c607e2e63153a1a7da377b9b734",
+        "working_bytes_match_candidate": true
+      }
+    ]
+  }
+}

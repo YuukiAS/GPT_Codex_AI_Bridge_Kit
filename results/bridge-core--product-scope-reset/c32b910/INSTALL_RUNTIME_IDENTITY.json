@@ -1,0 +1,40 @@
+{
+  "candidate_sha": "c32b9100c673ac3c9472d52271709989438bbf99",
+  "exit_code": 0,
+  "evidence": {
+    "candidate_sha": "c32b9100c673ac3c9472d52271709989438bbf99",
+    "candidate_install": "/tmp/bridge-011-1472791-final-install/bin/ai-bridge",
+    "direct_url": {
+      "dir_info": {
+        "editable": true
+      },
+      "url": "file:///overflow/htzhu/mingcheng_new/GPT_Codex_AI_Bridge_Kit"
+    },
+    "version": "0.11.0",
+    "codex_home": "/users/a/e/aereinh/.codex",
+    "model": "gpt-5.6-sol",
+    "provider": "openai",
+    "writing_style": {
+      "plugin_id": "writing-style@yuukias-ai-skills",
+      "version": "0.5",
+      "root": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style",
+      "manifest": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style/.codex-plugin/plugin.json",
+      "skills": {
+        "writing-fidelity": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style/skills/fidelity/SKILL.md",
+        "chinese-prose": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style/skills/zh/SKILL.md"
+      },
+      "codex_bin": "/users/a/e/aereinh/bin/codex"
+    },
+    "notifier_readiness": {
+      "status": "VALID",
+      "config_path": "/users/a/e/aereinh/.ai-bridge/private/notifier.env",
+      "mode": 384,
+      "missing_or_invalid": [],
+      "config_digest": "46cc00d02f541a14f84833c1f0ccd91a3e8ad8ccb2786e48150a1e33c1f7e12d",
+      "transport_ready": true,
+      "transport_test_accepted_at": "2026-10-19T15:02:16+00:00"
+    },
+    "global_released_install_changed": false,
+    "gitignore_sha256": "6c5827da670763f9d295187f04ed652baa2f4f4cf2e80432c529400cc6ea2ae7"
+  }
+}
