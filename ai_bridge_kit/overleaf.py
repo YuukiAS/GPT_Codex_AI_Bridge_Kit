@@ -274,47 +274,37 @@ def migrate_legacy_config(path: Path) -> bool:
     return changed
 
 
-def projected_agents_block(target: Path, cfg: OverleafConfig) -> tuple[str, str, int]:
+def projected_agents_block(target: Path, cfg: OverleafConfig) -> tuple[bytes, str, int]:
+    from .readiness import splice_managed_agents_block
+
     snippet = read_text(kit_root() / "templates" / "overleaf" / "AGENTS_SNIPPET.md").strip()
     snippet = snippet.replace("__PAPER_ROOT__", cfg.paper_root.as_posix()).replace(
         "__MAIN_DOCUMENT__", cfg.main_document.as_posix()
     )
-    block = f"{OVERLEAF_BEGIN_MARKER}\n{snippet}\n{OVERLEAF_END_MARKER}\n"
+    block = f"{OVERLEAF_BEGIN_MARKER}\n{snippet}\n{OVERLEAF_END_MARKER}\n".encode("utf-8")
     agents = target / "AGENTS.md"
-    if not agents.exists():
-        return block, f"CREATE {agents}", len(block.encode("utf-8"))
-    current = read_text(agents)
-    if OVERLEAF_BEGIN_MARKER in current and OVERLEAF_END_MARKER in current:
-        start = current.index(OVERLEAF_BEGIN_MARKER)
-        end = current.index(OVERLEAF_END_MARKER) + len(OVERLEAF_END_MARKER)
-        prefix = current[:start].rstrip()
-        suffix = current[end:].lstrip()
-        parts = []
-        if prefix:
-            parts.append(prefix)
-        parts.append(block.rstrip())
-        if suffix:
-            parts.append(suffix.rstrip())
-        updated = "\n\n".join(parts) + "\n"
-        action = "UPDATE"
-    else:
-        updated = current.rstrip() + "\n\n" + block
-        action = "APPEND"
-    return updated, f"{action} Overleaf managed block in {agents}", len(block.encode("utf-8"))
+    updated, action = splice_managed_agents_block(
+        agents.read_bytes() if agents.exists() else None,
+        block,
+        begin_marker=OVERLEAF_BEGIN_MARKER.encode("utf-8"),
+        end_marker=OVERLEAF_END_MARKER.encode("utf-8"),
+    )
+    return updated, f"{action} Overleaf managed block in {agents}", len(block)
 
 
 def install_agents_block(
     target: Path,
     cfg: OverleafConfig,
     *,
-    projected: str | None = None,
+    projected: bytes | None = None,
     projected_action: str = "",
 ) -> str:
     agents = target / "AGENTS.md"
     updated, action, _size = projected_agents_block(target, cfg) if projected is None else (projected, projected_action, 0)
-    current = read_text(agents) if agents.exists() else None
+    current = agents.read_bytes() if agents.exists() else None
     if updated != current:
-        write_text(agents, updated)
+        agents.parent.mkdir(parents=True, exist_ok=True)
+        agents.write_bytes(updated)
     return action
 
 
@@ -330,11 +320,11 @@ def install_overleaf(target: Path, *, paper_root: str, main_document: str = "mai
         if cfg_path.exists()
         else OverleafConfig(target=target, paper_root=paper, main_document=main, exclude_paths=())
     )
-    projected_agents, projected_action, block_bytes = projected_agents_block(target, future_cfg)
     try:
+        projected_agents, projected_action, block_bytes = projected_agents_block(target, future_cfg)
         preflight_root_agents_mutation(
             target,
-            projected_agents.encode("utf-8"),
+            projected_agents,
             block_name="overleaf",
             block_bytes=block_bytes,
         )

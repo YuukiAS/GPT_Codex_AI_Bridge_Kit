@@ -113,6 +113,24 @@ class PersistentRunTests(unittest.TestCase):
         self.assertIn("full-launch-id exact tmux session", updated)
         self.assertEqual(updated.count(persistent_run.PERSISTENT_RUN_BEGIN_MARKER), 1)
 
+    def test_managed_block_update_preserves_all_marker_external_bytes(self) -> None:
+        target = self.make_repo()
+        agents = target / "AGENTS.md"
+        begin = persistent_run.PERSISTENT_RUN_BEGIN_MARKER.encode("utf-8")
+        end = persistent_run.PERSISTENT_RUN_END_MARKER.encode("utf-8")
+        prefix = "# 用户规则  \r\n\r\n保留连续空行\n尾随空白 \t \r\n".encode("utf-8")
+        suffix = "\r\n\r\n后置中文\n\n末尾空白  \t".encode("utf-8")
+        agents.write_bytes(prefix + begin + b"\r\nstale managed bytes\r\n" + end + suffix)
+
+        persistent_run.install_persistent_run(target)
+
+        updated = agents.read_bytes()
+        start = updated.index(begin)
+        marker_end = updated.index(end, start) + len(end)
+        self.assertEqual(updated[:start], prefix)
+        self.assertEqual(updated[marker_end:], suffix)
+        self.assertNotIn(b"stale managed bytes", updated)
+
     def test_repeated_install_is_stable_and_does_not_write_codex_home_or_rules(self) -> None:
         target = self.make_repo()
         persistent_run.install_persistent_run(target)

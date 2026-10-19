@@ -133,6 +133,24 @@ class OverleafBridgeTests(unittest.TestCase):
         self.assertIn(overleaf.OVERLEAF_BEGIN_MARKER, first_agents)
         self.assertTrue((target / "automation" / "overleaf" / "README.md").exists())
 
+    def test_managed_block_update_preserves_all_marker_external_bytes(self) -> None:
+        target = self.make_project()
+        agents = target / "AGENTS.md"
+        begin = overleaf.OVERLEAF_BEGIN_MARKER.encode("utf-8")
+        end = overleaf.OVERLEAF_END_MARKER.encode("utf-8")
+        prefix = "# 用户规则  \r\n\r\n保留连续空行\n尾随空白 \t \r\n".encode("utf-8")
+        suffix = "\r\n\r\n后置中文\n\n末尾空白  \t".encode("utf-8")
+        agents.write_bytes(prefix + begin + b"\r\nstale managed bytes\r\n" + end + suffix)
+
+        overleaf.install_overleaf(target, paper_root="paper/manuscript")
+
+        updated = agents.read_bytes()
+        start = updated.index(begin)
+        marker_end = updated.index(end, start) + len(end)
+        self.assertEqual(updated[:start], prefix)
+        self.assertEqual(updated[marker_end:], suffix)
+        self.assertNotIn(b"stale managed bytes", updated)
+
     def test_unsafe_paths_and_symlink_escape_are_rejected(self) -> None:
         target = self.make_project()
         with self.assertRaisesRegex(overleaf.OverleafError, "paper_root"):

@@ -338,42 +338,39 @@ def template_root() -> Path:
     return kit_root() / "templates" / "persistent_run"
 
 
-def _managed_block() -> str:
-    snippet = read_text(template_root() / "AGENTS_SNIPPET.md").strip()
-    return f"{PERSISTENT_RUN_BEGIN_MARKER}\n{snippet}\n{PERSISTENT_RUN_END_MARKER}\n"
+def _managed_block() -> bytes:
+    snippet = (template_root() / "AGENTS_SNIPPET.md").read_bytes().strip()
+    return (
+        PERSISTENT_RUN_BEGIN_MARKER.encode("utf-8")
+        + b"\n"
+        + snippet
+        + b"\n"
+        + PERSISTENT_RUN_END_MARKER.encode("utf-8")
+        + b"\n"
+    )
 
 
-def projected_agents_block(target: Path) -> tuple[str, str]:
+def projected_agents_block(target: Path) -> tuple[bytes, str]:
+    from .readiness import splice_managed_agents_block
+
     agents = target / "AGENTS.md"
     block = _managed_block()
-    if not agents.exists():
-        return block, f"CREATE {agents}"
-    current = read_text(agents)
-    if PERSISTENT_RUN_BEGIN_MARKER in current and PERSISTENT_RUN_END_MARKER in current:
-        start = current.index(PERSISTENT_RUN_BEGIN_MARKER)
-        end = current.index(PERSISTENT_RUN_END_MARKER) + len(PERSISTENT_RUN_END_MARKER)
-        prefix = current[:start].rstrip()
-        suffix = current[end:].lstrip()
-        parts = []
-        if prefix:
-            parts.append(prefix)
-        parts.append(block.rstrip())
-        if suffix:
-            parts.append(suffix.rstrip())
-        updated = "\n\n".join(parts) + "\n"
-        action = "UPDATE"
-    else:
-        updated = current.rstrip() + "\n\n" + block
-        action = "APPEND"
+    updated, action = splice_managed_agents_block(
+        agents.read_bytes() if agents.exists() else None,
+        block,
+        begin_marker=PERSISTENT_RUN_BEGIN_MARKER.encode("utf-8"),
+        end_marker=PERSISTENT_RUN_END_MARKER.encode("utf-8"),
+    )
     return updated, f"{action} Persistent Run managed block in {agents}"
 
 
-def install_agents_block(target: Path, *, projected: str | None = None, projected_action: str = "") -> str:
+def install_agents_block(target: Path, *, projected: bytes | None = None, projected_action: str = "") -> str:
     agents = target / "AGENTS.md"
     updated, action = projected_agents_block(target) if projected is None else (projected, projected_action)
-    current = read_text(agents) if agents.exists() else None
+    current = agents.read_bytes() if agents.exists() else None
     if updated != current:
-        write_text(agents, updated)
+        agents.parent.mkdir(parents=True, exist_ok=True)
+        agents.write_bytes(updated)
     return action
 
 
@@ -381,13 +378,13 @@ def install_persistent_run(target: Path) -> list[str]:
     target = ensure_git_repo(target.resolve())
     from .readiness import ReadinessError, preflight_root_agents_mutation
 
-    projected_agents, projected_action = projected_agents_block(target)
     try:
+        projected_agents, projected_action = projected_agents_block(target)
         preflight_root_agents_mutation(
             target,
             projected_agents,
             block_name="persistent_run",
-            block_bytes=len(_managed_block().encode("utf-8")),
+            block_bytes=len(_managed_block()),
         )
     except ReadinessError as exc:
         raise PersistentRunError(str(exc)) from exc

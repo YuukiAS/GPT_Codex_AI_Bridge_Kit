@@ -37,6 +37,40 @@ class ReadinessError(ValueError):
         self.detail = detail
 
 
+def splice_managed_agents_block(
+    current: bytes | None,
+    block: bytes,
+    *,
+    begin_marker: bytes,
+    end_marker: bytes,
+    create_prefix: bytes = b"",
+) -> tuple[bytes, str]:
+    """Project one Bridge-owned block without changing any surrounding bytes."""
+    block_start = block.find(begin_marker)
+    block_end = block.find(end_marker, block_start + len(begin_marker))
+    if block_start != 0 or block_end < 0:
+        raise ReadinessError("BRIDGE_MANAGED_BLOCK_TEMPLATE_INVALID")
+    owned_block = block[: block_end + len(end_marker)]
+    trailing = block[len(owned_block) :]
+    if trailing not in {b"", b"\n", b"\r", b"\r\n"}:
+        raise ReadinessError("BRIDGE_MANAGED_BLOCK_TEMPLATE_INVALID")
+    if current is None:
+        prefix = create_prefix + (b"\n\n" if create_prefix else b"")
+        return prefix + block, "CREATE"
+    begin_count = current.count(begin_marker)
+    end_count = current.count(end_marker)
+    if begin_count == 0 and end_count == 0:
+        return current + b"\n\n" + block, "APPEND"
+    if begin_count != 1 or end_count != 1:
+        raise ReadinessError("BRIDGE_MANAGED_BLOCK_MARKERS_INVALID")
+    start = current.index(begin_marker)
+    end = current.find(end_marker, start + len(begin_marker))
+    if end < 0:
+        raise ReadinessError("BRIDGE_MANAGED_BLOCK_MARKERS_INVALID")
+    marker_end = end + len(end_marker)
+    return current[:start] + owned_block + current[marker_end:], "UPDATE"
+
+
 @dataclass(frozen=True)
 class ExecutionLocator:
     repo: str

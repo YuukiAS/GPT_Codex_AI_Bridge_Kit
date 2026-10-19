@@ -115,33 +115,29 @@ def managed_agents_block_bytes() -> bytes:
     )
 
 
-def managed_span_end(content: bytes, marker_end: int) -> int:
-    """Return end offset for the managed block, including one owned newline."""
-    end = marker_end + len(END_MARKER.encode("utf-8"))
-    for newline in (b"\r\n", b"\n", b"\r"):
-        if content.startswith(newline, end):
-            return end + len(newline)
-    return end
-
-
 def projected_agents_snippet(target: Path, force: bool) -> tuple[bytes, str]:
     agents_path = target / "AGENTS.md"
     block = managed_agents_block_bytes()
-    if not agents_path.exists():
-        scaffold_path = kit_root() / "templates" / "repo" / "AGENTS_TEMPLATE.md"
-        scaffold = scaffold_path.read_bytes().strip()
-        return scaffold + b"\n\n" + block, f"CREATE AGENTS.md with project scaffold and handoff protocol: {agents_path}"
-    current = agents_path.read_bytes()
     begin = BEGIN_MARKER.encode("utf-8")
     end = END_MARKER.encode("utf-8")
-    if begin in current and end in current:
+    current = agents_path.read_bytes() if agents_path.exists() else None
+    if current is not None and begin in current and end in current:
         if not force:
             return current, f"SKIP existing handoff block in: {agents_path}"
-        start = current.index(begin)
-        marker_end = current.index(end, start)
-        span_end = managed_span_end(current, marker_end)
-        return current[:start] + block + current[span_end:], f"UPDATE handoff block in: {agents_path}"
-    return current + b"\n\n" + block, f"APPEND handoff block to: {agents_path}"
+    scaffold = (kit_root() / "templates" / "repo" / "AGENTS_TEMPLATE.md").read_bytes().strip()
+    desired, action = readiness.splice_managed_agents_block(
+        current,
+        block,
+        begin_marker=begin,
+        end_marker=end,
+        create_prefix=scaffold,
+    )
+    descriptions = {
+        "CREATE": f"CREATE AGENTS.md with project scaffold and handoff protocol: {agents_path}",
+        "UPDATE": f"UPDATE handoff block in: {agents_path}",
+        "APPEND": f"APPEND handoff block to: {agents_path}",
+    }
+    return desired, descriptions[action]
 
 
 def install_agents_snippet(
