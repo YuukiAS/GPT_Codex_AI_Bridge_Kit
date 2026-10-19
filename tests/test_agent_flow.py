@@ -18,6 +18,11 @@ def write(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
+def disable_git_auto_maintenance(target: Path) -> None:
+    subprocess.check_call(["git", "config", "gc.auto", "0"], cwd=target)
+    subprocess.check_call(["git", "config", "maintenance.auto", "false"], cwd=target)
+
+
 class FakeRuntimeAdapter(agent_flow.RuntimeAdapter):
     name = "fake"
 
@@ -416,6 +421,7 @@ class AgentFlowTests(unittest.TestCase):
         tmp, target = self.make_project()
         with tmp:
             subprocess.check_call(["git", "init", "--initial-branch", "main"], cwd=target, stdout=subprocess.DEVNULL)
+            disable_git_auto_maintenance(target)
             subprocess.check_call(["git", "add", "."], cwd=target, stdout=subprocess.DEVNULL)
             first = agent_flow.snapshot(target, "001_toy")
             write(target / "src" / "untracked_local.py", "def local_only():\n    return 'ignore'\n")
@@ -1107,6 +1113,7 @@ class AgentFlowTests(unittest.TestCase):
         tmp, target = self.make_project()
         with tmp:
             subprocess.check_call(["git", "init", "--initial-branch", "main"], cwd=target, stdout=subprocess.DEVNULL)
+            disable_git_auto_maintenance(target)
             subprocess.check_call(["git", "config", "user.email", "test@example.org"], cwd=target)
             subprocess.check_call(["git", "config", "user.name", "Test User"], cwd=target)
             subprocess.check_call(["git", "add", "."], cwd=target, stdout=subprocess.DEVNULL)
@@ -1137,6 +1144,7 @@ class AgentFlowTests(unittest.TestCase):
         tmp, target = self.make_project()
         with tmp:
             subprocess.check_call(["git", "init", "--initial-branch", "main"], cwd=target, stdout=subprocess.DEVNULL)
+            disable_git_auto_maintenance(target)
             subprocess.check_call(["git", "config", "user.email", "test@example.org"], cwd=target)
             subprocess.check_call(["git", "config", "user.name", "Test User"], cwd=target)
             subprocess.check_call(["git", "add", "."], cwd=target, stdout=subprocess.DEVNULL)
@@ -1327,6 +1335,7 @@ class AgentFlowTests(unittest.TestCase):
         tmp, target = self.make_project()
         with tmp:
             subprocess.check_call(["git", "init", "--initial-branch", "main"], cwd=target, stdout=subprocess.DEVNULL)
+            disable_git_auto_maintenance(target)
             subprocess.check_call(["git", "config", "user.email", "test@example.org"], cwd=target)
             subprocess.check_call(["git", "config", "user.name", "Test User"], cwd=target)
             subprocess.check_call(["git", "add", "."], cwd=target, stdout=subprocess.DEVNULL)
@@ -1366,6 +1375,7 @@ class AgentFlowTests(unittest.TestCase):
         tmp, target = self.make_project()
         with tmp:
             subprocess.check_call(["git", "init", "--initial-branch", "main"], cwd=target, stdout=subprocess.DEVNULL)
+            disable_git_auto_maintenance(target)
             subprocess.check_call(["git", "config", "user.email", "test@example.org"], cwd=target)
             subprocess.check_call(["git", "config", "user.name", "Test User"], cwd=target)
             subprocess.check_call(["git", "add", "."], cwd=target, stdout=subprocess.DEVNULL)

@@ -16,6 +16,11 @@ from ai_bridge_kit import text_review
 from ai_bridge_kit.host import install_host_policy
 
 
+def disable_git_auto_maintenance(target: Path) -> None:
+    subprocess.check_call(["git", "config", "gc.auto", "0"], cwd=target)
+    subprocess.check_call(["git", "config", "maintenance.auto", "false"], cwd=target)
+
+
 class ReviewedRunnerTests(unittest.TestCase):
     def make_project(self) -> tuple[tempfile.TemporaryDirectory[str], Path, Path]:
         try:
@@ -42,6 +47,7 @@ class ReviewedRunnerTests(unittest.TestCase):
         target = base / "project"
         target.mkdir()
         subprocess.check_call(["git", "init", "--initial-branch", "main"], cwd=target, stdout=subprocess.DEVNULL)
+        disable_git_auto_maintenance(target)
         subprocess.check_call(["git", "config", "user.email", "test@example.org"], cwd=target)
         subprocess.check_call(["git", "config", "user.name", "Test User"], cwd=target)
         with (codex_home / "config.toml").open("a", encoding="utf-8") as handle:
@@ -60,6 +66,7 @@ class ReviewedRunnerTests(unittest.TestCase):
     def attach_origin(self, target: Path, base: Path) -> Path:
         remote = base / "origin.git"
         subprocess.check_call(["git", "init", "--bare", "--initial-branch", "main", remote], stdout=subprocess.DEVNULL)
+        disable_git_auto_maintenance(remote)
         subprocess.check_call(["git", "remote", "set-url", "origin", str(remote)], cwd=target)
         subprocess.check_call(["git", "push", "-u", "origin", "main"], cwd=target, stdout=subprocess.DEVNULL)
         subprocess.check_call(["git", "symbolic-ref", "HEAD", "refs/heads/main"], cwd=remote)
