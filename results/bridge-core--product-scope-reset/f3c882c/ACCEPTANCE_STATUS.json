@@ -1,0 +1,29 @@
+{
+  "final_candidate_sha": "f3c882c5302a1889cac62526e8f025ada0f4d1a5",
+  "implementation_repairs": {
+    "skill_invocation_false_negative": "FIXED",
+    "negated_completion_false_positive": "FIXED"
+  },
+  "saved_jsonl_offline_replay": "PASS_NORMAL_WRITING_STYLE",
+  "gates": {
+    "C1": "PASS",
+    "C2": "PASS",
+    "C3": "PASS",
+    "C4": "PASS_REAL_PRODUCTION_ENTRY",
+    "C5": "PASS",
+    "C6_non_live": "PASS",
+    "hosted_CI": "PASS",
+    "C6_live": "NOT_RUN"
+  },
+  "hosted_CI_run": 39281651220,
+  "hosted_CI_sha": "f3c882c5302a1889cac62526e8f025ada0f4d1a5",
+  "hosted_CI_terminal_status": "completed",
+  "hosted_CI_terminal_conclusion": "success",
+  "hosted_CI_per_job_test_log_validation": "Both Python 3.9/3.x checked out exact SHA and ran 486 tests OK (skipped=4)",
+  "remaining_only_new_candidate_C6_live_rerun": true,
+  "goal_achieved": false,
+  "ready_for_final_critic": false,
+  "this_round_real_model_invocations": 0,
+  "this_round_real_gmail_sends": 0,
+  "release_ref_unchanged": "9db19b0409816c22042a246b35a33e1d34fedd0a"
+}

@@ -2,7 +2,7 @@
 
 两个 Bridge 实现误判已修复。保存的 C6 trace 在修复后的正式 renderer 中离线回放，
 返回 NORMAL_WRITING_STYLE；本地全量回归、C1–C5 与 C6 非 live 验证通过。
-新的 hosted CI 尚未全部完成，因此当前还不能说所有 Gate 已通过。
+同 SHA 的 hosted CI 已完成并成功，两组执行日志均确认 486 项测试通过。
 本轮没有真实模型调用或 Gmail 发送；旧 live run 不是新候选的 C6 live PASS。
 
 ## 唯一生产候选
@@ -94,9 +94,13 @@ AI_BRIDGE_STATE_HOME 测试隔离后重跑通过，没有修改 HOME、CODEX_HOM
 
 Hosted CI：
 [run 39281651220](https://github.com/YuukiAS/GPT_Codex_AI_Bridge_Kit/actions/runs/39281651220)，
-headSha=`f3c882c5302a1889cac62526e8f025ada0f4d1a5`。直接 job API 已确认 Python 3.9
-completed/success；Python 3.x 仍 queued、runner 未分配。run 汇总暂未完成，无 failure
-annotation；等待全部真实结果，不引用旧 c32b910 的绿色 run。
+headSha=`f3c882c5302a1889cac62526e8f025ada0f4d1a5`，run=completed/success。
+两组真实执行日志均确认 checkout 该 exact SHA 后运行 486 项、OK (skipped=4)。
+四项跳过都是 hosted runner 未安装 Codex CLI 的检查，本地定向 bank 已实际执行；
+CI 安装了 age，对应八项本地 skip 在 CI 不跳过。
+Python 3.x 的 job-list/detail 响应仍显示滞后的 queued，与实际日志及 run 终态不一致；
+原始不一致响应保存在 HOSTED_CI.json，未篡改为成功。CI 判断依据是该 run 的成功终态
+加上两组实际 checkout/test 日志，而不是旧候选或单个局部步骤。摘要见 HOSTED_CI_TEST_SUMMARY.txt。
 
 SOURCE_DOCUMENT_INSTALL_IDENTITY.json 逐字绑定 README、QUICKSTART、AGENTS、CHANGELOG、
 pyproject、__init__、CI，记录独立 editable 安装指向本仓库、version=0.11.0。
@@ -105,6 +109,6 @@ pyproject、__init__、CI，记录独立 editable 安装指向本仓库、versio
 
 ## 剩余边界
 
-当前还需 hosted CI 完成，以及另行授权的新候选 C6 live rerun。
+当前只剩另行授权的新候选 C6 live rerun。
 不把本轮离线 replay 或旧邮件 receipt 说成新候选的 live PASS。
 没有新建 Goal，没有改变原 Goal 的最终完成标准；当前尚不能报告整个 Goal 完成。
