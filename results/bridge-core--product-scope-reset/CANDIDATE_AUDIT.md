@@ -1,4 +1,32 @@
-# 当前候选：v6 实现通过，最终正常入口验收未完成
+# 当前候选：v6 实现与最终正常入口验收完成
+
+唯一 FINAL_CANDIDATE_SHA=`391ff889ad156540727da168fb608c5f37dbbdfc`。
+同一候选的既有确定性回归、双版本 full tests、hosted CI、diff/source-document identity
+保持 PASS，冻结 owner 未修改，没有重跑旧 Gate。
+
+本轮按用户一次性授权，完成一个正常 Marketplace refresh，并在仍有版本不一致时仅对
+writing-style 执行一次 remove+add；两个独立 fresh process、立即启动前、两个正式 renderer
+及运行后复核均为 0.5/0.5、两个 skill 与 production resolver PASS。
+临时观察器的 Path 序列化已修复，真实 Popen smoke 通过，生产候选 bytes 未改变。
+
+唯一 replacement 正式 persistent-run start 完成 supervisor → real primary child →
+shared machine Notifier → writing-fidelity + response-clarity → Gmail SMTP 的完整链。
+primary child PID=510208，运行约 5.005 秒、真实 exit_code=0。
+runtime_start 与 runtime_terminal 各一次模型、单 turn、NORMAL_WRITING_STYLE、fidelity PASS、
+无 fallback、一次 SMTP_ACCEPTED，零自动 retry；合计 2 model、2 SMTP，没有第三条 notification。
+正文不堆内部字段、不显示无意义 UNKNOWN、不将 runtime exit 升级为 Goal completion；
+SMTP_ACCEPTED 不宣称 inbox delivered。
+
+C1–C6 / final normal-entry chain=PASS；implementation + final evaluation complete；
+READY_FOR_RELEASE_DECISION=YES。当前正式报告和完整证据见
+`v6/391ff88/FINAL_IMPLEMENTATION_REPORT.md`、`ACCEPTANCE_STATUS.json` 与
+`replacement/FINAL_NORMAL_ENTRY_RAW_EVIDENCE.json`。
+后续 results-only 提交不是新生产候选；release 保持
+`9db19b0409816c22042a246b35a33e1d34fedd0a`，未发布 tag/Marketplace。
+
+---
+
+# 历史：首个 invalid evaluator attempt，已由获授权 replacement 补齐
 
 FINAL_CANDIDATE_SHA=`391ff889ad156540727da168fb608c5f37dbbdfc`。
 v6 route/projection 窄修、50 项定向回归、两版本各 490 项全量、同 SHA hosted CI 和

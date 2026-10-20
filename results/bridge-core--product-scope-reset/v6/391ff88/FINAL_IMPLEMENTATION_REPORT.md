@@ -1,71 +1,91 @@
-# Bridge Kit 0.11.0 最终正常入口验收记录
+# Bridge Kit 0.11.0 最终验收完成
 
-实现与非 live 验证保持通过，但最终验收未完成，不能交付正式发布决定。
-本轮唯一 canary 因执行方编写的旁路记录器错误，在 primary child 启动前退出。
-该错误不构成已证实的 Bridge 产品缺陷；没有修改生产源码，也没有消耗模型或 Gmail。
-另一次收尾只读检查发现，writing-style inventory 又回到 0.4，机器身份修复未稳定。
+本次 replacement 已通过正式 Persistent 正常入口的完整通知链。实现和最终验收均已完成，
+可以交由用户决定 formal release；本轮没有执行正式发布，也没有移动 release、tag 或 Marketplace。
 
-## 不变的候选与已有验证
+唯一生产候选仍为 `391ff889ad156540727da168fb608c5f37dbbdfc`。
+后续只提交 results 证据，不替换候选，不修改任何 production、tests 或现行产品文档 bytes。
+批准包为 `0dfc767e42c12c016fa906bdcfeece051dc49bb3`。
 
-唯一 production candidate：`391ff889ad156540727da168fb608c5f37dbbdfc`。
-分支后续只新增 results 证据，不是新候选。
-v6 package：`0dfc767e42c12c016fa906bdcfeece051dc49bb3`。
+## 机器身份与观察器
 
-50 项定向测试、Python 3.9/3.12 各 490 项全量、source-document identity
-与同 SHA hosted CI 均保持原 PASS；本轮未重跑这些 Gate 或 C1–C4 长 canary。
-CI run：`39353877948`，head SHA 为上述候选。
-冻结 owner 未改变，C1–C5 已有能力验证保留；C6 非 live 通过。
-最终 C5/C6 Persistent 通知链没有通过，历史 direct delivery 不替代本次验收。
+首先读取真实 Marketplace 和 plugin inventory。yuukias-ai-skills 的 source 是
+`https://github.com/YuukiAS/AI_Skills_Collection.git`，本机缓存位于
+`/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills`，当前 ref 为 release，
+HEAD 为 `fd79c4be54fc50bd66d9a51bbc1e681f361f6a77`。
 
-## 机器 plugin refresh 的真实前后观测
+执行一次获授权的正常 Marketplace upgrade；命令 exit 0、errors 为空、upgradedRoots 为空。
+首个即时检查通过，但独立复核又观察 inventory 0.4 / manifest 0.5，因此按同一授权，
+仅对 writing-style@yuukias-ai-skills 执行一次正常 remove + add。未手改 metadata 或 manifest，
+未修改 AI_Skills_Collection 源码、Bridge resolver 或其他 plugin 的安装配置。
 
-只执行一次用户指定的 `codex plugin add writing-style@yuukias-ai-skills --json`。
-命令 exit 0，返回 version 0.5；立即真实验证唯一 installed/enabled、inventory 0.5、
-manifest 0.5、两个 skill 存在，production resolver PASS。
-按当前用户的条件式决定，该时点进入 PROCEED_TO_FINAL_EVALUATION。
-原始命令结果及立即验证见 `PLUGIN_REFRESH.json`。
+之后两个独立 fresh process、canary 立即启动前、两个真实生产 renderer 以及 canary 后
+fresh process 均确认 installed/enabled、inventory 0.5、manifest 0.5、
+writing-fidelity 与 response-clarity 存在，production resolver PASS。
+证据见 replacement/MACHINE_PLUGIN_REPAIR.json、PLUGIN_STABILITY_PREFLIGHTS.json 与 PRELAUNCH_PREFLIGHT.json。
+正常 Marketplace 管理入口可参考 [OpenAI 插件文档](https://developers.openai.com/plugins/build/plugins)。
 
-收尾时真实只读检查再次观察 inventory 0.4、manifest 0.5，production resolver 返回
-`WRITING_STYLE_PLUGIN_VERSION_MISMATCH`，两个 skill 文件仍存在。
-宿主机非 sandbox 检查也确认同一结果，见 `PLUGIN_FINAL_PREFLIGHT.json`。
-没有重复 refresh、改用其他安装机制、手改 manifest、修改 AI_Skills 或放宽 resolver。
-因此不能用先前即时 PASS 声称环境已稳定修复。
+只在新的 disposable harness 修复观察器：process_spawn 的 cwd 显式转为字符串或 null，
+其他路径型审计值使用 os.fspath 序列化。真实 Path cwd Popen smoke 已自然 exit 0；
+该 smoke 没有模型、SMTP 或 Persistent launch。观察器没有自行调用任何 delivery、renderer 或 sender；
+保存的 AST 检查和原始调用链均验证这一点。
 
-## 唯一一次正式 canary
+## 正式入口、真实 child 与两条通知
 
-使用 disposable Git repo，冻结 progress none、owner none、source NONE、Notify ON、
-recipient override NONE、60 分钟 cadence 与 5 秒自然 exit 0 的合成 child。
-正式 CLI start 返回 NEW_START，生产命令创建 full launch_id 命名的 exact tmux session，
-启动正常 `_supervise`；没有直接调用任何通知、renderer 或 SMTP 函数。
-task-local `TMUX_TMPDIR` 只隔离 socket，便于继承旁路观察环境，不接管既有会话。
+新 disposable repo 为 `/tmp/bridge-final-replacement-9ggq9knx/public-canary`，
+run key 为 `bridge-replacement-evaluation`，不同于旧 invalid binding。
+progress_mode=none、progress_owner=none、source=NONE、Notify=ON、recipient_override=NONE、
+cadence=60min；输入仅为 public-safe synthetic runtime facts，private data=NONE。
 
-launch_id：`23ddf3d1a9736ae4c9602ac0f114eae1efe2e0d4ed106529642eca4178ddd78b`。
-supervisor Python startup PID 为 450890；仅记录到启动，没有成功 fork primary child。
-start、原始 trace、fixture 和未修改的观察器完整内容保存在
-`FINAL_NORMAL_ENTRY_RAW_EVIDENCE.json`。
+正式 persistent-run start 返回 NEW_START，并创建一个 full launch_id 命名的 exact tmux session。
+launch_id 为 `dce6d00d4e0e781da326781db3327f363b610cf5b74dd776ecb888f9730eb347`。
+supervisor PID=510207，primary child PID=510208；child 的实际父 PID 与 supervisor 一致。
+child 从 02:32:26 UTC 起运行约 5.004821 秒后自然退出，supervisor 的 child.wait() 记录真实 exit_code=0。
+最终 status 为 TERMINAL、progress 为 UNKNOWN；exact tmux session 已自然消失，没有 relaunch 或 takeover。
+通知链在 02:33:15 UTC 结束，没有进入 60 秒 progress observation，也没有第三个事件。
 
-实际问题属于验收观察器：其 audit callback 把 child Popen 的 `cwd=Path(...)`
-未经转换交给 `json.dumps`，触发 `TypeError: Object of type PosixPath is not JSON serializable`。
-生产使用 Path cwd 合法；Python 3.12 POSIX audit 在 fork 前暴露原始 Path。
-纯离线调用同一 audit event 重现该错误，没有调用实际 Popen、supervisor、模型或 SMTP。
-重现 traceback 见 `OBSERVER_DIAGNOSIS.json`。
-原 tmux pane stderr 未保存，不把诊断重现冒充现场原始 traceback。
+runtime_start 与 runtime_terminal 都由该正式 supervisor 的 _persistent_notification 产生，
+经共享 machine Notifier、正式 one-shot renderer 和 Gmail SMTP 完成。
+每个事件各一个独立 helper、一个模型 invocation、一个 thread/turn、一次 SMTP attempt。
+两者均为 NORMAL_WRITING_STYLE，writing-fidelity + response-clarity 显式调用、fidelity PASS、
+无 fallback、模型 retry=0、SMTP automatic retry=0，回执均为 SMTP_ACCEPTED。
 
-真实宿主机 status 确认 exact session 已消失，binding 留在 START_REQUESTED，
-返回 UNKNOWN/UNAVAILABLE；progress 为 UNKNOWN。见 `FINAL_NORMAL_ENTRY_STATUS.json`。
-没有 child-start/exit marker、child_pid、真实 exit_code 或任何该 repo 的 Notifier claim。
-没有把 primary child 的预期 exit 0 当作真实 exit；supervisor 实际 exit code 未捕获。
+实际 start 正文：
 
-## 预算、停止与发布边界
+> 持久运行的主子进程已启动，这只说明进程已启动，不代表任务已完成。项目 public-canary 的任务及运行标识均为 bridge-replacement-evaluation，当前状态为 RUNNING。请使用 persistent-run status 继续观察同一次启动。
 
-实际消耗：1 次 canary start、0 次真实模型、0 次 SMTP attempt、0 封邮件、0 次 send-test。
-runtime_start/runtime_terminal 均未到达，没有第三个事件、fallback 邮件或自动重试。
-只有一个 canary 授权，失败后未修补观察器重跑、relaunch、takeover 或直接补发通知。
-验收失败不冒充 C6 PASS；当前 final evaluation incomplete、release decision ready=false。
+实际 terminal 正文：
 
-machine Notifier 仍 VALID/0600，config digest 与本轮前相同；账号、FROM、默认收件人不变。
-没有保存密码、凭据或 auth 配置内容。用户 `.gitignore` 的 SHA-256 仍为
-`6c5827da670763f9d295187f04ed652baa2f4f4cf2e80432c529400cc6ea2ae7`，未暂存。
-remote release 仍为 `9db19b0409816c22042a246b35a33e1d34fedd0a`；没有移动 release/tag/Marketplace。
+> 持久运行的主子进程已以退出码 0 退出，但不能据此认定 Goal 已完成。public-canary 项目任务 bridge-replacement-evaluation 的状态为 EXITED_0；下一步评估原始 Goal 的正向完成证据。
 
-报告按写作保真与中文审校保留原始失败、未知 exit 和授权边界，不把实现完成升级为最终验收完成。
+正文没有堆 consumer、fact_class、decision_authority、runtime_id、source_event_id 或 schema，
+没有无意义的 UNKNOWN ETA，没有把 exit 0 升级为 Goal PASS、READY 或目标完成。
+SMTP_ACCEPTED 仅证明服务器接受，不声称 inbox delivered。
+
+## 同一候选的最终验收与边界
+
+C1–C4 冻结 owner 未改，按 v6 保留此前正常入口证据，并由本候选的全量回归和 CI 证明不变；
+不重跑长 canary。C5 保留已有机器/四 consumer 回归并增加本次完整正常入口正例。
+C6 的路线、投影、保真、单 turn 与 fallback 确定性回归已通过，本次 live 正例补齐最终完整链。
+
+50 项 targeted、Python 3.9/3.12 各 490 项 full tests 与 source-document identity 保持 PASS。
+[Hosted CI run 39353877948](https://github.com/YuukiAS/GPT_Codex_AI_Bridge_Kit/actions/runs/39353877948)
+已只读回查为 completed/success，headSha 正是唯一生产候选；没有触发新 Gate 或重跑 CI。
+
+完整原始 trace、两份模型 JSONL/returncode、实际 prompt、render result、MIME、request、
+claim/attempt/receipt、child marker、supervisor/binding lineage、harness 与离线核对结果，
+均保存在 replacement/FINAL_NORMAL_ENTRY_RAW_EVIDENCE.json；摘要见 OBSERVATION_SUMMARY.json。
+本轮实际预算是一个 replacement canary、两次模型、两次 Gmail SMTP attempt，零重试、零 send-test。
+旧 invalid attempt 保留在 INVALID_ATTEMPT_REPORT.md 及原始证据文件；旧 state 未删除、未伪造 terminal，
+它没有消耗模型/Gmail 预算，也没有被倒签为成功。
+
+machine Notifier 仍为原机文件、VALID/0600，config digest 前后一致，
+provider/account/FROM/default recipient 没有改变；没有复制或记录 App Password。
+用户 .gitignore 仍未修改、未暂存，SHA-256 为
+`6c5827da670763f9d295187f04ed652baa2f4f4cf2e80432c529400cc6ea2ae7`。
+
+C1–C6 与最终正常入口链均完成，implementation + final evaluation complete，
+READY_FOR_RELEASE_DECISION=YES。正式 distribution closure 尚未执行，
+refs/heads/release 保持 `9db19b0409816c22042a246b35a33e1d34fedd0a`；没有 tag 或 Marketplace 发布。
+
+本报告经写作保真与中文审校，区分产品验收完成、synthetic child exit 和正式发布决定，不互相替代。

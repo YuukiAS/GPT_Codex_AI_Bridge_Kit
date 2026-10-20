@@ -2,56 +2,101 @@
   "candidate_sha": "391ff889ad156540727da168fb608c5f37dbbdfc",
   "approved_package_sha": "0dfc767e42c12c016fa906bdcfeece051dc49bb3",
   "implementation": "COMPLETE",
-  "final_evaluation": "INCOMPLETE",
-  "ready_for_release_decision": false,
+  "final_evaluation": "COMPLETE",
+  "ready_for_release_decision": true,
   "verification": {
-    "C1_C4": "PRESERVED_PASS: frozen owners byte-identical; candidate-bound full local regression and hosted CI; no long-canary rerun",
-    "C5": "DETERMINISTIC_PASS; final normal-entry live chain not proven",
+    "C1_C4": "PASS; unchanged frozen owners + same-candidate regression/CI; no long-canary rerun per v6",
+    "C5": "PASS; existing machine/consumer regressions plus final formal Persistent normal-entry transport",
     "C6_non_live": "PASS",
-    "C6_live": "NOT_PASS: evaluator observer interrupted supervisor before primary child",
+    "C6_live": "PASS; exactly two supervisor events, NORMAL_WRITING_STYLE, one turn each, fidelity PASS, SMTP_ACCEPTED, zero retry",
     "targeted": "50 PASS",
     "full_Python_3_12": "490 PASS, 8 skips",
     "full_Python_3_9": "490 PASS, 8 skips",
     "hosted_CI": {
       "head_sha": "391ff889ad156540727da168fb608c5f37dbbdfc",
       "run": 39353877948,
-      "result": "PASS"
+      "result": "PASS",
+      "readback": "completed/success; no rerun"
     },
-    "source_document_identity": "PASS; no production changes this round"
+    "source_document_identity": "PASS; all production/test/document candidate bytes unchanged"
   },
   "machine_identity": {
-    "immediate_post_refresh": "PASS: inventory=manifest=0.5; actual resolver PASS",
-    "final": "FAIL: inventory=0.4, manifest=0.5, WRITING_STYLE_PLUGIN_VERSION_MISMATCH",
-    "second_refresh": false
+    "result": "PASS",
+    "marketplace": "yuukias-ai-skills",
+    "inventory": "0.5",
+    "manifest": "0.5",
+    "installed": true,
+    "enabled": true,
+    "skills": [
+      "writing-fidelity",
+      "response-clarity"
+    ],
+    "production_resolver": "PASS",
+    "fresh_process_proofs": "two after reinstall + immediate prelaunch + both live production resolvers + post-canary",
+    "normal_marketplace_refresh_attempts": 1,
+    "conditional_writing_style_remove_add_pairs": 1,
+    "no_other_plugin_install_mutation": true,
+    "no_manual_metadata_edit": true
+  },
+  "final_persistent_canary": "PASS",
+  "primary_child": {
+    "pid": 510208,
+    "ppid": 510207,
+    "elapsed_seconds": 5.004820580594242,
+    "real_supervisor_wait_exit_code": 0
   },
   "live_effects": {
-    "persistent_start_attempts": 1,
-    "real_model_calls": 0,
-    "Gmail_SMTP_attempts": 0,
-    "send_message_calls": 0,
-    "logical_notifications_observed": 0,
-    "canary_relaunches": 0,
+    "replacement_canary": 1,
+    "primary_children": 1,
+    "supervisors": 1,
+    "logical_notifications": 2,
+    "model_calls": 2,
+    "Gmail_SMTP_attempts": 2,
+    "model_retries": 0,
+    "SMTP_retries": 0,
     "send_test": 0
   },
-  "notifications": {
-    "runtime_start": "NOT_REACHED",
-    "runtime_terminal": "NOT_REACHED",
-    "third_notification": false,
-    "SMTP_ACCEPTED": false,
-    "inbox_delivery_asserted": false
-  },
-  "failure_class": "EVALUATOR_INSTRUMENTATION; not model, Clear Writing fidelity or SMTP; no new product defect established",
-  "failure_detail": "Passive process-spawn recorder JSON-serializes Path cwd, raising TypeError before Popen forks primary child; exact callback diagnosis saved separately from original trace.",
-  "recovery": "No relaunch, takeover, guessed terminal/exit code, product modification, additional model or mail.",
-  "evidence": [
-    "PLUGIN_REFRESH.json",
-    "PLUGIN_FINAL_PREFLIGHT.json",
-    "FINAL_NORMAL_ENTRY_RAW_EVIDENCE.json",
-    "FINAL_NORMAL_ENTRY_STATUS.json",
-    "OBSERVER_DIAGNOSIS.json",
-    "FINAL_IMPLEMENTATION_REPORT.md"
+  "notifications": [
+    {
+      "event": "runtime_start",
+      "result": "PASS",
+      "expression": "NORMAL_WRITING_STYLE",
+      "one_turn": true,
+      "fidelity": "PASS",
+      "fallback": false,
+      "SMTP": "SMTP_ACCEPTED",
+      "retries": 0,
+      "event_key": "40f0bf12d4ae5f49a05643806510de7e62b09603cf2fa91d4916694fb7026d0e"
+    },
+    {
+      "event": "runtime_terminal",
+      "result": "PASS",
+      "expression": "NORMAL_WRITING_STYLE",
+      "one_turn": true,
+      "fidelity": "PASS",
+      "fallback": false,
+      "SMTP": "SMTP_ACCEPTED",
+      "retries": 0,
+      "event_key": "286b327017a2d1a4aba088050fd6cbe8bdfbf069ba132a4871cfc3cf95a15919"
+    }
   ],
+  "no_third_notification": true,
+  "semantic_goal_completion_not_inferred": true,
+  "SMTP_inbox_delivery_not_asserted": true,
+  "prior_invalid_attempt": {
+    "preserved": true,
+    "report": "INVALID_ATTEMPT_REPORT.md",
+    "state_untouched": true,
+    "primary_child_not_spawned": true,
+    "models": 0,
+    "SMTP": 0,
+    "replacement_authorized_by_current_user": true
+  },
+  "final_evidence": "replacement/FINAL_NORMAL_ENTRY_RAW_EVIDENCE.json",
+  "summary": "replacement/OBSERVATION_SUMMARY.json",
   "release_ref": "9db19b0409816c22042a246b35a33e1d34fedd0a",
   "formal_distribution_complete": false,
-  "results_only_evidence": true
+  "release_tag_Marketplace_publish_movement": false,
+  "results_only_evidence": true,
+  "user_gitignore_untouched": true
 }

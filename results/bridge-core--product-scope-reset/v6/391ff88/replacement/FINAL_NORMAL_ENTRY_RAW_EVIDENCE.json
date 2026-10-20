@@ -1,0 +1,1508 @@
+{
+  "candidate_sha": "391ff889ad156540727da168fb608c5f37dbbdfc",
+  "result": "PASS",
+  "binding": {
+    "backend": "tmux",
+    "binding_path": "/users/a/e/aereinh/.ai-bridge/persistent-run/runs/4cd2c2f02aba51bf68c2e5d9ffe1d0261c54d264e862cf1d7f8a817ea46dce18.json",
+    "branch": "master",
+    "child_exit_observed_at": "2026-10-20T02:32:56+00:00",
+    "child_pid": 510208,
+    "child_process_identity": {
+      "argv_digest": "886900e104c2c74c45fc54eb3f3fa990716a7fa479d9bfd0dcc5fb236a61a3fd",
+      "boot_id": "66c85413-0565-4e97-a2e7-7d3a9fa6370c",
+      "pid": 510208,
+      "start_ticks": "528143632"
+    },
+    "child_started_at": "2026-10-20T02:32:26+00:00",
+    "exit_code": 0,
+    "expected_commit": "a9e795a01eae5c92c1c5cacbe1a0eea33d301dc9",
+    "expected_progress_update_seconds": "UNKNOWN",
+    "goal_repo_relative_path": "GOAL.md",
+    "goal_sha256": "318cf51e318e16d3cfebf562a0c2abdb7577b1a7a8d04d1a7c7948b062266eb7",
+    "host_boot_id": "66c85413-0565-4e97-a2e7-7d3a9fa6370c",
+    "last_notification": {
+      "event_key": "286b327017a2d1a4aba088050fd6cbe8bdfbf069ba132a4871cfc3cf95a15919",
+      "fact_class": "runtime_terminal",
+      "recorded_at": "2026-10-20T02:33:15+00:00",
+      "status": "SMTP_ACCEPTED"
+    },
+    "launch_argv": [
+      "/usr/bin/python3",
+      "child.py"
+    ],
+    "launch_id": "dce6d00d4e0e781da326781db3327f363b610cf5b74dd776ecb888f9730eb347",
+    "lifecycle_state": "TERMINAL",
+    "notification_cadence_minutes": 60,
+    "notify": "ON",
+    "progress_mode": "none",
+    "progress_observation": {
+      "observed_at": "2026-10-20T02:32:26+00:00",
+      "reason": "progress source not configured",
+      "state": "UNAVAILABLE"
+    },
+    "progress_owner": "none",
+    "progress_source_locator": "NONE",
+    "progress_source_path": "",
+    "recipient_override": "",
+    "repo_origin": "NO_ORIGIN",
+    "repo_realpath": "/tmp/bridge-final-replacement-9ggq9knx/public-canary",
+    "run_key": "bridge-replacement-evaluation",
+    "schema": "ai-bridge.persistent-run.binding.v2",
+    "session_name": "ai-bridge-pr-dce6d00d4e0e781da326781db3327f363b610cf5b74dd776ecb888f9730eb347",
+    "start_requested_at": "2026-10-20T02:32:26+00:00",
+    "working_directory": "/tmp/bridge-final-replacement-9ggq9knx/public-canary",
+    "working_directory_repo_relative_path": "."
+  },
+  "raw_trace": [
+    {
+      "file": "2-1-python_start.json",
+      "kind": "python_start",
+      "pid": 2,
+      "ppid": 1,
+      "wall_time": 1792463443.385524,
+      "monotonic": 5281333.110406155,
+      "data": {
+        "argv": [
+          "/tmp/bridge-final-replacement-9ggq9knx/smoke.py"
+        ],
+        "executable": "/usr/bin/python3"
+      }
+    },
+    {
+      "file": "2-2-process_spawn.json",
+      "kind": "process_spawn",
+      "pid": 2,
+      "ppid": 1,
+      "wall_time": 1792463443.394858,
+      "monotonic": 5281333.119739804,
+      "data": {
+        "argv": [
+          "/usr/bin/python3",
+          "-c",
+          "print(\"PATH_CWD_SMOKE_OK\")",
+          "child.py"
+        ],
+        "cwd": "/tmp/bridge-final-replacement-9ggq9knx/public-canary"
+      }
+    },
+    {
+      "file": "2-3-safe_path_serialization_smoke.json",
+      "kind": "safe_path_serialization_smoke",
+      "pid": 2,
+      "ppid": 1,
+      "wall_time": 1792463443.4273548,
+      "monotonic": 5281333.152237266,
+      "data": {
+        "path": "/tmp/bridge-final-replacement-9ggq9knx",
+        "nested": [
+          "/tmp/bridge-final-replacement-9ggq9knx/observer"
+        ]
+      }
+    },
+    {
+      "file": "510054-1-python_start.json",
+      "kind": "python_start",
+      "pid": 510054,
+      "ppid": 509975,
+      "wall_time": 1792463546.0885115,
+      "monotonic": 5281435.813394565,
+      "data": {
+        "argv": [
+          "/tmp/bridge-011-1472791-final-install/bin/ai-bridge",
+          "persistent-run",
+          "start",
+          "--target",
+          "/tmp/bridge-final-replacement-9ggq9knx/public-canary",
+          "--goal",
+          "GOAL.md",
+          "--expected-goal-sha256",
+          "318cf51e318e16d3cfebf562a0c2abdb7577b1a7a8d04d1a7c7948b062266eb7"
+        ],
+        "executable": "/tmp/bridge-011-1472791-final-install/bin/python"
+      }
+    },
+    {
+      "file": "510054-2-process_spawn.json",
+      "kind": "process_spawn",
+      "pid": 510054,
+      "ppid": 509975,
+      "wall_time": 1792463546.3870738,
+      "monotonic": 5281436.1119558,
+      "data": {
+        "argv": [
+          "tmux",
+          "new-session",
+          "-d",
+          "-s",
+          "ai-bridge-pr-dce6d00d4e0e781da326781db3327f363b610cf5b74dd776ecb888f9730eb347",
+          "-c",
+          "/tmp/bridge-final-replacement-9ggq9knx/public-canary",
+          "/tmp/bridge-011-1472791-final-install/bin/python",
+          "-m",
+          "ai_bridge_kit.persistent_run",
+          "_supervise",
+          "--binding",
+          "/users/a/e/aereinh/.ai-bridge/persistent-run/runs/4cd2c2f02aba51bf68c2e5d9ffe1d0261c54d264e862cf1d7f8a817ea46dce18.json",
+          "--launch-id",
+          "dce6d00d4e0e781da326781db3327f363b610cf5b74dd776ecb888f9730eb347"
+        ],
+        "cwd": null
+      }
+    },
+    {
+      "file": "510207-1-python_start.json",
+      "kind": "python_start",
+      "pid": 510207,
+      "ppid": 510206,
+      "wall_time": 1792463546.4844024,
+      "monotonic": 5281436.209285927,
+      "data": {
+        "argv": [
+          "-m",
+          "_supervise",
+          "--binding",
+          "/users/a/e/aereinh/.ai-bridge/persistent-run/runs/4cd2c2f02aba51bf68c2e5d9ffe1d0261c54d264e862cf1d7f8a817ea46dce18.json",
+          "--launch-id",
+          "dce6d00d4e0e781da326781db3327f363b610cf5b74dd776ecb888f9730eb347"
+        ],
+        "executable": "/tmp/bridge-011-1472791-final-install/bin/python"
+      }
+    },
+    {
+      "file": "510207-10-process_spawn.json",
+      "kind": "process_spawn",
+      "pid": 510207,
+      "ppid": 510206,
+      "wall_time": 1792463576.503926,
+      "monotonic": 5281466.228807939,
+      "data": {
+        "argv": [
+          "/tmp/bridge-011-1472791-final-install/bin/python",
+          "-m",
+          "ai_bridge_kit.notifier",
+          "_deliver-helper",
+          "--event-dir",
+          "/users/a/e/aereinh/.ai-bridge/state/notifier/events/286b327017a2d1a4aba088050fd6cbe8bdfbf069ba132a4871cfc3cf95a15919",
+          "--config-root",
+          "/users/a/e/aereinh/.ai-bridge",
+          "--deadline-seconds",
+          "119.9917884580791"
+        ],
+        "cwd": null
+      }
+    },
+    {
+      "file": "510207-11-delivery_return.json",
+      "kind": "delivery_return",
+      "pid": 510207,
+      "ppid": 510206,
+      "wall_time": 1792463595.5339644,
+      "monotonic": 5281485.258846419,
+      "data": {
+        "status": "SMTP_ACCEPTED",
+        "event_key": "286b327017a2d1a4aba088050fd6cbe8bdfbf069ba132a4871cfc3cf95a15919",
+        "message": "SMTP accepted; inbox delivery not asserted"
+      }
+    },
+    {
+      "file": "510207-12-supervisor_notification_return.json",
+      "kind": "supervisor_notification_return",
+      "pid": 510207,
+      "ppid": 510206,
+      "wall_time": 1792463595.5379584,
+      "monotonic": 5281485.26284046,
+      "data": {
+        "fact_class": "runtime_terminal",
+        "request": {
+          "schema": "ai-bridge.notification_request.v1",
+          "project": "public-canary",
+          "task_key": "bridge-replacement-evaluation",
+          "consumer": "persistent",
+          "fact_class": "runtime_terminal",
+          "status": "EXITED_0",
+          "decision_authority": "Runtime",
+          "summary": "Persistent primary child exited with code 0; Goal completion is not inferred.",
+          "next_action": "Evaluate the original Goal's positive completion evidence.",
+          "stage": "",
+          "completed": null,
+          "total": null,
+          "fraction": null,
+          "eta": "UNKNOWN",
+          "eta_low": "UNKNOWN",
+          "eta_high": "UNKNOWN",
+          "run_id": "bridge-replacement-evaluation",
+          "runtime_id": "dce6d00d4e0e781da326781db3327f363b610cf5b74dd776ecb888f9730eb347",
+          "source_event_id": "dce6d00d4e0e781da326781db3327f363b610cf5b74dd776ecb888f9730eb347|runtime_terminal|2026-10-20T02:32:56+00:00|EXITED_0",
+          "recipient_override": ""
+        },
+        "delivery": {
+          "status": "SMTP_ACCEPTED",
+          "event_key": "286b327017a2d1a4aba088050fd6cbe8bdfbf069ba132a4871cfc3cf95a15919",
+          "message": "SMTP accepted; inbox delivery not asserted"
+        },
+        "last_notification": {
+          "status": "SMTP_ACCEPTED",
+          "event_key": "286b327017a2d1a4aba088050fd6cbe8bdfbf069ba132a4871cfc3cf95a15919",
+          "recorded_at": "2026-10-20T02:33:15+00:00",
+          "fact_class": "runtime_terminal"
+        }
+      }
+    },
+    {
+      "file": "510207-2-process_spawn.json",
+      "kind": "process_spawn",
+      "pid": 510207,
+      "ppid": 510206,
+      "wall_time": 1792463546.596831,
+      "monotonic": 5281436.321713653,
+      "data": {
+        "argv": [
+          "/usr/bin/python3",
+          "child.py"
+        ],
+        "cwd": "/tmp/bridge-final-replacement-9ggq9knx/public-canary"
+      }
+    },
+    {
+      "file": "510207-3-supervisor_notification_call.json",
+      "kind": "supervisor_notification_call",
+      "pid": 510207,
+      "ppid": 510206,
+      "wall_time": 1792463546.6014824,
+      "monotonic": 5281436.326364557,
+      "data": {
+        "fact_class": "runtime_start",
+        "child_pid": 510208,
+        "launch_id": "dce6d00d4e0e781da326781db3327f363b610cf5b74dd776ecb888f9730eb347",
+        "run_key": "bridge-replacement-evaluation",
+        "status": "RUNNING"
+      }
+    },
+    {
+      "file": "510207-4-delivery_call.json",
+      "kind": "delivery_call",
+      "pid": 510207,
+      "ppid": 510206,
+      "wall_time": 1792463546.697824,
+      "monotonic": 5281436.422706379,
+      "data": {
+        "request": {
+          "schema": "ai-bridge.notification_request.v1",
+          "project": "public-canary",
+          "task_key": "bridge-replacement-evaluation",
+          "consumer": "persistent",
+          "fact_class": "runtime_start",
+          "status": "RUNNING",
+          "decision_authority": "Runtime",
+          "summary": "Persistent primary child started; this is a runtime fact, not semantic completion.",
+          "next_action": "Use persistent-run status to observe the same launch identity.",
+          "stage": "",
+          "completed": null,
+          "total": null,
+          "fraction": null,
+          "eta": "UNKNOWN",
+          "eta_low": "UNKNOWN",
+          "eta_high": "UNKNOWN",
+          "run_id": "bridge-replacement-evaluation",
+          "runtime_id": "dce6d00d4e0e781da326781db3327f363b610cf5b74dd776ecb888f9730eb347",
+          "source_event_id": "dce6d00d4e0e781da326781db3327f363b610cf5b74dd776ecb888f9730eb347|runtime_start|2026-10-20T02:32:26+00:00|RUNNING",
+          "recipient_override": ""
+        },
+        "caller": "_persistent_notification",
+        "caller_module": "__main__"
+      }
+    },
+    {
+      "file": "510207-5-process_spawn.json",
+      "kind": "process_spawn",
+      "pid": 510207,
+      "ppid": 510206,
+      "wall_time": 1792463546.7120967,
+      "monotonic": 5281436.436978683,
+      "data": {
+        "argv": [
+          "/tmp/bridge-011-1472791-final-install/bin/python",
+          "-m",
+          "ai_bridge_kit.notifier",
+          "_deliver-helper",
+          "--event-dir",
+          "/users/a/e/aereinh/.ai-bridge/state/notifier/events/40f0bf12d4ae5f49a05643806510de7e62b09603cf2fa91d4916694fb7026d0e",
+          "--config-root",
+          "/users/a/e/aereinh/.ai-bridge",
+          "--deadline-seconds",
+          "119.98706813342869"
+        ],
+        "cwd": null
+      }
+    },
+    {
+      "file": "510207-6-delivery_return.json",
+      "kind": "delivery_return",
+      "pid": 510207,
+      "ppid": 510206,
+      "wall_time": 1792463576.4855077,
+      "monotonic": 5281466.210390223,
+      "data": {
+        "status": "SMTP_ACCEPTED",
+        "event_key": "40f0bf12d4ae5f49a05643806510de7e62b09603cf2fa91d4916694fb7026d0e",
+        "message": "SMTP accepted; inbox delivery not asserted"
+      }
+    },
+    {
+      "file": "510207-7-supervisor_notification_return.json",
+      "kind": "supervisor_notification_return",
+      "pid": 510207,
+      "ppid": 510206,
+      "wall_time": 1792463576.4857485,
+      "monotonic": 5281466.210630184,
+      "data": {
+        "fact_class": "runtime_start",
+        "request": {
+          "schema": "ai-bridge.notification_request.v1",
+          "project": "public-canary",
+          "task_key": "bridge-replacement-evaluation",
+          "consumer": "persistent",
+          "fact_class": "runtime_start",
+          "status": "RUNNING",
+          "decision_authority": "Runtime",
+          "summary": "Persistent primary child started; this is a runtime fact, not semantic completion.",
+          "next_action": "Use persistent-run status to observe the same launch identity.",
+          "stage": "",
+          "completed": null,
+          "total": null,
+          "fraction": null,
+          "eta": "UNKNOWN",
+          "eta_low": "UNKNOWN",
+          "eta_high": "UNKNOWN",
+          "run_id": "bridge-replacement-evaluation",
+          "runtime_id": "dce6d00d4e0e781da326781db3327f363b610cf5b74dd776ecb888f9730eb347",
+          "source_event_id": "dce6d00d4e0e781da326781db3327f363b610cf5b74dd776ecb888f9730eb347|runtime_start|2026-10-20T02:32:26+00:00|RUNNING",
+          "recipient_override": ""
+        },
+        "delivery": {
+          "status": "SMTP_ACCEPTED",
+          "event_key": "40f0bf12d4ae5f49a05643806510de7e62b09603cf2fa91d4916694fb7026d0e",
+          "message": "SMTP accepted; inbox delivery not asserted"
+        },
+        "last_notification": {
+          "status": "SMTP_ACCEPTED",
+          "event_key": "40f0bf12d4ae5f49a05643806510de7e62b09603cf2fa91d4916694fb7026d0e",
+          "recorded_at": "2026-10-20T02:32:56+00:00",
+          "fact_class": "runtime_start"
+        }
+      }
+    },
+    {
+      "file": "510207-8-supervisor_notification_call.json",
+      "kind": "supervisor_notification_call",
+      "pid": 510207,
+      "ppid": 510206,
+      "wall_time": 1792463576.4941835,
+      "monotonic": 5281466.219064988,
+      "data": {
+        "fact_class": "runtime_terminal",
+        "child_pid": 510208,
+        "launch_id": "dce6d00d4e0e781da326781db3327f363b610cf5b74dd776ecb888f9730eb347",
+        "run_key": "bridge-replacement-evaluation",
+        "status": "EXITED_0"
+      }
+    },
+    {
+      "file": "510207-9-delivery_call.json",
+      "kind": "delivery_call",
+      "pid": 510207,
+      "ppid": 510206,
+      "wall_time": 1792463576.4945135,
+      "monotonic": 5281466.21939525,
+      "data": {
+        "request": {
+          "schema": "ai-bridge.notification_request.v1",
+          "project": "public-canary",
+          "task_key": "bridge-replacement-evaluation",
+          "consumer": "persistent",
+          "fact_class": "runtime_terminal",
+          "status": "EXITED_0",
+          "decision_authority": "Runtime",
+          "summary": "Persistent primary child exited with code 0; Goal completion is not inferred.",
+          "next_action": "Evaluate the original Goal's positive completion evidence.",
+          "stage": "",
+          "completed": null,
+          "total": null,
+          "fraction": null,
+          "eta": "UNKNOWN",
+          "eta_low": "UNKNOWN",
+          "eta_high": "UNKNOWN",
+          "run_id": "bridge-replacement-evaluation",
+          "runtime_id": "dce6d00d4e0e781da326781db3327f363b610cf5b74dd776ecb888f9730eb347",
+          "source_event_id": "dce6d00d4e0e781da326781db3327f363b610cf5b74dd776ecb888f9730eb347|runtime_terminal|2026-10-20T02:32:56+00:00|EXITED_0",
+          "recipient_override": ""
+        },
+        "caller": "_persistent_notification",
+        "caller_module": "__main__"
+      }
+    },
+    {
+      "file": "510208-1-python_start.json",
+      "kind": "python_start",
+      "pid": 510208,
+      "ppid": 510207,
+      "wall_time": 1792463546.6370132,
+      "monotonic": 5281436.361895662,
+      "data": {
+        "argv": [
+          "child.py"
+        ],
+        "executable": "/usr/bin/python3"
+      }
+    },
+    {
+      "file": "510209-1-python_start.json",
+      "kind": "python_start",
+      "pid": 510209,
+      "ppid": 510207,
+      "wall_time": 1792463546.7737308,
+      "monotonic": 5281436.498614164,
+      "data": {
+        "argv": [
+          "-m",
+          "_deliver-helper",
+          "--event-dir",
+          "/users/a/e/aereinh/.ai-bridge/state/notifier/events/40f0bf12d4ae5f49a05643806510de7e62b09603cf2fa91d4916694fb7026d0e",
+          "--config-root",
+          "/users/a/e/aereinh/.ai-bridge",
+          "--deadline-seconds",
+          "119.98706813342869"
+        ],
+        "executable": "/tmp/bridge-011-1472791-final-install/bin/python"
+      }
+    },
+    {
+      "file": "510209-10-smtp_send_message_return.json",
+      "kind": "smtp_send_message_return",
+      "pid": 510209,
+      "ppid": 510207,
+      "wall_time": 1792463576.3912332,
+      "monotonic": 5281466.116115602,
+      "data": {
+        "result": {}
+      }
+    },
+    {
+      "file": "510209-11-helper_return.json",
+      "kind": "helper_return",
+      "pid": 510209,
+      "ppid": 510207,
+      "wall_time": 1792463576.4397132,
+      "monotonic": 5281466.164595244,
+      "data": {
+        "request": {
+          "completed": null,
+          "consumer": "persistent",
+          "decision_authority": "Runtime",
+          "eta": "UNKNOWN",
+          "eta_high": "UNKNOWN",
+          "eta_low": "UNKNOWN",
+          "fact_class": "runtime_start",
+          "fraction": null,
+          "next_action": "Use persistent-run status to observe the same launch identity.",
+          "project": "public-canary",
+          "recipient_override": "",
+          "run_id": "bridge-replacement-evaluation",
+          "runtime_id": "dce6d00d4e0e781da326781db3327f363b610cf5b74dd776ecb888f9730eb347",
+          "schema": "ai-bridge.notification_request.v1",
+          "source_event_id": "dce6d00d4e0e781da326781db3327f363b610cf5b74dd776ecb888f9730eb347|runtime_start|2026-10-20T02:32:26+00:00|RUNNING",
+          "stage": "",
+          "status": "RUNNING",
+          "summary": "Persistent primary child started; this is a runtime fact, not semantic completion.",
+          "task_key": "bridge-replacement-evaluation",
+          "total": null
+        },
+        "rendered": {
+          "mode": "NORMAL_WRITING_STYLE",
+          "text": "持久运行的主子进程已启动，这只说明进程已启动，不代表任务已完成。项目 public-canary 的任务及运行标识均为 bridge-replacement-evaluation，当前状态为 RUNNING。请使用 persistent-run status 继续观察同一次启动。",
+          "failure": "",
+          "model_invocations": 1,
+          "model_retry_count": 0,
+          "plugin": {
+            "plugin_id": "writing-style@yuukias-ai-skills",
+            "version": "0.5",
+            "root": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style",
+            "manifest": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style/.codex-plugin/plugin.json",
+            "skills": {
+              "writing-fidelity": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style/skills/fidelity/SKILL.md",
+              "response-clarity": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style/skills/response-clarity/SKILL.md"
+            },
+            "codex_bin": "/users/a/e/aereinh/bin/codex"
+          },
+          "jsonl_evidence": {
+            "event_counts": {
+              "thread.started": 1,
+              "item.completed": 4,
+              "turn.started": 1,
+              "item.started": 1,
+              "turn.completed": 1
+            },
+            "skill_invocation": {
+              "method": "explicit_prompt",
+              "names": [
+                "writing-fidelity",
+                "response-clarity"
+              ],
+              "jsonl_skill_load_events_required": false
+            }
+          }
+        },
+        "attempt": {
+          "schema": "ai-bridge.notifier.attempt.v1",
+          "attempt_id": "8ead07be92124ef2a8c656e635d8ea8c",
+          "parent_attempt_id": null,
+          "event_key": "40f0bf12d4ae5f49a05643806510de7e62b09603cf2fa91d4916694fb7026d0e",
+          "stage": "SMTP_ACCEPTED",
+          "started_at": "2026-10-20T02:32:26+00:00",
+          "config_digest": "46cc00d02f541a14f84833c1f0ccd91a3e8ad8ccb2786e48150a1e33c1f7e12d",
+          "expression_mode": "NORMAL_WRITING_STYLE",
+          "model_invocations": 1,
+          "transport_started_at": "2026-10-20T02:32:54+00:00",
+          "smtp_accepted_at": "2026-10-20T02:32:56+00:00"
+        },
+        "result": {
+          "status": "SMTP_ACCEPTED",
+          "event_key": "40f0bf12d4ae5f49a05643806510de7e62b09603cf2fa91d4916694fb7026d0e",
+          "message": "SMTP accepted; inbox delivery not asserted"
+        },
+        "directory": "/users/a/e/aereinh/.ai-bridge/state/notifier/events/40f0bf12d4ae5f49a05643806510de7e62b09603cf2fa91d4916694fb7026d0e"
+      }
+    },
+    {
+      "file": "510209-2-prompt.json",
+      "kind": "prompt",
+      "pid": 510209,
+      "ppid": 510207,
+      "wall_time": 1792463550.1588714,
+      "monotonic": 5281439.883752979,
+      "data": {
+        "text": "Use $writing-fidelity and $response-clarity to render one concise natural Simplified Chinese notification. Lead with what happened and what it means to the reader, not machine labels. Use only the reader-facing facts below; do not add internal routing or audit fields. Do not invent an ETA or require UNKNOWN when no ETA is provided. Preserve the exact status, project, task identity, every number/date/time/version and UNKNOWN present in the reader-facing facts, and the original conclusion strength. Add no facts or numbers. Runtime/operational facts must never become Goal PASS, READY, RELEASE_READY, or semantic completion. Return only the notification text.\nImmutable reader-facing facts: {\"completed\":null,\"fraction\":null,\"next_action\":\"Use persistent-run status to observe the same launch identity.\",\"project\":\"public-canary\",\"run_id\":\"bridge-replacement-evaluation\",\"stage\":\"\",\"status\":\"RUNNING\",\"summary\":\"Persistent primary child started; this is a runtime fact, not semantic completion.\",\"task_key\":\"bridge-replacement-evaluation\",\"total\":null}\n"
+      }
+    },
+    {
+      "file": "510209-3-model_run_call.json",
+      "kind": "model_run_call",
+      "pid": 510209,
+      "ppid": 510207,
+      "wall_time": 1792463550.1590912,
+      "monotonic": 5281439.88397297,
+      "data": {
+        "argv": [
+          "/users/a/e/aereinh/bin/codex",
+          "exec",
+          "--ephemeral",
+          "--json",
+          "--sandbox",
+          "read-only",
+          "--skip-git-repo-check",
+          "-C",
+          "/users/a/e/aereinh/.ai-bridge/clear-writing",
+          "-"
+        ],
+        "prompt": null
+      }
+    },
+    {
+      "file": "510209-4-model_spawn.json",
+      "kind": "model_spawn",
+      "pid": 510209,
+      "ppid": 510207,
+      "wall_time": 1792463550.1594884,
+      "monotonic": 5281439.884370352,
+      "data": {
+        "argv": [
+          "/users/a/e/aereinh/bin/codex",
+          "exec",
+          "--ephemeral",
+          "--json",
+          "--sandbox",
+          "read-only",
+          "--skip-git-repo-check",
+          "-C",
+          "/users/a/e/aereinh/.ai-bridge/clear-writing",
+          "-"
+        ],
+        "cwd": null
+      }
+    },
+    {
+      "file": "510209-5-model_run_return.json",
+      "kind": "model_run_return",
+      "pid": 510209,
+      "ppid": 510207,
+      "wall_time": 1792463574.224385,
+      "monotonic": 5281463.949266764,
+      "data": {
+        "argv": [
+          "/users/a/e/aereinh/bin/codex",
+          "exec",
+          "--ephemeral",
+          "--json",
+          "--sandbox",
+          "read-only",
+          "--skip-git-repo-check",
+          "-C",
+          "/users/a/e/aereinh/.ai-bridge/clear-writing",
+          "-"
+        ],
+        "returncode": 0,
+        "stdout": "{\"type\":\"thread.started\",\"thread_id\":\"01a15727-3991-7770-9ced-188a99376b8a\"}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"error\",\"message\":\"Under-development features enabled: default_mode_request_user_input. Under-development features are incomplete and may behave unpredictably. To suppress this warning, set `suppress_unstable_features_warning = true` in /users/a/e/aereinh/.codex/config.toml.\"}}\n{\"type\":\"turn.started\"}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_1\",\"type\":\"agent_message\",\"text\":\"我会使用 writing-fidelity 和 response-clarity，保留事实、身份和状态，压缩成一则自然中文通知。\\n\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_2\",\"type\":\"command_execution\",\"command\":\"/usr/bin/bash -lc 'cat /users/a/e/aereinh/.codex/plugins/cache/yuukias-ai-skills/writing-style/0.5/skills/response-clarity/SKILL.md'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_2\",\"type\":\"command_execution\",\"command\":\"/usr/bin/bash -lc 'cat /users/a/e/aereinh/.codex/plugins/cache/yuukias-ai-skills/writing-style/0.5/skills/response-clarity/SKILL.md'\",\"aggregated_output\":\"---\\nname: response-clarity\\ndescription: Clear ordinary user-facing explanations, conclusions, diagnostics, advice, progress updates, and task-result summaries after domain reasoning. Use for normal ChatGPT/Codex replies that should be natural in the current target language, lead with the human meaning, reduce unnecessary English/process noise, and preserve exact technical strings.\\nstatus: active\\nprovenance: user-authored\\ntrusted: false\\nrequires_network: false\\nwrites_files: false\\nexecutes_code: false\\nsecrets_needed:\\nlast_reviewed: 2026-10-12\\nprofile_tags:\\n  - writing\\n  - global\\nrecommended_scope: global\\nicon_small: assets/app-facing.svg\\nicon_large: assets/app-facing.svg\\n---\\n# Response Clarity\\n\\nUse this skill for ordinary answers to the user after the relevant domain work\\nhas already been done. It improves the explanation layer: conclusions,\\ndiagnostic summaries, advice, progress updates, handoff notes, and task-result\\nreports that are meant for a person to read.\\n\\nThis skill does not discover facts, decide architecture, make scientific\\nclaims, rewrite source documents, write product UI copy, or edit machine\\nprotocols. It makes the already-known result easier to understand while\\npreserving protected meaning.\\n\\n## Use When\\n\\n- A normal ChatGPT or Codex reply explains a technical, scientific, software,\\n  server, statistics, product, or workflow result to the user.\\n- The assistant has read English logs, code, documentation, tool output, or\\n  repository metadata, but the user-facing answer should stay in the current\\n  target language.\\n- A status update or completion report should say what happened, what it means,\\n  what remains risky, and what happens next without turning into a log dump.\\n- The output is an ordinary answer, not a README, report, slide deck, formal\\n  Markdown/PDF artifact, UI string, or source-faithful long rewrite.\\n\\nRoute formal Chinese documents, README files, reports, Markdown/PDF final\\npasses, teaching material, and Chinese document polishing to `chinese-prose`.\\nRoute product interface labels, CTAs, states, help text, onboarding, settings,\\ntrust/privacy disclosures, and locale-specific UI microcopy to\\n`product-ui-copy`. Route existing Chinese or Chinese-dominant scientific or\\ntechnical material that needs structural source-faithful rewriting to\\n`scientific-rewrite`. Route English scientific prose artifacts to\\n`scientific-prose`.\\n\\nDo not use this skill for pure JSON, YAML, code, commands, raw logs, quoted\\ntext, exact output requested verbatim, schema values, or protocol messages. For\\nmixed tasks, keep the machine content exact and improve only the explanatory\\nsentences around it.\\n\\n## Core Contract\\n\\nLead with the human meaning. Then give the evidence, exact strings, commands,\\npaths, or status values that the user needs for precision.\\n\\nPreserve:\\n\\n- facts, numbers, dates, versions, units, formulas, citations, and comparison\\n  conditions;\\n- subject, agency, negation, uncertainty, time state, completion state, and\\n  permission/authorization boundaries;\\n- code, commands, paths, filenames, URLs, environment variables, config keys,\\n  field names, protocol values, status values, error names, model names,\\n  product names, plugin names, branch names, commit ids, issue ids, and other\\n  strings that must match exactly;\\n- user language instructions and the current message's explicit language\\n  override.\\n\\nNever make an incomplete action sound complete, an optional action sound\\nrequired, an unsupported state sound supported, or a permission boundary sound\\napproved. If the real result is partial, blocked, unverified, or inconclusive,\\nsay that directly.\\n\\n## Language And Structure\\n\\nUse the user's current target language by default. A temporary English request,\\nquoted English source, command output, or English repository name does not by\\nitself change the long-term reply language.\\n\\nFor Chinese replies:\\n\\n- use natural Chinese for ordinary explanation, transitions, risk statements,\\n  and next steps;\\n- keep exact technical strings when translating them would reduce precision;\\n- translate ordinary process words when they are not protected identifiers,\\n  such as `handoff`, `wrapper`, `source`, `review`, `candidate`, `pipeline`,\\n  `thread`, and `commit`, unless the exact English token is needed.\\n\\nFor English replies, avoid generic filler, over-defensive framing, and\\ntemplate-like paragraph rhythm. Keep the answer direct and proportional to the\\nevidence.\\n\\nPrefer concise paragraphs. Use bullets only when the information is genuinely\\nparallel, scannable, or action-oriented. Do not create a report-shaped answer\\nfor a simple question.\\n\\nBuild paragraphs around complete semantic or reasoning units, not individual\\nsentences. When adjacent sentences define one object, explain one causal chain,\\ncomplete one local comparison or derivation, or attach a conclusion to its\\ndirect caveat, keep them together unless separating them gives the reader real\\nnavigation or comparison value. Use headings, lists, and display math when they\\nclarify genuine structure; do not isolate a short definition, one-step formula,\\nor its immediate interpretation merely to make the answer look structured.\\n\\nBefore finalizing a complex explanation, read the whole answer for\\nfragmentation. Reorganize repeated single-sentence paragraphs, headings that\\ncontain only a passing point, and formulas detached from their local meaning.\\nMake that judgment from the argument's structure; do not enforce fixed counts\\nfor words, lines, paragraphs, headings, formulas, or examples. Long answers may\\nremain detailed when the comparison, derivation, evidence boundary, or\\nuncertainty genuinely needs that depth.\\n\\nWhen an unfamiliar scientific method, term, or mathematical object first\\nappears and the context has not already established it, build a reader model\\nfrom known facts before asking the formal name, notation, or formula to carry\\nthe explanation. State what kind of object it is, its level or unit, whether it\\nis observed, given, estimated, or sought when that status is known, why it is\\nneeded here, and what later calculation, judgment, or step uses it. For\\nmulti-index notation, explain each new index role or point back to an earlier\\ndefinition that already does so.\\n\\nThis reader model must not add domain claims. If the source or domain owner\\ndoes not define an object's type, level, index roles, status, or use, say that\\nthe definition is missing or ask for it. Do not guess a scientific meaning and\\nthen present the guess as settled explanation. Preserve the exact formal term,\\nsymbol, formula, and any supported uncertainty after the natural-language\\norientation.\\n\\nWhen the user's core question has been answered, stop unless additional\\nmaterial adds new evidence, changes the decision, supplies an explicitly\\nrequested implementation detail, or makes a necessary comparison. Do not\\ncontinue into an architecture, experiment, rollout, or implementation plan\\nmerely because it might be useful. This is a semantic stopping condition, not\\na fixed limit on words, headings, paragraphs, or examples.\\n\\nFor multi-source synthesis, state what the sources jointly establish, where\\nthey materially differ, and what remains unsupported before adding advice.\\nPresent any assistant recommendation afterward as a recommendation, not as\\nsource consensus. Match its depth to the user's requested decision; do not\\nappend an implementation or experiment design when the user asked only for a\\nsynthesis or a decision.\\n\\n## Workflow\\n\\n1. Identify the domain owner and the known result. Do not invent missing facts.\\n2. Mark protected strings and protected meaning before rewriting the response.\\n3. Decide the reply type: conclusion, diagnostic, advice, progress update,\\n   completion report, blocker, or handoff.\\n4. Put the human-readable conclusion first.\\n5. Move logs, paths, branch names, commands, hashes, issue ids, and state\\n   values into evidence or next-action sentences instead of making them the\\n   opening.\\n6. Remove unnecessary English and internal process labels from reader-facing\\n   prose while preserving exact identifiers.\\n7. For complex explanations, check the whole answer for fragmented reasoning\\n   and for unfamiliar objects whose first use lacks a supported reader model.\\n8. Check that the final answer still matches the actual result and the user's\\n   latest instruction.\\n\\n## Red Flags\\n\\n- The first sentence is a path, branch, status token, log line, or tool output\\n  instead of the answer.\\n- The reply says \\\"done\\\" when tests, install, review, upload, publish, or\\n  permission are still pending.\\n- Ordinary English words are left in a Chinese answer merely because the source\\n  material was English.\\n- A pure machine-output request is paraphrased or decorated.\\n- One continuous explanation becomes a chain of single-sentence paragraphs,\\n  low-value headings, or short formulas detached from their interpretation.\\n- An unfamiliar scientific object or multi-index symbol appears before the\\n  reader knows its supported level, role, or downstream use.\\n- A document/report/README task stays here instead of going to `chinese-prose`\\n  or `scientific-rewrite`.\\n- Product interface copy stays here instead of going to `product-ui-copy`.\\n- A scientific claim is made stronger, broader, or more certain for readability.\\n\\n## Output\\n\\nUsually return the improved answer directly. If the problem is a routing or\\nfidelity risk, briefly say which route or owner should handle it and why.\\n\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_3\",\"type\":\"agent_message\",\"text\":\"持久运行的主子进程已启动，这只说明进程已启动，不代表任务已完成。项目 public-canary 的任务及运行标识均为 bridge-replacement-evaluation，当前状态为 RUNNING。请使用 persistent-run status 继续观察同一次启动。\"}}\n{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":59083,\"cached_input_tokens\":28160,\"cache_write_input_tokens\":0,\"output_tokens\":547,\"reasoning_output_tokens\":380}}\n",
+        "stderr": ""
+      }
+    },
+    {
+      "file": "510209-6-render_return.json",
+      "kind": "render_return",
+      "pid": 510209,
+      "ppid": 510207,
+      "wall_time": 1792463574.237111,
+      "monotonic": 5281463.96199304,
+      "data": {
+        "brief": {
+          "completed": null,
+          "consumer": "persistent",
+          "decision_authority": "Runtime",
+          "eta": "UNKNOWN",
+          "eta_high": "UNKNOWN",
+          "eta_low": "UNKNOWN",
+          "fact_class": "runtime_start",
+          "fraction": null,
+          "next_action": "Use persistent-run status to observe the same launch identity.",
+          "project": "public-canary",
+          "run_id": "bridge-replacement-evaluation",
+          "runtime_id": "dce6d00d4e0e781da326781db3327f363b610cf5b74dd776ecb888f9730eb347",
+          "schema": "ai-bridge.notification_request.v1",
+          "source_event_id": "dce6d00d4e0e781da326781db3327f363b610cf5b74dd776ecb888f9730eb347|runtime_start|2026-10-20T02:32:26+00:00|RUNNING",
+          "stage": "",
+          "status": "RUNNING",
+          "summary": "Persistent primary child started; this is a runtime fact, not semantic completion.",
+          "task_key": "bridge-replacement-evaluation",
+          "total": null
+        },
+        "result": {
+          "mode": "NORMAL_WRITING_STYLE",
+          "text": "持久运行的主子进程已启动，这只说明进程已启动，不代表任务已完成。项目 public-canary 的任务及运行标识均为 bridge-replacement-evaluation，当前状态为 RUNNING。请使用 persistent-run status 继续观察同一次启动。",
+          "failure": "",
+          "model_invocations": 1,
+          "model_retry_count": 0,
+          "plugin": {
+            "plugin_id": "writing-style@yuukias-ai-skills",
+            "version": "0.5",
+            "root": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style",
+            "manifest": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style/.codex-plugin/plugin.json",
+            "skills": {
+              "writing-fidelity": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style/skills/fidelity/SKILL.md",
+              "response-clarity": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style/skills/response-clarity/SKILL.md"
+            },
+            "codex_bin": "/users/a/e/aereinh/bin/codex"
+          },
+          "jsonl_evidence": {
+            "event_counts": {
+              "thread.started": 1,
+              "item.completed": 4,
+              "turn.started": 1,
+              "item.started": 1,
+              "turn.completed": 1
+            },
+            "skill_invocation": {
+              "method": "explicit_prompt",
+              "names": [
+                "writing-fidelity",
+                "response-clarity"
+              ],
+              "jsonl_skill_load_events_required": false
+            }
+          }
+        }
+      }
+    },
+    {
+      "file": "510209-7-email_built.json",
+      "kind": "email_built",
+      "pid": 510209,
+      "ppid": 510207,
+      "wall_time": 1792463574.2912402,
+      "monotonic": 5281464.016122212,
+      "data": {
+        "mime": "From: 1155246312@link.cuhk.edu.hk\nTo: 1155246312@link.cuhk.edu.hk\nSubject: [AI Bridge] =?utf-8?q?RUNNING=EF=BC=9Abridge-replacement-evaluation?=\nMIME-Version: 1.0\nContent-Type: multipart/alternative;\n boundary=\"===============8398053665668713352==\"\n\n--===============8398053665668713352==\nContent-Type: text/plain; charset=\"utf-8\"\nContent-Transfer-Encoding: base64\n\n5oyB5LmF6L+Q6KGM55qE5Li75a2Q6L+b56iL5bey5ZCv5Yqo77yM6L+Z5Y+q6K+05piO6L+b56iL\n5bey5ZCv5Yqo77yM5LiN5Luj6KGo5Lu75Yqh5bey5a6M5oiQ44CC6aG555uuIHB1YmxpYy1jYW5h\ncnkg55qE5Lu75Yqh5Y+K6L+Q6KGM5qCH6K+G5Z2H5Li6IGJyaWRnZS1yZXBsYWNlbWVudC1ldmFs\ndWF0aW9u77yM5b2T5YmN54q25oCB5Li6IFJVTk5JTkfjgILor7fkvb/nlKggcGVyc2lzdGVudC1y\ndW4gc3RhdHVzIOe7p+e7reinguWvn+WQjOS4gOasoeWQr+WKqOOAggo=\n\n--===============8398053665668713352==\nContent-Type: text/html; charset=\"utf-8\"\nContent-Transfer-Encoding: base64\nMIME-Version: 1.0\n\nPGh0bWw+PGJvZHk+PHA+5oyB5LmF6L+Q6KGM55qE5Li75a2Q6L+b56iL5bey5ZCv5Yqo77yM6L+Z\n5Y+q6K+05piO6L+b56iL5bey5ZCv5Yqo77yM5LiN5Luj6KGo5Lu75Yqh5bey5a6M5oiQ44CC6aG5\n55uuIHB1YmxpYy1jYW5hcnkg55qE5Lu75Yqh5Y+K6L+Q6KGM5qCH6K+G5Z2H5Li6IGJyaWRnZS1y\nZXBsYWNlbWVudC1ldmFsdWF0aW9u77yM5b2T5YmN54q25oCB5Li6IFJVTk5JTkfjgILor7fkvb/n\nlKggcGVyc2lzdGVudC1ydW4gc3RhdHVzIOe7p+e7reinguWvn+WQjOS4gOasoeWQr+WKqOOAgjwv\ncD48L2JvZHk+PC9odG1sPgo=\n\n--===============8398053665668713352==--\n",
+        "body": "持久运行的主子进程已启动，这只说明进程已启动，不代表任务已完成。项目 public-canary 的任务及运行标识均为 bridge-replacement-evaluation，当前状态为 RUNNING。请使用 persistent-run status 继续观察同一次启动。\n",
+        "subject": "[AI Bridge] RUNNING：bridge-replacement-evaluation",
+        "sender": "1155246312@link.cuhk.edu.hk",
+        "recipient": "1155246312@link.cuhk.edu.hk"
+      }
+    },
+    {
+      "file": "510209-8-smtp_connect.json",
+      "kind": "smtp_connect",
+      "pid": 510209,
+      "ppid": 510207,
+      "wall_time": 1792463574.2915578,
+      "monotonic": 5281464.016439644,
+      "data": {
+        "host": "smtp.gmail.com",
+        "port": 587
+      }
+    },
+    {
+      "file": "510209-9-smtp_send_message_call.json",
+      "kind": "smtp_send_message_call",
+      "pid": 510209,
+      "ppid": 510207,
+      "wall_time": 1792463574.8020854,
+      "monotonic": 5281464.526967593,
+      "data": {
+        "subject": "[AI Bridge] RUNNING：bridge-replacement-evaluation"
+      }
+    },
+    {
+      "file": "512686-1-python_start.json",
+      "kind": "python_start",
+      "pid": 512686,
+      "ppid": 510207,
+      "wall_time": 1792463576.558871,
+      "monotonic": 5281466.283754415,
+      "data": {
+        "argv": [
+          "-m",
+          "_deliver-helper",
+          "--event-dir",
+          "/users/a/e/aereinh/.ai-bridge/state/notifier/events/286b327017a2d1a4aba088050fd6cbe8bdfbf069ba132a4871cfc3cf95a15919",
+          "--config-root",
+          "/users/a/e/aereinh/.ai-bridge",
+          "--deadline-seconds",
+          "119.9917884580791"
+        ],
+        "executable": "/tmp/bridge-011-1472791-final-install/bin/python"
+      }
+    },
+    {
+      "file": "512686-10-smtp_send_message_return.json",
+      "kind": "smtp_send_message_return",
+      "pid": 512686,
+      "ppid": 510207,
+      "wall_time": 1792463595.4708745,
+      "monotonic": 5281485.195757548,
+      "data": {
+        "result": {}
+      }
+    },
+    {
+      "file": "512686-11-helper_return.json",
+      "kind": "helper_return",
+      "pid": 512686,
+      "ppid": 510207,
+      "wall_time": 1792463595.514465,
+      "monotonic": 5281485.23934707,
+      "data": {
+        "request": {
+          "completed": null,
+          "consumer": "persistent",
+          "decision_authority": "Runtime",
+          "eta": "UNKNOWN",
+          "eta_high": "UNKNOWN",
+          "eta_low": "UNKNOWN",
+          "fact_class": "runtime_terminal",
+          "fraction": null,
+          "next_action": "Evaluate the original Goal's positive completion evidence.",
+          "project": "public-canary",
+          "recipient_override": "",
+          "run_id": "bridge-replacement-evaluation",
+          "runtime_id": "dce6d00d4e0e781da326781db3327f363b610cf5b74dd776ecb888f9730eb347",
+          "schema": "ai-bridge.notification_request.v1",
+          "source_event_id": "dce6d00d4e0e781da326781db3327f363b610cf5b74dd776ecb888f9730eb347|runtime_terminal|2026-10-20T02:32:56+00:00|EXITED_0",
+          "stage": "",
+          "status": "EXITED_0",
+          "summary": "Persistent primary child exited with code 0; Goal completion is not inferred.",
+          "task_key": "bridge-replacement-evaluation",
+          "total": null
+        },
+        "rendered": {
+          "mode": "NORMAL_WRITING_STYLE",
+          "text": "持久运行的主子进程已以退出码 0 退出，但不能据此认定 Goal 已完成。public-canary 项目任务 bridge-replacement-evaluation 的状态为 EXITED_0；下一步评估原始 Goal 的正向完成证据。",
+          "failure": "",
+          "model_invocations": 1,
+          "model_retry_count": 0,
+          "plugin": {
+            "plugin_id": "writing-style@yuukias-ai-skills",
+            "version": "0.5",
+            "root": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style",
+            "manifest": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style/.codex-plugin/plugin.json",
+            "skills": {
+              "writing-fidelity": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style/skills/fidelity/SKILL.md",
+              "response-clarity": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style/skills/response-clarity/SKILL.md"
+            },
+            "codex_bin": "/users/a/e/aereinh/bin/codex"
+          },
+          "jsonl_evidence": {
+            "event_counts": {
+              "thread.started": 1,
+              "item.completed": 4,
+              "turn.started": 1,
+              "item.started": 1,
+              "turn.completed": 1
+            },
+            "skill_invocation": {
+              "method": "explicit_prompt",
+              "names": [
+                "writing-fidelity",
+                "response-clarity"
+              ],
+              "jsonl_skill_load_events_required": false
+            }
+          }
+        },
+        "attempt": {
+          "schema": "ai-bridge.notifier.attempt.v1",
+          "attempt_id": "f1905739a6b04f1f9c8bedadb7b9470a",
+          "parent_attempt_id": null,
+          "event_key": "286b327017a2d1a4aba088050fd6cbe8bdfbf069ba132a4871cfc3cf95a15919",
+          "stage": "SMTP_ACCEPTED",
+          "started_at": "2026-10-20T02:32:56+00:00",
+          "config_digest": "46cc00d02f541a14f84833c1f0ccd91a3e8ad8ccb2786e48150a1e33c1f7e12d",
+          "expression_mode": "NORMAL_WRITING_STYLE",
+          "model_invocations": 1,
+          "transport_started_at": "2026-10-20T02:33:13+00:00",
+          "smtp_accepted_at": "2026-10-20T02:33:15+00:00"
+        },
+        "result": {
+          "status": "SMTP_ACCEPTED",
+          "event_key": "286b327017a2d1a4aba088050fd6cbe8bdfbf069ba132a4871cfc3cf95a15919",
+          "message": "SMTP accepted; inbox delivery not asserted"
+        },
+        "directory": "/users/a/e/aereinh/.ai-bridge/state/notifier/events/286b327017a2d1a4aba088050fd6cbe8bdfbf069ba132a4871cfc3cf95a15919"
+      }
+    },
+    {
+      "file": "512686-2-prompt.json",
+      "kind": "prompt",
+      "pid": 512686,
+      "ppid": 510207,
+      "wall_time": 1792463577.498081,
+      "monotonic": 5281467.222962818,
+      "data": {
+        "text": "Use $writing-fidelity and $response-clarity to render one concise natural Simplified Chinese notification. Lead with what happened and what it means to the reader, not machine labels. Use only the reader-facing facts below; do not add internal routing or audit fields. Do not invent an ETA or require UNKNOWN when no ETA is provided. Preserve the exact status, project, task identity, every number/date/time/version and UNKNOWN present in the reader-facing facts, and the original conclusion strength. Add no facts or numbers. Runtime/operational facts must never become Goal PASS, READY, RELEASE_READY, or semantic completion. Return only the notification text.\nImmutable reader-facing facts: {\"completed\":null,\"fraction\":null,\"next_action\":\"Evaluate the original Goal's positive completion evidence.\",\"project\":\"public-canary\",\"run_id\":\"bridge-replacement-evaluation\",\"stage\":\"\",\"status\":\"EXITED_0\",\"summary\":\"Persistent primary child exited with code 0; Goal completion is not inferred.\",\"task_key\":\"bridge-replacement-evaluation\",\"total\":null}\n"
+      }
+    },
+    {
+      "file": "512686-3-model_run_call.json",
+      "kind": "model_run_call",
+      "pid": 512686,
+      "ppid": 510207,
+      "wall_time": 1792463577.4983923,
+      "monotonic": 5281467.223274199,
+      "data": {
+        "argv": [
+          "/users/a/e/aereinh/bin/codex",
+          "exec",
+          "--ephemeral",
+          "--json",
+          "--sandbox",
+          "read-only",
+          "--skip-git-repo-check",
+          "-C",
+          "/users/a/e/aereinh/.ai-bridge/clear-writing",
+          "-"
+        ],
+        "prompt": null
+      }
+    },
+    {
+      "file": "512686-4-model_spawn.json",
+      "kind": "model_spawn",
+      "pid": 512686,
+      "ppid": 510207,
+      "wall_time": 1792463577.4988253,
+      "monotonic": 5281467.223706942,
+      "data": {
+        "argv": [
+          "/users/a/e/aereinh/bin/codex",
+          "exec",
+          "--ephemeral",
+          "--json",
+          "--sandbox",
+          "read-only",
+          "--skip-git-repo-check",
+          "-C",
+          "/users/a/e/aereinh/.ai-bridge/clear-writing",
+          "-"
+        ],
+        "cwd": null
+      }
+    },
+    {
+      "file": "512686-5-model_run_return.json",
+      "kind": "model_run_return",
+      "pid": 512686,
+      "ppid": 510207,
+      "wall_time": 1792463593.3947418,
+      "monotonic": 5281483.119623651,
+      "data": {
+        "argv": [
+          "/users/a/e/aereinh/bin/codex",
+          "exec",
+          "--ephemeral",
+          "--json",
+          "--sandbox",
+          "read-only",
+          "--skip-git-repo-check",
+          "-C",
+          "/users/a/e/aereinh/.ai-bridge/clear-writing",
+          "-"
+        ],
+        "returncode": 0,
+        "stdout": "{\"type\":\"thread.started\",\"thread_id\":\"01a15727-a405-7233-8818-cfbe3811b3f4\"}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"error\",\"message\":\"Under-development features enabled: default_mode_request_user_input. Under-development features are incomplete and may behave unpredictably. To suppress this warning, set `suppress_unstable_features_warning = true` in /users/a/e/aereinh/.codex/config.toml.\"}}\n{\"type\":\"turn.started\"}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_1\",\"type\":\"agent_message\",\"text\":\"我会按 writing-fidelity 和 response-clarity 保留事实与结论边界，压缩成一条自然中文通知。\\n\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_2\",\"type\":\"command_execution\",\"command\":\"/usr/bin/bash -lc 'cat /users/a/e/aereinh/.codex/plugins/cache/yuukias-ai-skills/writing-style/0.5/skills/response-clarity/SKILL.md'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_2\",\"type\":\"command_execution\",\"command\":\"/usr/bin/bash -lc 'cat /users/a/e/aereinh/.codex/plugins/cache/yuukias-ai-skills/writing-style/0.5/skills/response-clarity/SKILL.md'\",\"aggregated_output\":\"---\\nname: response-clarity\\ndescription: Clear ordinary user-facing explanations, conclusions, diagnostics, advice, progress updates, and task-result summaries after domain reasoning. Use for normal ChatGPT/Codex replies that should be natural in the current target language, lead with the human meaning, reduce unnecessary English/process noise, and preserve exact technical strings.\\nstatus: active\\nprovenance: user-authored\\ntrusted: false\\nrequires_network: false\\nwrites_files: false\\nexecutes_code: false\\nsecrets_needed:\\nlast_reviewed: 2026-10-12\\nprofile_tags:\\n  - writing\\n  - global\\nrecommended_scope: global\\nicon_small: assets/app-facing.svg\\nicon_large: assets/app-facing.svg\\n---\\n# Response Clarity\\n\\nUse this skill for ordinary answers to the user after the relevant domain work\\nhas already been done. It improves the explanation layer: conclusions,\\ndiagnostic summaries, advice, progress updates, handoff notes, and task-result\\nreports that are meant for a person to read.\\n\\nThis skill does not discover facts, decide architecture, make scientific\\nclaims, rewrite source documents, write product UI copy, or edit machine\\nprotocols. It makes the already-known result easier to understand while\\npreserving protected meaning.\\n\\n## Use When\\n\\n- A normal ChatGPT or Codex reply explains a technical, scientific, software,\\n  server, statistics, product, or workflow result to the user.\\n- The assistant has read English logs, code, documentation, tool output, or\\n  repository metadata, but the user-facing answer should stay in the current\\n  target language.\\n- A status update or completion report should say what happened, what it means,\\n  what remains risky, and what happens next without turning into a log dump.\\n- The output is an ordinary answer, not a README, report, slide deck, formal\\n  Markdown/PDF artifact, UI string, or source-faithful long rewrite.\\n\\nRoute formal Chinese documents, README files, reports, Markdown/PDF final\\npasses, teaching material, and Chinese document polishing to `chinese-prose`.\\nRoute product interface labels, CTAs, states, help text, onboarding, settings,\\ntrust/privacy disclosures, and locale-specific UI microcopy to\\n`product-ui-copy`. Route existing Chinese or Chinese-dominant scientific or\\ntechnical material that needs structural source-faithful rewriting to\\n`scientific-rewrite`. Route English scientific prose artifacts to\\n`scientific-prose`.\\n\\nDo not use this skill for pure JSON, YAML, code, commands, raw logs, quoted\\ntext, exact output requested verbatim, schema values, or protocol messages. For\\nmixed tasks, keep the machine content exact and improve only the explanatory\\nsentences around it.\\n\\n## Core Contract\\n\\nLead with the human meaning. Then give the evidence, exact strings, commands,\\npaths, or status values that the user needs for precision.\\n\\nPreserve:\\n\\n- facts, numbers, dates, versions, units, formulas, citations, and comparison\\n  conditions;\\n- subject, agency, negation, uncertainty, time state, completion state, and\\n  permission/authorization boundaries;\\n- code, commands, paths, filenames, URLs, environment variables, config keys,\\n  field names, protocol values, status values, error names, model names,\\n  product names, plugin names, branch names, commit ids, issue ids, and other\\n  strings that must match exactly;\\n- user language instructions and the current message's explicit language\\n  override.\\n\\nNever make an incomplete action sound complete, an optional action sound\\nrequired, an unsupported state sound supported, or a permission boundary sound\\napproved. If the real result is partial, blocked, unverified, or inconclusive,\\nsay that directly.\\n\\n## Language And Structure\\n\\nUse the user's current target language by default. A temporary English request,\\nquoted English source, command output, or English repository name does not by\\nitself change the long-term reply language.\\n\\nFor Chinese replies:\\n\\n- use natural Chinese for ordinary explanation, transitions, risk statements,\\n  and next steps;\\n- keep exact technical strings when translating them would reduce precision;\\n- translate ordinary process words when they are not protected identifiers,\\n  such as `handoff`, `wrapper`, `source`, `review`, `candidate`, `pipeline`,\\n  `thread`, and `commit`, unless the exact English token is needed.\\n\\nFor English replies, avoid generic filler, over-defensive framing, and\\ntemplate-like paragraph rhythm. Keep the answer direct and proportional to the\\nevidence.\\n\\nPrefer concise paragraphs. Use bullets only when the information is genuinely\\nparallel, scannable, or action-oriented. Do not create a report-shaped answer\\nfor a simple question.\\n\\nBuild paragraphs around complete semantic or reasoning units, not individual\\nsentences. When adjacent sentences define one object, explain one causal chain,\\ncomplete one local comparison or derivation, or attach a conclusion to its\\ndirect caveat, keep them together unless separating them gives the reader real\\nnavigation or comparison value. Use headings, lists, and display math when they\\nclarify genuine structure; do not isolate a short definition, one-step formula,\\nor its immediate interpretation merely to make the answer look structured.\\n\\nBefore finalizing a complex explanation, read the whole answer for\\nfragmentation. Reorganize repeated single-sentence paragraphs, headings that\\ncontain only a passing point, and formulas detached from their local meaning.\\nMake that judgment from the argument's structure; do not enforce fixed counts\\nfor words, lines, paragraphs, headings, formulas, or examples. Long answers may\\nremain detailed when the comparison, derivation, evidence boundary, or\\nuncertainty genuinely needs that depth.\\n\\nWhen an unfamiliar scientific method, term, or mathematical object first\\nappears and the context has not already established it, build a reader model\\nfrom known facts before asking the formal name, notation, or formula to carry\\nthe explanation. State what kind of object it is, its level or unit, whether it\\nis observed, given, estimated, or sought when that status is known, why it is\\nneeded here, and what later calculation, judgment, or step uses it. For\\nmulti-index notation, explain each new index role or point back to an earlier\\ndefinition that already does so.\\n\\nThis reader model must not add domain claims. If the source or domain owner\\ndoes not define an object's type, level, index roles, status, or use, say that\\nthe definition is missing or ask for it. Do not guess a scientific meaning and\\nthen present the guess as settled explanation. Preserve the exact formal term,\\nsymbol, formula, and any supported uncertainty after the natural-language\\norientation.\\n\\nWhen the user's core question has been answered, stop unless additional\\nmaterial adds new evidence, changes the decision, supplies an explicitly\\nrequested implementation detail, or makes a necessary comparison. Do not\\ncontinue into an architecture, experiment, rollout, or implementation plan\\nmerely because it might be useful. This is a semantic stopping condition, not\\na fixed limit on words, headings, paragraphs, or examples.\\n\\nFor multi-source synthesis, state what the sources jointly establish, where\\nthey materially differ, and what remains unsupported before adding advice.\\nPresent any assistant recommendation afterward as a recommendation, not as\\nsource consensus. Match its depth to the user's requested decision; do not\\nappend an implementation or experiment design when the user asked only for a\\nsynthesis or a decision.\\n\\n## Workflow\\n\\n1. Identify the domain owner and the known result. Do not invent missing facts.\\n2. Mark protected strings and protected meaning before rewriting the response.\\n3. Decide the reply type: conclusion, diagnostic, advice, progress update,\\n   completion report, blocker, or handoff.\\n4. Put the human-readable conclusion first.\\n5. Move logs, paths, branch names, commands, hashes, issue ids, and state\\n   values into evidence or next-action sentences instead of making them the\\n   opening.\\n6. Remove unnecessary English and internal process labels from reader-facing\\n   prose while preserving exact identifiers.\\n7. For complex explanations, check the whole answer for fragmented reasoning\\n   and for unfamiliar objects whose first use lacks a supported reader model.\\n8. Check that the final answer still matches the actual result and the user's\\n   latest instruction.\\n\\n## Red Flags\\n\\n- The first sentence is a path, branch, status token, log line, or tool output\\n  instead of the answer.\\n- The reply says \\\"done\\\" when tests, install, review, upload, publish, or\\n  permission are still pending.\\n- Ordinary English words are left in a Chinese answer merely because the source\\n  material was English.\\n- A pure machine-output request is paraphrased or decorated.\\n- One continuous explanation becomes a chain of single-sentence paragraphs,\\n  low-value headings, or short formulas detached from their interpretation.\\n- An unfamiliar scientific object or multi-index symbol appears before the\\n  reader knows its supported level, role, or downstream use.\\n- A document/report/README task stays here instead of going to `chinese-prose`\\n  or `scientific-rewrite`.\\n- Product interface copy stays here instead of going to `product-ui-copy`.\\n- A scientific claim is made stronger, broader, or more certain for readability.\\n\\n## Output\\n\\nUsually return the improved answer directly. If the problem is a routing or\\nfidelity risk, briefly say which route or owner should handle it and why.\\n\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_3\",\"type\":\"agent_message\",\"text\":\"持久运行的主子进程已以退出码 0 退出，但不能据此认定 Goal 已完成。public-canary 项目任务 bridge-replacement-evaluation 的状态为 EXITED_0；下一步评估原始 Goal 的正向完成证据。\"}}\n{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":58884,\"cached_input_tokens\":40320,\"cache_write_input_tokens\":0,\"output_tokens\":466,\"reasoning_output_tokens\":293}}\n",
+        "stderr": ""
+      }
+    },
+    {
+      "file": "512686-6-render_return.json",
+      "kind": "render_return",
+      "pid": 512686,
+      "ppid": 510207,
+      "wall_time": 1792463593.4066489,
+      "monotonic": 5281483.131530822,
+      "data": {
+        "brief": {
+          "completed": null,
+          "consumer": "persistent",
+          "decision_authority": "Runtime",
+          "eta": "UNKNOWN",
+          "eta_high": "UNKNOWN",
+          "eta_low": "UNKNOWN",
+          "fact_class": "runtime_terminal",
+          "fraction": null,
+          "next_action": "Evaluate the original Goal's positive completion evidence.",
+          "project": "public-canary",
+          "run_id": "bridge-replacement-evaluation",
+          "runtime_id": "dce6d00d4e0e781da326781db3327f363b610cf5b74dd776ecb888f9730eb347",
+          "schema": "ai-bridge.notification_request.v1",
+          "source_event_id": "dce6d00d4e0e781da326781db3327f363b610cf5b74dd776ecb888f9730eb347|runtime_terminal|2026-10-20T02:32:56+00:00|EXITED_0",
+          "stage": "",
+          "status": "EXITED_0",
+          "summary": "Persistent primary child exited with code 0; Goal completion is not inferred.",
+          "task_key": "bridge-replacement-evaluation",
+          "total": null
+        },
+        "result": {
+          "mode": "NORMAL_WRITING_STYLE",
+          "text": "持久运行的主子进程已以退出码 0 退出，但不能据此认定 Goal 已完成。public-canary 项目任务 bridge-replacement-evaluation 的状态为 EXITED_0；下一步评估原始 Goal 的正向完成证据。",
+          "failure": "",
+          "model_invocations": 1,
+          "model_retry_count": 0,
+          "plugin": {
+            "plugin_id": "writing-style@yuukias-ai-skills",
+            "version": "0.5",
+            "root": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style",
+            "manifest": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style/.codex-plugin/plugin.json",
+            "skills": {
+              "writing-fidelity": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style/skills/fidelity/SKILL.md",
+              "response-clarity": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style/skills/response-clarity/SKILL.md"
+            },
+            "codex_bin": "/users/a/e/aereinh/bin/codex"
+          },
+          "jsonl_evidence": {
+            "event_counts": {
+              "thread.started": 1,
+              "item.completed": 4,
+              "turn.started": 1,
+              "item.started": 1,
+              "turn.completed": 1
+            },
+            "skill_invocation": {
+              "method": "explicit_prompt",
+              "names": [
+                "writing-fidelity",
+                "response-clarity"
+              ],
+              "jsonl_skill_load_events_required": false
+            }
+          }
+        }
+      }
+    },
+    {
+      "file": "512686-7-email_built.json",
+      "kind": "email_built",
+      "pid": 512686,
+      "ppid": 510207,
+      "wall_time": 1792463593.4403105,
+      "monotonic": 5281483.165192623,
+      "data": {
+        "mime": "From: 1155246312@link.cuhk.edu.hk\nTo: 1155246312@link.cuhk.edu.hk\nSubject: [AI Bridge] =?utf-8?q?EXITED=5F0=EF=BC=9Abridge-replacement-evaluat?=\n =?utf-8?q?ion?=\nMIME-Version: 1.0\nContent-Type: multipart/alternative;\n boundary=\"===============0584503485857855090==\"\n\n--===============0584503485857855090==\nContent-Type: text/plain; charset=\"utf-8\"\nContent-Transfer-Encoding: base64\n\n5oyB5LmF6L+Q6KGM55qE5Li75a2Q6L+b56iL5bey5Lul6YCA5Ye656CBIDAg6YCA5Ye677yM5L2G\n5LiN6IO95o2u5q2k6K6k5a6aIEdvYWwg5bey5a6M5oiQ44CCcHVibGljLWNhbmFyeSDpobnnm67k\nu7vliqEgYnJpZGdlLXJlcGxhY2VtZW50LWV2YWx1YXRpb24g55qE54q25oCB5Li6IEVYSVRFRF8w\n77yb5LiL5LiA5q2l6K+E5Lyw5Y6f5aeLIEdvYWwg55qE5q2j5ZCR5a6M5oiQ6K+B5o2u44CCCg==\n\n--===============0584503485857855090==\nContent-Type: text/html; charset=\"utf-8\"\nContent-Transfer-Encoding: base64\nMIME-Version: 1.0\n\nPGh0bWw+PGJvZHk+PHA+5oyB5LmF6L+Q6KGM55qE5Li75a2Q6L+b56iL5bey5Lul6YCA5Ye656CB\nIDAg6YCA5Ye677yM5L2G5LiN6IO95o2u5q2k6K6k5a6aIEdvYWwg5bey5a6M5oiQ44CCcHVibGlj\nLWNhbmFyeSDpobnnm67ku7vliqEgYnJpZGdlLXJlcGxhY2VtZW50LWV2YWx1YXRpb24g55qE54q2\n5oCB5Li6IEVYSVRFRF8w77yb5LiL5LiA5q2l6K+E5Lyw5Y6f5aeLIEdvYWwg55qE5q2j5ZCR5a6M\n5oiQ6K+B5o2u44CCPC9wPjwvYm9keT48L2h0bWw+Cg==\n\n--===============0584503485857855090==--\n",
+        "body": "持久运行的主子进程已以退出码 0 退出，但不能据此认定 Goal 已完成。public-canary 项目任务 bridge-replacement-evaluation 的状态为 EXITED_0；下一步评估原始 Goal 的正向完成证据。\n",
+        "subject": "[AI Bridge] EXITED_0：bridge-replacement-evaluation",
+        "sender": "1155246312@link.cuhk.edu.hk",
+        "recipient": "1155246312@link.cuhk.edu.hk"
+      }
+    },
+    {
+      "file": "512686-8-smtp_connect.json",
+      "kind": "smtp_connect",
+      "pid": 512686,
+      "ppid": 510207,
+      "wall_time": 1792463593.4406116,
+      "monotonic": 5281483.165493465,
+      "data": {
+        "host": "smtp.gmail.com",
+        "port": 587
+      }
+    },
+    {
+      "file": "512686-9-smtp_send_message_call.json",
+      "kind": "smtp_send_message_call",
+      "pid": 512686,
+      "ppid": 510207,
+      "wall_time": 1792463593.8198128,
+      "monotonic": 5281483.544695643,
+      "data": {
+        "subject": "[AI Bridge] EXITED_0：bridge-replacement-evaluation"
+      }
+    },
+    {
+      "file": "9-1-python_start.json",
+      "kind": "python_start",
+      "pid": 9,
+      "ppid": 2,
+      "wall_time": 1792463443.4222758,
+      "monotonic": 5281333.147158179,
+      "data": {
+        "argv": [
+          "-c",
+          "child.py"
+        ],
+        "executable": "/usr/bin/python3"
+      }
+    },
+    {
+      "file": "budget-model-0.json",
+      "pid": 510209,
+      "ppid": 510207,
+      "time": 1792463550.1594512
+    },
+    {
+      "file": "budget-model-1.json",
+      "pid": 512686,
+      "ppid": 510207,
+      "time": 1792463577.4987872
+    },
+    {
+      "file": "budget-smtp-0.json",
+      "pid": 510209,
+      "ppid": 510207,
+      "time": 1792463574.2915225
+    },
+    {
+      "file": "budget-smtp-1.json",
+      "pid": 512686,
+      "ppid": 510207,
+      "time": 1792463593.4405763
+    }
+  ],
+  "start_result": {
+    "candidate_sha": "391ff889ad156540727da168fb608c5f37dbbdfc",
+    "argv": [
+      "/tmp/bridge-011-1472791-final-install/bin/ai-bridge",
+      "persistent-run",
+      "start",
+      "--target",
+      "/tmp/bridge-final-replacement-9ggq9knx/public-canary",
+      "--goal",
+      "GOAL.md",
+      "--expected-goal-sha256",
+      "318cf51e318e16d3cfebf562a0c2abdb7577b1a7a8d04d1a7c7948b062266eb7"
+    ],
+    "returncode": 0,
+    "stdout": "{\n  \"binding_path\": \"/users/a/e/aereinh/.ai-bridge/persistent-run/runs/4cd2c2f02aba51bf68c2e5d9ffe1d0261c54d264e862cf1d7f8a817ea46dce18.json\",\n  \"command\": [\n    \"tmux\",\n    \"new-session\",\n    \"-d\",\n    \"-s\",\n    \"ai-bridge-pr-dce6d00d4e0e781da326781db3327f363b610cf5b74dd776ecb888f9730eb347\",\n    \"-c\",\n    \"/tmp/bridge-final-replacement-9ggq9knx/public-canary\",\n    \"/tmp/bridge-011-1472791-final-install/bin/python\",\n    \"-m\",\n    \"ai_bridge_kit.persistent_run\",\n    \"_supervise\",\n    \"--binding\",\n    \"/users/a/e/aereinh/.ai-bridge/persistent-run/runs/4cd2c2f02aba51bf68c2e5d9ffe1d0261c54d264e862cf1d7f8a817ea46dce18.json\",\n    \"--launch-id\",\n    \"dce6d00d4e0e781da326781db3327f363b610cf5b74dd776ecb888f9730eb347\"\n  ],\n  \"launch_id\": \"dce6d00d4e0e781da326781db3327f363b610cf5b74dd776ecb888f9730eb347\",\n  \"progress\": {\n    \"reason\": \"progress source not configured\",\n    \"state\": \"UNKNOWN\"\n  },\n  \"session_name\": \"ai-bridge-pr-dce6d00d4e0e781da326781db3327f363b610cf5b74dd776ecb888f9730eb347\",\n  \"status\": \"NEW_START\"\n}\n",
+    "stderr": "",
+    "task_scoped_tmux_tmpdir": "/tmp/bridge-final-replacement-9ggq9knx/tmux",
+    "passive_observer": "/tmp/bridge-final-replacement-9ggq9knx/observer/sitecustomize.py",
+    "notifier_readiness": {
+      "status": "VALID",
+      "config_path": "/users/a/e/aereinh/.ai-bridge/private/notifier.env",
+      "mode": 384,
+      "missing_or_invalid": [],
+      "config_digest": "46cc00d02f541a14f84833c1f0ccd91a3e8ad8ccb2786e48150a1e33c1f7e12d",
+      "transport_ready": true,
+      "transport_test_accepted_at": "2026-10-19T15:02:16+00:00"
+    }
+  },
+  "child_start": {
+    "pid": 510208,
+    "ppid": 510207,
+    "monotonic": 5281436.36333504,
+    "wall_time": 1792463546.638508
+  },
+  "child_exit": {
+    "pid": 510208,
+    "ppid": 510207,
+    "elapsed_seconds": 5.004820580594242,
+    "wall_time": 1792463551.6432772,
+    "intended_exit_code": 0
+  },
+  "events": [
+    {
+      "fact_class": "runtime_start",
+      "request": {
+        "schema": "ai-bridge.notification_request.v1",
+        "project": "public-canary",
+        "task_key": "bridge-replacement-evaluation",
+        "consumer": "persistent",
+        "fact_class": "runtime_start",
+        "status": "RUNNING",
+        "decision_authority": "Runtime",
+        "summary": "Persistent primary child started; this is a runtime fact, not semantic completion.",
+        "next_action": "Use persistent-run status to observe the same launch identity.",
+        "stage": "",
+        "completed": null,
+        "total": null,
+        "fraction": null,
+        "eta": "UNKNOWN",
+        "eta_low": "UNKNOWN",
+        "eta_high": "UNKNOWN",
+        "run_id": "bridge-replacement-evaluation",
+        "runtime_id": "dce6d00d4e0e781da326781db3327f363b610cf5b74dd776ecb888f9730eb347",
+        "source_event_id": "dce6d00d4e0e781da326781db3327f363b610cf5b74dd776ecb888f9730eb347|runtime_start|2026-10-20T02:32:26+00:00|RUNNING",
+        "recipient_override": ""
+      },
+      "supervisor_pid": 510207,
+      "helper_pid": 510209,
+      "render_result": {
+        "mode": "NORMAL_WRITING_STYLE",
+        "text": "持久运行的主子进程已启动，这只说明进程已启动，不代表任务已完成。项目 public-canary 的任务及运行标识均为 bridge-replacement-evaluation，当前状态为 RUNNING。请使用 persistent-run status 继续观察同一次启动。",
+        "failure": "",
+        "model_invocations": 1,
+        "model_retry_count": 0,
+        "plugin": {
+          "plugin_id": "writing-style@yuukias-ai-skills",
+          "version": "0.5",
+          "root": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style",
+          "manifest": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style/.codex-plugin/plugin.json",
+          "skills": {
+            "writing-fidelity": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style/skills/fidelity/SKILL.md",
+            "response-clarity": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style/skills/response-clarity/SKILL.md"
+          },
+          "codex_bin": "/users/a/e/aereinh/bin/codex"
+        },
+        "jsonl_evidence": {
+          "event_counts": {
+            "thread.started": 1,
+            "item.completed": 4,
+            "turn.started": 1,
+            "item.started": 1,
+            "turn.completed": 1
+          },
+          "skill_invocation": {
+            "method": "explicit_prompt",
+            "names": [
+              "writing-fidelity",
+              "response-clarity"
+            ],
+            "jsonl_skill_load_events_required": false
+          }
+        }
+      },
+      "model_jsonl": {
+        "argv": [
+          "/users/a/e/aereinh/bin/codex",
+          "exec",
+          "--ephemeral",
+          "--json",
+          "--sandbox",
+          "read-only",
+          "--skip-git-repo-check",
+          "-C",
+          "/users/a/e/aereinh/.ai-bridge/clear-writing",
+          "-"
+        ],
+        "returncode": 0,
+        "stdout": "{\"type\":\"thread.started\",\"thread_id\":\"01a15727-3991-7770-9ced-188a99376b8a\"}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"error\",\"message\":\"Under-development features enabled: default_mode_request_user_input. Under-development features are incomplete and may behave unpredictably. To suppress this warning, set `suppress_unstable_features_warning = true` in /users/a/e/aereinh/.codex/config.toml.\"}}\n{\"type\":\"turn.started\"}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_1\",\"type\":\"agent_message\",\"text\":\"我会使用 writing-fidelity 和 response-clarity，保留事实、身份和状态，压缩成一则自然中文通知。\\n\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_2\",\"type\":\"command_execution\",\"command\":\"/usr/bin/bash -lc 'cat /users/a/e/aereinh/.codex/plugins/cache/yuukias-ai-skills/writing-style/0.5/skills/response-clarity/SKILL.md'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_2\",\"type\":\"command_execution\",\"command\":\"/usr/bin/bash -lc 'cat /users/a/e/aereinh/.codex/plugins/cache/yuukias-ai-skills/writing-style/0.5/skills/response-clarity/SKILL.md'\",\"aggregated_output\":\"---\\nname: response-clarity\\ndescription: Clear ordinary user-facing explanations, conclusions, diagnostics, advice, progress updates, and task-result summaries after domain reasoning. Use for normal ChatGPT/Codex replies that should be natural in the current target language, lead with the human meaning, reduce unnecessary English/process noise, and preserve exact technical strings.\\nstatus: active\\nprovenance: user-authored\\ntrusted: false\\nrequires_network: false\\nwrites_files: false\\nexecutes_code: false\\nsecrets_needed:\\nlast_reviewed: 2026-10-12\\nprofile_tags:\\n  - writing\\n  - global\\nrecommended_scope: global\\nicon_small: assets/app-facing.svg\\nicon_large: assets/app-facing.svg\\n---\\n# Response Clarity\\n\\nUse this skill for ordinary answers to the user after the relevant domain work\\nhas already been done. It improves the explanation layer: conclusions,\\ndiagnostic summaries, advice, progress updates, handoff notes, and task-result\\nreports that are meant for a person to read.\\n\\nThis skill does not discover facts, decide architecture, make scientific\\nclaims, rewrite source documents, write product UI copy, or edit machine\\nprotocols. It makes the already-known result easier to understand while\\npreserving protected meaning.\\n\\n## Use When\\n\\n- A normal ChatGPT or Codex reply explains a technical, scientific, software,\\n  server, statistics, product, or workflow result to the user.\\n- The assistant has read English logs, code, documentation, tool output, or\\n  repository metadata, but the user-facing answer should stay in the current\\n  target language.\\n- A status update or completion report should say what happened, what it means,\\n  what remains risky, and what happens next without turning into a log dump.\\n- The output is an ordinary answer, not a README, report, slide deck, formal\\n  Markdown/PDF artifact, UI string, or source-faithful long rewrite.\\n\\nRoute formal Chinese documents, README files, reports, Markdown/PDF final\\npasses, teaching material, and Chinese document polishing to `chinese-prose`.\\nRoute product interface labels, CTAs, states, help text, onboarding, settings,\\ntrust/privacy disclosures, and locale-specific UI microcopy to\\n`product-ui-copy`. Route existing Chinese or Chinese-dominant scientific or\\ntechnical material that needs structural source-faithful rewriting to\\n`scientific-rewrite`. Route English scientific prose artifacts to\\n`scientific-prose`.\\n\\nDo not use this skill for pure JSON, YAML, code, commands, raw logs, quoted\\ntext, exact output requested verbatim, schema values, or protocol messages. For\\nmixed tasks, keep the machine content exact and improve only the explanatory\\nsentences around it.\\n\\n## Core Contract\\n\\nLead with the human meaning. Then give the evidence, exact strings, commands,\\npaths, or status values that the user needs for precision.\\n\\nPreserve:\\n\\n- facts, numbers, dates, versions, units, formulas, citations, and comparison\\n  conditions;\\n- subject, agency, negation, uncertainty, time state, completion state, and\\n  permission/authorization boundaries;\\n- code, commands, paths, filenames, URLs, environment variables, config keys,\\n  field names, protocol values, status values, error names, model names,\\n  product names, plugin names, branch names, commit ids, issue ids, and other\\n  strings that must match exactly;\\n- user language instructions and the current message's explicit language\\n  override.\\n\\nNever make an incomplete action sound complete, an optional action sound\\nrequired, an unsupported state sound supported, or a permission boundary sound\\napproved. If the real result is partial, blocked, unverified, or inconclusive,\\nsay that directly.\\n\\n## Language And Structure\\n\\nUse the user's current target language by default. A temporary English request,\\nquoted English source, command output, or English repository name does not by\\nitself change the long-term reply language.\\n\\nFor Chinese replies:\\n\\n- use natural Chinese for ordinary explanation, transitions, risk statements,\\n  and next steps;\\n- keep exact technical strings when translating them would reduce precision;\\n- translate ordinary process words when they are not protected identifiers,\\n  such as `handoff`, `wrapper`, `source`, `review`, `candidate`, `pipeline`,\\n  `thread`, and `commit`, unless the exact English token is needed.\\n\\nFor English replies, avoid generic filler, over-defensive framing, and\\ntemplate-like paragraph rhythm. Keep the answer direct and proportional to the\\nevidence.\\n\\nPrefer concise paragraphs. Use bullets only when the information is genuinely\\nparallel, scannable, or action-oriented. Do not create a report-shaped answer\\nfor a simple question.\\n\\nBuild paragraphs around complete semantic or reasoning units, not individual\\nsentences. When adjacent sentences define one object, explain one causal chain,\\ncomplete one local comparison or derivation, or attach a conclusion to its\\ndirect caveat, keep them together unless separating them gives the reader real\\nnavigation or comparison value. Use headings, lists, and display math when they\\nclarify genuine structure; do not isolate a short definition, one-step formula,\\nor its immediate interpretation merely to make the answer look structured.\\n\\nBefore finalizing a complex explanation, read the whole answer for\\nfragmentation. Reorganize repeated single-sentence paragraphs, headings that\\ncontain only a passing point, and formulas detached from their local meaning.\\nMake that judgment from the argument's structure; do not enforce fixed counts\\nfor words, lines, paragraphs, headings, formulas, or examples. Long answers may\\nremain detailed when the comparison, derivation, evidence boundary, or\\nuncertainty genuinely needs that depth.\\n\\nWhen an unfamiliar scientific method, term, or mathematical object first\\nappears and the context has not already established it, build a reader model\\nfrom known facts before asking the formal name, notation, or formula to carry\\nthe explanation. State what kind of object it is, its level or unit, whether it\\nis observed, given, estimated, or sought when that status is known, why it is\\nneeded here, and what later calculation, judgment, or step uses it. For\\nmulti-index notation, explain each new index role or point back to an earlier\\ndefinition that already does so.\\n\\nThis reader model must not add domain claims. If the source or domain owner\\ndoes not define an object's type, level, index roles, status, or use, say that\\nthe definition is missing or ask for it. Do not guess a scientific meaning and\\nthen present the guess as settled explanation. Preserve the exact formal term,\\nsymbol, formula, and any supported uncertainty after the natural-language\\norientation.\\n\\nWhen the user's core question has been answered, stop unless additional\\nmaterial adds new evidence, changes the decision, supplies an explicitly\\nrequested implementation detail, or makes a necessary comparison. Do not\\ncontinue into an architecture, experiment, rollout, or implementation plan\\nmerely because it might be useful. This is a semantic stopping condition, not\\na fixed limit on words, headings, paragraphs, or examples.\\n\\nFor multi-source synthesis, state what the sources jointly establish, where\\nthey materially differ, and what remains unsupported before adding advice.\\nPresent any assistant recommendation afterward as a recommendation, not as\\nsource consensus. Match its depth to the user's requested decision; do not\\nappend an implementation or experiment design when the user asked only for a\\nsynthesis or a decision.\\n\\n## Workflow\\n\\n1. Identify the domain owner and the known result. Do not invent missing facts.\\n2. Mark protected strings and protected meaning before rewriting the response.\\n3. Decide the reply type: conclusion, diagnostic, advice, progress update,\\n   completion report, blocker, or handoff.\\n4. Put the human-readable conclusion first.\\n5. Move logs, paths, branch names, commands, hashes, issue ids, and state\\n   values into evidence or next-action sentences instead of making them the\\n   opening.\\n6. Remove unnecessary English and internal process labels from reader-facing\\n   prose while preserving exact identifiers.\\n7. For complex explanations, check the whole answer for fragmented reasoning\\n   and for unfamiliar objects whose first use lacks a supported reader model.\\n8. Check that the final answer still matches the actual result and the user's\\n   latest instruction.\\n\\n## Red Flags\\n\\n- The first sentence is a path, branch, status token, log line, or tool output\\n  instead of the answer.\\n- The reply says \\\"done\\\" when tests, install, review, upload, publish, or\\n  permission are still pending.\\n- Ordinary English words are left in a Chinese answer merely because the source\\n  material was English.\\n- A pure machine-output request is paraphrased or decorated.\\n- One continuous explanation becomes a chain of single-sentence paragraphs,\\n  low-value headings, or short formulas detached from their interpretation.\\n- An unfamiliar scientific object or multi-index symbol appears before the\\n  reader knows its supported level, role, or downstream use.\\n- A document/report/README task stays here instead of going to `chinese-prose`\\n  or `scientific-rewrite`.\\n- Product interface copy stays here instead of going to `product-ui-copy`.\\n- A scientific claim is made stronger, broader, or more certain for readability.\\n\\n## Output\\n\\nUsually return the improved answer directly. If the problem is a routing or\\nfidelity risk, briefly say which route or owner should handle it and why.\\n\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_3\",\"type\":\"agent_message\",\"text\":\"持久运行的主子进程已启动，这只说明进程已启动，不代表任务已完成。项目 public-canary 的任务及运行标识均为 bridge-replacement-evaluation，当前状态为 RUNNING。请使用 persistent-run status 继续观察同一次启动。\"}}\n{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":59083,\"cached_input_tokens\":28160,\"cache_write_input_tokens\":0,\"output_tokens\":547,\"reasoning_output_tokens\":380}}\n",
+        "stderr": ""
+      },
+      "prompt": "Use $writing-fidelity and $response-clarity to render one concise natural Simplified Chinese notification. Lead with what happened and what it means to the reader, not machine labels. Use only the reader-facing facts below; do not add internal routing or audit fields. Do not invent an ETA or require UNKNOWN when no ETA is provided. Preserve the exact status, project, task identity, every number/date/time/version and UNKNOWN present in the reader-facing facts, and the original conclusion strength. Add no facts or numbers. Runtime/operational facts must never become Goal PASS, READY, RELEASE_READY, or semantic completion. Return only the notification text.\nImmutable reader-facing facts: {\"completed\":null,\"fraction\":null,\"next_action\":\"Use persistent-run status to observe the same launch identity.\",\"project\":\"public-canary\",\"run_id\":\"bridge-replacement-evaluation\",\"stage\":\"\",\"status\":\"RUNNING\",\"summary\":\"Persistent primary child started; this is a runtime fact, not semantic completion.\",\"task_key\":\"bridge-replacement-evaluation\",\"total\":null}\n",
+      "email": {
+        "mime": "From: 1155246312@link.cuhk.edu.hk\nTo: 1155246312@link.cuhk.edu.hk\nSubject: [AI Bridge] =?utf-8?q?RUNNING=EF=BC=9Abridge-replacement-evaluation?=\nMIME-Version: 1.0\nContent-Type: multipart/alternative;\n boundary=\"===============8398053665668713352==\"\n\n--===============8398053665668713352==\nContent-Type: text/plain; charset=\"utf-8\"\nContent-Transfer-Encoding: base64\n\n5oyB5LmF6L+Q6KGM55qE5Li75a2Q6L+b56iL5bey5ZCv5Yqo77yM6L+Z5Y+q6K+05piO6L+b56iL\n5bey5ZCv5Yqo77yM5LiN5Luj6KGo5Lu75Yqh5bey5a6M5oiQ44CC6aG555uuIHB1YmxpYy1jYW5h\ncnkg55qE5Lu75Yqh5Y+K6L+Q6KGM5qCH6K+G5Z2H5Li6IGJyaWRnZS1yZXBsYWNlbWVudC1ldmFs\ndWF0aW9u77yM5b2T5YmN54q25oCB5Li6IFJVTk5JTkfjgILor7fkvb/nlKggcGVyc2lzdGVudC1y\ndW4gc3RhdHVzIOe7p+e7reinguWvn+WQjOS4gOasoeWQr+WKqOOAggo=\n\n--===============8398053665668713352==\nContent-Type: text/html; charset=\"utf-8\"\nContent-Transfer-Encoding: base64\nMIME-Version: 1.0\n\nPGh0bWw+PGJvZHk+PHA+5oyB5LmF6L+Q6KGM55qE5Li75a2Q6L+b56iL5bey5ZCv5Yqo77yM6L+Z\n5Y+q6K+05piO6L+b56iL5bey5ZCv5Yqo77yM5LiN5Luj6KGo5Lu75Yqh5bey5a6M5oiQ44CC6aG5\n55uuIHB1YmxpYy1jYW5hcnkg55qE5Lu75Yqh5Y+K6L+Q6KGM5qCH6K+G5Z2H5Li6IGJyaWRnZS1y\nZXBsYWNlbWVudC1ldmFsdWF0aW9u77yM5b2T5YmN54q25oCB5Li6IFJVTk5JTkfjgILor7fkvb/n\nlKggcGVyc2lzdGVudC1ydW4gc3RhdHVzIOe7p+e7reinguWvn+WQjOS4gOasoeWQr+WKqOOAgjwv\ncD48L2JvZHk+PC9odG1sPgo=\n\n--===============8398053665668713352==--\n",
+        "body": "持久运行的主子进程已启动，这只说明进程已启动，不代表任务已完成。项目 public-canary 的任务及运行标识均为 bridge-replacement-evaluation，当前状态为 RUNNING。请使用 persistent-run status 继续观察同一次启动。\n",
+        "subject": "[AI Bridge] RUNNING：bridge-replacement-evaluation",
+        "sender": "1155246312@link.cuhk.edu.hk",
+        "recipient": "1155246312@link.cuhk.edu.hk"
+      },
+      "claim": {
+        "claimed_at": "2026-10-20T02:32:26+00:00",
+        "event_key": "40f0bf12d4ae5f49a05643806510de7e62b09603cf2fa91d4916694fb7026d0e",
+        "repo_identity": "/tmp/bridge-final-replacement-9ggq9knx/public-canary",
+        "request": {
+          "completed": null,
+          "consumer": "persistent",
+          "decision_authority": "Runtime",
+          "eta": "UNKNOWN",
+          "eta_high": "UNKNOWN",
+          "eta_low": "UNKNOWN",
+          "fact_class": "runtime_start",
+          "fraction": null,
+          "next_action": "Use persistent-run status to observe the same launch identity.",
+          "project": "public-canary",
+          "recipient_override": "",
+          "run_id": "bridge-replacement-evaluation",
+          "runtime_id": "dce6d00d4e0e781da326781db3327f363b610cf5b74dd776ecb888f9730eb347",
+          "schema": "ai-bridge.notification_request.v1",
+          "source_event_id": "dce6d00d4e0e781da326781db3327f363b610cf5b74dd776ecb888f9730eb347|runtime_start|2026-10-20T02:32:26+00:00|RUNNING",
+          "stage": "",
+          "status": "RUNNING",
+          "summary": "Persistent primary child started; this is a runtime fact, not semantic completion.",
+          "task_key": "bridge-replacement-evaluation",
+          "total": null
+        },
+        "resolved_recipient": "1155246312@link.cuhk.edu.hk",
+        "schema": "ai-bridge.notifier.claim.v1"
+      },
+      "attempts": [
+        {
+          "attempt_id": "8ead07be92124ef2a8c656e635d8ea8c",
+          "config_digest": "46cc00d02f541a14f84833c1f0ccd91a3e8ad8ccb2786e48150a1e33c1f7e12d",
+          "event_key": "40f0bf12d4ae5f49a05643806510de7e62b09603cf2fa91d4916694fb7026d0e",
+          "expression_mode": "NORMAL_WRITING_STYLE",
+          "model_invocations": 1,
+          "parent_attempt_id": null,
+          "schema": "ai-bridge.notifier.attempt.v1",
+          "smtp_accepted_at": "2026-10-20T02:32:56+00:00",
+          "stage": "SMTP_ACCEPTED",
+          "started_at": "2026-10-20T02:32:26+00:00",
+          "transport_started_at": "2026-10-20T02:32:54+00:00"
+        }
+      ],
+      "receipt": {
+        "attempt_id": "8ead07be92124ef2a8c656e635d8ea8c",
+        "event_key": "40f0bf12d4ae5f49a05643806510de7e62b09603cf2fa91d4916694fb7026d0e",
+        "schema": "ai-bridge.notifier.receipt.v1",
+        "smtp_accepted_at": "2026-10-20T02:32:56+00:00",
+        "status": "SMTP_ACCEPTED"
+      },
+      "offline_parser_and_fidelity": "PASS",
+      "exactly_one_turn": true,
+      "model_retry_count": 0,
+      "SMTP_automatic_retry_count": 0
+    },
+    {
+      "fact_class": "runtime_terminal",
+      "request": {
+        "schema": "ai-bridge.notification_request.v1",
+        "project": "public-canary",
+        "task_key": "bridge-replacement-evaluation",
+        "consumer": "persistent",
+        "fact_class": "runtime_terminal",
+        "status": "EXITED_0",
+        "decision_authority": "Runtime",
+        "summary": "Persistent primary child exited with code 0; Goal completion is not inferred.",
+        "next_action": "Evaluate the original Goal's positive completion evidence.",
+        "stage": "",
+        "completed": null,
+        "total": null,
+        "fraction": null,
+        "eta": "UNKNOWN",
+        "eta_low": "UNKNOWN",
+        "eta_high": "UNKNOWN",
+        "run_id": "bridge-replacement-evaluation",
+        "runtime_id": "dce6d00d4e0e781da326781db3327f363b610cf5b74dd776ecb888f9730eb347",
+        "source_event_id": "dce6d00d4e0e781da326781db3327f363b610cf5b74dd776ecb888f9730eb347|runtime_terminal|2026-10-20T02:32:56+00:00|EXITED_0",
+        "recipient_override": ""
+      },
+      "supervisor_pid": 510207,
+      "helper_pid": 512686,
+      "render_result": {
+        "mode": "NORMAL_WRITING_STYLE",
+        "text": "持久运行的主子进程已以退出码 0 退出，但不能据此认定 Goal 已完成。public-canary 项目任务 bridge-replacement-evaluation 的状态为 EXITED_0；下一步评估原始 Goal 的正向完成证据。",
+        "failure": "",
+        "model_invocations": 1,
+        "model_retry_count": 0,
+        "plugin": {
+          "plugin_id": "writing-style@yuukias-ai-skills",
+          "version": "0.5",
+          "root": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style",
+          "manifest": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style/.codex-plugin/plugin.json",
+          "skills": {
+            "writing-fidelity": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style/skills/fidelity/SKILL.md",
+            "response-clarity": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style/skills/response-clarity/SKILL.md"
+          },
+          "codex_bin": "/users/a/e/aereinh/bin/codex"
+        },
+        "jsonl_evidence": {
+          "event_counts": {
+            "thread.started": 1,
+            "item.completed": 4,
+            "turn.started": 1,
+            "item.started": 1,
+            "turn.completed": 1
+          },
+          "skill_invocation": {
+            "method": "explicit_prompt",
+            "names": [
+              "writing-fidelity",
+              "response-clarity"
+            ],
+            "jsonl_skill_load_events_required": false
+          }
+        }
+      },
+      "model_jsonl": {
+        "argv": [
+          "/users/a/e/aereinh/bin/codex",
+          "exec",
+          "--ephemeral",
+          "--json",
+          "--sandbox",
+          "read-only",
+          "--skip-git-repo-check",
+          "-C",
+          "/users/a/e/aereinh/.ai-bridge/clear-writing",
+          "-"
+        ],
+        "returncode": 0,
+        "stdout": "{\"type\":\"thread.started\",\"thread_id\":\"01a15727-a405-7233-8818-cfbe3811b3f4\"}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"error\",\"message\":\"Under-development features enabled: default_mode_request_user_input. Under-development features are incomplete and may behave unpredictably. To suppress this warning, set `suppress_unstable_features_warning = true` in /users/a/e/aereinh/.codex/config.toml.\"}}\n{\"type\":\"turn.started\"}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_1\",\"type\":\"agent_message\",\"text\":\"我会按 writing-fidelity 和 response-clarity 保留事实与结论边界，压缩成一条自然中文通知。\\n\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_2\",\"type\":\"command_execution\",\"command\":\"/usr/bin/bash -lc 'cat /users/a/e/aereinh/.codex/plugins/cache/yuukias-ai-skills/writing-style/0.5/skills/response-clarity/SKILL.md'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_2\",\"type\":\"command_execution\",\"command\":\"/usr/bin/bash -lc 'cat /users/a/e/aereinh/.codex/plugins/cache/yuukias-ai-skills/writing-style/0.5/skills/response-clarity/SKILL.md'\",\"aggregated_output\":\"---\\nname: response-clarity\\ndescription: Clear ordinary user-facing explanations, conclusions, diagnostics, advice, progress updates, and task-result summaries after domain reasoning. Use for normal ChatGPT/Codex replies that should be natural in the current target language, lead with the human meaning, reduce unnecessary English/process noise, and preserve exact technical strings.\\nstatus: active\\nprovenance: user-authored\\ntrusted: false\\nrequires_network: false\\nwrites_files: false\\nexecutes_code: false\\nsecrets_needed:\\nlast_reviewed: 2026-10-12\\nprofile_tags:\\n  - writing\\n  - global\\nrecommended_scope: global\\nicon_small: assets/app-facing.svg\\nicon_large: assets/app-facing.svg\\n---\\n# Response Clarity\\n\\nUse this skill for ordinary answers to the user after the relevant domain work\\nhas already been done. It improves the explanation layer: conclusions,\\ndiagnostic summaries, advice, progress updates, handoff notes, and task-result\\nreports that are meant for a person to read.\\n\\nThis skill does not discover facts, decide architecture, make scientific\\nclaims, rewrite source documents, write product UI copy, or edit machine\\nprotocols. It makes the already-known result easier to understand while\\npreserving protected meaning.\\n\\n## Use When\\n\\n- A normal ChatGPT or Codex reply explains a technical, scientific, software,\\n  server, statistics, product, or workflow result to the user.\\n- The assistant has read English logs, code, documentation, tool output, or\\n  repository metadata, but the user-facing answer should stay in the current\\n  target language.\\n- A status update or completion report should say what happened, what it means,\\n  what remains risky, and what happens next without turning into a log dump.\\n- The output is an ordinary answer, not a README, report, slide deck, formal\\n  Markdown/PDF artifact, UI string, or source-faithful long rewrite.\\n\\nRoute formal Chinese documents, README files, reports, Markdown/PDF final\\npasses, teaching material, and Chinese document polishing to `chinese-prose`.\\nRoute product interface labels, CTAs, states, help text, onboarding, settings,\\ntrust/privacy disclosures, and locale-specific UI microcopy to\\n`product-ui-copy`. Route existing Chinese or Chinese-dominant scientific or\\ntechnical material that needs structural source-faithful rewriting to\\n`scientific-rewrite`. Route English scientific prose artifacts to\\n`scientific-prose`.\\n\\nDo not use this skill for pure JSON, YAML, code, commands, raw logs, quoted\\ntext, exact output requested verbatim, schema values, or protocol messages. For\\nmixed tasks, keep the machine content exact and improve only the explanatory\\nsentences around it.\\n\\n## Core Contract\\n\\nLead with the human meaning. Then give the evidence, exact strings, commands,\\npaths, or status values that the user needs for precision.\\n\\nPreserve:\\n\\n- facts, numbers, dates, versions, units, formulas, citations, and comparison\\n  conditions;\\n- subject, agency, negation, uncertainty, time state, completion state, and\\n  permission/authorization boundaries;\\n- code, commands, paths, filenames, URLs, environment variables, config keys,\\n  field names, protocol values, status values, error names, model names,\\n  product names, plugin names, branch names, commit ids, issue ids, and other\\n  strings that must match exactly;\\n- user language instructions and the current message's explicit language\\n  override.\\n\\nNever make an incomplete action sound complete, an optional action sound\\nrequired, an unsupported state sound supported, or a permission boundary sound\\napproved. If the real result is partial, blocked, unverified, or inconclusive,\\nsay that directly.\\n\\n## Language And Structure\\n\\nUse the user's current target language by default. A temporary English request,\\nquoted English source, command output, or English repository name does not by\\nitself change the long-term reply language.\\n\\nFor Chinese replies:\\n\\n- use natural Chinese for ordinary explanation, transitions, risk statements,\\n  and next steps;\\n- keep exact technical strings when translating them would reduce precision;\\n- translate ordinary process words when they are not protected identifiers,\\n  such as `handoff`, `wrapper`, `source`, `review`, `candidate`, `pipeline`,\\n  `thread`, and `commit`, unless the exact English token is needed.\\n\\nFor English replies, avoid generic filler, over-defensive framing, and\\ntemplate-like paragraph rhythm. Keep the answer direct and proportional to the\\nevidence.\\n\\nPrefer concise paragraphs. Use bullets only when the information is genuinely\\nparallel, scannable, or action-oriented. Do not create a report-shaped answer\\nfor a simple question.\\n\\nBuild paragraphs around complete semantic or reasoning units, not individual\\nsentences. When adjacent sentences define one object, explain one causal chain,\\ncomplete one local comparison or derivation, or attach a conclusion to its\\ndirect caveat, keep them together unless separating them gives the reader real\\nnavigation or comparison value. Use headings, lists, and display math when they\\nclarify genuine structure; do not isolate a short definition, one-step formula,\\nor its immediate interpretation merely to make the answer look structured.\\n\\nBefore finalizing a complex explanation, read the whole answer for\\nfragmentation. Reorganize repeated single-sentence paragraphs, headings that\\ncontain only a passing point, and formulas detached from their local meaning.\\nMake that judgment from the argument's structure; do not enforce fixed counts\\nfor words, lines, paragraphs, headings, formulas, or examples. Long answers may\\nremain detailed when the comparison, derivation, evidence boundary, or\\nuncertainty genuinely needs that depth.\\n\\nWhen an unfamiliar scientific method, term, or mathematical object first\\nappears and the context has not already established it, build a reader model\\nfrom known facts before asking the formal name, notation, or formula to carry\\nthe explanation. State what kind of object it is, its level or unit, whether it\\nis observed, given, estimated, or sought when that status is known, why it is\\nneeded here, and what later calculation, judgment, or step uses it. For\\nmulti-index notation, explain each new index role or point back to an earlier\\ndefinition that already does so.\\n\\nThis reader model must not add domain claims. If the source or domain owner\\ndoes not define an object's type, level, index roles, status, or use, say that\\nthe definition is missing or ask for it. Do not guess a scientific meaning and\\nthen present the guess as settled explanation. Preserve the exact formal term,\\nsymbol, formula, and any supported uncertainty after the natural-language\\norientation.\\n\\nWhen the user's core question has been answered, stop unless additional\\nmaterial adds new evidence, changes the decision, supplies an explicitly\\nrequested implementation detail, or makes a necessary comparison. Do not\\ncontinue into an architecture, experiment, rollout, or implementation plan\\nmerely because it might be useful. This is a semantic stopping condition, not\\na fixed limit on words, headings, paragraphs, or examples.\\n\\nFor multi-source synthesis, state what the sources jointly establish, where\\nthey materially differ, and what remains unsupported before adding advice.\\nPresent any assistant recommendation afterward as a recommendation, not as\\nsource consensus. Match its depth to the user's requested decision; do not\\nappend an implementation or experiment design when the user asked only for a\\nsynthesis or a decision.\\n\\n## Workflow\\n\\n1. Identify the domain owner and the known result. Do not invent missing facts.\\n2. Mark protected strings and protected meaning before rewriting the response.\\n3. Decide the reply type: conclusion, diagnostic, advice, progress update,\\n   completion report, blocker, or handoff.\\n4. Put the human-readable conclusion first.\\n5. Move logs, paths, branch names, commands, hashes, issue ids, and state\\n   values into evidence or next-action sentences instead of making them the\\n   opening.\\n6. Remove unnecessary English and internal process labels from reader-facing\\n   prose while preserving exact identifiers.\\n7. For complex explanations, check the whole answer for fragmented reasoning\\n   and for unfamiliar objects whose first use lacks a supported reader model.\\n8. Check that the final answer still matches the actual result and the user's\\n   latest instruction.\\n\\n## Red Flags\\n\\n- The first sentence is a path, branch, status token, log line, or tool output\\n  instead of the answer.\\n- The reply says \\\"done\\\" when tests, install, review, upload, publish, or\\n  permission are still pending.\\n- Ordinary English words are left in a Chinese answer merely because the source\\n  material was English.\\n- A pure machine-output request is paraphrased or decorated.\\n- One continuous explanation becomes a chain of single-sentence paragraphs,\\n  low-value headings, or short formulas detached from their interpretation.\\n- An unfamiliar scientific object or multi-index symbol appears before the\\n  reader knows its supported level, role, or downstream use.\\n- A document/report/README task stays here instead of going to `chinese-prose`\\n  or `scientific-rewrite`.\\n- Product interface copy stays here instead of going to `product-ui-copy`.\\n- A scientific claim is made stronger, broader, or more certain for readability.\\n\\n## Output\\n\\nUsually return the improved answer directly. If the problem is a routing or\\nfidelity risk, briefly say which route or owner should handle it and why.\\n\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_3\",\"type\":\"agent_message\",\"text\":\"持久运行的主子进程已以退出码 0 退出，但不能据此认定 Goal 已完成。public-canary 项目任务 bridge-replacement-evaluation 的状态为 EXITED_0；下一步评估原始 Goal 的正向完成证据。\"}}\n{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":58884,\"cached_input_tokens\":40320,\"cache_write_input_tokens\":0,\"output_tokens\":466,\"reasoning_output_tokens\":293}}\n",
+        "stderr": ""
+      },
+      "prompt": "Use $writing-fidelity and $response-clarity to render one concise natural Simplified Chinese notification. Lead with what happened and what it means to the reader, not machine labels. Use only the reader-facing facts below; do not add internal routing or audit fields. Do not invent an ETA or require UNKNOWN when no ETA is provided. Preserve the exact status, project, task identity, every number/date/time/version and UNKNOWN present in the reader-facing facts, and the original conclusion strength. Add no facts or numbers. Runtime/operational facts must never become Goal PASS, READY, RELEASE_READY, or semantic completion. Return only the notification text.\nImmutable reader-facing facts: {\"completed\":null,\"fraction\":null,\"next_action\":\"Evaluate the original Goal's positive completion evidence.\",\"project\":\"public-canary\",\"run_id\":\"bridge-replacement-evaluation\",\"stage\":\"\",\"status\":\"EXITED_0\",\"summary\":\"Persistent primary child exited with code 0; Goal completion is not inferred.\",\"task_key\":\"bridge-replacement-evaluation\",\"total\":null}\n",
+      "email": {
+        "mime": "From: 1155246312@link.cuhk.edu.hk\nTo: 1155246312@link.cuhk.edu.hk\nSubject: [AI Bridge] =?utf-8?q?EXITED=5F0=EF=BC=9Abridge-replacement-evaluat?=\n =?utf-8?q?ion?=\nMIME-Version: 1.0\nContent-Type: multipart/alternative;\n boundary=\"===============0584503485857855090==\"\n\n--===============0584503485857855090==\nContent-Type: text/plain; charset=\"utf-8\"\nContent-Transfer-Encoding: base64\n\n5oyB5LmF6L+Q6KGM55qE5Li75a2Q6L+b56iL5bey5Lul6YCA5Ye656CBIDAg6YCA5Ye677yM5L2G\n5LiN6IO95o2u5q2k6K6k5a6aIEdvYWwg5bey5a6M5oiQ44CCcHVibGljLWNhbmFyeSDpobnnm67k\nu7vliqEgYnJpZGdlLXJlcGxhY2VtZW50LWV2YWx1YXRpb24g55qE54q25oCB5Li6IEVYSVRFRF8w\n77yb5LiL5LiA5q2l6K+E5Lyw5Y6f5aeLIEdvYWwg55qE5q2j5ZCR5a6M5oiQ6K+B5o2u44CCCg==\n\n--===============0584503485857855090==\nContent-Type: text/html; charset=\"utf-8\"\nContent-Transfer-Encoding: base64\nMIME-Version: 1.0\n\nPGh0bWw+PGJvZHk+PHA+5oyB5LmF6L+Q6KGM55qE5Li75a2Q6L+b56iL5bey5Lul6YCA5Ye656CB\nIDAg6YCA5Ye677yM5L2G5LiN6IO95o2u5q2k6K6k5a6aIEdvYWwg5bey5a6M5oiQ44CCcHVibGlj\nLWNhbmFyeSDpobnnm67ku7vliqEgYnJpZGdlLXJlcGxhY2VtZW50LWV2YWx1YXRpb24g55qE54q2\n5oCB5Li6IEVYSVRFRF8w77yb5LiL5LiA5q2l6K+E5Lyw5Y6f5aeLIEdvYWwg55qE5q2j5ZCR5a6M\n5oiQ6K+B5o2u44CCPC9wPjwvYm9keT48L2h0bWw+Cg==\n\n--===============0584503485857855090==--\n",
+        "body": "持久运行的主子进程已以退出码 0 退出，但不能据此认定 Goal 已完成。public-canary 项目任务 bridge-replacement-evaluation 的状态为 EXITED_0；下一步评估原始 Goal 的正向完成证据。\n",
+        "subject": "[AI Bridge] EXITED_0：bridge-replacement-evaluation",
+        "sender": "1155246312@link.cuhk.edu.hk",
+        "recipient": "1155246312@link.cuhk.edu.hk"
+      },
+      "claim": {
+        "claimed_at": "2026-10-20T02:32:56+00:00",
+        "event_key": "286b327017a2d1a4aba088050fd6cbe8bdfbf069ba132a4871cfc3cf95a15919",
+        "repo_identity": "/tmp/bridge-final-replacement-9ggq9knx/public-canary",
+        "request": {
+          "completed": null,
+          "consumer": "persistent",
+          "decision_authority": "Runtime",
+          "eta": "UNKNOWN",
+          "eta_high": "UNKNOWN",
+          "eta_low": "UNKNOWN",
+          "fact_class": "runtime_terminal",
+          "fraction": null,
+          "next_action": "Evaluate the original Goal's positive completion evidence.",
+          "project": "public-canary",
+          "recipient_override": "",
+          "run_id": "bridge-replacement-evaluation",
+          "runtime_id": "dce6d00d4e0e781da326781db3327f363b610cf5b74dd776ecb888f9730eb347",
+          "schema": "ai-bridge.notification_request.v1",
+          "source_event_id": "dce6d00d4e0e781da326781db3327f363b610cf5b74dd776ecb888f9730eb347|runtime_terminal|2026-10-20T02:32:56+00:00|EXITED_0",
+          "stage": "",
+          "status": "EXITED_0",
+          "summary": "Persistent primary child exited with code 0; Goal completion is not inferred.",
+          "task_key": "bridge-replacement-evaluation",
+          "total": null
+        },
+        "resolved_recipient": "1155246312@link.cuhk.edu.hk",
+        "schema": "ai-bridge.notifier.claim.v1"
+      },
+      "attempts": [
+        {
+          "attempt_id": "f1905739a6b04f1f9c8bedadb7b9470a",
+          "config_digest": "46cc00d02f541a14f84833c1f0ccd91a3e8ad8ccb2786e48150a1e33c1f7e12d",
+          "event_key": "286b327017a2d1a4aba088050fd6cbe8bdfbf069ba132a4871cfc3cf95a15919",
+          "expression_mode": "NORMAL_WRITING_STYLE",
+          "model_invocations": 1,
+          "parent_attempt_id": null,
+          "schema": "ai-bridge.notifier.attempt.v1",
+          "smtp_accepted_at": "2026-10-20T02:33:15+00:00",
+          "stage": "SMTP_ACCEPTED",
+          "started_at": "2026-10-20T02:32:56+00:00",
+          "transport_started_at": "2026-10-20T02:33:13+00:00"
+        }
+      ],
+      "receipt": {
+        "attempt_id": "f1905739a6b04f1f9c8bedadb7b9470a",
+        "event_key": "286b327017a2d1a4aba088050fd6cbe8bdfbf069ba132a4871cfc3cf95a15919",
+        "schema": "ai-bridge.notifier.receipt.v1",
+        "smtp_accepted_at": "2026-10-20T02:33:15+00:00",
+        "status": "SMTP_ACCEPTED"
+      },
+      "offline_parser_and_fidelity": "PASS",
+      "exactly_one_turn": true,
+      "model_retry_count": 0,
+      "SMTP_automatic_retry_count": 0
+    }
+  ],
+  "actual_counts": {
+    "replacement_canary": 1,
+    "primary_children": 1,
+    "supervisors": 1,
+    "logical_notifications": 2,
+    "model_calls": 2,
+    "Gmail_SMTP_attempts": 2,
+    "model_retries": 0,
+    "SMTP_retries": 0,
+    "send_test": 0
+  },
+  "no_third_notification": true,
+  "production_source_unchanged": true,
+  "user_gitignore_unchanged": true,
+  "notifier_ready": {
+    "status": "VALID",
+    "config_path": "/users/a/e/aereinh/.ai-bridge/private/notifier.env",
+    "mode": 384,
+    "missing_or_invalid": [],
+    "config_digest": "46cc00d02f541a14f84833c1f0ccd91a3e8ad8ccb2786e48150a1e33c1f7e12d",
+    "transport_ready": true,
+    "transport_test_accepted_at": "2026-10-19T15:02:16+00:00"
+  },
+  "old_invalid_binding_preserved": {
+    "backend": "tmux",
+    "binding_path": "/users/a/e/aereinh/.ai-bridge/persistent-run/runs/76639a289969316fd7b419c88249b351f26833fe288efd0277c10ba281355ae9.json",
+    "branch": "master",
+    "expected_commit": "ef6f92ccca8d76d96a7d51b3646d79b771516f15",
+    "expected_progress_update_seconds": "UNKNOWN",
+    "goal_repo_relative_path": "GOAL.md",
+    "goal_sha256": "3804fa2e684e65042be3605fff4cfa1d9f92198fd0bd5f14ba9896860cbe1a65",
+    "host_boot_id": "66c85413-0565-4e97-a2e7-7d3a9fa6370c",
+    "launch_argv": [
+      "/usr/bin/python3",
+      "child.py"
+    ],
+    "launch_id": "23ddf3d1a9736ae4c9602ac0f114eae1efe2e0d4ed106529642eca4178ddd78b",
+    "lifecycle_state": "START_REQUESTED",
+    "notification_cadence_minutes": 60,
+    "notify": "ON",
+    "progress_mode": "none",
+    "progress_owner": "none",
+    "progress_source_locator": "NONE",
+    "progress_source_path": "",
+    "recipient_override": "",
+    "repo_origin": "NO_ORIGIN",
+    "repo_realpath": "/tmp/bridge-final-evaluation-Hd0qQNc0/public-canary",
+    "run_key": "bridge-final-evaluation",
+    "schema": "ai-bridge.persistent-run.binding.v2",
+    "session_name": "ai-bridge-pr-23ddf3d1a9736ae4c9602ac0f114eae1efe2e0d4ed106529642eca4178ddd78b",
+    "start_requested_at": "2026-10-20T02:08:51+00:00",
+    "working_directory": "/tmp/bridge-final-evaluation-Hd0qQNc0/public-canary",
+    "working_directory_repo_relative_path": "."
+  },
+  "observer_passive_AST_check": "PASS",
+  "observer_smoke": {
+    "result": "PASS",
+    "actual_Popen_called": true,
+    "child_pid": 9,
+    "exit_code": 0,
+    "cwd_type": "pathlib.Path",
+    "stdout": "PATH_CWD_SMOKE_OK\n",
+    "model_calls": 0,
+    "SMTP_attempts": 0,
+    "persistent_canaries": 0,
+    "scope": "sandbox local smoke, not Persistent canary"
+  },
+  "fixture_files": {
+    "observer/sitecustomize.py": "\"\"\"Passive final-evaluation tracing plus fail-closed authorized effect ceilings.\n\nDoes not import/call any Bridge delivery, renderer or SMTP entry point.\nNever records configuration dictionaries, environments or SMTP login arguments.\n\"\"\"\nimport dataclasses\nimport json\nimport os\nfrom pathlib import Path\nimport sys\nimport time\n\nROOT = Path('/tmp/bridge-final-replacement-9ggq9knx')\nTRACE = ROOT / 'trace'\nTRACE.mkdir(exist_ok=True)\nSEQ = 0\n\n\ndef audit_json_default(value):\n    if isinstance(value, os.PathLike):\n        return os.fspath(value)\n    raise TypeError('Unsupported observer value: ' + type(value).__name__)\n\n\ndef record(kind, data):\n    global SEQ\n    SEQ += 1\n    payload = dict(kind=kind, pid=os.getpid(), ppid=os.getppid(),\n                   wall_time=time.time(), monotonic=time.monotonic(), data=data)\n    path = TRACE / ('%s-%s-%s.json' % (os.getpid(), SEQ, kind))\n    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, default=audit_json_default) + '\\n', encoding='utf-8')\n\n\ndef reserve(kind):\n    for index in range(2):\n        path = TRACE / ('budget-%s-%s.json' % (kind, index))\n        try:\n            descriptor = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)\n        except FileExistsError:\n            continue\n        with os.fdopen(descriptor, 'w') as stream:\n            json.dump(dict(pid=os.getpid(), ppid=os.getppid(), time=time.time()), stream)\n        return\n    record('BUDGET_EXCEEDED', dict(effect=kind))\n    raise RuntimeError('FINAL_EVALUATION_EFFECT_BUDGET_EXCEEDED:' + kind)\n\n\ndef audit(event, args):\n    if event == 'subprocess.Popen':\n        argv = args[1]\n        if isinstance(argv, (tuple, list)):\n            argv = [str(x) for x in argv]\n            if len(argv) > 1 and Path(argv[0]).name == 'codex' and argv[1] == 'exec':\n                if argv != ['/users/a/e/aereinh/bin/codex', 'exec', '--ephemeral', '--json',\n                            '--sandbox', 'read-only', '--skip-git-repo-check', '-C',\n                            '/users/a/e/aereinh/.ai-bridge/clear-writing', '-']:\n                    raise RuntimeError('UNAPPROVED_MODEL_ARGV')\n                reserve('model')\n                record('model_spawn', dict(argv=argv, cwd=str(args[2]) if args[2] is not None else None))\n            elif '_supervise' in argv or '_deliver-helper' in argv or 'child.py' in argv:\n                record('process_spawn', dict(argv=argv, cwd=str(args[2]) if args[2] is not None else None))\n    elif event == 'smtplib.connect':\n        host, port = args[1], args[2]\n        if host != 'smtp.gmail.com' or port != 587:\n            raise RuntimeError('UNAPPROVED_SMTP_DESTINATION')\n        reserve('smtp')\n        record('smtp_connect', dict(host=host, port=port))\n\n\ndef result_data(value):\n    return dataclasses.asdict(value) if dataclasses.is_dataclass(value) else value\n\n\ndef profile(frame, event, value):\n    if event not in ('call', 'return'):\n        return\n    module = frame.f_globals.get('__name__', '')\n    name = frame.f_code.co_name\n    local = frame.f_locals\n    notifier = frame.f_code.co_filename.endswith('/ai_bridge_kit/notifier.py')\n    if module in ('ai_bridge_kit.persistent_run', '__main__') and name == '_persistent_notification':\n        binding = local['binding']\n        if event == 'call':\n            if local['fact_class'] not in ('runtime_start', 'runtime_terminal'):\n                raise RuntimeError('UNAPPROVED_THIRD_LOGICAL_EVENT')\n            if binding['repo_realpath'] != str(ROOT / 'public-canary'):\n                raise RuntimeError('UNAPPROVED_CANARY_REPO')\n            record('supervisor_notification_call', dict(fact_class=local['fact_class'],\n                   child_pid=binding.get('child_pid'), launch_id=binding['launch_id'],\n                   run_key=binding['run_key'], status=local['status']))\n        else:\n            record('supervisor_notification_return', dict(fact_class=local['fact_class'],\n                   request=local.get('request'), delivery=result_data(local.get('delivery')),\n                   last_notification=binding.get('last_notification')))\n    elif notifier and name == 'deliver_notification':\n        if event == 'call':\n            record('delivery_call', dict(request=local['request'], caller=frame.f_back.f_code.co_name,\n                   caller_module=frame.f_back.f_globals.get('__name__')))\n        else:\n            record('delivery_return', result_data(value))\n    elif notifier and name == 'deliver_event_inline' and event == 'return':\n        record('helper_return', dict(request=local.get('request'), rendered=local.get('rendered'),\n               attempt=local.get('attempt'), result=result_data(value), directory=str(local['directory'])))\n    elif module == 'ai_bridge_kit.clear_writing' and name == 'render_once' and event == 'return':\n        record('render_return', dict(brief=local['brief'], result=value))\n    elif module == 'ai_bridge_kit.clear_writing' and name == '_prompt' and event == 'return':\n        record('prompt', dict(text=value))\n    elif module == 'subprocess' and name == 'run':\n        popenargs = local.get('popenargs', ())\n        argv = popenargs[0] if popenargs else []\n        if isinstance(argv, (list, tuple)) and len(argv) > 1 and Path(str(argv[0])).name == 'codex' and argv[1] == 'exec':\n            if event == 'call':\n                record('model_run_call', dict(argv=argv, prompt=local.get('kwargs', {}).get('input')))\n            elif value is not None:\n                record('model_run_return', dict(argv=argv, returncode=value.returncode,\n                       stdout=value.stdout, stderr=value.stderr))\n    elif notifier and name == 'build_auto_email' and event == 'return' and value is not None:\n        record('email_built', dict(mime=value.as_string(), body=value.get_body(preferencelist=('plain',)).get_content(),\n               subject=str(value['Subject']), sender=str(value['From']), recipient=str(value['To'])))\n    elif module == 'smtplib' and name == 'send_message':\n        if event == 'call':\n            record('smtp_send_message_call', dict(subject=str(local['msg']['Subject'])))\n        else:\n            record('smtp_send_message_return', dict(result=value))\n\n\nrecord('python_start', dict(argv=sys.argv, executable=sys.executable))\nsys.addaudithook(audit)\nsys.setprofile(profile)\n",
+    "probe.py": "import json\nfrom pathlib import Path\nimport subprocess\nimport sys\nimport time\nfrom ai_bridge_kit.clear_writing import (\n    _plugin_items, _plugin_root, _resolve_skills, resolve_installed_writing_style,\n)\n\nresult = dict(observed_at=time.time(), fresh_process=True, pid=__import__('os').getpid())\ntry:\n    raw = subprocess.run(['/users/a/e/aereinh/bin/codex', 'plugin', 'list', '--json'],\n                         capture_output=True, text=True, check=True)\n    items = _plugin_items(json.loads(raw.stdout))\n    result['inventory'] = items\n    assert len(items) == 1, 'IDENTITY_NOT_UNIQUE'\n    item = items[0]\n    root = _plugin_root(item)\n    manifest = json.loads((root / '.codex-plugin/plugin.json').read_text())\n    result['manifest_version'] = manifest['version']\n    result['skills'] = _resolve_skills(root)\n    assert item['version'] == manifest['version'] == '0.5', 'VERSION_MISMATCH'\n    assert item['installed'] is True and item['enabled'] is True, 'NOT_INSTALLED_ENABLED'\n    assert set(result['skills']) == {'writing-fidelity', 'response-clarity'}, 'SKILL_MISMATCH'\n    result['production_resolver'] = resolve_installed_writing_style()\n    assert result['production_resolver']['version'] == '0.5'\n    result['result'] = 'PASS'\nexcept Exception as exc:\n    result['result'] = 'FAIL'\n    result['error'] = type(exc).__name__ + ': ' + str(exc)\nprint(json.dumps(result, ensure_ascii=False, indent=2))\nraise SystemExit(0 if result['result'] == 'PASS' else 1)\n",
+    "start_once.py": "import hashlib\nimport json\nimport os\nfrom pathlib import Path\nimport subprocess\nimport sys\nfrom ai_bridge_kit.notifier import require_notifier_ready\n\nroot = Path('/tmp/bridge-final-replacement-9ggq9knx')\nrepo = Path('/overflow/htzhu/mingcheng_new/GPT_Codex_AI_Bridge_Kit')\ncandidate = '391ff889ad156540727da168fb608c5f37dbbdfc'\nsubprocess.run(['git', 'diff', '--exit-code', candidate, '--', '.',\n                ':(exclude)results', ':(exclude).gitignore'], cwd=repo, check=True)\nassert not any(k.startswith('AI_BRIDGE_NOTIFY_') for k in os.environ)\nassert os.environ.get('CODEX_HOME') == '/users/a/e/aereinh/.codex'\nassert not os.environ.get('AI_BRIDGE_STATE_HOME')\nassert json.loads((root/'smoke-result.json').read_text())['result'] == 'PASS'\nfor name in ['stable-probe-one.json', 'stable-probe-two.json']:\n    assert json.loads((root/name).read_text())['result'] == 'PASS'\nready = require_notifier_ready()\nassert ready['config_digest'] == '46cc00d02f541a14f84833c1f0ccd91a3e8ad8ccb2786e48150a1e33c1f7e12d'\npreflight = subprocess.run([sys.executable, str(root/'probe.py')], text=True, capture_output=True)\n(root/'immediate-prelaunch-preflight.json').write_text(preflight.stdout)\nprint(preflight.stdout, flush=True)\nif preflight.returncode:\n    raise SystemExit(preflight.returncode)\nenv = dict(os.environ)\nenv.update(PYTHONPATH=str(root/'observer')+':'+str(repo),\n           LD_LIBRARY_PATH='/nas/longleaf/rhel9/apps/python/3.12.4/lib',\n           TMUX_TMPDIR=str(root/'tmux'))\nenv.pop('TMUX', None)\ngoal_hash = hashlib.sha256((root/'public-canary/GOAL.md').read_bytes()).hexdigest()\ncommand = ['/tmp/bridge-011-1472791-final-install/bin/ai-bridge','persistent-run','start',\n           '--target',str(root/'public-canary'),'--goal','GOAL.md','--expected-goal-sha256',goal_hash]\ndescriptor = os.open(str(root/'ONLY_REPLACEMENT_START'),os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)\nos.close(descriptor)\nresult = subprocess.run(command,env=env,cwd=repo,text=True,capture_output=True,timeout=45)\ndata = dict(candidate_sha=candidate,argv=command,returncode=result.returncode,\n            stdout=result.stdout,stderr=result.stderr,task_scoped_tmux_tmpdir=str(root/'tmux'),\n            passive_observer=str(root/'observer/sitecustomize.py'),notifier_readiness=ready)\n(root/'start-result.json').write_text(json.dumps(data,indent=2)+'\\n')\nprint(json.dumps(data,indent=2),flush=True)\nraise SystemExit(result.returncode)\n",
+    "smoke.py": "\"\"\"Zero external effects: observe a real Path-cwd Popen plus safe path values.\"\"\"\nimport json\nfrom pathlib import Path\nimport subprocess\nimport sys\n\nroot = Path('/tmp/bridge-final-replacement-9ggq9knx')\nchild = subprocess.Popen(['/usr/bin/python3', '-c', 'print(\"PATH_CWD_SMOKE_OK\")', 'child.py'],\n                         cwd=root / 'public-canary', stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)\nstdout, stderr = child.communicate(timeout=10)\nassert child.returncode == 0 and stdout.strip() == 'PATH_CWD_SMOKE_OK' and not stderr\nimport sitecustomize\nsitecustomize.record('safe_path_serialization_smoke', dict(path=root, nested=[root/'observer']))\nassert not list((root/'trace').glob('budget-*.json'))\nprint(json.dumps(dict(result='PASS',actual_Popen_called=True,child_pid=child.pid,exit_code=child.returncode,\n    cwd_type='pathlib.Path',stdout=stdout,model_calls=0,SMTP_attempts=0,persistent_canaries=0)))\n",
+    "public-canary/GOAL.md": "# Public-safe replacement final Persistent evaluation\n\nPersistent execution: REQUIRED\nBackend: tmux\nGoal source: GOAL.md\nRun/session key: bridge-replacement-evaluation\nWorking directory: .\nLaunch argv: [\"/usr/bin/python3\", \"child.py\"]\nProgress mode: none\nProgress owner: none\nProgress source locator: NONE\nExpected progress update seconds: UNKNOWN\nNotify: ON\nRecipient override: NONE\nNotification cadence minutes: 60\n\nThe synthetic primary child only waits locally and naturally exits zero.\nRuntime exit is not semantic Goal completion or a release decision.\nNo private input, recipient override, progress producer or retry.\n",
+    "public-canary/child.py": "import json\nimport os\nfrom pathlib import Path\nimport time\n\nstarted = time.monotonic()\nPath('child-start.json').write_text(json.dumps(dict(pid=os.getpid(), ppid=os.getppid(),\n    monotonic=started, wall_time=time.time())), encoding='utf-8')\ntime.sleep(5)\nPath('child-exit.json').write_text(json.dumps(dict(pid=os.getpid(), ppid=os.getppid(),\n    elapsed_seconds=time.monotonic() - started, wall_time=time.time(), intended_exit_code=0)), encoding='utf-8')\n"
+  }
+}

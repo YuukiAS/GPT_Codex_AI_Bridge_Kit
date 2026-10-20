@@ -1,0 +1,42 @@
+{
+  "observed_at": 1792463544.600735,
+  "fresh_process": true,
+  "pid": 509986,
+  "inventory": [
+    {
+      "pluginId": "writing-style@yuukias-ai-skills",
+      "name": "writing-style",
+      "marketplaceName": "yuukias-ai-skills",
+      "version": "0.5",
+      "installed": true,
+      "enabled": true,
+      "source": {
+        "source": "local",
+        "path": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style"
+      },
+      "marketplaceSource": {
+        "sourceType": "git",
+        "source": "https://github.com/YuukiAS/AI_Skills_Collection.git"
+      },
+      "installPolicy": "AVAILABLE",
+      "authPolicy": "ON_INSTALL"
+    }
+  ],
+  "manifest_version": "0.5",
+  "skills": {
+    "writing-fidelity": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style/skills/fidelity/SKILL.md",
+    "response-clarity": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style/skills/response-clarity/SKILL.md"
+  },
+  "production_resolver": {
+    "plugin_id": "writing-style@yuukias-ai-skills",
+    "version": "0.5",
+    "root": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style",
+    "manifest": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style/.codex-plugin/plugin.json",
+    "skills": {
+      "writing-fidelity": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style/skills/fidelity/SKILL.md",
+      "response-clarity": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style/skills/response-clarity/SKILL.md"
+    },
+    "codex_bin": "/users/a/e/aereinh/bin/codex"
+  },
+  "result": "PASS"
+}

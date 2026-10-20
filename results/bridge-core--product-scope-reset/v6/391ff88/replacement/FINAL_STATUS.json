@@ -1,0 +1,70 @@
+{
+  "candidate_sha": "391ff889ad156540727da168fb608c5f37dbbdfc",
+  "status": {
+    "binding": {
+      "backend": "tmux",
+      "binding_path": "/users/a/e/aereinh/.ai-bridge/persistent-run/runs/4cd2c2f02aba51bf68c2e5d9ffe1d0261c54d264e862cf1d7f8a817ea46dce18.json",
+      "branch": "master",
+      "child_exit_observed_at": "2026-10-20T02:32:56+00:00",
+      "child_pid": 510208,
+      "child_process_identity": {
+        "argv_digest": "886900e104c2c74c45fc54eb3f3fa990716a7fa479d9bfd0dcc5fb236a61a3fd",
+        "boot_id": "66c85413-0565-4e97-a2e7-7d3a9fa6370c",
+        "pid": 510208,
+        "start_ticks": "528143632"
+      },
+      "child_started_at": "2026-10-20T02:32:26+00:00",
+      "exit_code": 0,
+      "expected_commit": "a9e795a01eae5c92c1c5cacbe1a0eea33d301dc9",
+      "expected_progress_update_seconds": "UNKNOWN",
+      "goal_repo_relative_path": "GOAL.md",
+      "goal_sha256": "318cf51e318e16d3cfebf562a0c2abdb7577b1a7a8d04d1a7c7948b062266eb7",
+      "host_boot_id": "66c85413-0565-4e97-a2e7-7d3a9fa6370c",
+      "last_notification": {
+        "event_key": "286b327017a2d1a4aba088050fd6cbe8bdfbf069ba132a4871cfc3cf95a15919",
+        "fact_class": "runtime_terminal",
+        "recorded_at": "2026-10-20T02:33:15+00:00",
+        "status": "SMTP_ACCEPTED"
+      },
+      "launch_argv": [
+        "/usr/bin/python3",
+        "child.py"
+      ],
+      "launch_id": "dce6d00d4e0e781da326781db3327f363b610cf5b74dd776ecb888f9730eb347",
+      "lifecycle_state": "TERMINAL",
+      "notification_cadence_minutes": 60,
+      "notify": "ON",
+      "progress_mode": "none",
+      "progress_observation": {
+        "observed_at": "2026-10-20T02:32:26+00:00",
+        "reason": "progress source not configured",
+        "state": "UNAVAILABLE"
+      },
+      "progress_owner": "none",
+      "progress_source_locator": "NONE",
+      "progress_source_path": "",
+      "recipient_override": "",
+      "repo_origin": "NO_ORIGIN",
+      "repo_realpath": "/tmp/bridge-final-replacement-9ggq9knx/public-canary",
+      "run_key": "bridge-replacement-evaluation",
+      "schema": "ai-bridge.persistent-run.binding.v2",
+      "session_name": "ai-bridge-pr-dce6d00d4e0e781da326781db3327f363b610cf5b74dd776ecb888f9730eb347",
+      "start_requested_at": "2026-10-20T02:32:26+00:00",
+      "working_directory": "/tmp/bridge-final-replacement-9ggq9knx/public-canary",
+      "working_directory_repo_relative_path": "."
+    },
+    "exit_code": 0,
+    "progress": {
+      "reason": "progress source not configured",
+      "state": "UNKNOWN"
+    },
+    "status": "TERMINAL"
+  },
+  "session_absent_read": {
+    "chunk_id": "913338",
+    "wall_time_seconds": 0.0000119,
+    "exit_code": 1,
+    "original_token_count": 22,
+    "output": "no server running on /tmp/bridge-final-replacement-9ggq9knx/tmux/tmux-397557/default\n"
+  }
+}
