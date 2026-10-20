@@ -1,9 +1,9 @@
 # 当前候选：v6 窄修，等待同一 Critic
 
-FINAL_CANDIDATE_SHA=`0aef27850a91e415305458aef1d1d60506841d9b`。
+FINAL_CANDIDATE_SHA=`391ff889ad156540727da168fb608c5f37dbbdfc`。
 v6 route/projection 窄修、50 项定向回归、两版本各 490 项全量、同 SHA hosted CI 和
 diff boundary/source-document identity 已完成。当前交接见
-`v6/0aef278/IMPLEMENTATION_HANDOFF.md`、`ACCEPTANCE_STATUS.json` 与 `FINAL_EVALUATION_PLAN.json`。
+`v6/391ff88/RESULT_STATUS.json`、`SOURCE_DOCUMENT_IDENTITY.json` 与 `WRITING_STYLE_DIAGNOSIS.json`。
 机器 installed plugin inventory/manifest 版本不一致单列为环境诊断，未放宽生产检查。
 
 最终 Persistent 正常入口通知链尚未运行；本轮模型/Gmail/send-test/final canary 均为 0。

@@ -1,0 +1,164 @@
+{
+  "candidate_sha": "391ff889ad156540727da168fb608c5f37dbbdfc",
+  "result": "PASS",
+  "run": {
+    "conclusion": "success",
+    "databaseId": 39353877948,
+    "headSha": "391ff889ad156540727da168fb608c5f37dbbdfc",
+    "jobs": [
+      {
+        "completedAt": "2026-10-20T01:31:55Z",
+        "conclusion": "success",
+        "databaseId": 118404110699,
+        "name": "Python 3.x",
+        "startedAt": "2026-10-20T01:31:15Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-10-20T01:31:16Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-10-20T01:31:15Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-20T01:31:17Z",
+            "conclusion": "success",
+            "name": "Check out repository",
+            "number": 2,
+            "startedAt": "2026-10-20T01:31:16Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-20T01:31:17Z",
+            "conclusion": "success",
+            "name": "Set up Python",
+            "number": 3,
+            "startedAt": "2026-10-20T01:31:17Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-20T01:31:27Z",
+            "conclusion": "success",
+            "name": "Install age transport dependency",
+            "number": 4,
+            "startedAt": "2026-10-20T01:31:17Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-20T01:31:53Z",
+            "conclusion": "success",
+            "name": "Run unittest",
+            "number": 5,
+            "startedAt": "2026-10-20T01:31:27Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-20T01:31:53Z",
+            "conclusion": "success",
+            "name": "Post Set up Python",
+            "number": 9,
+            "startedAt": "2026-10-20T01:31:53Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-20T01:31:53Z",
+            "conclusion": "success",
+            "name": "Post Check out repository",
+            "number": 10,
+            "startedAt": "2026-10-20T01:31:53Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-20T01:31:53Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 11,
+            "startedAt": "2026-10-20T01:31:53Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/YuukiAS/GPT_Codex_AI_Bridge_Kit/actions/runs/39353877948/job/118404110699"
+      },
+      {
+        "completedAt": "2026-10-20T01:32:10Z",
+        "conclusion": "success",
+        "databaseId": 118404111145,
+        "name": "Python 3.9",
+        "startedAt": "2026-10-20T01:31:15Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-10-20T01:31:16Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-10-20T01:31:16Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-20T01:31:17Z",
+            "conclusion": "success",
+            "name": "Check out repository",
+            "number": 2,
+            "startedAt": "2026-10-20T01:31:16Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-20T01:31:23Z",
+            "conclusion": "success",
+            "name": "Set up Python",
+            "number": 3,
+            "startedAt": "2026-10-20T01:31:17Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-20T01:31:34Z",
+            "conclusion": "success",
+            "name": "Install age transport dependency",
+            "number": 4,
+            "startedAt": "2026-10-20T01:31:23Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-20T01:32:08Z",
+            "conclusion": "success",
+            "name": "Run unittest",
+            "number": 5,
+            "startedAt": "2026-10-20T01:31:34Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-20T01:32:08Z",
+            "conclusion": "success",
+            "name": "Post Set up Python",
+            "number": 9,
+            "startedAt": "2026-10-20T01:32:08Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-20T01:32:08Z",
+            "conclusion": "success",
+            "name": "Post Check out repository",
+            "number": 10,
+            "startedAt": "2026-10-20T01:32:08Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-20T01:32:08Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 11,
+            "startedAt": "2026-10-20T01:32:08Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/YuukiAS/GPT_Codex_AI_Bridge_Kit/actions/runs/39353877948/job/118404111145"
+      }
+    ],
+    "status": "completed",
+    "url": "https://github.com/YuukiAS/GPT_Codex_AI_Bridge_Kit/actions/runs/39353877948"
+  },
+  "checkout_test_log_summary": "Python 3.x\tCheck out repository\t2026-10-20T01:31:16.6216977Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +391ff889ad156540727da168fb608c5f37dbbdfc:refs/remotes/origin/work/bridge-core--product-scope-reset\nPython 3.x\tCheck out repository\t2026-10-20T01:31:17.3224222Z  * [new ref]         391ff889ad156540727da168fb608c5f37dbbdfc -> origin/work/bridge-core--product-scope-reset\nPython 3.x\tCheck out repository\t2026-10-20T01:31:17.3721062Z 391ff889ad156540727da168fb608c5f37dbbdfc\nPython 3.x\tRun unittest\t2026-10-20T01:31:53.0284618Z Ran 490 tests in 23.871s\nPython 3.x\tRun unittest\t2026-10-20T01:31:53.0284813Z OK (skipped=4)\nPython 3.9\tCheck out repository\t2026-10-20T01:31:16.8288931Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +391ff889ad156540727da168fb608c5f37dbbdfc:refs/remotes/origin/work/bridge-core--product-scope-reset\nPython 3.9\tCheck out repository\t2026-10-20T01:31:17.6405113Z  * [new ref]         391ff889ad156540727da168fb608c5f37dbbdfc -> origin/work/bridge-core--product-scope-reset\nPython 3.9\tCheck out repository\t2026-10-20T01:31:17.6929834Z 391ff889ad156540727da168fb608c5f37dbbdfc\nPython 3.9\tRun unittest\t2026-10-20T01:32:08.5196110Z Ran 490 tests in 33.198s\nPython 3.9\tRun unittest\t2026-10-20T01:32:08.5196312Z OK (skipped=4)\nddd57fd8a9cc7574d7082c1e031a942a81554a10d25f918268ca3b8a5309a5dd  /tmp/bridge-v6-locator-nonlive/hosted_ci.log\n"
+}

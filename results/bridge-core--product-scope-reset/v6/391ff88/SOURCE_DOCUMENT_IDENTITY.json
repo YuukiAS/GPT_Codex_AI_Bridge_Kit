@@ -1,0 +1,86 @@
+{
+  "candidate_sha": "391ff889ad156540727da168fb608c5f37dbbdfc",
+  "previous_candidate_sha": "0aef27850a91e415305458aef1d1d60506841d9b",
+  "approved_package_sha": "0dfc767e42c12c016fa906bdcfeece051dc49bb3",
+  "result": "PASS",
+  "AGENTS_V6_LOCATOR": "PASS",
+  "AGENTS_outside_locator_byte_identical": true,
+  "all_product_code_tests_templates_CI_unchanged": true,
+  "unchanged_tree_oids": {
+    "ai_bridge_kit": "eda52cb166b6616e4f1e826591968280cb8fddbb",
+    "tests": "e8d8a4f8cc333a83f4c6e049e7d1385ed165dfb4",
+    "templates": "8d48b2fc85f6496e5746bb229b10e5ccb8c0f2e5",
+    "codex": "295b78b4b931577055e1a9df40a1c39849fbed70",
+    ".github": "20552f1e58bec31030d4325323a3459a7536686a"
+  },
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "d45eeccfa75929e1bc2b33e30cb22230cfaee62951099098b37e1efb4b78128c",
+      "working_bytes_match_candidate": true
+    },
+    {
+      "path": "README.md",
+      "sha256": "47bb33027df7fbe3ead41df2fb5a0d04ca0874d7783ff4d4615916594db5467b",
+      "working_bytes_match_candidate": true
+    },
+    {
+      "path": "QUICKSTART.md",
+      "sha256": "cc0b99cf357c88835a31a1518f77e08fbe31c32946e83ab407885a7b569846ee",
+      "working_bytes_match_candidate": true
+    },
+    {
+      "path": "CHANGELOG.md",
+      "sha256": "90b7f5831f3e9e866c61e865a92eea9961ba5dd40cf70c2a8bb1fcd620bb0487",
+      "working_bytes_match_candidate": true
+    },
+    {
+      "path": "pyproject.toml",
+      "sha256": "1d7030826c3aad242f69b86f888724f5a468cb0aa708ae015e6f993029681308",
+      "working_bytes_match_candidate": true
+    },
+    {
+      "path": "ai_bridge_kit/__init__.py",
+      "sha256": "fc8de73fec9f54108f2ef6a6a7b815de63e6a5b6a7ff781b9d7fe1027540978e",
+      "working_bytes_match_candidate": true
+    },
+    {
+      "path": "ai_bridge_kit/clear_writing.py",
+      "sha256": "5e0331f629abaf75db8d880ad25a065383ed11d7cdf5c4aa0758a859bd5ff638",
+      "working_bytes_match_candidate": true
+    },
+    {
+      "path": ".github/workflows/tests.yml",
+      "sha256": "da36ca9e9f66a9bc68635e86c9b4787013854c607e2e63153a1a7da377b9b734",
+      "working_bytes_match_candidate": true
+    },
+    {
+      "path": "docs/design/0.11.0_integrated_product_architecture_v6_2026-10-20.md",
+      "sha256": "a2e50c4d7ecb3449a87dc6c1f081d949203f17ab0bef7d20aae14cb37cf6cdd5",
+      "working_bytes_match_candidate": true
+    },
+    {
+      "path": "docs/design/0.11.0_execution_plan_v6_2026-10-20.md",
+      "sha256": "54fc33bc3b9632e38a90afbee736dae8f2fef34a78de4a10851f38abfc636cd5",
+      "working_bytes_match_candidate": true
+    },
+    {
+      "path": "docs/design/0.11.0_codex_goal_v6_2026-10-20.md",
+      "sha256": "88d20054da71c2b224ab0b8980b1829f0ea1c3c4d25e24515f1cc2683afd42fa",
+      "working_bytes_match_candidate": true
+    },
+    {
+      "path": "docs/design/0.11.0_kickoff_v6_2026-10-20.md",
+      "sha256": "0c272eb7df2325079d60a3d95b4d04cb71ec44daa8c207696e1e2f77ec5d356d",
+      "working_bytes_match_candidate": true
+    }
+  ],
+  "gitignore_sha256": "6c5827da670763f9d295187f04ed652baa2f4f4cf2e80432c529400cc6ea2ae7",
+  "writing_style_runtime_identity": "separate WRITING_STYLE_DIAGNOSIS.json; not implied by source identity PASS",
+  "external_effects": {
+    "real_model_calls": 0,
+    "Gmail_attempts": 0,
+    "send_test": 0,
+    "final_persistent_canary": 0
+  }
+}

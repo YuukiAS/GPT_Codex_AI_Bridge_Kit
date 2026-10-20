@@ -1,0 +1,79 @@
+{
+  "candidate_sha": "391ff889ad156540727da168fb608c5f37dbbdfc",
+  "CODEX_HOME": "/users/a/e/aereinh/.codex",
+  "cli": "/users/a/e/aereinh/bin/codex",
+  "scoped_rediscovery_inventory": [
+    {
+      "pluginId": "writing-style@yuukias-ai-skills",
+      "name": "writing-style",
+      "marketplaceName": "yuukias-ai-skills",
+      "version": "0.4",
+      "installed": true,
+      "enabled": true,
+      "source": {
+        "source": "local",
+        "path": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style"
+      },
+      "marketplaceSource": {
+        "sourceType": "git",
+        "source": "https://github.com/YuukiAS/AI_Skills_Collection.git"
+      },
+      "installPolicy": "AVAILABLE",
+      "authPolicy": "ON_INSTALL"
+    }
+  ],
+  "real_production_resolver_inventory": {
+    "pluginId": "writing-style@yuukias-ai-skills",
+    "name": "writing-style",
+    "marketplaceName": "yuukias-ai-skills",
+    "version": "0.4",
+    "installed": true,
+    "enabled": true,
+    "source": {
+      "source": "local",
+      "path": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style"
+    },
+    "marketplaceSource": {
+      "sourceType": "git",
+      "source": "https://github.com/YuukiAS/AI_Skills_Collection.git"
+    },
+    "installPolicy": "AVAILABLE",
+    "authPolicy": "ON_INSTALL"
+  },
+  "actual_plugin_root": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style",
+  "manifest_version": "0.5",
+  "skill_identities": {
+    "writing-fidelity": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style/skills/fidelity/SKILL.md",
+    "response-clarity": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style/skills/response-clarity/SKILL.md"
+  },
+  "content_digests": {
+    "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style/.codex-plugin/plugin.json": "d508c30f5bff3794a9f8a3bbbed01333abf2004b3fb5f794cef9cec3a29555ae",
+    "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style/skills/fidelity/SKILL.md": "f012b730f95364d5093f16c8c433342121701c5cdcd8b5101a457c4a1e9160a4",
+    "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style/skills/response-clarity/SKILL.md": "c5f4dc45e13bfc86d40d8eb55311cbd2fd05a51f9b912d20e93d8075288e2836"
+  },
+  "resolver": {
+    "result": "FAIL",
+    "error": "WRITING_STYLE_PLUGIN_VERSION_MISMATCH"
+  },
+  "old_installed_cache": {
+    "root": "/users/a/e/aereinh/.codex/plugins/cache/yuukias-ai-skills/writing-style/0.4",
+    "version": "0.4"
+  },
+  "marketplace_snapshot_revision": "fd79c4be54fc50bd66d9a51bbc1e681f361f6a77",
+  "diagnosis": "Current marketplace content is 0.5 and both required identities exist; installed inventory/cache still advertises 0.4. An initial fresh read returned 0.5/PASS but subsequent three real inventory/resolver reads failed; scoped re-discovery and final default resolver observations are preserved, not cherry-picked. No proof of a content defect; metadata/cache alignment remains unresolved.",
+  "result": "NEEDS_USER_AUTH",
+  "normal_nonmutating_recovery": "fresh CLI processes and scoped/default plugin list exhausted; CLI help exposes add/remove/marketplace upgrade, no read-only refresh command",
+  "machine_plugin_mutation_executed": false,
+  "AI_Skills_modified": false,
+  "Bridge_resolver_modified": false,
+  "required_single_bounded_authorization": {
+    "command": "CODEX_HOME=/users/a/e/aereinh/.codex /users/a/e/aereinh/bin/codex plugin add writing-style@yuukias-ai-skills --json",
+    "target": "writing-style@yuukias-ai-skills",
+    "expected_change": "normal installation refresh from existing configured 0.5 marketplace content, align installed cache/inventory 0.4 to 0.5; leave other plugins, provider/config identity and AI_Skills source unchanged; then read-only production resolver preflight",
+    "executed": false
+  },
+  "official_command_reference": "https://learn.chatgpt.com/docs/cli/reference",
+  "real_models": 0,
+  "Gmail_attempts": 0,
+  "send_test": 0
+}
