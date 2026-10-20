@@ -1,0 +1,69 @@
+CANDIDATE=ba9013b9fbbd242e51b09f9d09291f417df17652
+test_early_delivery_restarts_cadence_not_observation (tests.test_persistent_cadence.PersistentCadenceTests) ... ok
+test_early_stage_and_exceptional_status_transitions (tests.test_persistent_cadence.PersistentCadenceTests) ... ok
+test_eta_materiality_uses_last_delivery_and_preserves_threshold (tests.test_persistent_cadence.PersistentCadenceTests) ... ok
+test_frequent_fraction_and_count_observations_do_not_spam_or_starve (tests.test_persistent_cadence.PersistentCadenceTests) ... ok
+test_report_enforces_fifteen_minute_floor_and_reads_old_reports (tests.test_persistent_cadence.PersistentCadenceTests) ... ok
+test_supervisor_uses_delivery_clock_and_terminal_survives_transport_failure (tests.test_persistent_cadence.PersistentCadenceTests) ... ok
+test_bridge_cli_dispatches_install_validate_and_kickoff (tests.test_persistent_run.PersistentRunTests) ... ok
+test_create_failure_is_recorded_and_same_run_is_not_retried (tests.test_persistent_run.PersistentRunTests) ... ok
+test_install_into_real_git_repo_without_lite (tests.test_persistent_run.PersistentRunTests) ... ok
+test_install_preserves_user_agents_content_and_updates_managed_block (tests.test_persistent_run.PersistentRunTests) ... ok
+test_install_projected_overflow_has_zero_project_mutation (tests.test_persistent_run.PersistentRunTests) ... ok
+test_installed_guidance_separates_duration_scheduler_and_tmux_topology (tests.test_persistent_run.PersistentRunTests) ... ok
+test_kickoff_requires_existing_repo_relative_goal_and_rejects_escape (tests.test_persistent_run.PersistentRunTests) ... ok
+test_malformed_progress_is_nonfatal_and_last_good_recovers (tests.test_persistent_run.PersistentRunTests) ... ok
+test_managed_block_update_preserves_all_marker_external_bytes (tests.test_persistent_run.PersistentRunTests) ... ok
+test_normalize_progress_marks_stalled_from_real_no_progress_threshold (tests.test_persistent_run.PersistentRunTests) ... ok
+test_normalize_progress_uses_real_fraction_and_unknown_eta (tests.test_persistent_run.PersistentRunTests) ... ok
+test_persistent_notifications_are_runtime_only_and_failure_is_nonfatal (tests.test_persistent_run.PersistentRunTests) ... ok
+test_progress_cli_outputs_normalized_json (tests.test_persistent_run.PersistentRunTests) ... ok
+test_progress_update_atomic_and_eta_warmup_reset (tests.test_persistent_run.PersistentRunTests) ... ok
+test_recover_and_resolve_require_proven_dead_child (tests.test_persistent_run.PersistentRunTests) ... ok
+test_repeated_install_is_stable_and_does_not_write_codex_home_or_rules (tests.test_persistent_run.PersistentRunTests) ... ok
+test_report_cli_and_latest_cli_are_normal_entries (tests.test_persistent_run.PersistentRunTests) ... ok
+test_report_latest_guidance_is_independent_of_tmux_session (tests.test_persistent_run.PersistentRunTests) ... ok
+test_report_notifications_require_explicit_authorization (tests.test_persistent_run.PersistentRunTests) ... ok
+test_report_records_latest_bounded_history_and_dedupe (tests.test_persistent_run.PersistentRunTests) ... ok
+test_report_unknown_eta_and_stall_without_intervention (tests.test_persistent_run.PersistentRunTests) ... ok
+test_stale_mismatch_partial_and_supervisor_loss_never_relaunch (tests.test_persistent_run.PersistentRunTests) ... ok
+test_start_status_existing_and_real_wait_observation (tests.test_persistent_run.PersistentRunTests) ... ok
+test_validate_pass_and_failures (tests.test_persistent_run.PersistentRunTests) ... ok
+test_validate_rejects_codex_rules_created_by_target (tests.test_persistent_run.PersistentRunTests) ... ok
+test_context_and_mandatory_source_mismatch_fail_closed (tests.test_readiness.ReadinessTests) ... ok
+test_control_adapter_launch_is_after_exact_preflight (tests.test_readiness.ReadinessTests) ... ok
+test_hidden_index_flags_and_transforms_are_rejected (tests.test_readiness.ReadinessTests) ... ok
+test_lite_normal_entry_spawns_once_or_zero (tests.test_readiness.ReadinessTests) ... PRELAUNCH_NOT_READY: MANDATORY_SOURCE_WORKTREE_MISMATCH: prompts/tasks/repo--feature.md
+ok
+test_lite_notification_is_runtime_only_and_failure_does_not_change_exit (tests.test_readiness.ReadinessTests) ... NOTIFICATION_FAILED: synthetic transport failure
+ok
+test_local_exact_blob_allows_unrelated_dirty_and_binds_commit (tests.test_readiness.ReadinessTests) ... ok
+test_persistent_runtime_owner_suppresses_lite_notification (tests.test_readiness.ReadinessTests) ... ok
+test_projected_writer_budget_uses_actual_limit_and_zero_mutation (tests.test_readiness.ReadinessTests) ... ok
+test_real_partial_clone_uses_isolated_fallback_without_repo_mutation (tests.test_readiness.ReadinessTests) ... ok
+test_reviewed_normal_entry_source_failure_keeps_codex_count_zero (tests.test_readiness.ReadinessTests) ... ok
+test_existing_cli_commands_remain_available (tests.test_repo_cli_compat.RepoCliCompatibilityTests) ... ok
+test_init_and_validate_workspace_still_work (tests.test_repo_cli_compat.RepoCliCompatibilityTests) ... ok
+test_init_projected_overflow_has_zero_project_mutation (tests.test_repo_cli_compat.RepoCliCompatibilityTests) ... ok
+test_standalone_validator_accepts_semantic_and_existing_legacy_task_keys (tests.test_repo_cli_compat.RepoCliCompatibilityTests) ... ok
+test_standalone_validator_rejects_malformed_semantic_task_key (tests.test_repo_cli_compat.RepoCliCompatibilityTests) ... ok
+test_validate_workspace_accepts_semantic_and_existing_legacy_task_keys (tests.test_repo_cli_compat.RepoCliCompatibilityTests) ... ok
+test_validate_workspace_rejects_path_hostile_task_key_filename (tests.test_repo_cli_compat.RepoCliCompatibilityTests) ... ok
+test_send_test_calls_backend_interface (tests.test_notifier.NotifierTests) ... ok
+test_acceptance_fixture_installed_repo_gets_authorable_persistent_goal (tests.test_upfront_authorization_persistent_authoring.UpfrontAuthorizationPersistentAuthoringTests) ... ok
+test_chatgpt_rules_cover_authoring_and_carry_forward (tests.test_upfront_authorization_persistent_authoring.UpfrontAuthorizationPersistentAuthoringTests) ... ok
+test_codex_start_preflights_declared_effects_before_substantial_work (tests.test_upfront_authorization_persistent_authoring.UpfrontAuthorizationPersistentAuthoringTests) ... ok
+test_execpolicy_still_prompts_tmux_mutation_and_fallbacks (tests.test_upfront_authorization_persistent_authoring.UpfrontAuthorizationPersistentAuthoringTests) ... ok
+test_gpt_repo_instructions_read_persistent_templates_in_order (tests.test_upfront_authorization_persistent_authoring.UpfrontAuthorizationPersistentAuthoringTests) ... ok
+test_host_agents_preflight_guidance_without_execpolicy_expansion (tests.test_upfront_authorization_persistent_authoring.UpfrontAuthorizationPersistentAuthoringTests) ... ok
+test_next_task_prompt_carries_forward_persistent_requirement (tests.test_upfront_authorization_persistent_authoring.UpfrontAuthorizationPersistentAuthoringTests) ... ok
+test_normal_authoring_surfaces_cover_topology_not_duration (tests.test_upfront_authorization_persistent_authoring.UpfrontAuthorizationPersistentAuthoringTests) ... ok
+test_scheduler_native_authoring_does_not_select_tmux_for_duration (tests.test_upfront_authorization_persistent_authoring.UpfrontAuthorizationPersistentAuthoringTests) ... ok
+test_task_template_can_author_harmless_persistent_goal_without_new_workflow (tests.test_upfront_authorization_persistent_authoring.UpfrontAuthorizationPersistentAuthoringTests) ... ok
+test_task_writer_classifies_persistence_independent_of_workflow (tests.test_upfront_authorization_persistent_authoring.UpfrontAuthorizationPersistentAuthoringTests) ... ok
+test_terminal_owned_survive_disconnect_still_selects_persistent_run (tests.test_upfront_authorization_persistent_authoring.UpfrontAuthorizationPersistentAuthoringTests) ... ok
+
+----------------------------------------------------------------------
+Ran 61 tests in 17.328s
+
+OK

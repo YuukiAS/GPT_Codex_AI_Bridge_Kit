@@ -1,0 +1,65 @@
+{
+  "FINAL_CANDIDATE_SHA": "ba9013b9fbbd242e51b09f9d09291f417df17652",
+  "version": "0.11.1",
+  "PERSISTENT_CADENCE_BUG": "FIXED",
+  "TARGETED_REGRESSION": {
+    "result": "PASS",
+    "tests": 61,
+    "log": "TARGETED_PY39.log"
+  },
+  "FULL_PY39": {
+    "result": "PASS",
+    "tests": 496,
+    "skipped": 8,
+    "seconds": 211.162,
+    "log": "FULL_PY39.log"
+  },
+  "FULL_PY312": {
+    "result": "PASS",
+    "tests": 496,
+    "skipped": 8,
+    "seconds": 213.245,
+    "log": "FULL_PY312.log"
+  },
+  "HOSTED_CI": {
+    "result": "PASS",
+    "head_sha": "ba9013b9fbbd242e51b09f9d09291f417df17652",
+    "run_id": 39367527196,
+    "url": "https://github.com/YuukiAS/GPT_Codex_AI_Bridge_Kit/actions/runs/39367527196",
+    "matrix": [
+      "3.9",
+      "3.x"
+    ],
+    "tests_each": 496,
+    "skipped_each": 4
+  },
+  "SOURCE_DOCUMENT_IDENTITY": "PASS",
+  "DIFF_BOUNDARY": "PASS; only cadence decision/report/supervisor baseline wiring, version and relevant docs/tests",
+  "ETA_ESTIMATOR": "UNCHANGED",
+  "TODO_LEDGER_CLOSED": true,
+  "ACTIVE_BRIDGE_SHORT_TERM_TODOS": 0,
+  "PROGRAM_RUN": "INTENTIONALLY_EXCLUDED",
+  "LIVE_MODEL_CALLS": 0,
+  "GMAIL_ATTEMPTS": 0,
+  "LIVE_SEND_TESTS": 0,
+  "PERSISTENT_CANARIES": 0,
+  "USER_GITIGNORE_SHA256": "6c5827da670763f9d295187f04ed652baa2f4f4cf2e80432c529400cc6ea2ae7",
+  "INVALID_HARNESS_ATTEMPTS": {
+    "INVALID_GUARD": "both full suites: inert execpolicy input misclassified + missing disposable state; not product failures",
+    "INVALID_STATE": "both full suites: state was still real/read-only; no production repair",
+    "repair": "results-only nonlive_tests.py: match actual exec subcommand, use per-process TemporaryDirectory AI_BRIDGE_STATE_HOME; no HOME/config/credential mutation",
+    "preserved_logs": [
+      "INVALID_GUARD_PY39.log",
+      "INVALID_GUARD_PY312.log",
+      "INVALID_STATE_PY39.log",
+      "INVALID_STATE_PY312.log"
+    ]
+  },
+  "RELEASE_AUTHORIZATION": {
+    "expected_old": "391ff889ad156540727da168fb608c5f37dbbdfc",
+    "exact_target": "ba9013b9fbbd242e51b09f9d09291f417df17652",
+    "mode": "non-force fast-forward only; current-user 0.11.1 Goal",
+    "consumer": "/users/a/e/aereinh/.ai-bridge/bridge-kit/GPT_Codex_AI_Bridge_Kit-release",
+    "release_ref_moved": false
+  }
+}

@@ -4,6 +4,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import tempfile
 import unittest
 
 
@@ -16,7 +17,8 @@ def guard(event, args):
         argv = args[1]
         if isinstance(argv, (list, tuple)) and len(argv) > 1:
             executable = shutil.which(str(argv[0])) or str(argv[0])
-            forbidden = Path(executable).resolve() == REAL_CODEX and "exec" in argv[1:]
+            # execpolicy check may quote "codex exec" as inert policy input.
+            forbidden = Path(executable).resolve() == REAL_CODEX and argv[1] == "exec"
     if event == "socket.getaddrinfo":
         forbidden = str(args[0]).lower() == "smtp.gmail.com"
     if forbidden:
@@ -30,4 +32,7 @@ if __name__ == "__main__":
     assert subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip() == os.environ["BRIDGE_TEST_CANDIDATE"]
     sys.addaudithook(guard)
     print("CANDIDATE=" + os.environ["BRIDGE_TEST_CANDIDATE"], flush=True)
-    unittest.main(module=None, argv=[sys.argv[0], *sys.argv[1:]])
+    # Tests must not consume real machine secrets/readiness or write Host locks.
+    with tempfile.TemporaryDirectory(prefix="bridge-0111-nonlive-state-") as state:
+        os.environ["AI_BRIDGE_STATE_HOME"] = state
+        unittest.main(module=None, argv=[sys.argv[0], *sys.argv[1:]])

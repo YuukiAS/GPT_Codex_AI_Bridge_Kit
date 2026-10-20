@@ -1,0 +1,20 @@
+{
+  "result": "PASS",
+  "origin": "YuukiAS/GPT_Codex_AI_Bridge_Kit",
+  "old_release": "391ff889ad156540727da168fb608c5f37dbbdfc",
+  "exact_target": "ba9013b9fbbd242e51b09f9d09291f417df17652",
+  "fast_forward": true,
+  "both_versions": "0.11.1",
+  "changelog": true,
+  "targeted": 61,
+  "full_each": 496,
+  "ci_run": 39367527196,
+  "all_candidate_bound": true,
+  "source_document_diff_identity": "PASS",
+  "TODO_ledger": "CLOSED",
+  "user_gitignore_unchanged": true,
+  "model_calls": 0,
+  "SMTP_attempts": 0,
+  "canaries": 0,
+  "formal_owner": "AI_Skills ai-skills-core bridge-kit-maintainer"
+}
