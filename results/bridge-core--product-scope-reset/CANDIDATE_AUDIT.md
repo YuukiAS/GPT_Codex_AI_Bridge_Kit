@@ -1,4 +1,18 @@
-# Bridge Kit 0.11.0 修复候选与 Gate 记录
+# 当前候选：v6 窄修，等待同一 Critic
+
+FINAL_CANDIDATE_SHA=`0aef27850a91e415305458aef1d1d60506841d9b`。
+v6 route/projection 窄修、50 项定向回归、两版本各 490 项全量、同 SHA hosted CI 和
+diff boundary/source-document identity 已完成。当前交接见
+`v6/0aef278/IMPLEMENTATION_HANDOFF.md`、`ACCEPTANCE_STATUS.json` 与 `FINAL_EVALUATION_PLAN.json`。
+机器 installed plugin inventory/manifest 版本不一致单列为环境诊断，未放宽生产检查。
+
+最终 Persistent 正常入口通知链尚未运行；本轮模型/Gmail/send-test/final canary 均为 0。
+等待同一 Critic 的 PROCEED_TO_FINAL_EVALUATION / REVISE，不请求或消费 live 授权。
+下文完整保留的是 f3c882c 历史阶段记录，不是 v6 candidate 的 live PASS 或当前最终验收。
+
+---
+
+# 历史：Bridge Kit 0.11.0 f3c882c 修复候选与 Gate 记录
 
 两个 Bridge 实现误判已修复。保存的 C6 trace 在修复后的正式 renderer 中离线回放，
 返回 NORMAL_WRITING_STYLE；本地全量回归、C1–C5 与 C6 非 live 验证通过。

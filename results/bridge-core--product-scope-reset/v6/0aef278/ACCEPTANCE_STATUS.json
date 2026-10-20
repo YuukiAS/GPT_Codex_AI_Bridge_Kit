@@ -1,0 +1,59 @@
+{
+  "approved_package_sha": "0dfc767e42c12c016fa906bdcfeece051dc49bb3",
+  "final_candidate_sha": "0aef27850a91e415305458aef1d1d60506841d9b",
+  "production_baseline": "f3c882c5302a1889cac62526e8f025ada0f4d1a5",
+  "implementation_commits": [
+    "f5ffe71f93288036bf9cb30c428475ef3b0a534e",
+    "0aef27850a91e415305458aef1d1d60506841d9b"
+  ],
+  "v6_narrow_implementation_complete": true,
+  "repair_status": {
+    "BR11-FINAL-R1-01_CLEAR_WRITING_ROUTE_DRIFT": "IMPLEMENTED_DETERMINISTIC_PASS",
+    "BR11-FINAL-R1-02_NORMAL_ENTRY_NOTIFICATION_CHAIN_UNPROVEN": "FINAL_EVALUATION_PLAN_FROZEN_NOT_RUN"
+  },
+  "verification": {
+    "targeted_deterministic": {"result": "PASS", "tests": 50, "exit_code": 0},
+    "full_python_3_12": {"result": "PASS", "tests": 490, "skipped": 8, "seconds": 162.425, "exit_code": 0},
+    "full_python_3_9": {"result": "PASS", "tests": 490, "skipped": 8, "seconds": 157.756, "exit_code": 0},
+    "hosted_CI": {"result": "PASS", "run": 39352413246, "head_sha": "0aef27850a91e415305458aef1d1d60506841d9b", "jobs": 2, "tests_each": 490, "skipped_each": 4},
+    "transport_deadline_non_live": "PASS_THREE_CONTROLLED_HANGS_REAL_HELPER_REAPED_NO_MODEL_NO_SMTP",
+    "diff_boundary_source_document_identity": "PASS",
+    "current_automatic_route_document_sync": "PASS",
+    "C1_C4": "OWNERS_UNCHANGED_DIFF_AND_FULL_REGRESSION_CI_NOT_LONG_CANARY_REPLAY",
+    "C5_frozen_owner_semantics": "UNCHANGED_DETERMINISTIC_REGRESSION_PASS",
+    "C6_live_final_normal_entry_chain": "NOT_RUN_NOT_AUTHORIZED"
+  },
+  "installed_runtime_preflight": {
+    "status": "FAIL_CLOSED_ENVIRONMENT_DIAGNOSTIC",
+    "inventory_version_observed": "0.4",
+    "manifest_version_observed": "0.5",
+    "error": "WRITING_STYLE_PLUGIN_VERSION_MISMATCH",
+    "source_implementation_or_schema_changed_to_bypass": false,
+    "AI_Skills_or_machine_plugin_config_modified": false,
+    "required_before_later_live": "reconcile and revalidate installed plugin identity through its owner; same Critic decides disposition"
+  },
+  "implementation_round_external_effects": {
+    "real_model_invocations": 0,
+    "real_gmail_smtp_attempts": 0,
+    "send_test": 0,
+    "final_persistent_canaries": 0,
+    "paid_review": 0,
+    "release_tag_marketplace_mutations": 0
+  },
+  "early_test_isolation_repair": {
+    "blocked_before_launch_model_requests": 2,
+    "actual_model_calls": 0,
+    "final_candidate_guard_block_count_delta": 0,
+    "fix": "two directly related notifier scanner tests explicitly force zero-model fallback; notifier.py unchanged",
+    "diagnostic": "EARLY_NONLIVE_GUARD_DIAGNOSTIC.txt"
+  },
+  "final_evaluation_plan": "FINAL_EVALUATION_PLAN.json",
+  "final_evaluation_authorized": false,
+  "same_critic_review_required": true,
+  "critic_decision": null,
+  "allowed_next_critic_decisions": ["PROCEED_TO_FINAL_EVALUATION", "REVISE"],
+  "final_product_acceptance_claimed": false,
+  "formal_distribution_complete": false,
+  "release_ref_unchanged": "9db19b0409816c22042a246b35a33e1d34fedd0a",
+  "user_gitignore_untouched": true
+}

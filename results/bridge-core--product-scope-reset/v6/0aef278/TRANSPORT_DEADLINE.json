@@ -1,0 +1,36 @@
+{
+  "candidate_sha": "0aef27850a91e415305458aef1d1d60506841d9b",
+  "cases": [
+    {
+      "hang_stage": "DNS",
+      "status": "DELIVERY_UNKNOWN",
+      "elapsed_seconds": 1.5141479205340147,
+      "deadline_seconds": 1.5,
+      "helper_reaped": true,
+      "primary_continued": true,
+      "model_invocations": 0,
+      "smtp_sends": 0
+    },
+    {
+      "hang_stage": "SMTP_CONNECT",
+      "status": "DELIVERY_UNKNOWN",
+      "elapsed_seconds": 1.5093276910483837,
+      "deadline_seconds": 1.5,
+      "helper_reaped": true,
+      "primary_continued": true,
+      "model_invocations": 0,
+      "smtp_sends": 0
+    },
+    {
+      "hang_stage": "TLS",
+      "status": "DELIVERY_UNKNOWN",
+      "elapsed_seconds": 1.5098453145474195,
+      "deadline_seconds": 1.5,
+      "helper_reaped": true,
+      "primary_continued": true,
+      "model_invocations": 0,
+      "smtp_sends": 0
+    }
+  ],
+  "result": "PASS"
+}

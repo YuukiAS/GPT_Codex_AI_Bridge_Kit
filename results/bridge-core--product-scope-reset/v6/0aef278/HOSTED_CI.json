@@ -1,0 +1,169 @@
+{
+  "candidate_sha": "0aef27850a91e415305458aef1d1d60506841d9b",
+  "result": "PASS",
+  "run": {
+    "conclusion": "success",
+    "databaseId": 39352413246,
+    "headSha": "0aef27850a91e415305458aef1d1d60506841d9b",
+    "jobs": [
+      {
+        "completedAt": "2026-10-20T01:16:09Z",
+        "conclusion": "success",
+        "databaseId": 118399403108,
+        "name": "Python 3.x",
+        "startedAt": "2026-10-20T01:15:28Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-10-20T01:15:29Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-10-20T01:15:28Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-20T01:15:30Z",
+            "conclusion": "success",
+            "name": "Check out repository",
+            "number": 2,
+            "startedAt": "2026-10-20T01:15:29Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-20T01:15:30Z",
+            "conclusion": "success",
+            "name": "Set up Python",
+            "number": 3,
+            "startedAt": "2026-10-20T01:15:30Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-20T01:15:39Z",
+            "conclusion": "success",
+            "name": "Install age transport dependency",
+            "number": 4,
+            "startedAt": "2026-10-20T01:15:30Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-20T01:16:06Z",
+            "conclusion": "success",
+            "name": "Run unittest",
+            "number": 5,
+            "startedAt": "2026-10-20T01:15:39Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-20T01:16:06Z",
+            "conclusion": "success",
+            "name": "Post Set up Python",
+            "number": 9,
+            "startedAt": "2026-10-20T01:16:06Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-20T01:16:07Z",
+            "conclusion": "success",
+            "name": "Post Check out repository",
+            "number": 10,
+            "startedAt": "2026-10-20T01:16:06Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-20T01:16:07Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 11,
+            "startedAt": "2026-10-20T01:16:07Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/YuukiAS/GPT_Codex_AI_Bridge_Kit/actions/runs/39352413246/job/118399403108"
+      },
+      {
+        "completedAt": "2026-10-20T01:16:27Z",
+        "conclusion": "success",
+        "databaseId": 118399403529,
+        "name": "Python 3.9",
+        "startedAt": "2026-10-20T01:15:28Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-10-20T01:15:29Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-10-20T01:15:29Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-20T01:15:30Z",
+            "conclusion": "success",
+            "name": "Check out repository",
+            "number": 2,
+            "startedAt": "2026-10-20T01:15:29Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-20T01:15:40Z",
+            "conclusion": "success",
+            "name": "Set up Python",
+            "number": 3,
+            "startedAt": "2026-10-20T01:15:30Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-20T01:15:48Z",
+            "conclusion": "success",
+            "name": "Install age transport dependency",
+            "number": 4,
+            "startedAt": "2026-10-20T01:15:40Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-20T01:16:25Z",
+            "conclusion": "success",
+            "name": "Run unittest",
+            "number": 5,
+            "startedAt": "2026-10-20T01:15:48Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-20T01:16:25Z",
+            "conclusion": "success",
+            "name": "Post Set up Python",
+            "number": 9,
+            "startedAt": "2026-10-20T01:16:25Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-20T01:16:25Z",
+            "conclusion": "success",
+            "name": "Post Check out repository",
+            "number": 10,
+            "startedAt": "2026-10-20T01:16:25Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-20T01:16:25Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 11,
+            "startedAt": "2026-10-20T01:16:25Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/YuukiAS/GPT_Codex_AI_Bridge_Kit/actions/runs/39352413246/job/118399403529"
+      }
+    ],
+    "status": "completed",
+    "url": "https://github.com/YuukiAS/GPT_Codex_AI_Bridge_Kit/actions/runs/39352413246"
+  },
+  "full_log_locator": "/tmp/bridge-v6-no-live/hosted_ci.log",
+  "checkout_and_test_log_summary": "Python 3.x\tCheck out repository\t2026-10-20T01:15:29.7549482Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +0aef27850a91e415305458aef1d1d60506841d9b:refs/remotes/origin/work/bridge-core--product-scope-reset\nPython 3.x\tCheck out repository\t2026-10-20T01:15:30.5566395Z  * [new ref]         0aef27850a91e415305458aef1d1d60506841d9b -> origin/work/bridge-core--product-scope-reset\nPython 3.x\tCheck out repository\t2026-10-20T01:15:30.6161737Z 0aef27850a91e415305458aef1d1d60506841d9b\nPython 3.x\tRun unittest\t2026-10-20T01:15:43.2153701Z test_execpolicy_does_not_trust_repo_local_fake_ai_bridge (tests.test_host_policy.HostPolicyTests.test_execpolicy_does_not_trust_repo_local_fake_ai_bridge) ... skipped 'codex CLI is not installed'\nPython 3.x\tRun unittest\t2026-10-20T01:15:43.2155785Z test_execpolicy_git_authorization_semantics_with_real_codex_cli_when_available (tests.test_host_policy.HostPolicyTests.test_execpolicy_git_authorization_semantics_with_real_codex_cli_when_available) ... skipped 'codex CLI is not installed'\nPython 3.x\tRun unittest\t2026-10-20T01:15:44.9647022Z test_validate_with_real_codex_cli_when_available (tests.test_host_policy.HostPolicyTests.test_validate_with_real_codex_cli_when_available) ... skipped 'codex CLI is not installed'\nPython 3.x\tRun unittest\t2026-10-20T01:16:06.7472035Z test_execpolicy_still_prompts_tmux_mutation_and_fallbacks (tests.test_upfront_authorization_persistent_authoring.UpfrontAuthorizationPersistentAuthoringTests.test_execpolicy_still_prompts_tmux_mutation_and_fallbacks) ... skipped 'codex CLI is not installed'\nPython 3.x\tRun unittest\t2026-10-20T01:16:06.8264693Z Ran 490 tests in 26.592s\nPython 3.x\tRun unittest\t2026-10-20T01:16:06.8265170Z OK (skipped=4)\nPython 3.9\tCheck out repository\t2026-10-20T01:15:30.1042579Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +0aef27850a91e415305458aef1d1d60506841d9b:refs/remotes/origin/work/bridge-core--product-scope-reset\nPython 3.9\tCheck out repository\t2026-10-20T01:15:30.8253407Z  * [new ref]         0aef27850a91e415305458aef1d1d60506841d9b -> origin/work/bridge-core--product-scope-reset\nPython 3.9\tCheck out repository\t2026-10-20T01:15:30.8918851Z 0aef27850a91e415305458aef1d1d60506841d9b\nPython 3.9\tRun unittest\t2026-10-20T01:15:53.4555614Z test_execpolicy_does_not_trust_repo_local_fake_ai_bridge (tests.test_host_policy.HostPolicyTests) ... skipped 'codex CLI is not installed'\nPython 3.9\tRun unittest\t2026-10-20T01:15:53.4557282Z test_execpolicy_git_authorization_semantics_with_real_codex_cli_when_available (tests.test_host_policy.HostPolicyTests) ... skipped 'codex CLI is not installed'\nPython 3.9\tRun unittest\t2026-10-20T01:15:56.9226725Z test_validate_with_real_codex_cli_when_available (tests.test_host_policy.HostPolicyTests) ... skipped 'codex CLI is not installed'\nPython 3.9\tRun unittest\t2026-10-20T01:16:25.0508891Z test_execpolicy_still_prompts_tmux_mutation_and_fallbacks (tests.test_upfront_authorization_persistent_authoring.UpfrontAuthorizationPersistentAuthoringTests) ... skipped 'codex CLI is not installed'\nPython 3.9\tRun unittest\t2026-10-20T01:16:25.1940191Z Ran 490 tests in 36.509s\nPython 3.9\tRun unittest\t2026-10-20T01:16:25.1940440Z OK (skipped=4)\n68f123ca2607172b6374eec81667a130eb01a075ee935e1d22c3df425325aee5  /tmp/bridge-v6-no-live/hosted_ci.log\n",
+  "notes": [
+    "Both jobs checked out the exact candidate and ran 490 tests successfully.",
+    "Four hosted skips are Codex CLI absence; those checks executed in local full suites. Hosted age tests ran; eight local age skips disclosed."
+  ]
+}

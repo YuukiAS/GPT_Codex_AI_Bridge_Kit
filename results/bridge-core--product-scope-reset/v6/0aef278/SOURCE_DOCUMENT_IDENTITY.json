@@ -1,0 +1,192 @@
+{
+  "candidate_sha": "0aef27850a91e415305458aef1d1d60506841d9b",
+  "approved_package_sha": "0dfc767e42c12c016fa906bdcfeece051dc49bb3",
+  "production_baseline": "f3c882c5302a1889cac62526e8f025ada0f4d1a5",
+  "result": "PASS_SOURCE_DOCUMENT_BOUNDARY",
+  "allowed_changed_paths": [
+    "AGENTS.md",
+    "CHANGELOG.md",
+    "README.md",
+    "ai_bridge_kit/clear_writing.py",
+    "tests/test_clear_writing.py",
+    "tests/test_notifier.py"
+  ],
+  "production_changed_paths": [
+    "ai_bridge_kit/clear_writing.py"
+  ],
+  "frozen_production_files": [
+    {
+      "path": "ai_bridge_kit/__init__.py",
+      "sha256": "fc8de73fec9f54108f2ef6a6a7b815de63e6a5b6a7ff781b9d7fe1027540978e",
+      "unchanged_from_f3c882c": true
+    },
+    {
+      "path": "ai_bridge_kit/agent_flow.py",
+      "sha256": "a16d5e197cee32fd50b9ca45c81ca06c0fa382e3ab2b52fa24f619b2a4557f10",
+      "unchanged_from_f3c882c": true
+    },
+    {
+      "path": "ai_bridge_kit/bridge_cli.py",
+      "sha256": "f8d064ae7d00391d3411061bf183776d739276dbc4852932c9c08bd48e39ff2e",
+      "unchanged_from_f3c882c": true
+    },
+    {
+      "path": "ai_bridge_kit/cli.py",
+      "sha256": "97900610a75c046fc76e7ff90a3dc8ab22ecc150b33ff13b1184977451d1b59b",
+      "unchanged_from_f3c882c": true
+    },
+    {
+      "path": "ai_bridge_kit/external_wait.py",
+      "sha256": "d94d5709e50e788b231b57ffadd220f402c58b62d8d8aaf84e1671ba2332aeb3",
+      "unchanged_from_f3c882c": true
+    },
+    {
+      "path": "ai_bridge_kit/host.py",
+      "sha256": "fee165336b316e4c00894f87434792687aa9f99e6ae2f1de4f26e1ffb2d8c5c0",
+      "unchanged_from_f3c882c": true
+    },
+    {
+      "path": "ai_bridge_kit/notifier.py",
+      "sha256": "8135f0e1783c253f6bc48f371305da2040317c47174b51a00c4ec2241afa8c64",
+      "unchanged_from_f3c882c": true
+    },
+    {
+      "path": "ai_bridge_kit/overleaf.py",
+      "sha256": "c27368fa235b60e6930b4718ea11647bf405f34aa01cc7f86ebff552d3a3920a",
+      "unchanged_from_f3c882c": true
+    },
+    {
+      "path": "ai_bridge_kit/paid_review.py",
+      "sha256": "1f9c440ddb4793c08fcd87fa8d51f6b586789e86874ebb3f70a9c7f0a11820ff",
+      "unchanged_from_f3c882c": true
+    },
+    {
+      "path": "ai_bridge_kit/persistent_run.py",
+      "sha256": "36efaf6656a955869075b158d6149c8c7718f837fbc598b37179157f923bc3e3",
+      "unchanged_from_f3c882c": true
+    },
+    {
+      "path": "ai_bridge_kit/plugin_replay.py",
+      "sha256": "e28a744ab48d9f4eeb4564447a014864267bdfc28c6d72005904567592dda6a2",
+      "unchanged_from_f3c882c": true
+    },
+    {
+      "path": "ai_bridge_kit/private.py",
+      "sha256": "5df4a4fe4cc017a1cee9be1923de6205b2fb9a30c2ef7466fb9874356cd42750",
+      "unchanged_from_f3c882c": true
+    },
+    {
+      "path": "ai_bridge_kit/readiness.py",
+      "sha256": "d5043c7bd337fd8df3f90fd884568209935fb8688eb314cfed8963b209a1d792",
+      "unchanged_from_f3c882c": true
+    },
+    {
+      "path": "ai_bridge_kit/reviewed_handoff.py",
+      "sha256": "a7bd59a7252795b1d38d4ac9e9731c065c0ceb73acdfdaf3726a300a29d0cc0a",
+      "unchanged_from_f3c882c": true
+    },
+    {
+      "path": "ai_bridge_kit/reviewed_runner.py",
+      "sha256": "7ce3c65d7ffb961d9d77182a86e39fa7eac6e66211dea9b2ab9bf4dc6f6e5784",
+      "unchanged_from_f3c882c": true
+    },
+    {
+      "path": "ai_bridge_kit/task_keys.py",
+      "sha256": "86c4e25499f768a456ceb4c159b7bf37e59b0500421bd8cafe78a9255ddb932b",
+      "unchanged_from_f3c882c": true
+    },
+    {
+      "path": "ai_bridge_kit/text_review.py",
+      "sha256": "bcbc50bc51822c2e74e12436ed5a9c34f44510f0d3c6cca17fdcc5648c372324",
+      "unchanged_from_f3c882c": true
+    },
+    {
+      "path": "ai_bridge_kit/text_transform.py",
+      "sha256": "a40ced9fa08edb49db8d0df371d60af262bee63d582bb79c6dbb289e9b689abd",
+      "unchanged_from_f3c882c": true
+    },
+    {
+      "path": "ai_bridge_kit/visual_review.py",
+      "sha256": "764f91d797d0c842936652bcc5a116baf0091f89bc2222bb25d7eee4cb845ef9",
+      "unchanged_from_f3c882c": true
+    }
+  ],
+  "frozen_tree_oids": {
+    "templates": "8d48b2fc85f6496e5746bb229b10e5ccb8c0f2e5",
+    "codex": "295b78b4b931577055e1a9df40a1c39849fbed70",
+    ".github": "20552f1e58bec31030d4325323a3459a7536686a"
+  },
+  "source_document_files": [
+    {
+      "path": ".github/workflows/tests.yml",
+      "sha256": "da36ca9e9f66a9bc68635e86c9b4787013854c607e2e63153a1a7da377b9b734",
+      "working_bytes_match_candidate": true
+    },
+    {
+      "path": "AGENTS.md",
+      "sha256": "5249d007e9a9b61e4cae291ea83bc21cbbca0b8a599a97eeb20e7aee59e08da3",
+      "working_bytes_match_candidate": true
+    },
+    {
+      "path": "CHANGELOG.md",
+      "sha256": "90b7f5831f3e9e866c61e865a92eea9961ba5dd40cf70c2a8bb1fcd620bb0487",
+      "working_bytes_match_candidate": true
+    },
+    {
+      "path": "QUICKSTART.md",
+      "sha256": "cc0b99cf357c88835a31a1518f77e08fbe31c32946e83ab407885a7b569846ee",
+      "working_bytes_match_candidate": true
+    },
+    {
+      "path": "README.md",
+      "sha256": "47bb33027df7fbe3ead41df2fb5a0d04ca0874d7783ff4d4615916594db5467b",
+      "working_bytes_match_candidate": true
+    },
+    {
+      "path": "ai_bridge_kit/__init__.py",
+      "sha256": "fc8de73fec9f54108f2ef6a6a7b815de63e6a5b6a7ff781b9d7fe1027540978e",
+      "working_bytes_match_candidate": true
+    },
+    {
+      "path": "ai_bridge_kit/clear_writing.py",
+      "sha256": "5e0331f629abaf75db8d880ad25a065383ed11d7cdf5c4aa0758a859bd5ff638",
+      "working_bytes_match_candidate": true
+    },
+    {
+      "path": "pyproject.toml",
+      "sha256": "1d7030826c3aad242f69b86f888724f5a468cb0aa708ae015e6f993029681308",
+      "working_bytes_match_candidate": true
+    },
+    {
+      "path": "tests/test_clear_writing.py",
+      "sha256": "a1c640d79b417a3f4804933ee91cd8cab7a63184bc8bc984e80e6473bc97cca5",
+      "working_bytes_match_candidate": true
+    },
+    {
+      "path": "tests/test_notifier.py",
+      "sha256": "ced43a3c3ac2b41a2744bb987c9e927e37ac0e50bab6f82a222b79e6ff6f3a66",
+      "working_bytes_match_candidate": true
+    }
+  ],
+  "QUICKSTART": "unchanged: no old automatic route present",
+  "version": "0.11.0",
+  "candidate_editable_install": {
+    "dir_info": {
+      "editable": true
+    },
+    "url": "file:///overflow/htzhu/mingcheng_new/GPT_Codex_AI_Bridge_Kit"
+  },
+  "installed_plugin_preflight": {
+    "status": "FAIL_CLOSED_ENVIRONMENT_DIAGNOSTIC",
+    "error": "WRITING_STYLE_PLUGIN_VERSION_MISMATCH"
+  },
+  "plugin_check": "read-only inventory and manifest/skill identity; NOT model consumption or live Gate",
+  "gitignore_sha256": "6c5827da670763f9d295187f04ed652baa2f4f4cf2e80432c529400cc6ea2ae7",
+  "workflow_inventory": {
+    "automation/reviewed_handoff_present": false,
+    "automation/agent_flow_present": false
+  },
+  "live_models": 0,
+  "gmail_sends": 0,
+  "final_persistent_canary": "NOT_RUN"
+}

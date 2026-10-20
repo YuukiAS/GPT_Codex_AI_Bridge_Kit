@@ -1,0 +1,74 @@
+{
+  "candidate_sha": "0aef27850a91e415305458aef1d1d60506841d9b",
+  "approved_package_sha": "0dfc767e42c12c016fa906bdcfeece051dc49bb3",
+  "status": "FROZEN_NOT_EXECUTED_NOT_AUTHORIZED",
+  "existing_gate_owners": ["C5", "C6"],
+  "new_gate_added": false,
+  "required_critic_decision_before_user_authorization": "PROCEED_TO_FINAL_EVALUATION",
+  "current_live_authorization": false,
+  "normal_entry_chain": [
+    "formal persistent-run start",
+    "real primary child",
+    "run-scoped supervisor",
+    "shared machine Notifier",
+    "installed writing-fidelity + response-clarity",
+    "Gmail SMTP_ACCEPTED"
+  ],
+  "canary_contract": {
+    "project": "disposable Git repo",
+    "progress_mode": "none",
+    "progress_owner": "none",
+    "source": "NONE",
+    "notify": "ON",
+    "recipient_override": "NONE",
+    "notification_cadence": "60min",
+    "primary_child": "public-safe synthetic local task, approximately 5 seconds, natural exit 0",
+    "primary_run_duration": "less than the 60-second observation interval",
+    "expected_logical_deliveries": ["runtime_start", "runtime_terminal"],
+    "expected_delivery_count": 2,
+    "session_supervisor_binding_primary_child_count_each": 1,
+    "semantic_goal_completion_inference": false
+  },
+  "passive_trace": {
+    "observation_only": true,
+    "must_not_call": ["deliver_notification", "render_once", "send_auto_email"],
+    "must_not_inject_third_event": true,
+    "capture": [
+      "exact candidate source identity",
+      "formal entry and child/supervisor lineage",
+      "installed plugin/version/required skill identities",
+      "explicit skill invocation prompt and one-turn JSONL boundaries",
+      "reader-facing projection and raw-request fidelity outcome",
+      "one model maximum per logical delivery, retry zero",
+      "two event identities and exact attempt/receipt lineage",
+      "SMTP_ACCEPTED without inbox-delivery assertion"
+    ]
+  },
+  "maximum_future_live_budget": {
+    "persistent_canaries": 1,
+    "real_model_invocations": 2,
+    "real_gmail_smtp_attempts": 2,
+    "model_retries": 0,
+    "smtp_automatic_retries": 0,
+    "extra_send_test": 0,
+    "provider_account_from_default_recipient": "UNCHANGED_CURRENT_MACHINE_CONFIG",
+    "recipient_override": "NONE",
+    "input": "public-safe synthetic NotificationRequest allowlist only",
+    "private_data": "NONE",
+    "credentials_in_model_or_evidence": false,
+    "paid_review": false,
+    "release_tag_marketplace_movement": false
+  },
+  "implementation_round_consumption": {
+    "final_persistent_canaries": 0,
+    "real_model_invocations": 0,
+    "real_gmail_smtp_attempts": 0,
+    "send_test": 0
+  },
+  "remaining_sequence": [
+    "same independent Critic chooses PROCEED_TO_FINAL_EVALUATION or REVISE",
+    "only after PROCEED: user decides exact live authorization",
+    "only after authorization: verify installed runtime identity and execute this single normal-entry canary"
+  ],
+  "old_direct_deliver_live_records": "historical component evidence only; not the final normal-entry chain"
+}

@@ -1,0 +1,48 @@
+{
+  "candidate_sha": "0aef27850a91e415305458aef1d1d60506841d9b",
+  "real_models": 0,
+  "gmail_smtp_attempts": 0,
+  "send_test": 0,
+  "final_persistent_canary": 0,
+  "early_blocked_prelaunch_requests": 2,
+  "final_verification_guard_count_baseline": 2,
+  "final_verification_guard_count_end": 2,
+  "final_verification_new_blocked_requests": 0,
+  "audit_scope": "Python subprocess audit denies canonical codex exec; SMTP connect and Gmail DNS are denied; no claim of universal read/network isolation",
+  "production_owner_changes": [
+    "ai_bridge_kit/clear_writing.py"
+  ],
+  "test_log_and_harness_integrity": [
+    {
+      "path": "LOCAL_PY312_TESTS.txt",
+      "sha256": "4225b66a4c638968eef8ab625ea5ee6989e01eeb5fb521e7bf774378d3bd38d9",
+      "copied_bytes_match_original": true
+    },
+    {
+      "path": "LOCAL_PY39_TESTS.txt",
+      "sha256": "3c9d663cfc3bdf98002197b608bdd8babac0d293875fb7aa215b49c385af79be",
+      "copied_bytes_match_original": true
+    },
+    {
+      "path": "TARGETED_TESTS.txt",
+      "sha256": "3e75d047c05b4e892307e2f76dbdd4f5534be8d9f5410d3e68dc6b249f6f17ef",
+      "copied_bytes_match_original": true
+    },
+    {
+      "path": "TRANSPORT_DEADLINE.json",
+      "sha256": "299b8ec41e49c69b5fd28e6142e4d1f83e16c4af50416c19882bd6190a6fba2a",
+      "copied_bytes_match_original": true
+    },
+    {
+      "path": "EARLY_NONLIVE_GUARD_DIAGNOSTIC.txt",
+      "sha256": "b2df2872796790e18cb6f4b9811adc2b5af0bf23c6f0ff6fdcfe0e2cf97a5630",
+      "copied_bytes_match_original": true
+    },
+    {
+      "path": "nonlive_test_guard.py",
+      "sha256": "261b006baad54b76e337b6604cc8ef055e5bdf614258e8128781e24d1b3b23ec",
+      "copied_bytes_match_original": true
+    }
+  ],
+  "new_candidate_live_PASS_claimed": false
+}
