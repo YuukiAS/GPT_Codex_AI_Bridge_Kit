@@ -12,7 +12,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-from ai_bridge_kit import notifier
+from ai_bridge_kit import clear_writing, notifier
 
 
 def valid_brief(status: str = "complete", task_key: str = "001_done") -> dict:
@@ -414,9 +414,16 @@ class NotifierTests(unittest.TestCase):
             sent = []
             write_brief(root, valid_brief(task_key="002_new"))
 
-            results = notifier.notifier_once(root=root, state_path=state_path, sender=lambda brief, env: sent.append(brief))
+            # Scanner/transport regression, not an installed live model test.
+            with mock.patch.object(
+                clear_writing, "resolve_installed_writing_style",
+                side_effect=clear_writing.ClearWritingError("NONLIVE_SCANNER_FIXTURE"),
+            ) as resolve:
+                results = notifier.notifier_once(root=root, state_path=state_path, sender=lambda brief, env: sent.append(brief))
+            resolve.assert_called_once()
 
             self.assertEqual([result.status for result in results], ["sent"])
+            self.assertIn("expression=DETERMINISTIC_FALLBACK", results[0].message)
             self.assertEqual(len(sent), 1)
 
     def test_run_is_not_default_install_requirement_and_tmux_not_needed(self) -> None:
@@ -538,9 +545,15 @@ class NotifierTests(unittest.TestCase):
             sent = []
             write_notification(root, structured_brief(task_key="002_stage"))
 
-            results = notifier.notifier_once(root=root, state_path=state_path, sender=lambda brief, env: sent.append(brief))
+            with mock.patch.object(
+                clear_writing, "resolve_installed_writing_style",
+                side_effect=clear_writing.ClearWritingError("NONLIVE_SCANNER_FIXTURE"),
+            ) as resolve:
+                results = notifier.notifier_once(root=root, state_path=state_path, sender=lambda brief, env: sent.append(brief))
+            resolve.assert_called_once()
 
             self.assertEqual([result.status for result in results], ["sent"])
+            self.assertIn("expression=DETERMINISTIC_FALLBACK", results[0].message)
             self.assertEqual(sent[0]["event_type"], "milestone")
 
     def test_operational_failure_can_be_sent_by_machine_layer(self) -> None:
