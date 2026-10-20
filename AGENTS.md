@@ -149,9 +149,11 @@ state；production `AI_BRIDGE_NOTIFY_*` 环境变量不得覆盖 transport confi
 Control、Persistent 只在各自 authority 已经产生合法事实后提交严格 allowlist request，
 transport failure 不得改变 workflow state 或 primary child。只有 existing automatic
 owner 已决定发送后，才可调用一次 one-shot Clear Writing adapter：从 installed/enabled
-`writing-style@yuukias-ai-skills` 绑定 `writing-fidelity` 与 `chinese-prose`，最多运行
+`writing-style@yuukias-ai-skills` 绑定 `writing-fidelity` 与 `response-clarity`，最多运行
 一次 `codex exec --ephemeral --json --sandbox read-only`。启动前校验 installed skill 身份，
-prompt 显式使用 `$writing-fidelity` 与 `$chinese-prose`；不要求 JSONL skill-load 事件。
+prompt 显式使用 `$writing-fidelity` 与 `$response-clarity`；不要求 JSONL skill-load 事件。
+读者投影默认不展示内部 routing/audit 字段，start/terminal 无有意义 ETA 时不强制
+显示 UNKNOWN；完整 request 不变，仍从原始 fact_class/authority 限制 runtime 结论强度。
 JSONL、skill 身份或机械保真检查失败时立即使用 deterministic fallback，模型 retry 为 0；
 表达或 transport
 失败不得改变业务状态。不得恢复 app-server client、Progress display thread、持久

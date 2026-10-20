@@ -12,7 +12,7 @@ from typing import Any, Callable
 
 
 WRITING_PLUGIN_ID = "writing-style@yuukias-ai-skills"
-REQUIRED_SKILLS = ("writing-fidelity", "chinese-prose")
+REQUIRED_SKILLS = ("writing-fidelity", "response-clarity")
 MAX_OUTPUT_BYTES = 4096
 MODEL_TIMEOUT_SECONDS = 90
 
@@ -142,17 +142,17 @@ def resolve_installed_writing_style(
 
 
 def _reader_facts(brief: dict[str, Any]) -> dict[str, Any]:
+    # Project only reader-facing facts; the original request remains authority
+    # for runtime/semantic fidelity, transport identity and audit.
     keys = [
         "project",
         "task_key",
-        "consumer",
-        "fact_class",
         "event_type",
         "terminal_status",
         "status",
-        "decision_authority",
         "summary",
         "key_conclusion",
+        "next_action",
         "next_step",
         "stage",
         "completed",
@@ -165,10 +165,13 @@ def _reader_facts(brief: dict[str, Any]) -> dict[str, Any]:
         "branch",
         "version",
         "run_id",
-        "runtime_id",
-        "source_event_id",
     ]
-    return {key: brief[key] for key in keys if key in brief}
+    facts = {key: brief[key] for key in keys if key in brief}
+    if brief.get("fact_class") in {"runtime_start", "runtime_terminal"}:
+        for key in ("eta", "eta_low", "eta_high"):
+            if facts.get(key) in {None, "", "UNKNOWN"}:
+                facts.pop(key, None)
+    return facts
 
 
 def _prompt(brief: dict[str, Any]) -> str:
@@ -176,10 +179,14 @@ def _prompt(brief: dict[str, Any]) -> str:
     return (
         "Use " + " and ".join(f"${name}" for name in REQUIRED_SKILLS)
         + " to render one concise natural Simplified Chinese notification. "
-        "Preserve the exact status, project, task identity, every number/date/time/version, UNKNOWN, "
+        "Lead with what happened and what it means to the reader, not machine labels. "
+        "Use only the reader-facing facts below; do not add internal routing or audit fields. "
+        "Do not invent an ETA or require UNKNOWN when no ETA is provided. "
+        "Preserve the exact status, project, task identity, every number/date/time/version and UNKNOWN "
+        "present in the reader-facing facts, "
         "and the original conclusion strength. Add no facts or numbers. Runtime/operational facts must never become "
         "Goal PASS, READY, RELEASE_READY, or semantic completion. Return only the notification text.\n"
-        f"Immutable facts: {facts}\n"
+        f"Immutable reader-facing facts: {facts}\n"
     )
 
 
@@ -246,7 +253,6 @@ def fidelity_check(brief: dict[str, Any], rendered: str) -> None:
             facts.get("branch"),
             facts.get("version"),
             facts.get("run_id"),
-            facts.get("runtime_id"),
             *(brief.get("required_exact_literals") if isinstance(brief.get("required_exact_literals"), list) else []),
         ]
         if value not in {None, ""}
@@ -260,7 +266,9 @@ def fidelity_check(brief: dict[str, Any], rendered: str) -> None:
     if "UNKNOWN" in canonical and "UNKNOWN" not in rendered:
         raise ClearWritingError("CLEAR_WRITING_UNKNOWN_CHANGED")
     status = str(facts.get("status") or facts.get("terminal_status") or "").lower()
-    if (facts.get("event_type") or "") in {"operational_blocked", "operational_progress"} or status in {
+    if str(brief.get("fact_class") or "").startswith("runtime_") or (
+        brief.get("decision_authority") == "Runtime"
+    ) or (brief.get("event_type") or "") in {"operational_blocked", "operational_progress"} or status in {
         "blocked",
         "failed",
         "pending",
@@ -268,21 +276,24 @@ def fidelity_check(brief: dict[str, Any], rendered: str) -> None:
         "unknown",
         "awaiting_human",
     }:
-        forbidden = ("Goal PASS", "READY", "RELEASE_READY", "目标已完成", "发布就绪")
-        for token in forbidden:
-            for match in re.finditer(rf"(?<![A-Za-z_]){re.escape(token)}(?![A-Za-z_])", rendered, re.IGNORECASE):
-                prefix = re.split(r"[。！？!?；;\n，,]", rendered[:match.start()])[-1]
-                negative = re.search(
-                    r"(?:不代表|(?:并|尚|仍|还)?不能(?:说明|认定|证明|表明|代表)|"
-                    r"(?:尚|仍|还)?未能(?:说明|认定|证明|表明|代表)|"
-                    r"并非|不是|不等于|尚未达到|未达到)\s*[「『“\"'`]*$",
-                    prefix,
-                )
-                if negative and not re.search(
-                    r"(?:并非|不是|不能|并不|不可能)\s*$", prefix[:negative.start()]
-                ):
-                    continue
-                raise ClearWritingError("CLEAR_WRITING_CONCLUSION_STRENGTHENED")
+        forbidden = (
+            "Goal PASS", "Goal completed", "Goal complete", "semantic completion",
+            "PASS", "READY", "RELEASE_READY", "目标已完成", "目标完成", "目标已达成", "发布就绪",
+        )
+        pattern = "|".join(re.escape(token) for token in forbidden)
+        for match in re.finditer(rf"(?<![A-Za-z_])(?:{pattern})(?![A-Za-z_])", rendered, re.IGNORECASE):
+            prefix = re.split(r"[。！？!?；;\n，,]", rendered[:match.start()])[-1]
+            negative = re.search(
+                r"(?:不代表|(?:并|尚|仍|还)?不能(?:说明|认定|证明|表明|代表)|"
+                r"(?:尚|仍|还)?未能(?:说明|认定|证明|表明|代表)|"
+                r"并非|不是|不等于|尚未达到|未达到)\s*[「『“\"'`]*$",
+                prefix,
+            )
+            if negative and not re.search(
+                r"(?:并非|不是|不能|并不|不可能)\s*$", prefix[:negative.start()]
+            ):
+                continue
+            raise ClearWritingError("CLEAR_WRITING_CONCLUSION_STRENGTHENED")
 
 
 def render_once(

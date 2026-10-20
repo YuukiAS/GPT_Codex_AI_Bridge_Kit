@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -28,7 +29,7 @@ class FakeCodex:
                         "id": clear_writing.WRITING_PLUGIN_ID,
                         "installed": True,
                         "enabled": True,
-                        "version": "0.4.0",
+                        "version": "0.5",
                         "installedPath": self.plugin_root.as_posix(),
                     }
                 )
@@ -48,12 +49,12 @@ class ClearWritingTests(unittest.TestCase):
         manifest = self.plugin / ".codex-plugin" / "plugin.json"
         manifest.parent.mkdir(parents=True)
         manifest.write_text(
-            json.dumps({"id": clear_writing.WRITING_PLUGIN_ID, "version": "0.4.0"}),
+            json.dumps({"id": clear_writing.WRITING_PLUGIN_ID, "version": "0.5"}),
             encoding="utf-8",
         )
         self.skills = {
             "writing-fidelity": self.plugin / "skills" / "fidelity" / "SKILL.md",
-            "chinese-prose": self.plugin / "skills" / "zh" / "SKILL.md",
+            "response-clarity": self.plugin / "skills" / "response-clarity" / "SKILL.md",
         }
         for name, path in self.skills.items():
             path.parent.mkdir(parents=True)
@@ -101,6 +102,9 @@ class ClearWritingTests(unittest.TestCase):
         self.assertEqual(result["model_invocations"], 1)
         self.assertEqual(result["model_retry_count"], 0)
         self.assertEqual(fake.model_calls, 1)
+        self.assertEqual(result["plugin"]["version"], "0.5")
+        self.assertEqual(clear_writing.REQUIRED_SKILLS, ("writing-fidelity", "response-clarity"))
+        self.assertNotIn("$chinese-prose", fake.prompts[0])
         invocation = result["jsonl_evidence"]["skill_invocation"]
         self.assertEqual(invocation["method"], "explicit_prompt")
         self.assertEqual(invocation["names"], list(clear_writing.REQUIRED_SKILLS))
@@ -148,8 +152,110 @@ class ClearWritingTests(unittest.TestCase):
                 with self.assertRaisesRegex(clear_writing.ClearWritingError, "CONCLUSION_STRENGTHENED"):
                     clear_writing.fidelity_check(self.brief, self.good_text() + "。" + phrase)
 
+    def automatic_request(self, fact_class: str, status: str, **extra) -> dict:
+        return notifier.notification_request(
+            project="Bridge 项目", task_key="repo--task", consumer="persistent",
+            fact_class=fact_class, status=status, decision_authority="Runtime",
+            summary="这是运行事实，不代表目标已完成。", next_action="等待独立复核。",
+            runtime_id="run-20261020-123456", source_event_id="event-987654321",
+            **extra,
+        )
+
+    def test_reader_projection_preserves_request_without_forcing_routing_or_empty_eta(self) -> None:
+        for kind, status in (("runtime_start", "running"), ("runtime_terminal", "finished")):
+            with self.subTest(fact_class=kind):
+                request = self.automatic_request(kind, status, eta="UNKNOWN", eta_low="", eta_high=None)
+                original = json.loads(json.dumps(request))
+                facts = notifier.expression_facts(request)
+                prompt = clear_writing._prompt(facts)
+                projected = json.loads(prompt.split("Immutable reader-facing facts: ", 1)[1])
+                for key in (
+                    "consumer", "fact_class", "decision_authority", "runtime_id", "source_event_id", "schema",
+                    "eta", "eta_low", "eta_high",
+                ):
+                    self.assertNotIn(key, projected)
+                self.assertEqual(projected["next_action"], "等待独立复核。")
+                text = f"Bridge 项目中的 repo--task 当前状态为 {status}。这是运行事实，不代表目标已完成。"
+                fake = FakeCodex(self.plugin, stdout=self.jsonl(text))
+                result = clear_writing.render_once(
+                    facts, fallback_text="fallback", codex_bin="/usr/bin/codex",
+                    state_root=self.root / kind, runner=fake,
+                )
+                self.assertEqual(result["mode"], "NORMAL_WRITING_STYLE")
+                self.assertEqual(fake.model_calls, 1)
+                self.assertNotIn(request["runtime_id"], fake.prompts[0])
+                self.assertNotIn(request["source_event_id"], fake.prompts[0])
+                self.assertEqual(request, original)
+                self.assertEqual(notifier.expression_facts(request), original)
+
+    def test_runtime_terminal_cannot_be_strengthened_despite_finished_status(self) -> None:
+        brief = self.automatic_request("runtime_terminal", "finished", eta="UNKNOWN")
+        # Class alone must guard runtime facts even if visible status looks terminal.
+        brief.pop("decision_authority")
+        base = "Bridge 项目中的 repo--task 状态为 finished。子进程已经退出；"
+        clear_writing.fidelity_check(brief, base + "尚不能认定目标已完成。")
+        for upgrade in ("Goal PASS", "PASS", "READY", "RELEASE_READY", "目标已完成", "目标完成",
+                        "目标已达成", "发布就绪", "Goal completed", "semantic completion"):
+            with self.subTest(upgrade=upgrade):
+                with self.assertRaisesRegex(clear_writing.ClearWritingError, "CONCLUSION_STRENGTHENED"):
+                    clear_writing.fidelity_check(brief, base + upgrade)
+        semantic = dict(brief, fact_class="semantic_decision", decision_authority="Reviewer", status="PASS")
+        semantic.pop("eta")
+        clear_writing.fidelity_check(semantic, "Bridge 项目中的 repo--task 审核结论为 PASS。")
+
+    def test_reader_progress_numbers_version_and_uncertainty_remain_protected(self) -> None:
+        brief = self.automatic_request(
+            "runtime_progress", "running", completed=3, total=10, fraction=0.3,
+            duration_seconds=60, eta="UNKNOWN", version="0.11.0",
+        )
+        text = "Bridge 项目 0.11.0 的 repo--task 状态为 running，进度 3/10，比例 0.3，运行 60 秒，ETA UNKNOWN。"
+        clear_writing.fidelity_check(brief, text)
+        for bad in (text.replace("0.3", "0.4"), text.replace("0.11.0", "0.10.0"),
+                    text.replace("UNKNOWN", "已知"), text.replace("repo--task", "another-task")):
+            with self.subTest(bad=bad):
+                with self.assertRaises(clear_writing.ClearWritingError):
+                    clear_writing.fidelity_check(brief, bad)
+        for kind in ("runtime_start", "runtime_terminal"):
+            known = dict(brief, fact_class=kind, eta="2026-10-20T18:00:00Z")
+            self.assertEqual(clear_writing._reader_facts(known)["eta"], known["eta"])
+            clear_writing.fidelity_check(known, text.replace("UNKNOWN", known["eta"]))
+        limited = self.automatic_request("runtime_terminal", "finished", eta="UNKNOWN")
+        limited["summary"] = "退出时间 UNKNOWN，不代表目标已完成。"
+        with self.assertRaisesRegex(clear_writing.ClearWritingError, "UNKNOWN_CHANGED"):
+            clear_writing.fidelity_check(limited, "Bridge 项目中的 repo--task 状态为 finished。")
+
+    def test_model_timeout_falls_back_once_and_preserves_read_only_deadline(self) -> None:
+        fake = FakeCodex(self.plugin)
+
+        def timeout_runner(command, **kwargs):
+            if command[1:4] == ["plugin", "list", "--json"]:
+                return fake(command, **kwargs)
+            fake.model_calls += 1
+            self.assertIn("--ephemeral", command)
+            self.assertIn("--json", command)
+            self.assertEqual(command[command.index("--sandbox") + 1], "read-only")
+            self.assertNotIn("resume", command)
+            self.assertLessEqual(kwargs["timeout"], 90)
+            raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+
+        self.assertEqual(clear_writing.MODEL_TIMEOUT_SECONDS, 90)
+        self.assertEqual(notifier.AUTO_DELIVER_DEADLINE_SECONDS, 120)
+        result = clear_writing.render_once(
+            self.brief, fallback_text="deterministic", codex_bin="/usr/bin/codex",
+            state_root=self.root / "timeout", runner=timeout_runner,
+        )
+        self.assertEqual(result["mode"], "DETERMINISTIC_FALLBACK")
+        self.assertEqual(result["text"], "deterministic")
+        self.assertEqual(fake.model_calls, 1)
+        self.assertEqual(result["model_invocations"], 1)
+        self.assertEqual(result["model_retry_count"], 0)
+
     def test_missing_required_skill_prevents_model_launch(self) -> None:
-        self.skills["chinese-prose"].unlink()
+        self.skills["response-clarity"].unlink()
+        # The former route cannot substitute for missing response-clarity.
+        old_skill = self.plugin / "skills" / "zh" / "SKILL.md"
+        old_skill.parent.mkdir(parents=True)
+        old_skill.write_text("---\nname: chinese-prose\n---\n", encoding="utf-8")
         fake = FakeCodex(self.plugin, stdout=self.jsonl(self.good_text()))
         result = clear_writing.render_once(
             self.brief, fallback_text="fallback", codex_bin="/usr/bin/codex",
@@ -157,6 +263,7 @@ class ClearWritingTests(unittest.TestCase):
         )
         self.assertEqual(result["mode"], "DETERMINISTIC_FALLBACK")
         self.assertIn("WRITING_STYLE_SKILLS_UNAVAILABLE", result["failure"])
+        self.assertIn("response-clarity", result["failure"])
         self.assertEqual(fake.model_calls, 0)
 
     def test_plugin_identity_failures_keep_model_count_zero(self) -> None:
@@ -215,7 +322,7 @@ class ClearWritingTests(unittest.TestCase):
     def test_current_codex_inventory_nested_source_and_name_manifest_resolve(self) -> None:
         manifest = self.plugin / ".codex-plugin" / "plugin.json"
         manifest.write_text(
-            json.dumps({"name": "writing-style", "version": "0.4.0"}),
+            json.dumps({"name": "writing-style", "version": "0.5"}),
             encoding="utf-8",
         )
 
@@ -231,7 +338,7 @@ class ClearWritingTests(unittest.TestCase):
                                 "marketplaceName": "yuukias-ai-skills",
                                 "installed": True,
                                 "enabled": True,
-                                "version": "0.4.0",
+                                "version": "0.5",
                                 "source": {"source": "local", "path": self.plugin.as_posix()},
                             }
                         ]

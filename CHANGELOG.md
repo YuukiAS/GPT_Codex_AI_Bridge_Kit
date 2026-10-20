@@ -29,9 +29,12 @@
   authority or primary lifecycle.
 - Add one-shot Clear Writing for automatic Notifier deliveries. One fresh
   `codex exec --ephemeral` must consume the installed `writing-fidelity` and
-  `chinese-prose` skills and pass mechanical fidelity checks; every failure uses
+  `response-clarity` skills and pass mechanical fidelity checks; every failure uses
   deterministic fallback with no model retry. Manual `send` and `send-test`
   retain 0.10 behavior.
+- Project reader-facing notification facts without internal routing/audit labels
+  or meaningless start/terminal UNKNOWN ETA. Keep the full request unchanged and
+  enforce runtime conclusion strength from its original fact class/authority.
 - Verify installed skill identities and explicit `$skill-name` invocation without
   requiring undocumented JSONL skill-load events or shell reads. Preserve fatal
   error and single-turn checks; accept explicit negative completion caveats

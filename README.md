@@ -452,13 +452,15 @@ ai-bridge notifier send results/<task_key>/notification_brief.json
 results/<task_key>/notifications/<event>.json
 ```
 
-现有 automatic owner 已经决定发送后，Notifier 才进入 one-shot Clear Writing adapter。它通过当前 `codex plugin list --json` 唯一绑定 installed/enabled `writing-style@yuukias-ai-skills`，验证 manifest/version，并解析正式 `writing-fidelity` 与 `chinese-prose`。每次 logical delivery 最多运行一次：
+现有 automatic owner 已经决定发送后，Notifier 才进入 one-shot Clear Writing adapter。它通过当前 `codex plugin list --json` 唯一绑定 installed/enabled `writing-style@yuukias-ai-skills`，验证 manifest/version，并解析正式 `writing-fidelity` 与 `response-clarity`。每次 logical delivery 最多运行一次：
 
 ```text
 codex exec --ephemeral --json --sandbox read-only --skip-git-repo-check -C <neutral-dir> -
 ```
 
-两个正式 skill 必须在启动前从 installed/enabled plugin 中唯一解析并确认身份，prompt 显式使用 `$writing-fidelity` 和 `$chinese-prose`。模型成功退出、JSONL 恰好包含一个成功 turn，且数字、状态、`UNKNOWN`、路径、版本和结论强度通过机械保真检查后，模型文本才进入现有 transport。JSONL 用于检查 turn 和错误，不要求它暴露 skill-load event，也不要求模型通过 shell 读取 `SKILL.md` 留证。plugin、skill 身份、模型、JSONL、turn 或保真检查任一失败，立即使用确定性 fallback，模型 retry 为 0；fallback 仍尝试 transport。一次自动投递有 120 秒总 deadline；transport 开始后结果不明会记录 `DELIVERY_UNKNOWN`，只能显式确认可能重复后 retry。表达或邮件失败不改变业务状态、不杀 primary child，也不恢复 app-server、persistent reader/session、Progress display thread 或跨工作流 event bus。
+两个正式 skill 必须在启动前从 installed/enabled plugin 中唯一解析并确认身份，prompt 显式使用 `$writing-fidelity` 和 `$response-clarity`。邮件正文先说明发生了什么及其运行含义，不默认展示 `consumer`、`fact_class`、`decision_authority`、`runtime_id`、`source_event_id`、`schema`；start/terminal 没有有意义 ETA 时不强制显示 `UNKNOWN`。完整内部 NotificationRequest 不变，保真检查仍用原始 `fact_class` 和 authority 禁止 runtime 事实升级为目标完成。
+
+模型成功退出、JSONL 恰好包含一个成功 turn，且读者可见事实中的数字、状态、不确定性、路径、版本和结论强度通过机械保真检查后，模型文本才进入现有 transport。JSONL 用于检查 turn 和错误，不要求它暴露 skill-load event，也不要求模型通过 shell 读取 `SKILL.md` 留证。plugin、skill 身份、模型、JSONL、turn 或保真检查任一失败，立即使用确定性 fallback，模型 retry 为 0；fallback 仍尝试 transport。一次自动投递有 120 秒总 deadline；transport 开始后结果不明会记录 `DELIVERY_UNKNOWN`，只能显式确认可能重复后 retry。表达或邮件失败不改变业务状态、不杀 primary child，也不恢复 app-server、persistent reader/session、Progress display thread 或跨工作流 event bus。
 
 运行层进展可以报告当前进度或阻塞，但不能声称语义通过、`READY`、发布就绪或最终完成。邮件密码等秘密配置保存在本地私有文件，不应提交到项目仓库。
 
