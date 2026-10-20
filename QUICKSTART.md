@@ -1,6 +1,6 @@
 # Quickstart
 
-这是最短使用流程。
+这是当前 `0.11.x`（`0.11.1` 补丁）的最短使用流程；机器安装应使用正式 `release` checkout，不追随任意开发分支。
 
 ## 1. 初始化真实项目
 
@@ -189,6 +189,12 @@ Persistent Run 不把 session/PID/heartbeat 当作完成，也不自动 fallback
 `nohup`、裸后台 `&`、`screen` 或 `sudo`。Lite / Reviewed Mode / Controlled Mode 的
 workflow 选择和原 Goal 完成标准保持不变。
 
+通知 cadence 默认 60 分钟，非测试不得低于 15 分钟。普通 count/fraction 更新只刷新
+latest/history；定时通知按上次逻辑投递计时，而不是按相邻 observation 计时。
+阶段切换、stalled/blocked/failed、runtime terminal 或重大 ETA 变化可提前通知，
+已知 ETA 与 `UNKNOWN` 互换也属于重大变化。Persistent Run 不是第四种 workflow；
+Program Run 尚未实现，不会自主生成下一个 Goal 或自动串联任务。
+
 Codex 收到 task 后会在实质执行前检查是否存在可预见的 approval-sensitive effect。
 仓库里的 Goal/Plan/contract 只证明 frozen scope，不等于当前用户授权；如果当前用户
 消息没有包含同一个 frozen Goal 的 bounded kickoff 授权，Codex 应先显示 kickoff 并
@@ -204,11 +210,19 @@ REQUEST、Control REQUEST 或 Persistent contract 明确启用才会发送。
 ```bash
 ai-bridge private sync --profile notifier
 ai-bridge notifier validate
-ai-bridge notifier send-test
 ai-bridge notifier status
 ```
 
-`send-test` 成功只表示 SMTP server 接受消息，不保证收件箱已投递。Clear Writing、
+有旧项目配置时可用 `ai-bridge notifier migrate-legacy --project /path/to/repo`，
+不会删除旧文件或覆盖冲突配置。没有旧配置时，只在本机编辑权限为 `0600` 的上述
+machine 文件，填入发件 Gmail、App Password、FROM、默认 TO 和 subject prefix；
+不要把密码发到对话或提交到仓库。新项目直接复用机器配置，`recipient_override`
+只影响当前逻辑投递，不改变默认收件人。需要真实测试邮件时，另行明确授权后才运行
+`ai-bridge notifier send-test`。
+
+自动通知使用 installed `writing-fidelity + response-clarity`；失败就用 deterministic
+fallback，模型 retry=0。`SMTP_ACCEPTED` / `send-test` 成功只表示 SMTP server 接受
+消息，不保证收件箱已投递。Clear Writing、
 SMTP 或通知 helper 失败都不会回滚 workflow、改变语义结论或杀死 primary child；
 `DELIVERY_UNKNOWN` 只能在明确接受可能重复后显式 retry。
 

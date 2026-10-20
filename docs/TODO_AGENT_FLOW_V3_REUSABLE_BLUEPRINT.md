@@ -1,6 +1,12 @@
 # TODO — Reusable Agent-Flow v3 Blueprint
 
-Status: **CARE gate complete / design history retained**
+Status: **CLOSED / IMPLEMENTED IN CONTROL (0.4.0 onward) / DESIGN HISTORY**
+
+Current closure: reusable Agent-Flow is the released Control workflow, not an
+active TODO. Implementation authority is the three sources below, with runtime
+in `ai_bridge_kit/agent_flow.py` and regression coverage in `tests/test_agent_flow.py`.
+The historical blueprint is not a promise to implement every provisional profile
+or obsolete notifier/config idea below. See [TODO closure summary](BRIDGE_TODO_CLOSURE_SUMMARY.md).
 
 The CARE stress test has reached implementation-fidelity closure and the final
 Planner/Critic gate. This older blueprint is retained as design history, but

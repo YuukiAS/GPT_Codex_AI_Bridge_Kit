@@ -1,7 +1,17 @@
 # TODO — Bounded Reviewed Worktree Execution
 
-Status: NEW / POST-0.8.5  
-Priority: HIGH — user explicitly requested short-term promotion on 2026-09-23.
+Status: CLOSED / IMPLEMENTED (0.9.0 materialize; 0.9.1 bootstrap)
+Priority: historical incident/design record, not an active release blocker.
+
+Released entry points are `reviewed-handoff materialize-worktree` and
+`reviewed-handoff task bootstrap` in `ai_bridge_kit/reviewed_handoff.py`, with
+Host rules and `tests/test_reviewed_handoff.py`. Bootstrap is repo-local and
+materialization retains exact frozen task identity; neither grants generic Git
+topology authority. Evidence: `results/bridge-core--low-friction-operations-convergence/FINAL_REPORT.md`,
+the formal 0.9.1 distribution record in `TODO_RELEASE_MAIN_DISTRIBUTION_DRIFT.md`,
+and [TODO closure summary](BRIDGE_TODO_CLOSURE_SUMMARY.md).
+
+The remainder preserves the original failure and design discussion.
 
 Sources:
 

@@ -1,11 +1,22 @@
 # TODO — Execution Context Continuity: Canonical Worktree + Mandatory Control Reads
 
-- Status: **IMPLEMENTED_READER_CANARY_BLOCKED — selected CODEX_HOME 无法提供隔离 reader thread，候选未冻结**
-- Priority: **CRITICAL — repeated real-user task interruption**
+- Status: **CLOSED / IMPLEMENTED / PROVEN IN FORMAL 0.11.0**
+- Priority: historical incident/design record, not an active release blocker.
 - Date: 2026-10-08
 - Task key: `bridge-core--execution-context-readiness-convergence`
 - Approved execution package: `bbd14ce66b462ba2dbcecc6ad06d851598a3aacc`
-- Candidate locator: `NOT_FROZEN_RUNTIME_CAPABILITY_GAP`
+- Released candidate: `391ff889ad156540727da168fb608c5f37dbbdfc`
+
+当前合同是 exact repo/worktree/branch/commit 绑定和 mandatory source preflight，
+不是旧 reader/display/app-server 或 reciprocal worktree exchange 方案。
+实现见 `ai_bridge_kit/readiness.py` 的 execution/source preflight；正常入口与负例证据见
+`results/bridge-core--product-scope-reset/f3c882c/C2_CONTEXT_AND_SOURCE_TRUTH.json`，
+最终候选沿用证据和全量回归绑定见
+`results/bridge-core--product-scope-reset/v6/391ff88/ACCEPTANCE_STATUS.json`，
+正式发布见同目录 `FORMAL_RELEASE_CLOSURE.json`。
+更早的隔离 reader 阻塞不再是当前产品依赖；旧工作树交换方案已被明确排除，
+不是遗漏的短期功能。下文仅为历史，不要求恢复已废弃架构。
+总账见 [TODO 收口摘要](BRIDGE_TODO_CLOSURE_SUMMARY.md)。
 
 ## 2026-10-18 development canary 结果
 

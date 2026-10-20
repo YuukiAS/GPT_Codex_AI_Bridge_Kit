@@ -1,8 +1,15 @@
 # TODO — Reviewed Handoff 首次远端发布闭环
 
-状态：NEW  
-优先级：HIGH  
+状态：CLOSED / IMPLEMENTED / FORMALLY RELEASED（0.9.3）
+优先级：历史事件，不是 active TODO。
 记录日期：2026-09-29
+
+正式入口是 `ai-bridge reviewed-handoff task publish-first`，实现位于
+`ai_bridge_kit/reviewed_handoff.py`，回归位于 `tests/test_reviewed_handoff.py`。
+正式发布目标 `9dad0ba4bfa54e251f345091c5151ae991251ec9`，真实 consumer 与发布证据见
+`results/reviewed-handoff--first-remote-publication/FP_G6_REAL_CONSUMER_V2.md` 和
+同目录 `FORMAL_RELEASE_CLOSURE.md`。后续版本保持该窄入口与 fail-closed 边界。
+下文保留原始问题和完成标准，不再触发新的开发轮次。
 
 ## 真实失败
 

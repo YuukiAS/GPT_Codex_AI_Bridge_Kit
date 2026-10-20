@@ -1,9 +1,22 @@
 # TODO — Bridge Execution Reliability Closure
 
-Status: READY FOR PLANNER INTAKE / NOT IMPLEMENTATION AUTHORIZATION  
-Priority: CRITICAL — user requests one convergence release, not another incident-by-incident patch train  
+Status: CLOSED / IMPLEMENTED / FORMALLY RELEASED AS 0.10.0
+Priority: historical incident/design record, not Planner intake.
 Date: 2026-10-01  
 Task key candidate: `bridge-core--execution-reliability-closure`
+
+Released target: `9db19b0409816c22042a246b35a33e1d34fedd0a`.
+The source/gate history is in `results/bridge-core--execution-reliability-closure/`;
+those stage reports intentionally predate formal closure and retain their original
+qualifications (including the launcher-declined optional probe, not a fabricated
+real refusal). Subsequent formal release provenance is recorded by the verified
+old release baseline in
+`results/bridge-core--product-scope-reset/v6/391ff88/FORMAL_RELEASE_CLOSURE.json`.
+Sandbox-first execution, refusal classification, sanitized bounded publication
+and runtime identity diagnostics are released behavior, not new Planner work.
+See [TODO closure summary](BRIDGE_TODO_CLOSURE_SUMMARY.md).
+
+The remainder is the original historical intake/design discussion.
 
 ## User objective
 

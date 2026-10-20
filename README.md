@@ -6,7 +6,7 @@
 
 这个仓库的原则是：**默认保持简单，需要什么再加什么。** 普通项目通常只需要机器级规则和基础交接；只有确实需要时，才启用独立复核、高风险闭环、长期运行、通知、Overleaf 同步或视觉/文本复核。
 
-当前主干源码候选版本：`0.11.0`。这只是 `main` 上的源码候选身份，不等于正式分发完成。当前正式分发仍以远端 `refs/heads/release` 及对应发行证据为准；在 0.11.0 正式发行授权完成前，上一正式分发版本仍为 `0.10.0`，正式 `release` 分支指向 `9db19b0409816c22042a246b35a33e1d34fedd0a`。本仓库的正常机器同步以 `release` 分支为权威来源，不依赖 GitHub Release 或 tag。`main` 可继续包含后续候选、evidence / docs-only closure 提交，但这些更晚提交不会因此自动成为正式 release target。
+当前发行系列为 `0.11.x`，本补丁版本为 `0.11.1`；`0.11.0` 已正式发布。机器同步只以远端 `refs/heads/release` 及对应发行证据为准，不依赖 GitHub Release 或 tag。开发分支可以包含后续候选和证据、文档提交，但较新的分支 HEAD 不会自动成为正式发行目标。
 
 ## 一眼看懂：我到底该装什么
 
@@ -55,6 +55,8 @@ GPT 先规划，Codex 执行，再由 GPT 独立复核
 
 这些是面向用户讨论和选择工作流时使用的显示名称。具体命令仍保持兼容：复核模式使用 `ai-bridge reviewed-handoff ...`，控制模式使用 `ai-bridge agent-flow ...`。机器级能力显示为 **机器策略**，兼容命令仍是 `ai-bridge host ...`。
 
+工作流只有 Lite / Review / Control 三种。Persistent Run 是可组合的进程持久层，不是第四种工作流。Program Run 尚未实现，也不属于当前短期范围：Bridge 不会自主寻找下一任务、自动串联任务或生成下一个 Goal。
+
 ## 版本演进
 
 本表是 README 中唯一的版本历史摘要。它回答“每个版本增加或改变了什么”；后面的功能章节只说明当前怎么使用。
@@ -89,7 +91,8 @@ GPT 先规划，Codex 执行，再由 GPT 独立复核
 | `0.9.2` | 无人值守执行与持久运行选择语义收窄。 | 过夜、无人值守、多小时先触发启动前授权预检，不自动变成 tmux；调度器批处理或已脱离终端的服务由原生 owner 负责寿命；终端拥有且必须断线存活的 orchestrator 仍可使用 Persistent Run/tmux；进度报告继续来自项目原生证据且可独立于 tmux 使用。 |
 | `0.9.3` | 复核模式首次远端发布的受边界约束入口。 | `task bootstrap` 后，全新复核任务的第一份 REQUEST/CURRENT 元数据提交可以用 `ai-bridge reviewed-handoff task publish-first` 创建同名远端分支并绑定上游；它只支持 GitHub HTTPS、空期望 lease、单个首发元数据提交和原始 Git 对象校验，原始 `git push -u`、SSH/自定义传输、已有远端分支或包含任务内容/生产源码的提交仍走普通审批。 |
 | `0.10.0` | 执行可靠性与运行身份诊断闭环。 | 机器策略明确普通 workspace 工作先走 sandbox，拒绝后先分类再恢复；`publish-current-branch` 使用稳定 Git inspection view 和清洗后的网络/push 环境，ambient `SSH_ASKPASS` 不再导致 GitHub HTTPS 正例误拒绝但也不会被执行；`host validate/status` 会报告可执行文件、import source/version、source HEAD/dirty、local release ref 和 distribution metadata。 |
-| `0.11.0` | 执行上下文、指令预算、持久运行与机器级通知收口（源码候选，正式分发待 `release` 授权）。 | 常用安全读取和当前分支快进保持低打扰；Bridge-managed Executor 启动前绑定 exact repo/worktree/branch/commit 与 mandatory source blob；三类根 `AGENTS.md` writer 共享串行、字节保持的写事务；Persistent Run 提供 exact tmux lifecycle、显式 progress producer、ETA 和保守 recovery；Lite/Review/Control/Persistent 共用机器级一次性 Notifier。旧 app-server reader/display、自动工作树交换和跨工作流 event bus 不再属于当前产品。 |
+| `0.11.0` | 执行上下文、指令预算、持久运行与机器级通知正式收口。 | 常用安全读取和当前分支快进保持低打扰；Bridge-managed Executor 启动前绑定 exact repo/worktree/branch/commit 与 mandatory source blob；三类根 `AGENTS.md` writer 共享串行、字节保持的写事务；Persistent Run 提供 exact tmux lifecycle、显式 progress producer、ETA 和保守 recovery；Lite/Review/Control/Persistent 共用机器级一次性 Notifier。旧 app-server reader/display、自动工作树交换和跨工作流 event bus 不再属于当前产品。 |
+| `0.11.1` | 修复进度通知 cadence，关闭历史 TODO 并同步用户文档。 | 小幅 count/fraction 更新不再绕过通知间隔；间隔从上次逻辑投递计时，频繁 observation 也不会让定时通知一直推迟；ETA 算法和进程寿命合同不变。 |
 
 本项目采用 `0.x` 迭代方式。每个 `0.x` 小版本通常代表一项可独立使用的能力进入稳定工作流；补丁版本主要用于安全性、兼容性和默认行为修正。这不是严格的语义化版本承诺，而是当前阶段的版本阅读方式。
 
@@ -410,7 +413,11 @@ ai-bridge persistent-run prompt kickoff \
 - 从真实无进展证据推出的停滞状态；
 - latest/history/reconnect 查询。
 
-这些信息只报告运行事实，不是自动控制：Bridge Kit 不会因此自动重启任务、取消任务、扩资源，也不会把心跳、PID、tmux 会话或预计完成时间当成目标完成。`bridge-child` 可用 `persistent-run progress update` 原子写入进度；supervisor 每 60 秒观察一次，坏 JSON、半写或暂时缺失都不会杀死 child，并保留 last-good。count/fraction 至少三个有效点且跨十分钟才会给出 ETA；stage/none、证据不足或进度重置时返回 `UNKNOWN`。
+这些信息只报告运行事实，不是自动控制：Bridge Kit 不会因此自动重启任务、取消任务、扩资源，也不会把心跳、PID、tmux 会话或预计完成时间当成目标完成。项目可以提供原生进度 JSON，`bridge-child` 也可用 `persistent-run progress update` 原子写入进度。supervisor 每 60 秒观察一次；坏 JSON、半写或暂时缺失不会杀死 child，也不会覆盖 last-good。
+
+count/fraction 的 ETA 使用最近最多 60 分钟、12 个点中同 stage、同 total 的连续片段，至少三个有效点并跨十分钟。它取相邻点正向速率的中位数，用剩余工作量除以该速率估算剩余时间；区间用近期速率的上下四分位位置给出快慢边界。进度回退、stage/total 改变或超过 `max(15min, 3 × expected update interval)` 的间隔会重新 warm-up。stage/none、有效点不足、跨度不足或没有正向速率时保持 `UNKNOWN`，不编造预计时间。
+
+进度观察与邮件投递分别记账。普通 count/fraction 小变化只更新 latest/history，不立即发邮件；健康进度从上一次**逻辑投递**开始计时，达到通知 cadence 才投递，默认 60 分钟，非测试配置不得低于 15 分钟。每 5 分钟刷新 observation 不会重置该计时。start/resume、阶段切换、进入 stalled/blocked/failed、runtime terminal 和 material ETA change 可以提前通知；ETA 在已知与 `UNKNOWN` 之间切换总是重大变化，已知时间的变化门槛保持 `abs(new_finish - previous_finish) >= max(15min, 25% × previous_remaining_time)`。邮件失败也不会把下一次 observation 变成自动重试；runtime terminal 不受进度 cadence 阻断。
 
 GPT 写长期目标/任务时要先判断执行生命周期和寿命 owner。中文里“跑到明早”“无人值守”“多小时”不等于 tmux；“断线后继续运行一个终端拥有的 orchestrator”“恢复已有持久目标”才通常指向持久运行合同。无论选择哪种寿命 owner，都不代表必须把轻量交接任务改成复核模式 / 控制模式。如果确实需要终端拥有的断线存活能力，而仓库没有安装持久运行，也没有用户选择的等价项目原生合同，不要把任务写成普通实时 Codex 会话。
 
@@ -422,15 +429,17 @@ Codex 收到任务后会在实质执行前检查是否存在可预见、需要�
 
 权责边界是：语义决定者写结构化摘要，通知器负责验证、确定性 fallback、去重和 SMTP 发送。执行者/Codex 不能自行决定 `PASS`，表达层也不能把运行事实升级成 Goal PASS、`READY`、`RELEASE_READY` 或最终完成。
 
-正式 transport 只支持 Gmail SMTP 587 + STARTTLS + App Password。一台机器只配置一次，固定保存在 `~/.ai-bridge/private/notifier.env`；运行状态在 `~/.ai-bridge/state/notifier/`。新仓库不会复制 secret，生产入口也不会让进程级 `AI_BRIDGE_NOTIFY_*` 覆盖机器配置。可先从既有 private source 原子导入，再验证并发送测试邮件：
+正式 transport 只支持 Gmail SMTP 587 + STARTTLS + App Password。一台机器只配置一次，唯一生产 secret authority 是权限为 `0600` 的 `~/.ai-bridge/private/notifier.env`；运行状态在 `~/.ai-bridge/state/notifier/`。新仓库复用该文件，不复制 secret，生产进程的 `AI_BRIDGE_NOTIFY_*` 环境变量不能覆盖它。可从既有 private source 原子导入，再做不发邮件的验证：
 
 ```bash
 ai-bridge private sync --profile notifier
 ai-bridge notifier validate
-ai-bridge notifier send-test
+ai-bridge notifier status
 ```
 
 旧项目内的 notifier 配置只可显式迁移：`ai-bridge notifier migrate-legacy --project /path/to/repo`。迁移不会删除旧文件；内容冲突时 fail closed。自动通知默认 `OFF`，只有 task/REQUEST/contract 明确启用并通过 readiness 后才发送。
+
+没有旧配置时，在该机器文件中填写 `AI_BRIDGE_NOTIFY_SMTP_USER`（发件 Gmail）、`AI_BRIDGE_NOTIFY_SMTP_PASSWORD`（该账号 App Password）、`AI_BRIDGE_NOTIFY_FROM`（通常同发件账号）、`AI_BRIDGE_NOTIFY_TO`（默认收件人）和 `AI_BRIDGE_NOTIFY_SUBJECT_PREFIX=[AI Bridge]`。密码只在本机编辑，不放进对话或仓库。`recipient_override` 只改变当前逻辑投递的收件人，不修改机器默认配置。需要真实测试邮件时，另行明确授权后才运行 `ai-bridge notifier send-test`。
 
 任务完成后，工作流可以生成：
 

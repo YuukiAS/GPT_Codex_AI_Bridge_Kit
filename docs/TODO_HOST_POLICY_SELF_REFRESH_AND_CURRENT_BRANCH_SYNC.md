@@ -1,9 +1,38 @@
 # TODO — Host Policy Self-Refresh and Current-Branch Sync
 
-Status: READY FOR PLANNER INTAKE / NEXT COHERENT RELEASE (VERSION MUST BE VERIFIED) / NOT IMPLEMENTATION AUTHORIZATION  
-Priority: current-branch sync = HIGH; mandatory-rule/load + Host identity preflight = CRITICAL; safe Host recovery = HIGH  
+Status: CLOSED / IMPLEMENTED BRIDGE SCOPE (0.11.0); MACHINE UPDATE OWNED ELSEWHERE
+Priority: historical design record, not an active Bridge release blocker.
 Date: 2026-10-06  
 Amended: 2026-10-12 — Lucerna rule-budget and installed-identity regression
+
+## Current disposition (0.11.1)
+
+- CLOSED / IMPLEMENTED: `host sync-current-branch` safely fast-forwards a clean,
+  selected, tracked same-name branch; wrong identity, dirt and divergence fail
+  closed. Implementation: `ai_bridge_kit/host.py`; regression: `tests/test_host.py`.
+- CLOSED / IMPLEMENTED: instruction discovery/budget diagnostics and projected
+  managed-write preflight live in `ai_bridge_kit/readiness.py`;
+  Lite, Persistent and Overleaf share byte-preserving transactions. User-owned
+  overflow is diagnostic, not authority to summarize or rewrite user rules.
+- CLOSED / IMPLEMENTED: `host status/validate` reports actual executable/import,
+  source HEAD, dirty state, distribution metadata and locally observable release
+  identity. This does not certify ingestion in an already-running Codex session,
+  unobservable startup overrides or OS desktop/process isolation.
+- RESCOPED / OTHER OWNER: formal release adaptation and current-machine package /
+  plugin updates belong to AI_Skills `ai-skills-core` machine-update-orchestrator
+  and bridge-kit-maintainer, delegating Host writes to `ai-bridge host install`.
+  Read-only or unsupported in-session repair requires the existing external update
+  and fresh-session boundary, not a newly designed hot self-updater.
+- HISTORICAL / FUTURE NON-BLOCKING: the speculative `host refresh-policy` command
+  and stronger active-session/OS enforcement probes below are not implemented and
+  are not part of the frozen 0.11 Bridge product contract.
+
+Evidence: `results/bridge-core--product-scope-reset/f3c882c/C3_MANAGED_INSTRUCTION_WRITE.json`,
+`results/bridge-core--product-scope-reset/v6/391ff88/ACCEPTANCE_STATUS.json` and
+`results/bridge-core--product-scope-reset/v6/391ff88/FORMAL_RELEASE_CLOSURE.json`.
+See [TODO closure summary](BRIDGE_TODO_CLOSURE_SUMMARY.md).
+
+## Historical proposal
 
 ## Real incident
 

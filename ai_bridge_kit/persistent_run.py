@@ -224,18 +224,23 @@ def _eta_changed(previous: dict[str, Any] | None, current: dict[str, Any]) -> bo
     return abs(current_seconds - previous_seconds) >= threshold
 
 
-def _delivery_decision(previous: dict[str, Any] | None, current: dict[str, Any], *, interval_seconds: int) -> tuple[str, str]:
-    if previous is None:
+def _delivery_decision(
+    previous: dict[str, Any] | None,
+    current: dict[str, Any],
+    *,
+    interval_seconds: int,
+    last_delivered: dict[str, Any] | None,
+    last_delivered_at: str | None = None,
+) -> tuple[str, str]:
+    if previous is None or last_delivered is None:
         return "deliver", "start_or_resume"
     if previous.get("stage") != current.get("stage"):
         return "deliver", "stage_transition"
     if current.get("status") in {"stalled", "blocked", "complete", "failed"} and previous.get("status") != current.get("status"):
         return "deliver", f"status_{current.get('status')}"
-    if current.get("fraction") is not None and current.get("fraction") != previous.get("fraction"):
-        return "deliver", "progress_changed"
-    if _eta_changed(previous, current):
+    if _eta_changed(last_delivered, current):
         return "deliver", "eta_changed"
-    previous_time = _timestamp_seconds(previous.get("observed_at"))
+    previous_time = _timestamp_seconds(last_delivered_at or last_delivered.get("observed_at"))
     current_time = _timestamp_seconds(current.get("observed_at"))
     if previous_time is not None and current_time is not None and current_time - previous_time >= interval_seconds:
         return "deliver", "cadence_interval"
@@ -282,7 +287,21 @@ def report_progress_file(
     history_path = report_dir / "history.jsonl"
     previous_latest = _read_json_if_exists(latest_path)
     previous_report = previous_latest.get("normalized") if previous_latest else None
-    decision, reason = _delivery_decision(previous_report if isinstance(previous_report, dict) else None, normalized, interval_seconds=interval_seconds)
+    last_delivered = previous_latest.get("last_logical_delivery") if previous_latest else None
+    last_delivered_at = previous_latest.get("last_logical_delivery_at") if previous_latest else None
+    # Read old reports without mistaking a suppressed observation for delivery.
+    if previous_latest and "last_logical_delivery" not in previous_latest and previous_latest.get("delivery_decision") == "deliver":
+        last_delivered = previous_report
+    decision, reason = _delivery_decision(
+        previous_report if isinstance(previous_report, dict) else None,
+        normalized,
+        interval_seconds=interval_seconds,
+        last_delivered=last_delivered if isinstance(last_delivered, dict) else None,
+        last_delivered_at=last_delivered_at,
+    )
+    if decision == "deliver":
+        last_delivered = normalized
+        last_delivered_at = normalized["observed_at"]
     notification = "not_requested"
     if delivery_mode == "notifications":
         notification = "unavailable_existing_configuration_not_verified"
@@ -299,6 +318,8 @@ def report_progress_file(
         "notification_projection": notification,
         "notification_result": None,
         "normalized": normalized,
+        "last_logical_delivery": last_delivered,
+        "last_logical_delivery_at": last_delivered_at,
     }
     latest_path.write_text(json.dumps(entry, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     history = _bounded_history_append(history_path, entry, limit=history_limit)
@@ -1166,6 +1187,8 @@ def supervise_binding(
         summary="Persistent primary child started; this is a runtime fact, not semantic completion.",
         next_action="Use persistent-run status to observe the same launch identity.",
     )
+    binding["last_logical_delivery"] = binding.get("last_good_progress")
+    binding["last_logical_delivery_at"] = binding["child_started_at"]
     _atomic_json(binding_path, binding)
     if not hasattr(child, "poll"):
         exit_code = child.wait()
@@ -1179,10 +1202,15 @@ def supervise_binding(
                 observe_binding_progress(binding)
                 current = binding.get("last_good_progress") if isinstance(binding.get("last_good_progress"), dict) else None
                 if current is not None:
+                    # Supervisor observation time, not producer publication time,
+                    # drives cadence even when a healthy source is unchanged.
+                    observed = {**current, "observed_at": _utc_now()}
                     decision, _reason = _delivery_decision(
                         previous,
-                        current,
+                        observed,
                         interval_seconds=int(binding.get("notification_cadence_minutes", 60)) * 60,
+                        last_delivered=binding.get("last_logical_delivery"),
+                        last_delivered_at=binding.get("last_logical_delivery_at"),
                     )
                     if decision == "deliver":
                         runtime_status = str(current.get("status") or "RUNNING").upper()
@@ -1196,6 +1224,10 @@ def supervise_binding(
                             next_action="Continue observing the same runtime unless the original Goal requires action.",
                             progress=current,
                         )
+                        # A logical delivery consumes cadence even if transport
+                        # fails; observations must not become automatic retries.
+                        binding["last_logical_delivery"] = current
+                        binding["last_logical_delivery_at"] = observed["observed_at"]
                 _atomic_json(binding_path, binding)
     binding["child_exit_observed_at"] = _utc_now()
     binding["exit_code"] = exit_code

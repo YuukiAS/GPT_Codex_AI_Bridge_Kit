@@ -2,7 +2,22 @@
 
 ## Unreleased
 
-## 0.11.0 - 2026-10-19 (source candidate; formal release pending)
+## 0.11.1 - 2026-10-20
+
+- Fix Persistent progress notification cadence by separating the latest
+  observation from the last logical delivery snapshot/time. Ordinary count or
+  fraction changes no longer trigger immediate mail, and frequent observations
+  cannot postpone periodic delivery indefinitely. Keep early stage/status,
+  material ETA and runtime-terminal notifications, with no automatic retry on
+  transport failure; ETA estimation and process lifecycle semantics are unchanged.
+- Add deterministic time-controlled cadence, ETA-transition and nonfatal
+  transport regressions; retain the existing Persistent/Lite terminal-owner dedup.
+- Close the historical Bridge-owned short-term TODO ledger against released
+  implementation/evidence, retain design history and other-owner boundaries,
+  and explicitly exclude future Program Run. Reconcile README and Quickstart
+  with formal 0.11 distribution, machine-only Notifier and actual ETA/cadence.
+
+## 0.11.0 - 2026-10-19
 
 - Keep approved Host safe reads low-friction and add bounded
   `host sync-current-branch` for clean, tracked, same-name non-main branches;
@@ -42,9 +57,9 @@
 - Remove the experimental app-server reader/display path,
   `codex_progress_thread`, production reciprocal worktree exchange,
   cross-workflow three-intent/event ownership and repo-local notifier authority.
-- Keep `0.11.0` as a source candidate only. The formal distribution remains
-  `release@9db19b0409816c22042a246b35a33e1d34fedd0a` (`0.10.0`) until separate
-  release authorization and owner closure.
+- Formally distribute `0.11.0` through `refs/heads/release` at
+  `391ff889ad156540727da168fb608c5f37dbbdfc`, after C1–C6 and final Persistent
+  normal-entry evaluation; later results-only commits do not replace that target.
 
 ## 0.10.0 - 2026-10-01
 

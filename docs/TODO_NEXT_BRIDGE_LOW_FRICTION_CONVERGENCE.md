@@ -1,8 +1,20 @@
 # TODO — Next Bridge Low-Friction Operations Convergence
 
-Status: READY FOR PLANNER INTAKE / NOT IMPLEMENTATION AUTHORIZATION  
-Priority: HIGH  
+Status: CLOSED / IMPLEMENTED THROUGH 0.9.x–0.11.1
+Priority: historical consolidation, not new Planner intake.
 Date: 2026-09-23
+
+All Bridge-owned short-term components have a released implementation:
+A safe reads and refusal behavior (0.9.0/0.10.0/0.11.0), B bounded current-branch
+publication (0.9.0, hardened in 0.10.0), C materialize/bootstrap (0.9.0/0.9.1),
+D bounded plugin replay retention rather than generic wrappers, E native progress /
+ETA / stall / recovery / machine notification (0.11.0) plus delivery-cadence
+repair and time-controlled regressions (0.11.1).
+Exact implementation/evidence locators and other-owner/future exclusions are
+in [TODO closure summary](BRIDGE_TODO_CLOSURE_SUMMARY.md).
+Program Run and Project State roadmap ideas are not remaining short-term scope.
+
+The original consolidation and questions below are retained as history only.
 
 ## User objective
 

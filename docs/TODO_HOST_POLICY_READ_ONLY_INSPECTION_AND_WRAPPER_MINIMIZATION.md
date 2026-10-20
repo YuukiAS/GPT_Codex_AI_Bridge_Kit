@@ -1,7 +1,39 @@
 # TODO — Host Policy Read-Only Inspection + Wrapper Minimization
 
-Status: NEW / HIGH PRIORITY / SHORT-TERM  
+Status: CLOSED / RELEASED BRIDGE-OWNED SHORT-TERM SCOPE; FUTURE IDEAS NON-BLOCKING
 Date: 2026-09-23
+
+## Current disposition (0.11.1)
+
+The original candidate list below is historical, not a blanket allow contract.
+Actual policy is `templates/host/rules/ai-bridge-global.rules`, implemented and
+tested by `ai_bridge_kit/host.py` and `tests/test_host.py`:
+
+- CLOSED / IMPLEMENTED: canonical safe Git reads, configured-origin probes and
+  current-repository `gh auth status --` / list/status forms. Positional `gh view`,
+  arbitrary `gh api`, cross-repo selectors, arbitrary Git revisions/transports and
+  mutation-capable siblings are not all preauthorized merely because they appear
+  in the old candidate list. Broader native read forms remain optional future
+  policy evaluation, not unmet 0.11 promises.
+- CLOSED / IMPLEMENTED: same-name existing-branch publication uses the bounded
+  `host publish-current-branch`; first Reviewed publication uses `task publish-first`.
+  Raw push, arbitrary new branches and dangerous Git remain gated.
+- CLOSED / IMPLEMENTED: Reviewed bootstrap/materialization keeps dynamic
+  repo/task/path checks rather than a generic Git allow rule.
+- CLOSED / NARROW RETENTION: `plugin-replay` provides explicitly selected local
+  input replay with bounded writes and fresh-runtime evidence; it is not a plugin
+  installer or ordinary Git reader. Normal installation/update stays with official
+  Codex Marketplace commands. Its possible future retirement is not a short-term
+  release blocker or authority to add another wrapper.
+- CLOSED / IMPLEMENTED: optional diagnostic refusal does not prove broken auth
+  or terminate unrelated work; see the released Machine Policy refusal classes.
+
+Evidence: `results/bridge-core--low-friction-operations-convergence/FINAL_REPORT.md`,
+`results/reviewed-handoff--first-remote-publication/FORMAL_RELEASE_CLOSURE.md`, and
+`results/bridge-core--product-scope-reset/v6/391ff88/ACCEPTANCE_STATUS.json`.
+See [TODO closure summary](BRIDGE_TODO_CLOSURE_SUMMARY.md).
+
+## Historical proposal
 
 ## User problem
 

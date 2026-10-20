@@ -1,6 +1,27 @@
 # TODO — Persistent Run Progress & ETA Reporting
 
-Status: **TODO / HIGH PRIORITY / short-term design requested; implementation not designed yet**
+Status: **CLOSED / IMPLEMENTED / PROVEN (0.11.0 + 0.11.1 cadence repair)**
+
+当前实现支持 project-native / bridge-child progress、latest/history、ETA/UNKNOWN、
+stall 和显式 recover/resolve，并复用 machine Notifier transport。0.11.1 将最新观察
+与上次逻辑投递的进度/时间分开：小 count/fraction 变化不绕过 cadence，频繁观察
+也不推迟周期投递；默认 60 分钟、非测试最短 15 分钟。阶段、异常、终态和重大 ETA
+变化仍可提前发送，已知 ETA ↔ UNKNOWN 总是重大变化。
+
+实现：`ai_bridge_kit/persistent_run.py`；直接回归：
+`tests/test_persistent_cadence.py`、`tests/test_persistent_run.py`、`tests/test_readiness.py`。
+ETA estimator、生命周期、恢复分类与底层 Lite terminal 去重合同保持不变。
+正式 normal-entry full chain 的历史证据：
+`results/bridge-core--product-scope-reset/v6/391ff88/ACCEPTANCE_STATUS.json` 和
+`results/bridge-core--product-scope-reset/v6/391ff88/replacement/OBSERVATION_SUMMARY.json`；
+该短 canary 证明正式传输链，不冒充 60 分钟 cadence 实测。cadence 由 0.11.1 的
+确定性时钟回归、全量本地测试和同 SHA CI 验证，不重新跑历史 live Gate。
+
+没有原 Codex thread progress injection，不依赖 app-server、Progress display thread
+或持久 reader。没有自动干预、取消或完成判定；旧设想不构成恢复废弃架构的要求。
+总账见 [TODO 收口摘要](BRIDGE_TODO_CLOSURE_SUMMARY.md)。
+
+## Historical request (superseded by the released contract)
 
 ## User-confirmed urgency
 

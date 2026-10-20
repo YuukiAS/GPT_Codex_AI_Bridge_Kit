@@ -88,6 +88,14 @@ ai-bridge persistent-run latest \
 
 `report` 会把 normalized latest 和 bounded recent history 写入 `${AI_BRIDGE_STATE_HOME:-~/.ai-bridge}/persistent-run/`。它只比较项目原生事件：stage、真实 completed/total、ETA/UNKNOWN、stall/blocked/complete/failed 等。重复或非实质变化会更新本机 latest/history，但会被标记为 suppressed delivery。
 
+观察记录与上次逻辑投递的进度/时间分开保存。普通 count/fraction 小变化不单独触发
+投递；健康进度按上次逻辑投递计算 cadence，默认 60 分钟、非测试最短 15 分钟。
+每 5 分钟更新 observation 不会重置计时。start/resume、阶段切换、进入
+stalled/blocked/failed、runtime terminal 和重大 ETA 变化可提前发送；已知 ETA 与
+`UNKNOWN` 互换总是重大变化，已知时间变化门槛为
+`abs(new_finish - previous_finish) >= max(15min, 25% × previous_remaining_time)`。
+transport 失败不把后续 observation 变成自动重试，runtime terminal 不受 cadence 阻断。
+
 `bridge-child` producer 使用：
 
 ```bash
@@ -99,4 +107,7 @@ observation 标为 unavailable，child 与 supervisor 继续，last-good 不被�
 count/fraction 至少三个有效点且跨十分钟后才形成主动 ETA；stage/none 或证据不足时
 诚实保持 `UNKNOWN`。
 
-如果 contract 的 `Delivery mode` 选择 Notifications，只有在当前机器已经有合法 provider/recipient 配置时才能投射一次 operational-progress brief；不得为了报告进展而新建 credential、recipient、daemon、watcher 或 controller。
+正式 supervisor 只在 contract 的 `Notify: ON` 且 machine Notifier readiness 通过后
+投递，复用 `~/.ai-bridge/private/notifier.env`，不为报告进展新建 credential、recipient、
+daemon、watcher 或 controller。独立 `report/latest` 只记录本机报告和逻辑投递判断；
+旧 `delivery_mode=notifications` 本身不授权或建立自动邮件 transport。
