@@ -42,7 +42,7 @@
   "send_test": 0,
   "final_Persistent_canary": 1,
   "C1_C4_long_canaries_rerun": false,
-  "release_tag_marketplace_movement": false,
+  "release_tag_marketplace_movement": "Only authorized refs/heads/release advancement; no tag or Marketplace publish",
   "release_baseline": "9db19b0409816c22042a246b35a33e1d34fedd0a",
   "frozen_2_model_2_Gmail_budget_consumed": "Replacement: 1 canary, 2 model, 2 SMTP, zero retry; prior invalid attempt used 0 model/SMTP",
   "critic_decision": "PROCEED_TO_FINAL_EVALUATION per current user's conditional decision after immediate identity PASS",
@@ -53,7 +53,7 @@
   "runtime_terminal_notification": "PASS: NORMAL_WRITING_STYLE, 1 turn, fidelity PASS, SMTP_ACCEPTED, retry 0",
   "implementation_complete": true,
   "final_evaluation_complete": true,
-  "stop_reason": "Current implementation Goal and final evaluation complete; stop before unauthorized formal release/tag/Marketplace movement",
+  "stop_reason": "Formal release and this one existing Longleaf consumer closure complete; no further action",
   "WRITING_STYLE_INSTALLED_IDENTITY": "PASS",
   "historical_initial_authorization": {
     "command": "CODEX_HOME=/users/a/e/aereinh/.codex /users/a/e/aereinh/bin/codex plugin add writing-style@yuukias-ai-skills --json",
@@ -76,5 +76,11 @@
   "C1_C6": "PASS; all accepted evidence bound to production candidate 391ff889ad156540727da168fb608c5f37dbbdfc under v6 unchanged-owner contract",
   "current_report": "FINAL_IMPLEMENTATION_REPORT.md",
   "final_raw_evidence": "replacement/FINAL_NORMAL_ENTRY_RAW_EVIDENCE.json",
-  "old_invalid_attempt_evidence_preserved": true
+  "old_invalid_attempt_evidence_preserved": true,
+  "FORMAL_DISTRIBUTION_COMPLETE": true,
+  "BRIDGE_FORMAL_VERSION": "0.11.0",
+  "REMOTE_RELEASE_READBACK": "391ff889ad156540727da168fb608c5f37dbbdfc",
+  "formal_release_closure": "FORMAL_RELEASE_CLOSURE.json",
+  "Longleaf_runtime_version": "0.11.0",
+  "Longleaf_runtime_source": "/users/a/e/aereinh/.ai-bridge/bridge-kit/GPT_Codex_AI_Bridge_Kit-release"
 }

@@ -1,0 +1,108 @@
+{
+  "BRIDGE_FORMAL_VERSION": "0.11.0",
+  "RELEASE_OLD_SHA": "9db19b0409816c22042a246b35a33e1d34fedd0a",
+  "RELEASE_NEW_SHA": "391ff889ad156540727da168fb608c5f37dbbdfc",
+  "REMOTE_RELEASE_READBACK": "391ff889ad156540727da168fb608c5f37dbbdfc",
+  "DISTRIBUTION_COMPLETE": true,
+  "formal_owner": "YuukiAS/AI_Skills_Collection ai-skills-core -> bridge-kit-maintainer",
+  "formal_owner_source_sha": "fd79c4be54fc50bd66d9a51bbc1e681f361f6a77",
+  "formal_owner_sources": [
+    "skills/core/codex-system/bridge-kit-maintainer/SKILL.md",
+    "skills/core/codex-system/bridge-kit-maintainer/references/bridge-release-channel.md",
+    "skills/core/codex-system/bridge-kit-maintainer/references/canonical-ai-bridge-delegation.md"
+  ],
+  "evidence_head_verified": "77e7123a5662fd953b5d623adfa4a37e0288c083",
+  "authorization": "Current user exact old -> new, non-force fast-forward only, one existing Longleaf consumer",
+  "mechanical_preflight": {
+    "result": "PASS",
+    "origin": "YuukiAS/GPT_Codex_AI_Bridge_Kit",
+    "remote_release_old": "9db19b0409816c22042a246b35a33e1d34fedd0a",
+    "target": "391ff889ad156540727da168fb608c5f37dbbdfc",
+    "fast_forward": true,
+    "pyproject_version": "0.11.0",
+    "init_version": "0.11.0",
+    "CHANGELOG_entry": true,
+    "owner_locator": true,
+    "evidence_head": "77e7123a5662fd953b5d623adfa4a37e0288c083",
+    "C1_C6": "PASS",
+    "final_Persistent_chain": "PASS",
+    "final_evaluation": "COMPLETE",
+    "READY_FOR_RELEASE_DECISION": true,
+    "evidence_commits_not_release_target": true
+  },
+  "producer": {
+    "command": "git push origin 391ff889ad156540727da168fb608c5f37dbbdfc:refs/heads/release",
+    "non_force": true,
+    "fast_forward": true,
+    "result": {
+      "chunk_id": "4f2d59",
+      "wall_time_seconds": 0.00001042,
+      "exit_code": 0,
+      "original_token_count": 33,
+      "output": "To https://github.com/YuukiAS/GPT_Codex_AI_Bridge_Kit.git\n   9db19b0..391ff88  391ff889ad156540727da168fb608c5f37dbbdfc -> release\n"
+    }
+  },
+  "fresh_fetch": {
+    "command": "git -C /users/a/e/aereinh/.ai-bridge/bridge-kit/GPT_Codex_AI_Bridge_Kit-release fetch --no-tags origin release",
+    "fetched_HEAD": "391ff889ad156540727da168fb608c5f37dbbdfc",
+    "remote_release_exact": true,
+    "pyproject_version": "0.11.0",
+    "init_version": "0.11.0"
+  },
+  "consumer": {
+    "route": "Route C: existing canonical checkout fast-forward + existing editable package/entry point refresh",
+    "source": "/users/a/e/aereinh/.ai-bridge/bridge-kit/GPT_Codex_AI_Bridge_Kit-release",
+    "old_HEAD": "9db19b0409816c22042a246b35a33e1d34fedd0a",
+    "new_HEAD": "391ff889ad156540727da168fb608c5f37dbbdfc",
+    "dirty_before": false,
+    "fast_forward_only": true,
+    "package_refresh_command": "LD_LIBRARY_PATH=/nas/longleaf/rhel9/apps/python/3.12.4/lib PYTHONNOUSERSITE=1 /users/a/e/aereinh/.ai-bridge/bridge-kit/runtime-0.10.0/bin/python -m pip install --no-deps -e /users/a/e/aereinh/.ai-bridge/bridge-kit/GPT_Codex_AI_Bridge_Kit-release",
+    "package_refresh_result": {
+      "chunk_id": "edc121",
+      "wall_time_seconds": 4.075060006,
+      "exit_code": 0,
+      "original_token_count": 424,
+      "output": "Obtaining file:///users/a/e/aereinh/.ai-bridge/bridge-kit/GPT_Codex_AI_Bridge_Kit-release\n  Installing build dependencies: started\n  Installing build dependencies: finished with status 'done'\n  Checking if build backend supports build_editable: started\n  Checking if build backend supports build_editable: finished with status 'done'\n  Getting requirements to build editable: started\n  Getting requirements to build editable: finished with status 'done'\n  Preparing editable metadata (pyproject.toml): started\n  Preparing editable metadata (pyproject.toml): finished with status 'done'\nBuilding wheels for collected packages: gpt-codex-ai-bridge-kit\n  Building editable for gpt-codex-ai-bridge-kit (pyproject.toml): started\n  Building editable for gpt-codex-ai-bridge-kit (pyproject.toml): finished with status 'done'\n  Created wheel for gpt-codex-ai-bridge-kit: filename=gpt_codex_ai_bridge_kit-0.11.0-0.editable-py3-none-any.whl size=21648 sha256=0cf48e4e7ab21ddd8adb8ec53f0553a22e471bbb365c68783317baa6b44189df\n  Stored in directory: /tmp/pip-ephem-wheel-cache-nl5zggps/wheels/8c/05/64/eeca9fa8160b8c7ace91c77819229178cbc31d4f4104675cf5\nSuccessfully built gpt-codex-ai-bridge-kit\nInstalling collected packages: gpt-codex-ai-bridge-kit\n  Attempting uninstall: gpt-codex-ai-bridge-kit\n    Found existing installation: gpt-codex-ai-bridge-kit 0.10.0\n    Uninstalling gpt-codex-ai-bridge-kit-0.10.0:\n      Successfully uninstalled gpt-codex-ai-bridge-kit-0.10.0\nSuccessfully installed gpt-codex-ai-bridge-kit-0.11.0\n\n[notice] A new release of pip is available: 24.0 -> 26.2.1\n[notice] To update, run: /users/a/e/aereinh/.ai-bridge/bridge-kit/runtime-0.10.0/bin/python -m pip install --upgrade pip\n"
+    },
+    "runtime_readback": {
+      "result": "PASS",
+      "remote_release_readback": "391ff889ad156540727da168fb608c5f37dbbdfc",
+      "consumer_HEAD": "391ff889ad156540727da168fb608c5f37dbbdfc",
+      "runtime_version": "0.11.0",
+      "metadata_version": "0.11.0",
+      "source": "/users/a/e/aereinh/.ai-bridge/bridge-kit/GPT_Codex_AI_Bridge_Kit-release",
+      "module_file": "/users/a/e/aereinh/.ai-bridge/bridge-kit/GPT_Codex_AI_Bridge_Kit-release/ai_bridge_kit/__init__.py",
+      "where": "/users/a/e/aereinh/.ai-bridge/bridge-kit/GPT_Codex_AI_Bridge_Kit-release",
+      "editable": {
+        "dir_info": {
+          "editable": true
+        },
+        "url": "file:///users/a/e/aereinh/.ai-bridge/bridge-kit/GPT_Codex_AI_Bridge_Kit-release"
+      },
+      "checkout_clean": true,
+      "entry_point": "/users/a/e/aereinh/bin/ai-bridge",
+      "existing_runtime_container": "/users/a/e/aereinh/.ai-bridge/bridge-kit/runtime-0.10.0",
+      "container_name_is_historical": true
+    }
+  },
+  "bounds": {
+    "production_candidate_bytes_changed": false,
+    "model_calls": 0,
+    "Gmail_attempts": 0,
+    "send_test": 0,
+    "canaries": 0,
+    "Gate_reruns": 0,
+    "new_Goal": 0,
+    "new_Planner_Critic_rounds": 0,
+    "force": false,
+    "force_with_lease": false,
+    "reset_clean_stash": false,
+    "other_machine_or_consumer_update": false,
+    "Host_or_project_config_update": false,
+    "tag_created": false,
+    "GitHub_Release_created": false,
+    "Marketplace_publish": false,
+    "user_gitignore_changed": false
+  },
+  "historical_candidate_docs": "Candidate README/CHANGELOG bytes remain unchanged; their release-pending qualification is superseded only by this separately authorized formal closure, not by a new production commit."
+}

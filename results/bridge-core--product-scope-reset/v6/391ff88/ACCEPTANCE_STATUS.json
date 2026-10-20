@@ -94,9 +94,12 @@
   },
   "final_evidence": "replacement/FINAL_NORMAL_ENTRY_RAW_EVIDENCE.json",
   "summary": "replacement/OBSERVATION_SUMMARY.json",
-  "release_ref": "9db19b0409816c22042a246b35a33e1d34fedd0a",
-  "formal_distribution_complete": false,
-  "release_tag_Marketplace_publish_movement": false,
+  "release_ref": "391ff889ad156540727da168fb608c5f37dbbdfc",
+  "formal_distribution_complete": true,
+  "release_tag_Marketplace_publish_movement": "Only authorized refs/heads/release advancement; no tag or Marketplace publish",
   "results_only_evidence": true,
-  "user_gitignore_untouched": true
+  "user_gitignore_untouched": true,
+  "formal_release_closure": "FORMAL_RELEASE_CLOSURE.json",
+  "Longleaf_runtime_version": "0.11.0",
+  "Longleaf_runtime_source": "/users/a/e/aereinh/.ai-bridge/bridge-kit/GPT_Codex_AI_Bridge_Kit-release"
 }
