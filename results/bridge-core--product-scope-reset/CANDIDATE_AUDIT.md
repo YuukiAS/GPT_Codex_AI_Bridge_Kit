@@ -1,13 +1,21 @@
-# 当前候选：v6 窄修，等待同一 Critic
+# 当前候选：v6 实现通过，最终正常入口验收未完成
 
 FINAL_CANDIDATE_SHA=`391ff889ad156540727da168fb608c5f37dbbdfc`。
 v6 route/projection 窄修、50 项定向回归、两版本各 490 项全量、同 SHA hosted CI 和
 diff boundary/source-document identity 已完成。当前交接见
 `v6/391ff88/RESULT_STATUS.json`、`SOURCE_DOCUMENT_IDENTITY.json` 与 `WRITING_STYLE_DIAGNOSIS.json`。
-机器 installed plugin inventory/manifest 版本不一致单列为环境诊断，未放宽生产检查。
+用户已明确授权一次 exact plugin refresh 与一次最终 Persistent canary。
+refresh exit 0 且立即 inventory/manifest 0.5/0.5、真实 resolver PASS，满足用户给定的
+PROCEED_TO_FINAL_EVALUATION 条件。收尾复核 inventory 又为 0.4、manifest 0.5，
+resolver 再次拒绝；未重复安装、换机制或放宽生产检查。
 
-最终 Persistent 正常入口通知链尚未运行；本轮模型/Gmail/send-test/final canary 均为 0。
-等待同一 Critic 的 PROCEED_TO_FINAL_EVALUATION / REVISE，不请求或消费 live 授权。
+唯一正式 canary 已 start，但执行方的旁路记录器把 Path cwd 直接 JSON 序列化，
+在 primary child fork 前触发 TypeError，supervisor 消失、binding 留在 START_REQUESTED。
+没有已证实的 Bridge 产品缺陷；最终通知链不通过，不改写为完成。
+实际模型/Gmail/send-test 均为 0，canary start 为 1；未重跑、接管或补发。
+完整证据与当前验收状态见 `v6/391ff88/FINAL_IMPLEMENTATION_REPORT.md`、
+`ACCEPTANCE_STATUS.json`、`FINAL_NORMAL_ENTRY_RAW_EVIDENCE.json` 和 `PLUGIN_FINAL_PREFLIGHT.json`。
+implementation complete；final evaluation incomplete；READY_FOR_RELEASE_DECISION=NO。
 下文完整保留的是 f3c882c 历史阶段记录，不是 v6 candidate 的 live PASS 或当前最终验收。
 
 ---

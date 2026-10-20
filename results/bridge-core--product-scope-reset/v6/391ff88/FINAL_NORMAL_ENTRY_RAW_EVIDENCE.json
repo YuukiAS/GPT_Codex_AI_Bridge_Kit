@@ -1,0 +1,172 @@
+{
+  "candidate_sha": "391ff889ad156540727da168fb608c5f37dbbdfc",
+  "start_result": {
+    "candidate_sha": "391ff889ad156540727da168fb608c5f37dbbdfc",
+    "argv": [
+      "/tmp/bridge-011-1472791-final-install/bin/ai-bridge",
+      "persistent-run",
+      "start",
+      "--target",
+      "/tmp/bridge-final-evaluation-Hd0qQNc0/public-canary",
+      "--goal",
+      "GOAL.md",
+      "--expected-goal-sha256",
+      "3804fa2e684e65042be3605fff4cfa1d9f92198fd0bd5f14ba9896860cbe1a65"
+    ],
+    "returncode": 0,
+    "stdout": "{\n  \"binding_path\": \"/users/a/e/aereinh/.ai-bridge/persistent-run/runs/76639a289969316fd7b419c88249b351f26833fe288efd0277c10ba281355ae9.json\",\n  \"command\": [\n    \"tmux\",\n    \"new-session\",\n    \"-d\",\n    \"-s\",\n    \"ai-bridge-pr-23ddf3d1a9736ae4c9602ac0f114eae1efe2e0d4ed106529642eca4178ddd78b\",\n    \"-c\",\n    \"/tmp/bridge-final-evaluation-Hd0qQNc0/public-canary\",\n    \"/tmp/bridge-011-1472791-final-install/bin/python\",\n    \"-m\",\n    \"ai_bridge_kit.persistent_run\",\n    \"_supervise\",\n    \"--binding\",\n    \"/users/a/e/aereinh/.ai-bridge/persistent-run/runs/76639a289969316fd7b419c88249b351f26833fe288efd0277c10ba281355ae9.json\",\n    \"--launch-id\",\n    \"23ddf3d1a9736ae4c9602ac0f114eae1efe2e0d4ed106529642eca4178ddd78b\"\n  ],\n  \"launch_id\": \"23ddf3d1a9736ae4c9602ac0f114eae1efe2e0d4ed106529642eca4178ddd78b\",\n  \"progress\": {\n    \"reason\": \"progress source not configured\",\n    \"state\": \"UNKNOWN\"\n  },\n  \"session_name\": \"ai-bridge-pr-23ddf3d1a9736ae4c9602ac0f114eae1efe2e0d4ed106529642eca4178ddd78b\",\n  \"status\": \"NEW_START\"\n}\n",
+    "stderr": "",
+    "task_scoped_tmux_tmpdir": "/tmp/bridge-final-evaluation-Hd0qQNc0/tmux",
+    "passive_observer": "/tmp/bridge-final-evaluation-Hd0qQNc0/observer/sitecustomize.py"
+  },
+  "raw_trace": [
+    {
+      "file": "2-1-python_start.json",
+      "kind": "python_start",
+      "pid": 2,
+      "ppid": 1,
+      "wall_time": 1792462163.1516254,
+      "monotonic": 5280052.876508863,
+      "data": {
+        "argv": [
+          "-m",
+          "--help"
+        ],
+        "executable": "/tmp/bridge-011-1472791-final-install/bin/python"
+      }
+    },
+    {
+      "file": "450881-1-python_start.json",
+      "kind": "python_start",
+      "pid": 450881,
+      "ppid": 450759,
+      "wall_time": 1792462131.2108133,
+      "monotonic": 5280020.935696441,
+      "data": {
+        "argv": [
+          "/tmp/bridge-011-1472791-final-install/bin/ai-bridge",
+          "persistent-run",
+          "start",
+          "--target",
+          "/tmp/bridge-final-evaluation-Hd0qQNc0/public-canary",
+          "--goal",
+          "GOAL.md",
+          "--expected-goal-sha256",
+          "3804fa2e684e65042be3605fff4cfa1d9f92198fd0bd5f14ba9896860cbe1a65"
+        ],
+        "executable": "/tmp/bridge-011-1472791-final-install/bin/python"
+      }
+    },
+    {
+      "file": "450881-2-process_spawn.json",
+      "kind": "process_spawn",
+      "pid": 450881,
+      "ppid": 450759,
+      "wall_time": 1792462131.4413893,
+      "monotonic": 5280021.166271781,
+      "data": {
+        "argv": [
+          "tmux",
+          "new-session",
+          "-d",
+          "-s",
+          "ai-bridge-pr-23ddf3d1a9736ae4c9602ac0f114eae1efe2e0d4ed106529642eca4178ddd78b",
+          "-c",
+          "/tmp/bridge-final-evaluation-Hd0qQNc0/public-canary",
+          "/tmp/bridge-011-1472791-final-install/bin/python",
+          "-m",
+          "ai_bridge_kit.persistent_run",
+          "_supervise",
+          "--binding",
+          "/users/a/e/aereinh/.ai-bridge/persistent-run/runs/76639a289969316fd7b419c88249b351f26833fe288efd0277c10ba281355ae9.json",
+          "--launch-id",
+          "23ddf3d1a9736ae4c9602ac0f114eae1efe2e0d4ed106529642eca4178ddd78b"
+        ],
+        "cwd": null
+      }
+    },
+    {
+      "file": "450890-1-python_start.json",
+      "kind": "python_start",
+      "pid": 450890,
+      "ppid": 450889,
+      "wall_time": 1792462131.5492446,
+      "monotonic": 5280021.274128133,
+      "data": {
+        "argv": [
+          "-m",
+          "_supervise",
+          "--binding",
+          "/users/a/e/aereinh/.ai-bridge/persistent-run/runs/76639a289969316fd7b419c88249b351f26833fe288efd0277c10ba281355ae9.json",
+          "--launch-id",
+          "23ddf3d1a9736ae4c9602ac0f114eae1efe2e0d4ed106529642eca4178ddd78b"
+        ],
+        "executable": "/tmp/bridge-011-1472791-final-install/bin/python"
+      }
+    },
+    {
+      "file": "457788-1-python_start.json",
+      "kind": "python_start",
+      "pid": 457788,
+      "ppid": 1618201,
+      "wall_time": 1792462204.5999005,
+      "monotonic": 5280094.324783537,
+      "data": {
+        "argv": [
+          "-m",
+          "--help"
+        ],
+        "executable": "/tmp/bridge-011-1472791-final-install/bin/python"
+      }
+    },
+    {
+      "file": "9-1-python_start.json",
+      "kind": "python_start",
+      "pid": 9,
+      "ppid": 2,
+      "wall_time": 1792462236.8993487,
+      "monotonic": 5280126.624232253,
+      "data": {
+        "argv": [
+          "/tmp/bridge-final-evaluation-Hd0qQNc0/observer/sitecustomize.py"
+        ],
+        "executable": "/tmp/bridge-011-1472791-final-install/bin/python"
+      }
+    }
+  ],
+  "matching_machine_event_claims": [],
+  "counts": {
+    "persistent_start_attempts": 1,
+    "real_model_calls": 0,
+    "Gmail_SMTP_attempts": 0,
+    "send_message_calls": 0,
+    "logical_notifications_observed": 0,
+    "canary_relaunches": 0,
+    "send_test": 0
+  },
+  "production_source_identity": {
+    "result": "PASS",
+    "working_production_diff": "",
+    "HEAD_changes_results_only": true,
+    "HEAD": "43d602b9a23f25ce0b1028272ee08b16eb775235",
+    "user_gitignore_sha256": "6c5827da670763f9d295187f04ed652baa2f4f4cf2e80432c529400cc6ea2ae7"
+  },
+  "notifier_final_readiness": {
+    "status": "VALID",
+    "config_path": "/users/a/e/aereinh/.ai-bridge/private/notifier.env",
+    "mode": 384,
+    "missing_or_invalid": [],
+    "config_digest": "46cc00d02f541a14f84833c1f0ccd91a3e8ad8ccb2786e48150a1e33c1f7e12d",
+    "transport_ready": true,
+    "transport_test_accepted_at": "2026-10-19T15:02:16+00:00"
+  },
+  "child_started_marker_exists": false,
+  "child_exit_marker_exists": false,
+  "original_canary_stderr": "Not persisted by tmux; not reconstructed as a historical raw traceback. Separate diagnosis reproduces observer failure before fork.",
+  "fixture_files": {
+    "public-canary/GOAL.md": "# Public-safe synthetic Persistent final evaluation\n\nPersistent execution: REQUIRED\nBackend: tmux\nGoal source: GOAL.md\nRun/session key: bridge-final-evaluation\nWorking directory: .\nLaunch argv: [\"/usr/bin/python3\", \"child.py\"]\nProgress mode: none\nProgress owner: none\nProgress source locator: NONE\nExpected progress update seconds: UNKNOWN\nNotify: ON\nRecipient override: NONE\nNotification cadence minutes: 60\n\nThe primary child performs only a synthetic local wait and naturally exits zero.\nRuntime exit is not semantic Goal completion and is not a release decision.\nNo private input, external work, progress producer, recipient override or retry.\n",
+    "public-canary/child.py": "import json\nimport os\nfrom pathlib import Path\nimport time\n\nstarted = time.monotonic()\nPath('child-start.json').write_text(json.dumps(dict(pid=os.getpid(), ppid=os.getppid(),\n    monotonic=started, wall_time=time.time())), encoding='utf-8')\ntime.sleep(5)\nPath('child-exit.json').write_text(json.dumps(dict(pid=os.getpid(), ppid=os.getppid(),\n    elapsed_seconds=time.monotonic() - started, wall_time=time.time(), intended_exit_code=0)), encoding='utf-8')\n",
+    "observer/sitecustomize.py": "\"\"\"Passive final-evaluation tracing plus fail-closed authorized effect ceilings.\n\nDoes not import/call any Bridge delivery, renderer or SMTP entry point.\nNever records configuration dictionaries, environments or SMTP login arguments.\n\"\"\"\nimport dataclasses\nimport json\nimport os\nfrom pathlib import Path\nimport sys\nimport time\n\nROOT = Path('/tmp/bridge-final-evaluation-Hd0qQNc0')\nTRACE = ROOT / 'trace'\nTRACE.mkdir(exist_ok=True)\nSEQ = 0\n\n\ndef record(kind, data):\n    global SEQ\n    SEQ += 1\n    payload = dict(kind=kind, pid=os.getpid(), ppid=os.getppid(),\n                   wall_time=time.time(), monotonic=time.monotonic(), data=data)\n    path = TRACE / ('%s-%s-%s.json' % (os.getpid(), SEQ, kind))\n    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + '\\n', encoding='utf-8')\n\n\ndef reserve(kind):\n    for index in range(2):\n        path = TRACE / ('budget-%s-%s.json' % (kind, index))\n        try:\n            descriptor = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)\n        except FileExistsError:\n            continue\n        with os.fdopen(descriptor, 'w') as stream:\n            json.dump(dict(pid=os.getpid(), ppid=os.getppid(), time=time.time()), stream)\n        return\n    record('BUDGET_EXCEEDED', dict(effect=kind))\n    raise RuntimeError('FINAL_EVALUATION_EFFECT_BUDGET_EXCEEDED:' + kind)\n\n\ndef audit(event, args):\n    if event == 'subprocess.Popen':\n        argv = args[1]\n        if isinstance(argv, (tuple, list)):\n            argv = [str(x) for x in argv]\n            if len(argv) > 1 and Path(argv[0]).name == 'codex' and argv[1] == 'exec':\n                if argv != ['/users/a/e/aereinh/bin/codex', 'exec', '--ephemeral', '--json',\n                            '--sandbox', 'read-only', '--skip-git-repo-check', '-C',\n                            '/users/a/e/aereinh/.ai-bridge/clear-writing', '-']:\n                    raise RuntimeError('UNAPPROVED_MODEL_ARGV')\n                reserve('model')\n                record('model_spawn', dict(argv=argv, cwd=args[2]))\n            elif '_supervise' in argv or '_deliver-helper' in argv or 'child.py' in argv:\n                record('process_spawn', dict(argv=argv, cwd=args[2]))\n    elif event == 'smtplib.connect':\n        host, port = args[1], args[2]\n        if host != 'smtp.gmail.com' or port != 587:\n            raise RuntimeError('UNAPPROVED_SMTP_DESTINATION')\n        reserve('smtp')\n        record('smtp_connect', dict(host=host, port=port))\n\n\ndef result_data(value):\n    return dataclasses.asdict(value) if dataclasses.is_dataclass(value) else value\n\n\ndef profile(frame, event, value):\n    if event not in ('call', 'return'):\n        return\n    module = frame.f_globals.get('__name__', '')\n    name = frame.f_code.co_name\n    local = frame.f_locals\n    notifier = frame.f_code.co_filename.endswith('/ai_bridge_kit/notifier.py')\n    if module in ('ai_bridge_kit.persistent_run', '__main__') and name == '_persistent_notification':\n        binding = local['binding']\n        if event == 'call':\n            if local['fact_class'] not in ('runtime_start', 'runtime_terminal'):\n                raise RuntimeError('UNAPPROVED_THIRD_LOGICAL_EVENT')\n            if binding['repo_realpath'] != str(ROOT / 'public-canary'):\n                raise RuntimeError('UNAPPROVED_CANARY_REPO')\n            record('supervisor_notification_call', dict(fact_class=local['fact_class'],\n                   child_pid=binding.get('child_pid'), launch_id=binding['launch_id'],\n                   run_key=binding['run_key'], status=local['status']))\n        else:\n            record('supervisor_notification_return', dict(fact_class=local['fact_class'],\n                   request=local.get('request'), delivery=result_data(local.get('delivery')),\n                   last_notification=binding.get('last_notification')))\n    elif notifier and name == 'deliver_notification':\n        if event == 'call':\n            record('delivery_call', dict(request=local['request'], caller=frame.f_back.f_code.co_name,\n                   caller_module=frame.f_back.f_globals.get('__name__')))\n        else:\n            record('delivery_return', result_data(value))\n    elif notifier and name == 'deliver_event_inline' and event == 'return':\n        record('helper_return', dict(request=local.get('request'), rendered=local.get('rendered'),\n               attempt=local.get('attempt'), result=result_data(value), directory=str(local['directory'])))\n    elif module == 'ai_bridge_kit.clear_writing' and name == 'render_once' and event == 'return':\n        record('render_return', dict(brief=local['brief'], result=value))\n    elif module == 'ai_bridge_kit.clear_writing' and name == '_prompt' and event == 'return':\n        record('prompt', dict(text=value))\n    elif module == 'subprocess' and name == 'run':\n        popenargs = local.get('popenargs', ())\n        argv = popenargs[0] if popenargs else []\n        if isinstance(argv, (list, tuple)) and len(argv) > 1 and Path(str(argv[0])).name == 'codex' and argv[1] == 'exec':\n            if event == 'call':\n                record('model_run_call', dict(argv=argv, prompt=local.get('kwargs', {}).get('input')))\n            elif value is not None:\n                record('model_run_return', dict(argv=argv, returncode=value.returncode,\n                       stdout=value.stdout, stderr=value.stderr))\n    elif notifier and name == 'build_auto_email' and event == 'return' and value is not None:\n        record('email_built', dict(mime=value.as_string(), body=value.get_body(preferencelist=('plain',)).get_content(),\n               subject=str(value['Subject']), sender=str(value['From']), recipient=str(value['To'])))\n    elif module == 'smtplib' and name == 'send_message':\n        if event == 'call':\n            record('smtp_send_message_call', dict(subject=str(local['msg']['Subject'])))\n        else:\n            record('smtp_send_message_return', dict(result=value))\n\n\nrecord('python_start', dict(argv=sys.argv, executable=sys.executable))\nsys.addaudithook(audit)\nsys.setprofile(profile)\n",
+    "start_once.py": "import hashlib\nimport json\nimport os\nfrom pathlib import Path\nimport subprocess\n\nroot = Path('/tmp/bridge-final-evaluation-Hd0qQNc0')\nrepo = Path('/overflow/htzhu/mingcheng_new/GPT_Codex_AI_Bridge_Kit')\ncandidate = '391ff889ad156540727da168fb608c5f37dbbdfc'\npaths = ['ai_bridge_kit', 'templates', 'tests', 'codex', '.github', 'README.md',\n         'QUICKSTART.md', 'AGENTS.md', 'CHANGELOG.md', 'pyproject.toml', 'docs/design']\nsubprocess.run(['git', 'diff', '--exit-code', candidate, '--', *paths], cwd=repo, check=True)\nassert not any(k.startswith('AI_BRIDGE_NOTIFY_') for k in os.environ)\nassert os.environ.get('CODEX_HOME') == '/users/a/e/aereinh/.codex'\nassert not os.environ.get('AI_BRIDGE_STATE_HOME')\nenv = dict(os.environ)\nenv.update(PYTHONPATH=str(root / 'observer') + ':' + str(repo),\n           LD_LIBRARY_PATH='/nas/longleaf/rhel9/apps/python/3.12.4/lib',\n           TMUX_TMPDIR=str(root / 'tmux'))\nenv.pop('TMUX', None)\ngoal_hash = hashlib.sha256((root / 'public-canary/GOAL.md').read_bytes()).hexdigest()\ncommand = ['/tmp/bridge-011-1472791-final-install/bin/ai-bridge', 'persistent-run', 'start',\n           '--target', str(root / 'public-canary'), '--goal', 'GOAL.md',\n           '--expected-goal-sha256', goal_hash]\ndescriptor = os.open(str(root / 'ONLY_CANARY_START'), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)\nos.close(descriptor)\nresult = subprocess.run(command, env=env, cwd=repo, text=True, capture_output=True, timeout=45)\ndata = dict(candidate_sha=candidate, argv=command, returncode=result.returncode,\n            stdout=result.stdout, stderr=result.stderr, task_scoped_tmux_tmpdir=str(root / 'tmux'),\n            passive_observer=str(root / 'observer/sitecustomize.py'))\n(root / 'start-result.json').write_text(json.dumps(data, indent=2) + '\\n')\nprint(json.dumps(data, indent=2))\nraise SystemExit(result.returncode)\n"
+  }
+}
