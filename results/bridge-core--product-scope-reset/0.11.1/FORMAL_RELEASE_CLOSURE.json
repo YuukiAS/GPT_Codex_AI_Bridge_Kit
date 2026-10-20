@@ -1,0 +1,97 @@
+{
+  "FINAL_CANDIDATE_SHA": "ba9013b9fbbd242e51b09f9d09291f417df17652",
+  "FORMAL_RELEASE_VERSION": "0.11.1",
+  "RELEASE_OLD_SHA": "391ff889ad156540727da168fb608c5f37dbbdfc",
+  "RELEASE_NEW_SHA": "ba9013b9fbbd242e51b09f9d09291f417df17652",
+  "REMOTE_RELEASE_READBACK": "ba9013b9fbbd242e51b09f9d09291f417df17652",
+  "LONGLEAF_RUNTIME_VERSION": "0.11.1",
+  "LONGLEAF_RUNTIME_SOURCE": "/users/a/e/aereinh/.ai-bridge/bridge-kit/GPT_Codex_AI_Bridge_Kit-release",
+  "PERSISTENT_CADENCE_BUG": "FIXED",
+  "TARGETED_REGRESSION": "PASS; 61 tests",
+  "FULL_PY39": "PASS; 496 tests, 8 skips",
+  "FULL_PY312": "PASS; 496 tests, 8 skips",
+  "HOSTED_CI": "PASS; run 39367527196, exact candidate SHA",
+  "FORMAL_RELEASE_BRANCH_CI": "PASS; run 39368496066, same exact candidate SHA; automatic push CI, no manual rerun",
+  "TODO_LEDGER_CLOSED": true,
+  "ACTIVE_BRIDGE_SHORT_TERM_TODOS": 0,
+  "PROGRAM_RUN": "INTENTIONALLY_EXCLUDED",
+  "DISTRIBUTION_COMPLETE": true,
+  "formal_owner": "YuukiAS/AI_Skills_Collection ai-skills-core -> bridge-kit-maintainer",
+  "authorization": "Current user 0.11.1 closure: Gate PASS then non-force FF exact old release to exact frozen candidate; one existing Longleaf consumer Route C",
+  "evidence_head_before_release": "f386acc13a75619811a80c9345e998f8f0bb0e68",
+  "release_target_is_not_evidence_head": true,
+  "producer": {
+    "command": "git push origin ba9013b9fbbd242e51b09f9d09291f417df17652:refs/heads/release",
+    "force": false,
+    "fast_forward": true,
+    "result": {
+      "chunk_id": "24db8c",
+      "wall_time_seconds": 0.00001218,
+      "exit_code": 0,
+      "original_token_count": 33,
+      "output": "To https://github.com/YuukiAS/GPT_Codex_AI_Bridge_Kit.git\n   391ff88..ba9013b  ba9013b9fbbd242e51b09f9d09291f417df17652 -> release\n"
+    }
+  },
+  "fresh_fetch": {
+    "command": "git -C /users/a/e/aereinh/.ai-bridge/bridge-kit/GPT_Codex_AI_Bridge_Kit-release fetch --no-tags origin release",
+    "result": {
+      "chunk_id": "57280f",
+      "wall_time_seconds": 0.000011,
+      "exit_code": 0,
+      "original_token_count": 38,
+      "output": "From https://github.com/YuukiAS/GPT_Codex_AI_Bridge_Kit\n * branch            release    -> FETCH_HEAD\n   391ff88..ba9013b  release    -> origin/release\n"
+    },
+    "FETCH_HEAD": "ba9013b9fbbd242e51b09f9d09291f417df17652",
+    "remote_ls_remote_exact": true,
+    "pyproject_version": "0.11.1",
+    "init_version": "0.11.1"
+  },
+  "consumer": {
+    "route": "C; existing canonical checkout + existing editable runtime",
+    "clean_before": true,
+    "ancestry_proven": true,
+    "fast_forward_result": {
+      "chunk_id": "e005a4",
+      "wall_time_seconds": 0.231124594,
+      "exit_code": 0,
+      "original_token_count": 1489,
+      "output": "Updating 391ff88..ba9013b\nFast-forward\n CHANGELOG.md                                       |   23 +-\n QUICKSTART.md                                      |   20 +-\n README.md                                          |   19 +-\n ai_bridge_kit/__init__.py                          |    2 +-\n ai_bridge_kit/persistent_run.py                    |   48 +-\n docs/BRIDGE_TODO_CLOSURE_SUMMARY.md                |   46 +\n docs/TODO_AGENT_FLOW_V3_REUSABLE_BLUEPRINT.md      |    8 +-\n docs/TODO_BOUNDED_REVIEWED_WORKTREE_EXECUTION.md   |   14 +-\n docs/TODO_EXECUTION_CONTEXT_CONTINUITY.md          |   17 +-\n docs/TODO_EXECUTION_RELIABILITY_CLOSURE.md         |   17 +-\n ...EAD_ONLY_INSPECTION_AND_WRAPPER_MINIMIZATION.md |   34 +-\n ..._POLICY_SELF_REFRESH_AND_CURRENT_BRANCH_SYNC.md |   33 +-\n docs/TODO_NEXT_BRIDGE_LOW_FRICTION_CONVERGENCE.md  |   16 +-\n docs/TODO_PERSISTENT_RUN_PROGRESS_ETA_REPORTING.md |   23 +-\n ...DO_REVIEWED_HANDOFF_FIRST_REMOTE_PUBLICATION.md |   11 +-\n pyproject.toml                                     |    2 +-\n .../0.11.1/nonlive_tests.py                        |   33 +\n .../0.11.1/verify_candidate.py                     |   73 +\n .../CANDIDATE_AUDIT.md                             |   50 +-\n .../v6/391ff88/ACCEPTANCE_STATUS.json              |  105 ++\n .../v6/391ff88/FINAL_IMPLEMENTATION_REPORT.md      |   91 ++\n .../391ff88/FINAL_NORMAL_ENTRY_RAW_EVIDENCE.json   |  172 +++\n .../v6/391ff88/FINAL_NORMAL_ENTRY_STATUS.json      |   46 +\n .../v6/391ff88/FORMAL_RELEASE_CLOSURE.json         |  108 ++\n .../v6/391ff88/HOSTED_CI.json                      |  164 +++\n .../391ff88/INVALID_ATTEMPT_ACCEPTANCE_STATUS.json |   57 +\n .../v6/391ff88/INVALID_ATTEMPT_REPORT.md           |   71 +\n .../v6/391ff88/LOCAL_PY312_TESTS.txt               |  854 +++++++++++\n .../v6/391ff88/LOCAL_PY39_TESTS.txt                |  854 +++++++++++\n .../v6/391ff88/OBSERVER_DIAGNOSIS.json             |    9 +\n .../v6/391ff88/PLUGIN_FINAL_PREFLIGHT.json         |   35 +\n .../v6/391ff88/PLUGIN_REFRESH.json                 |   61 +\n .../v6/391ff88/RESULT_STATUS.json                  |   86 ++\n .../v6/391ff88/SOURCE_DOCUMENT_IDENTITY.json       |   86 ++\n .../v6/391ff88/TARGETED_TESTS.txt                  |   56 +\n .../v6/391ff88/WRITING_STYLE_DIAGNOSIS.json        |   79 +\n .../v6/391ff88/nonlive_test_guard.py               |   23 +\n .../391ff88/replacement/FINAL_BOUNDARY_CHECK.json  |   78 +\n .../FINAL_NORMAL_ENTRY_RAW_EVIDENCE.json           | 1508 ++++++++++++++++++++\n .../v6/391ff88/replacement/FINAL_STATUS.json       |   70 +\n .../391ff88/replacement/MACHINE_PLUGIN_REPAIR.json |  328 +++++\n .../391ff88/replacement/OBSERVATION_SUMMARY.json   |   85 ++\n .../replacement/PLUGIN_STABILITY_PREFLIGHTS.json   |  130 ++\n .../391ff88/replacement/PRELAUNCH_PREFLIGHT.json   |   42 +\n .../v6/391ff88/replacement/verify_saved.py         |  124 ++\n templates/persistent_run/README.md                 |   13 +-\n tests/test_persistent_cadence.py                   |  149 ++\n 47 files changed, 5927 insertions(+), 46 deletions(-)\n create mode 100644 docs/BRIDGE_TODO_CLOSURE_SUMMARY.md\n create mode 100644 results/bridge-core--product-scope-reset/0.11.1/nonlive_tests.py\n create mode 100644 results/bridge-core--product-scope-reset/0.11.1/verify_candidate.py\n create mode 100644 results/bridge-core--product-scope-reset/v6/391ff88/ACCEPTANCE_STATUS.json\n create mode 100644 results/bridge-core--product-scope-reset/v6/391ff88/FINAL_IMPLEMENTATION_REPORT.md\n create mode 100644 results/bridge-core--product-scope-reset/v6/391ff88/FINAL_NORMAL_ENTRY_RAW_EVIDENCE.json\n create mode 100644 results/bridge-core--product-scope-reset/v6/391ff88/FINAL_NORMAL_ENTRY_STATUS.json\n create mode 100644 results/bridge-core--product-scope-reset/v6/391ff88/FORMAL_RELEASE_CLOSURE.json\n create mode 100644 results/bridge-core--product-scope-reset/v6/391ff88/HOSTED_CI.json\n create mode 100644 results/bridge-core--product-scope-reset/v6/391ff88/INVALID_ATTEMPT_ACCEPTANCE_STATUS.json\n create mode 100644 results/bridge-core--product-scope-reset/v6/391ff88/INVALID_ATTEMPT_REPORT.md\n create mode 100644 results/bridge-core--product-scope-reset/v6/391ff88/LOCAL_PY312_TESTS.txt\n create mode 100644 results/bridge-core--product-scope-reset/v6/391ff88/LOCAL_PY39_TESTS.txt\n create mode 100644 results/bridge-core--product-scope-reset/v6/391ff88/OBSERVER_DIAGNOSIS.json\n create mode 100644 results/bridge-core--product-scope-reset/v6/391ff88/PLUGIN_FINAL_PREFLIGHT.json\n create mode 100644 results/bridge-core--product-scope-reset/v6/391ff88/PLUGIN_REFRESH.json\n create mode 100644 results/bridge-core--product-scope-reset/v6/391ff88/RESULT_STATUS.json\n create mode 100644 results/bridge-core--product-scope-reset/v6/391ff88/SOURCE_DOCUMENT_IDENTITY.json\n create mode 100644 results/bridge-core--product-scope-reset/v6/391ff88/TARGETED_TESTS.txt\n create mode 100644 results/bridge-core--product-scope-reset/v6/391ff88/WRITING_STYLE_DIAGNOSIS.json\n create mode 100644 results/bridge-core--product-scope-reset/v6/391ff88/nonlive_test_guard.py\n create mode 100644 results/bridge-core--product-scope-reset/v6/391ff88/replacement/FINAL_BOUNDARY_CHECK.json\n create mode 100644 results/bridge-core--product-scope-reset/v6/391ff88/replacement/FINAL_NORMAL_ENTRY_RAW_EVIDENCE.json\n create mode 100644 results/bridge-core--product-scope-reset/v6/391ff88/replacement/FINAL_STATUS.json\n create mode 100644 results/bridge-core--product-scope-reset/v6/391ff88/replacement/MACHINE_PLUGIN_REPAIR.json\n create mode 100644 results/bridge-core--product-scope-reset/v6/391ff88/replacement/OBSERVATION_SUMMARY.json\n create mode 100644 results/bridge-core--product-scope-reset/v6/391ff88/replacement/PLUGIN_STABILITY_PREFLIGHTS.json\n create mode 100644 results/bridge-core--product-scope-reset/v6/391ff88/replacement/PRELAUNCH_PREFLIGHT.json\n create mode 100644 results/bridge-core--product-scope-reset/v6/391ff88/replacement/verify_saved.py\n create mode 100644 tests/test_persistent_cadence.py\n"
+    },
+    "refresh_command": "LD_LIBRARY_PATH=/nas/longleaf/rhel9/apps/python/3.12.4/lib PYTHONNOUSERSITE=1 /users/a/e/aereinh/.ai-bridge/bridge-kit/runtime-0.10.0/bin/python -m pip install --no-deps -e /users/a/e/aereinh/.ai-bridge/bridge-kit/GPT_Codex_AI_Bridge_Kit-release",
+    "refresh_result": {
+      "chunk_id": "b9fbd9",
+      "wall_time_seconds": 0.00000911,
+      "exit_code": 0,
+      "original_token_count": 424,
+      "output": "Obtaining file:///users/a/e/aereinh/.ai-bridge/bridge-kit/GPT_Codex_AI_Bridge_Kit-release\n  Installing build dependencies: started\n  Installing build dependencies: finished with status 'done'\n  Checking if build backend supports build_editable: started\n  Checking if build backend supports build_editable: finished with status 'done'\n  Getting requirements to build editable: started\n  Getting requirements to build editable: finished with status 'done'\n  Preparing editable metadata (pyproject.toml): started\n  Preparing editable metadata (pyproject.toml): finished with status 'done'\nBuilding wheels for collected packages: gpt-codex-ai-bridge-kit\n  Building editable for gpt-codex-ai-bridge-kit (pyproject.toml): started\n  Building editable for gpt-codex-ai-bridge-kit (pyproject.toml): finished with status 'done'\n  Created wheel for gpt-codex-ai-bridge-kit: filename=gpt_codex_ai_bridge_kit-0.11.1-0.editable-py3-none-any.whl size=22611 sha256=61fed250c4fe6278ee154ee6ad628260cfdbd07d4aff074434e39b41d01c63f1\n  Stored in directory: /tmp/pip-ephem-wheel-cache-5ak14hle/wheels/8c/05/64/eeca9fa8160b8c7ace91c77819229178cbc31d4f4104675cf5\nSuccessfully built gpt-codex-ai-bridge-kit\nInstalling collected packages: gpt-codex-ai-bridge-kit\n  Attempting uninstall: gpt-codex-ai-bridge-kit\n    Found existing installation: gpt-codex-ai-bridge-kit 0.11.0\n    Uninstalling gpt-codex-ai-bridge-kit-0.11.0:\n      Successfully uninstalled gpt-codex-ai-bridge-kit-0.11.0\nSuccessfully installed gpt-codex-ai-bridge-kit-0.11.1\n\n[notice] A new release of pip is available: 24.0 -> 26.2.1\n[notice] To update, run: /users/a/e/aereinh/.ai-bridge/bridge-kit/runtime-0.10.0/bin/python -m pip install --upgrade pip\n"
+    },
+    "entry_point": "/users/a/e/aereinh/bin/ai-bridge",
+    "ai_bridge_where": "/users/a/e/aereinh/.ai-bridge/bridge-kit/GPT_Codex_AI_Bridge_Kit-release",
+    "module_file": "/users/a/e/aereinh/.ai-bridge/bridge-kit/GPT_Codex_AI_Bridge_Kit-release/ai_bridge_kit/__init__.py",
+    "metadata_version": "0.11.1",
+    "import_version": "0.11.1",
+    "direct_url_editable": true,
+    "persistent_source_sha256": "be98bb07695cb3ffc8aa8bd42209aa7664475ffe20dd6f16f13dbd2d6935df3e",
+    "canonical_checkout_clean_after_refresh": true,
+    "readback_workdir": "/tmp; avoids development checkout import shadowing",
+    "existing_runtime_container": "runtime-0.10.0 (historical name retained; actual package is 0.11.1)"
+  },
+  "bounds": {
+    "model_calls": 0,
+    "Gmail_attempts": 0,
+    "live_send_tests": 0,
+    "Persistent_canaries": 0,
+    "new_Goals": 0,
+    "Planner_Critic_rounds": 0,
+    "other_consumer_updates": 0,
+    "tag_created": false,
+    "GitHub_Release_created": false,
+    "Marketplace_published": false,
+    "force": false,
+    "force_with_lease": false,
+    "reset_clean_stash": false,
+    "Host_or_plugin_or_transport_config_changes": false,
+    "user_gitignore_changed": false
+  },
+  "completed_at": "2026-10-20 04:16:04 UTC"
+}

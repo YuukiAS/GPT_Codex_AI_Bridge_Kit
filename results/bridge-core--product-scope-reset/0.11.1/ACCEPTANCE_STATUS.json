@@ -60,6 +60,12 @@
     "exact_target": "ba9013b9fbbd242e51b09f9d09291f417df17652",
     "mode": "non-force fast-forward only; current-user 0.11.1 Goal",
     "consumer": "/users/a/e/aereinh/.ai-bridge/bridge-kit/GPT_Codex_AI_Bridge_Kit-release",
-    "release_ref_moved": false
-  }
+    "release_ref_moved": true
+  },
+  "FORMAL_RELEASE_VERSION": "0.11.1",
+  "REMOTE_RELEASE_READBACK": "ba9013b9fbbd242e51b09f9d09291f417df17652",
+  "LONGLEAF_RUNTIME_VERSION": "0.11.1",
+  "LONGLEAF_RUNTIME_SOURCE": "/users/a/e/aereinh/.ai-bridge/bridge-kit/GPT_Codex_AI_Bridge_Kit-release",
+  "DISTRIBUTION_COMPLETE": true,
+  "GOAL_ACHIEVED": true
 }
