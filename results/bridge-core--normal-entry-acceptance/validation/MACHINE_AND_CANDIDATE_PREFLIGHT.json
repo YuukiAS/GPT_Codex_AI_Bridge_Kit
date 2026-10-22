@@ -1,0 +1,234 @@
+{
+  "candidate": "717d5b27bbca5d451276e6e4399ac7fc8107cf24",
+  "installed_module": "/overflow/htzhu/mingcheng_new/GPT_Codex_AI_Bridge_Kit/private/exports/bridge-core--normal-entry-acceptance/candidate-venv/lib/python3.9/site-packages/ai_bridge_kit/__init__.py",
+  "installed_version": "0.11.2",
+  "bare_absolute_cli": {
+    "argv": [
+      "/overflow/htzhu/mingcheng_new/GPT_Codex_AI_Bridge_Kit/private/exports/bridge-core--normal-entry-acceptance/candidate-venv/bin/ai-bridge",
+      "where"
+    ],
+    "returncode": 0,
+    "stdout": "/overflow/htzhu/mingcheng_new/GPT_Codex_AI_Bridge_Kit/private/exports/bridge-core--normal-entry-acceptance/candidate-venv/lib/python3.9/site-packages\n",
+    "stderr": ""
+  },
+  "writing_style": {
+    "plugin_id": "writing-style@yuukias-ai-skills",
+    "version": "0.5",
+    "root": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style",
+    "manifest": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style/.codex-plugin/plugin.json",
+    "skills": {
+      "writing-fidelity": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style/skills/fidelity/SKILL.md",
+      "response-clarity": "/users/a/e/aereinh/.codex/.tmp/marketplaces/yuukias-ai-skills/plugins/codex/plugins/writing-style/skills/response-clarity/SKILL.md"
+    },
+    "codex_bin": "/users/a/e/aereinh/bin/codex"
+  },
+  "notifier": {
+    "status": "VALID",
+    "config_path": "/users/a/e/aereinh/.ai-bridge/private/notifier.env",
+    "mode": 384,
+    "missing_or_invalid": [],
+    "config_digest": "46cc00d02f541a14f84833c1f0ccd91a3e8ad8ccb2786e48150a1e33c1f7e12d",
+    "transport_ready": true,
+    "transport_test_accepted_at": "2026-10-19T15:02:16+00:00"
+  },
+  "safe_transport_addresses": {
+    "SMTP_USER": "humc2013@gmail.com",
+    "FROM": "1155246312@link.cuhk.edu.hk",
+    "TO": "1155246312@link.cuhk.edu.hk",
+    "SUBJECT_PREFIX": "[AI Bridge]"
+  },
+  "codex_version": {
+    "argv": [
+      "/users/a/e/aereinh/bin/codex",
+      "--version"
+    ],
+    "returncode": 0,
+    "stdout": "codex-cli 0.160.1\n",
+    "stderr": "WARNING: proceeding, even though we could not create PATH aliases: Read-only file system (os error 30)\n"
+  },
+  "rules": [
+    {
+      "argv": [
+        "git",
+        "status",
+        "--short"
+      ],
+      "rule_decision": "no_match",
+      "raw": "{\"matchedRules\":[]}\nWARNING: proceeding, even though we could not create PATH aliases: Read-only file system (os error 30)",
+      "native_approval": "UNVERIFIED_BY_RULE_CHECK"
+    },
+    {
+      "argv": [
+        "git",
+        "add",
+        "task-owned.txt"
+      ],
+      "rule_decision": "allow",
+      "raw": "{\"matchedRules\":[{\"prefixRuleMatch\":{\"matchedPrefix\":[\"git\",\"add\"],\"decision\":\"allow\",\"justification\":\"The user permanently authorizes staging task-owned repository files before an ordinary commit; Codex must inspect the staged diff before committing.\"}}],\"decision\":\"allow\"}\nWARNING: proceeding, even though we could not create PATH aliases: Read-only file system (os error 30)",
+      "native_approval": "UNVERIFIED_BY_RULE_CHECK"
+    },
+    {
+      "argv": [
+        "git",
+        "commit",
+        "-m",
+        "task-owned"
+      ],
+      "rule_decision": "allow",
+      "raw": "{\"matchedRules\":[{\"prefixRuleMatch\":{\"matchedPrefix\":[\"git\",\"commit\"],\"decision\":\"allow\",\"justification\":\"The user permanently authorizes normal commits on the already selected current branch across trusted development repositories without repeated manual or automatic approval review.\"}}],\"decision\":\"allow\"}\nWARNING: proceeding, even though we could not create PATH aliases: Read-only file system (os error 30)",
+      "native_approval": "UNVERIFIED_BY_RULE_CHECK"
+    },
+    {
+      "argv": [
+        "git",
+        "push",
+        "origin",
+        "main"
+      ],
+      "rule_decision": "prompt",
+      "raw": "{\"matchedRules\":[{\"prefixRuleMatch\":{\"matchedPrefix\":[\"git\",\"push\",\"origin\",\"main\"],\"decision\":\"prompt\",\"justification\":\"Raw origin/main publication is intentionally gated; low-friction current-branch publication must use ai-bridge host publish-current-branch so the exact effect and transport boundary can be checked.\"}}],\"decision\":\"prompt\"}\nWARNING: proceeding, even though we could not create PATH aliases: Read-only file system (os error 30)",
+      "native_approval": "UNVERIFIED_BY_RULE_CHECK"
+    },
+    {
+      "argv": [
+        "/users/a/e/aereinh/bin/ai-bridge",
+        "host",
+        "publish-current-branch",
+        "--expected-repo",
+        "YuukiAS/GPT_Codex_AI_Bridge_Kit",
+        "--expected-branch",
+        "work/bridge-core--product-scope-reset"
+      ],
+      "rule_decision": "no_match",
+      "raw": "{\"matchedRules\":[]}\nWARNING: proceeding, even though we could not create PATH aliases: Read-only file system (os error 30)",
+      "native_approval": "UNVERIFIED_BY_RULE_CHECK"
+    },
+    {
+      "argv": [
+        "/overflow/htzhu/mingcheng_new/GPT_Codex_AI_Bridge_Kit/private/exports/bridge-core--normal-entry-acceptance/candidate-venv/bin/ai-bridge",
+        "host",
+        "sync-current-branch",
+        "--expected-repo",
+        "YuukiAS/AI_Skills_Collection",
+        "--expected-branch",
+        "work/bridge-core--normal-entry-acceptance-text-transform"
+      ],
+      "rule_decision": "no_match",
+      "raw": "{\"matchedRules\":[]}\nWARNING: proceeding, even though we could not create PATH aliases: Read-only file system (os error 30)",
+      "native_approval": "UNVERIFIED_BY_RULE_CHECK"
+    }
+  ],
+  "rule_check_is_not_loaded_session_approval": true,
+  "candidate_cli_negative_fixtures": [
+    {
+      "cwd": "/tmp/bridge-nac-installed-cli-l480u7c0/repo",
+      "origin": "git@github.com:YuukiAS/GPT_Codex_AI_Bridge_Kit.git",
+      "refs_before": "e5e64ff712f68c4a2c47573406d824d4693ab394 refs/heads/feature\n03fe10002a82583f9cbd014481f2ee7f0432ca98 refs/heads/main\ne5e64ff712f68c4a2c47573406d824d4693ab394 refs/remotes/origin/main",
+      "argv": [
+        "/overflow/htzhu/mingcheng_new/GPT_Codex_AI_Bridge_Kit/private/exports/bridge-core--normal-entry-acceptance/candidate-venv/bin/ai-bridge",
+        "host",
+        "sync-current-branch",
+        "--expected-repo",
+        "YuukiAS/GPT_Codex_AI_Bridge_Kit",
+        "--expected-branch",
+        "feature"
+      ],
+      "execution": "PENDING_DIRECT_PLATFORM_TOOL_CALL; no Python approval trampoline"
+    },
+    {
+      "cwd": "/tmp/bridge-nac-installed-cli-u31hrfsb/repo",
+      "origin": "ssh://git@github.com/YuukiAS/GPT_Codex_AI_Bridge_Kit.git",
+      "refs_before": "3b1c4547462b4d45aa28626757796bb3556b4695 refs/heads/feature\n0703baeb36a70e01c7832426490ddb9634f7b40a refs/heads/main\n3b1c4547462b4d45aa28626757796bb3556b4695 refs/remotes/origin/main",
+      "argv": [
+        "/overflow/htzhu/mingcheng_new/GPT_Codex_AI_Bridge_Kit/private/exports/bridge-core--normal-entry-acceptance/candidate-venv/bin/ai-bridge",
+        "host",
+        "sync-current-branch",
+        "--expected-repo",
+        "YuukiAS/GPT_Codex_AI_Bridge_Kit",
+        "--expected-branch",
+        "feature"
+      ],
+      "execution": "PENDING_DIRECT_PLATFORM_TOOL_CALL; no Python approval trampoline"
+    },
+    {
+      "cwd": "/tmp/bridge-nac-installed-cli-wev2lfhu/repo",
+      "origin": "https://example.invalid/YuukiAS/GPT_Codex_AI_Bridge_Kit.git",
+      "refs_before": "3b1c4547462b4d45aa28626757796bb3556b4695 refs/heads/feature\n0703baeb36a70e01c7832426490ddb9634f7b40a refs/heads/main\n3b1c4547462b4d45aa28626757796bb3556b4695 refs/remotes/origin/main",
+      "argv": [
+        "/overflow/htzhu/mingcheng_new/GPT_Codex_AI_Bridge_Kit/private/exports/bridge-core--normal-entry-acceptance/candidate-venv/bin/ai-bridge",
+        "host",
+        "sync-current-branch",
+        "--expected-repo",
+        "YuukiAS/GPT_Codex_AI_Bridge_Kit",
+        "--expected-branch",
+        "feature"
+      ],
+      "execution": "PENDING_DIRECT_PLATFORM_TOOL_CALL; no Python approval trampoline"
+    },
+    {
+      "cwd": "/tmp/bridge-nac-installed-cli-fu42hztw/repo",
+      "origin": "file:///tmp/forbidden.git",
+      "refs_before": "96dd12e50badf5166519c76dadd160b1d4cf246d refs/heads/feature\nb199298fa1efd1838f9f8b3d9a458b0fef0ec45c refs/heads/main\n96dd12e50badf5166519c76dadd160b1d4cf246d refs/remotes/origin/main",
+      "argv": [
+        "/overflow/htzhu/mingcheng_new/GPT_Codex_AI_Bridge_Kit/private/exports/bridge-core--normal-entry-acceptance/candidate-venv/bin/ai-bridge",
+        "host",
+        "sync-current-branch",
+        "--expected-repo",
+        "YuukiAS/GPT_Codex_AI_Bridge_Kit",
+        "--expected-branch",
+        "feature"
+      ],
+      "execution": "PENDING_DIRECT_PLATFORM_TOOL_CALL; no Python approval trampoline"
+    }
+  ],
+  "frozen_goal": "docs/goals/bridge-core--normal-entry-acceptance_persistent_final_v1.2_2026-10-22.md",
+  "contract": {
+    "repo_realpath": "/overflow/htzhu/mingcheng_new/GPT_Codex_AI_Bridge_Kit",
+    "repo_origin": "https://github.com/YuukiAS/GPT_Codex_AI_Bridge_Kit.git",
+    "branch": "work/bridge-core--product-scope-reset",
+    "expected_commit": "717d5b27bbca5d451276e6e4399ac7fc8107cf24",
+    "run_key": "bridge-core--normal-entry-acceptance-final-v1_2",
+    "goal_repo_relative_path": "docs/goals/bridge-core--normal-entry-acceptance_persistent_final_v1.2_2026-10-22.md",
+    "goal_sha256": "53258ed917000e6e058d95fec4980fb7e36116e38df229611386f7f9381373c8",
+    "working_directory_repo_relative_path": ".",
+    "launch_argv": [
+      "/overflow/htzhu/mingcheng_new/GPT_Codex_AI_Bridge_Kit/private/exports/bridge-core--normal-entry-acceptance/candidate-venv/bin/python",
+      "results/bridge-core--normal-entry-acceptance/validation/run_once.py",
+      "--plan",
+      "docs/design/0.11.1_normal_entry_capability_acceptance_execution_plan_v1.2_2026-10-22.md"
+    ],
+    "backend": "tmux",
+    "progress_mode": "count",
+    "progress_owner": "bridge-child",
+    "progress_source_locator": "bridge-state",
+    "expected_progress_update_seconds": 300,
+    "notify": "ON",
+    "recipient_override": "",
+    "notification_cadence_minutes": 60,
+    "notification_attempt_cap": 6,
+    "launch_id": "87ace4ca3e98a347602bd8ad624861669e9a8aab902d6d1219ba3593f0327782",
+    "session_name": "ai-bridge-pr-87ace4ca3e98a347602bd8ad624861669e9a8aab902d6d1219ba3593f0327782",
+    "working_directory": "/overflow/htzhu/mingcheng_new/GPT_Codex_AI_Bridge_Kit",
+    "progress_source_path": ""
+  },
+  "installed_tests": {
+    "run": 35,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "protected_machine_hashes_before": {
+    "/users/a/e/aereinh/.codex/config.toml": "f2483a962d8e7d5e74f21702645be1a732bf0009734856ac70697a63892f4b48",
+    "/users/a/e/aereinh/.codex/AGENTS.md": "a49b2ef5c9aec50b035c73597510916317b1d6194840775767467d064d58b075",
+    "/users/a/e/aereinh/.codex/rules/ai-bridge-global.rules": "938162a01b89e6a0dec12f8f9b937f34259dfb18e2f30faa106b1419046619a6"
+  },
+  "protected_machine_hashes_after": {
+    "/users/a/e/aereinh/.codex/config.toml": "f2483a962d8e7d5e74f21702645be1a732bf0009734856ac70697a63892f4b48",
+    "/users/a/e/aereinh/.codex/AGENTS.md": "a49b2ef5c9aec50b035c73597510916317b1d6194840775767467d064d58b075",
+    "/users/a/e/aereinh/.codex/rules/ai-bridge-global.rules": "938162a01b89e6a0dec12f8f9b937f34259dfb18e2f30faa106b1419046619a6"
+  },
+  "real_model_calls": 0,
+  "real_smtp_attempts": 0,
+  "real_paid_api_calls": 0,
+  "final_batch": "NOT_RUN"
+}

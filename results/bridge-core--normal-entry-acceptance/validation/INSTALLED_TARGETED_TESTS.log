@@ -1,0 +1,40 @@
+test_cli_divergence_does_not_merge_or_change_worktree (tests.test_host_normal_entry.HostNormalEntryTests) ... ok
+test_cli_https_fast_forward_uses_real_git_objects_with_controlled_fetch_boundary (tests.test_host_normal_entry.HostNormalEntryTests) ... ok
+test_cli_transport_and_scope_negatives_refuse_before_fetch_or_merge (tests.test_host_normal_entry.HostNormalEntryTests) ... ok
+test_no_match_remains_unmatched_and_validation_discloses_native_unknown (tests.test_host_normal_entry.HostNormalEntryTests) ... ok
+test_controlled_clock_true_producer_eta_is_four_hundred_seconds (tests.test_persistent_progress_truth.PersistentProgressTruthTests) ... ok
+test_future_wrong_run_backward_sequence_and_bad_sources_cannot_add_points (tests.test_persistent_progress_truth.PersistentProgressTruthTests) ... ok
+test_missing_source_from_start_becomes_overdue_and_fifo_is_nonblocking (tests.test_persistent_progress_truth.PersistentProgressTruthTests) ... ok
+test_new_contract_requires_producer_interval_or_concrete_none_reason (tests.test_persistent_progress_truth.PersistentProgressTruthTests) ... ok
+test_plateau_is_live_producer_not_business_blocked_and_resets_warmup (tests.test_persistent_progress_truth.PersistentProgressTruthTests) ... ok
+test_publication_sequence_must_increase_and_not_replace_observer_time (tests.test_persistent_progress_truth.PersistentProgressTruthTests) ... ok
+test_repeated_read_does_not_refresh_source_and_overdue_keeps_last_good (tests.test_persistent_progress_truth.PersistentProgressTruthTests) ... ok
+test_running_and_terminal_with_last_progress_are_durable_before_notification (tests.test_persistent_progress_truth.PersistentProgressTruthTests) ... ok
+test_failure_unknown_and_crashed_helper_never_refund_or_retry (tests.test_persistent_notification_budget.PersistentNotificationBudgetTests) ... ok
+test_five_general_plus_terminal_and_no_seventh_helper_with_real_child (tests.test_persistent_notification_budget.PersistentNotificationBudgetTests) ... ok
+test_missing_wrong_identity_slot_goal_or_locator_blocks_before_helper (tests.test_persistent_notification_budget.PersistentNotificationBudgetTests) ... ok
+test_transport_failure_retains_all_slots_and_child_exit (tests.test_persistent_notification_budget.PersistentNotificationBudgetTests) ... ok
+test_transport_unknown_retains_all_slots_and_child_exit (tests.test_persistent_notification_budget.PersistentNotificationBudgetTests) ... ok
+test_api_error_and_empty_output_fail_closed (tests.test_text_transform.TextTransformTests) ... ok
+test_cli_routes_text_transform_preflight_and_install (tests.test_text_transform.TextTransformTests) ... ok
+test_default_model_and_review_key_precedence (tests.test_text_transform.TextTransformTests) ... ok
+test_json_instruction_file_is_allowed_but_private_json_source_is_not (tests.test_text_transform.TextTransformTests) ... ok
+test_mock_responses_api_uses_store_false_and_writes_only_encrypted_output_metadata (tests.test_text_transform.TextTransformTests) ... ok
+test_output_receiver_private_identity_refuses_target_repo_path (tests.test_text_transform.TextTransformTests) ... ok
+test_source_sha_and_instruction_sha_mismatch_fail_closed (tests.test_text_transform.TextTransformTests) ... ok
+test_text_transform_workflow_triggers_only_for_input_manifest (tests.test_text_transform.TextTransformTests) ... ok
+test_writeback_stages_output_result_and_final_budget_only (tests.test_text_transform.TextTransformTests) ... ok
+test_concurrent_invocations_cannot_repeat_token_count_or_paid_call (tests.test_text_transform_budget.TextTransformBudgetTests) ... ok
+test_errors_unknown_and_zero_billing_do_not_allow_second_count_or_paid_call (tests.test_text_transform_budget.TextTransformBudgetTests) ... ok
+test_failed_push_prevents_response_and_reservation_stays_spent (tests.test_text_transform_budget.TextTransformBudgetTests) ... ok
+test_overbudget_and_wrong_model_fail_before_paid_call (tests.test_text_transform_budget.TextTransformBudgetTests) ... ok
+test_real_git_reservation_precedes_response_and_final_writeback_has_actual_ledger (tests.test_text_transform_budget.TextTransformBudgetTests) ... ok
+test_template_serializes_branch_and_checks_out_current_spent_ledger (tests.test_text_transform_budget.TextTransformBudgetTests) ... ok
+test_child_cannot_claim_its_own_terminal_even_with_pass_input (tests.test_normal_entry_evidence_child.NormalEntryEvidenceChildTests) ... ok
+test_missing_or_changed_raw_artifacts_are_no_not_proxy_pass (tests.test_normal_entry_evidence_child.NormalEntryEvidenceChildTests) ... ok
+test_plan_hash_is_frozen (tests.test_normal_entry_evidence_child.NormalEntryEvidenceChildTests) ... ok
+
+----------------------------------------------------------------------
+Ran 35 tests in 10.965s
+
+OK

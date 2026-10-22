@@ -1,0 +1,33 @@
+{
+  "age": {
+    "age": "MISSING",
+    "age-keygen": "MISSING"
+  },
+  "default_model": "gpt-5.6-terra",
+  "github_workflow": {
+    "paths": [],
+    "status": "MISSING"
+  },
+  "model_env": "OPENAI_TEXT_TRANSFORM_MODEL",
+  "openai_project_recommendation": "AI Bridge Text Transform",
+  "schema": "AI_BRIDGE_TEXT_TRANSFORM_PREFLIGHT_V1",
+  "secret": {
+    "age_identity_metadata_status": {
+      "reason": "metadata only",
+      "status": "PRESENT"
+    },
+    "backward_compatible_openai_secret": "OPENAI_VISUAL_REVIEW_API_KEY",
+    "expected_age_identity_secret": "AI_BRIDGE_PRIVATE_REVIEW_AGE_KEY",
+    "legacy_openai_metadata_status": {
+      "reason": "metadata only",
+      "status": "PRESENT"
+    },
+    "preferred_openai_metadata_status": {
+      "reason": "metadata only",
+      "status": "PRESENT"
+    },
+    "preferred_openai_secret": "OPENAI_REVIEW_API_KEY",
+    "value_read": false
+  },
+  "target": "/overflow/htzhu/mingcheng_new/AI_Skills_Collection"
+}

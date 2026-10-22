@@ -1,0 +1,154 @@
+Codex Home: /users/a/e/aereinh/.codex
+config.toml exists: true
+approval_policy: "on-request" (configured)
+sandbox_mode: "workspace-write" (configured)
+approvals_reviewer: "auto_review" (configured)
+sandbox_workspace_write.network_access: true (configured)
+features.default_mode_request_user_input: true (drifted)
+features.memories: true (configured)
+global AGENTS managed block: drifted
+narrative_language: zh-CN (configured)
+artifact_language_policy: repository/task controlled
+ai-bridge-global.rules: drifted
+trusted ai-bridge executable: /users/a/e/aereinh/bin/ai-bridge
+imported ai_bridge_kit source: /overflow/htzhu/mingcheng_new/GPT_Codex_AI_Bridge_Kit/private/exports/bridge-core--normal-entry-acceptance/candidate-venv/lib/python3.9/site-packages/ai_bridge_kit/host.py
+imported ai_bridge_kit version: 0.11.2
+editable source Git HEAD: 717d5b27bbca5d451276e6e4399ac7fc8107cf24
+active source dirty state: dirty
+local formal release ref: refs/remotes/origin/release -> ba9013b9fbbd242e51b09f9d09291f417df17652
+formal release version: 0.11.1
+distribution metadata: duplicate-warning
+distribution metadata entry: 0.11.2 @ /overflow/htzhu/mingcheng_new/GPT_Codex_AI_Bridge_Kit/private/exports/bridge-core--normal-entry-acceptance/candidate-venv/bin/ai-bridge
+distribution metadata entry: 0.11.2 @ /overflow/htzhu/mingcheng_new/GPT_Codex_AI_Bridge_Kit/private/exports/bridge-core--normal-entry-acceptance/candidate-venv/bin/ai-bridge
+project override awareness: none found in current repository
+overall state: drifted
+
+Host policy files are drifted. Run: ai-bridge host install
+Codex version: codex-cli 0.160.1
+Feature availability: default_mode_request_user_input supported/enabled; memories available/enabled
+Trusted ai-bridge executable: /users/a/e/aereinh/bin/ai-bridge
+Imported ai_bridge_kit source: /overflow/htzhu/mingcheng_new/GPT_Codex_AI_Bridge_Kit/private/exports/bridge-core--normal-entry-acceptance/candidate-venv/lib/python3.9/site-packages/ai_bridge_kit/host.py
+Imported ai_bridge_kit version: 0.11.2
+Editable source Git HEAD: 717d5b27bbca5d451276e6e4399ac7fc8107cf24
+Active source dirty state: dirty
+Warning: active editable source is dirty; current bytes may differ from committed HEAD
+Local formal release ref: refs/remotes/origin/release -> ba9013b9fbbd242e51b09f9d09291f417df17652
+Formal release version: 0.11.1
+Distribution metadata: duplicate-warning
+Distribution metadata entry: 0.11.2 @ /overflow/htzhu/mingcheng_new/GPT_Codex_AI_Bridge_Kit/private/exports/bridge-core--normal-entry-acceptance/candidate-venv/bin/ai-bridge
+Distribution metadata entry: 0.11.2 @ /overflow/htzhu/mingcheng_new/GPT_Codex_AI_Bridge_Kit/private/exports/bridge-core--normal-entry-acceptance/candidate-venv/bin/ai-bridge
+Warning: imported version is ahead of local formal release; exact candidate binding is required for release gates
+Execpolicy: ai-bridge plugin-replay --target /overflow/htzhu/mingcheng_new/GPT_Codex_AI_Bridge_Kit --plugin sites --task TASK.md --input INPUT.txt --dry-run => allow (RULE_MATCH_ALLOW)
+Execpolicy: ai-bridge host publish-current-branch --expected-repo YuukiAS/GPT_Codex_AI_Bridge_Kit --expected-branch main => allow (RULE_MATCH_ALLOW)
+Execpolicy: ai-bridge reviewed-handoff materialize-worktree --target /overflow/htzhu/mingcheng_new/GPT_Codex_AI_Bridge_Kit --task-key repo--feature --expected-repo YuukiAS/GPT_Codex_AI_Bridge_Kit --expected-worktree /tmp/repo--feature --expected-base-ref origin/main --mode bootstrap => allow (RULE_MATCH_ALLOW)
+Execpolicy: ai-bridge reviewed-handoff task bootstrap --task-key repo--feature --expected-repo YuukiAS/GPT_Codex_AI_Bridge_Kit --expected-base-commit 0000000000000000000000000000000000000000 => allow (RULE_MATCH_ALLOW)
+Execpolicy: ai-bridge reviewed-handoff task publish-first --task-key repo--feature --expected-repo YuukiAS/GPT_Codex_AI_Bridge_Kit => allow (RULE_MATCH_ALLOW)
+Execpolicy: gh auth status -- => allow (RULE_MATCH_ALLOW)
+Execpolicy: gh pr list -- => allow (RULE_MATCH_ALLOW)
+Execpolicy: gh pr status -- => allow (RULE_MATCH_ALLOW)
+Execpolicy: gh issue list -- => allow (RULE_MATCH_ALLOW)
+Execpolicy: gh issue status -- => allow (RULE_MATCH_ALLOW)
+Execpolicy: gh run list -- => allow (RULE_MATCH_ALLOW)
+Execpolicy: gh auth status --show-token => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: gh pr view 1 => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: gh pr list --repo private/repo => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: gh api /user => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: squeue -j 156911 -o %.18i %.9P %.30j %.8u %.2t %.12M %.12l %.20R %.30b => allow (RULE_MATCH_ALLOW)
+Execpolicy: squeue -u testuser -h => allow (RULE_MATCH_ALLOW)
+Execpolicy: sinfo -h => allow (RULE_MATCH_ALLOW)
+Execpolicy: sacct -j 156911 => allow (RULE_MATCH_ALLOW)
+Execpolicy: sstat -j 156911.batch => allow (RULE_MATCH_ALLOW)
+Execpolicy: sprio -j 156911 => allow (RULE_MATCH_ALLOW)
+Execpolicy: scontrol show job 156911 => allow (RULE_MATCH_ALLOW)
+Execpolicy: scontrol show partition => allow (RULE_MATCH_ALLOW)
+Execpolicy: scontrol ping => allow (RULE_MATCH_ALLOW)
+Execpolicy: sbatch job.sh => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: srun --pty bash => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: salloc -t 00:10:00 => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: scancel 156911 => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: scontrol update JobId=156911 TimeLimit=30 => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: scontrol hold 156911 => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: scontrol release 156911 => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: scontrol requeue 156911 => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: scontrol suspend 156911 => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: scontrol resume 156911 => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: sacctmgr modify user name=test set Fairshare=2 => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: bash -lc squeue -h | xargs scancel => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: ps -u testuser -o pid,ppid,stat,etime,cmd => allow (RULE_MATCH_ALLOW)
+Execpolicy: ps -ef => allow (RULE_MATCH_ALLOW)
+Execpolicy: kill 123 => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: pkill python => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: renice 10 -p 123 => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: setsid bash => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: python script.py => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: bash -lc ps -ef => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: sh -c ps -ef => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: zsh -c ps -ef => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: tmux ls => allow (RULE_MATCH_ALLOW)
+Execpolicy: tmux list-sessions => allow (RULE_MATCH_ALLOW)
+Execpolicy: tmux has-session -t example => allow (RULE_MATCH_ALLOW)
+Execpolicy: tmux new-session -d -s example => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: tmux kill-session -t example => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: tmux kill-server => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: tmux send-keys -t example ls Enter => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: tmux attach-session -t example => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: tmux detach-client -s example => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: codex exec -C /tmp - => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: git fetch origin main => allow (RULE_MATCH_ALLOW)
+Execpolicy: git fetch --all --prune => allow (RULE_MATCH_ALLOW)
+Execpolicy: git status => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: git rev-parse --show-toplevel => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: git rev-parse --git-common-dir => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: git rev-parse --show-prefix => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: git rev-parse --is-inside-work-tree => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: git rev-parse --abbrev-ref HEAD => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: git rev-parse --verify HEAD => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: git branch --show-current => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: git branch --list -- feature* => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: git worktree list --porcelain => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: git ls-files -- src/** => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: git tag --list -- v* => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: git remote get-url origin => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: git --no-pager diff --no-ext-diff --no-textconv -- README.md => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: git --no-pager diff --cached --no-ext-diff --no-textconv -- README.md => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: git --no-pager log --no-ext-diff --no-textconv --max-count=50 --format=%H%x09%aI%x09%s -- README.md => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: git --no-pager show --no-ext-diff --no-textconv --format=fuller HEAD -- README.md => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: git ls-remote --refs -- origin refs/heads/main => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: git ls-remote --refs --upload-pack=evil -- origin => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: git ls-remote --refs -- https://example.invalid/repo.git refs/heads/main => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: git -c core.sshCommand=evil status => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: git --no-pager show --no-ext-diff --no-textconv --format=fuller HEAD~1 -- => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: git fetch https://example.invalid/repo.git main => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: git fetch origin feature:feature => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: git pull --ff-only origin main => allow (RULE_MATCH_ALLOW)
+Execpolicy: git pull --rebase origin main => prompt (RULE_MATCH_PROMPT)
+Execpolicy: git pull --ff-only --autostash origin main => prompt (RULE_MATCH_PROMPT)
+Execpolicy: git pull --ff-only origin main --autostash => prompt (RULE_MATCH_PROMPT)
+Execpolicy: git add README.md => allow (RULE_MATCH_ALLOW)
+Execpolicy: git commit -m test => allow (RULE_MATCH_ALLOW)
+Execpolicy: git commit --amend --no-edit => allow (RULE_MATCH_ALLOW)
+Execpolicy: git push origin main => prompt (RULE_MATCH_PROMPT)
+Execpolicy: git push origin test-branch => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: git push upstream main => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: git switch main => prompt (RULE_MATCH_PROMPT)
+Execpolicy: git switch -c test-branch => prompt (RULE_MATCH_PROMPT)
+Execpolicy: git checkout -b test-branch => prompt (RULE_MATCH_PROMPT)
+Execpolicy: git branch test-branch => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: git reset --hard => prompt (RULE_MATCH_PROMPT)
+Execpolicy: git clean -fd => prompt (RULE_MATCH_PROMPT)
+Execpolicy: git restore README.md => prompt (RULE_MATCH_PROMPT)
+Execpolicy: git remote add mirror https://example.invalid/repo.git => prompt (RULE_MATCH_PROMPT)
+Execpolicy: git remote remove origin => prompt (RULE_MATCH_PROMPT)
+Execpolicy: git remote set-url origin https://example.invalid/repo.git => prompt (RULE_MATCH_PROMPT)
+Execpolicy: git branch -d test-branch => prompt (RULE_MATCH_PROMPT)
+Execpolicy: git branch -D test-branch => prompt (RULE_MATCH_PROMPT)
+Execpolicy: git branch -m old-branch new-branch => prompt (RULE_MATCH_PROMPT)
+Execpolicy: git worktree add ../wt -b test-branch => prompt (RULE_MATCH_PROMPT)
+Execpolicy: git push -u origin test-branch => prompt (RULE_MATCH_PROMPT)
+Execpolicy: git push --set-upstream origin test-branch => prompt (RULE_MATCH_PROMPT)
+Execpolicy: git push origin --delete test-branch => prompt (RULE_MATCH_PROMPT)
+Execpolicy: git push origin --force main => prompt (RULE_MATCH_PROMPT)
+Execpolicy: git push origin main --force => prompt (RULE_MATCH_PROMPT)
+Execpolicy: git push origin main --force-with-lease => prompt (RULE_MATCH_PROMPT)
+Execpolicy: git push --force-with-lease origin main => no_match (RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED)
+Execpolicy: git push origin main -f => prompt (RULE_MATCH_PROMPT)

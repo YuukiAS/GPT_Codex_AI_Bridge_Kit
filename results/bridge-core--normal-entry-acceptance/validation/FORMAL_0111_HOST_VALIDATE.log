@@ -1,0 +1,186 @@
+Codex Home: /users/a/e/aereinh/.codex
+config.toml exists: true
+approval_policy: "on-request" (configured)
+sandbox_mode: "workspace-write" (configured)
+approvals_reviewer: "auto_review" (configured)
+sandbox_workspace_write.network_access: true (configured)
+features.default_mode_request_user_input: true (drifted)
+features.memories: true (configured)
+global AGENTS managed block: drifted
+narrative_language: zh-CN (configured)
+artifact_language_policy: repository/task controlled
+ai-bridge-global.rules: drifted
+trusted ai-bridge executable: /users/a/e/aereinh/bin/ai-bridge
+imported ai_bridge_kit source: /users/a/e/aereinh/.ai-bridge/bridge-kit/GPT_Codex_AI_Bridge_Kit-release/ai_bridge_kit/host.py
+imported ai_bridge_kit version: 0.11.1
+editable source Git HEAD: ba9013b9fbbd242e51b09f9d09291f417df17652
+active source dirty state: clean
+local formal release ref: refs/heads/release -> ba9013b9fbbd242e51b09f9d09291f417df17652
+formal release version: 0.11.1
+distribution metadata: single
+distribution metadata entry: 0.11.1 @ /users/a/e/aereinh/.ai-bridge/bridge-kit/runtime-0.10.0/bin/ai-bridge
+project override awareness: none found in current repository
+overall state: drifted
+
+Host policy files are drifted. Run: ai-bridge host install
+Codex version: codex-cli 0.160.1
+Feature availability: default_mode_request_user_input supported/enabled; memories available/enabled
+Trusted ai-bridge executable: /users/a/e/aereinh/bin/ai-bridge
+Imported ai_bridge_kit source: /users/a/e/aereinh/.ai-bridge/bridge-kit/GPT_Codex_AI_Bridge_Kit-release/ai_bridge_kit/host.py
+Imported ai_bridge_kit version: 0.11.1
+Editable source Git HEAD: ba9013b9fbbd242e51b09f9d09291f417df17652
+Active source dirty state: clean
+Local formal release ref: refs/heads/release -> ba9013b9fbbd242e51b09f9d09291f417df17652
+Formal release version: 0.11.1
+Distribution metadata: single
+Distribution metadata entry: 0.11.1 @ /users/a/e/aereinh/.ai-bridge/bridge-kit/runtime-0.10.0/bin/ai-bridge
+Execpolicy: ai-bridge plugin-replay --target /overflow/htzhu/mingcheng_new/GPT_Codex_AI_Bridge_Kit --plugin sites --task TASK.md --input INPUT.txt --dry-run => allow
+Execpolicy: ai-bridge host publish-current-branch --expected-repo YuukiAS/GPT_Codex_AI_Bridge_Kit --expected-branch main => allow
+Execpolicy: ai-bridge reviewed-handoff materialize-worktree --target /overflow/htzhu/mingcheng_new/GPT_Codex_AI_Bridge_Kit --task-key repo--feature --expected-repo YuukiAS/GPT_Codex_AI_Bridge_Kit --expected-worktree /tmp/repo--feature --expected-base-ref origin/main --mode bootstrap => allow
+Execpolicy: ai-bridge reviewed-handoff task bootstrap --task-key repo--feature --expected-repo YuukiAS/GPT_Codex_AI_Bridge_Kit --expected-base-commit 0000000000000000000000000000000000000000 => allow
+Execpolicy: ai-bridge reviewed-handoff task publish-first --task-key repo--feature --expected-repo YuukiAS/GPT_Codex_AI_Bridge_Kit => allow
+Execpolicy: gh auth status -- => allow
+Execpolicy: gh pr list -- => allow
+Execpolicy: gh pr status -- => allow
+Execpolicy: gh issue list -- => allow
+Execpolicy: gh issue status -- => allow
+Execpolicy: gh run list -- => allow
+Execpolicy: gh auth status --show-token => prompt (no_match)
+Execpolicy: gh pr view 1 => prompt (no_match)
+Execpolicy: gh pr list --repo private/repo => prompt (no_match)
+Execpolicy: gh api /user => prompt (no_match)
+Execpolicy: squeue -j 156911 -o %.18i %.9P %.30j %.8u %.2t %.12M %.12l %.20R %.30b => allow
+Execpolicy: squeue -u testuser -h => allow
+Execpolicy: sinfo -h => allow
+Execpolicy: sacct -j 156911 => allow
+Execpolicy: sstat -j 156911.batch => allow
+Execpolicy: sprio -j 156911 => allow
+Execpolicy: scontrol show job 156911 => allow
+Execpolicy: scontrol show partition => allow
+Execpolicy: scontrol ping => allow
+Execpolicy: sbatch job.sh => prompt (no_match)
+Execpolicy: srun --pty bash => prompt (no_match)
+Execpolicy: salloc -t 00:10:00 => prompt (no_match)
+Execpolicy: scancel 156911 => prompt (no_match)
+Execpolicy: scontrol update JobId=156911 TimeLimit=30 => prompt (no_match)
+Execpolicy: scontrol hold 156911 => prompt (no_match)
+Execpolicy: scontrol release 156911 => prompt (no_match)
+Execpolicy: scontrol requeue 156911 => prompt (no_match)
+Execpolicy: scontrol suspend 156911 => prompt (no_match)
+Execpolicy: scontrol resume 156911 => prompt (no_match)
+Execpolicy: sacctmgr modify user name=test set Fairshare=2 => prompt (no_match)
+Execpolicy: bash -lc squeue -h | xargs scancel => prompt (no_match)
+Execpolicy: ps -u testuser -o pid,ppid,stat,etime,cmd => allow
+Execpolicy: ps -ef => allow
+Execpolicy: kill 123 => prompt (no_match)
+Execpolicy: pkill python => prompt (no_match)
+Execpolicy: renice 10 -p 123 => prompt (no_match)
+Execpolicy: setsid bash => prompt (no_match)
+Execpolicy: python script.py => prompt (no_match)
+Execpolicy: bash -lc ps -ef => prompt (no_match)
+Execpolicy: sh -c ps -ef => prompt (no_match)
+Execpolicy: zsh -c ps -ef => prompt (no_match)
+Execpolicy: tmux ls => allow
+Execpolicy: tmux list-sessions => allow
+Execpolicy: tmux has-session -t example => allow
+Execpolicy: tmux new-session -d -s example => prompt (no_match)
+Execpolicy: tmux kill-session -t example => prompt (no_match)
+Execpolicy: tmux kill-server => prompt (no_match)
+Execpolicy: tmux send-keys -t example ls Enter => prompt (no_match)
+Execpolicy: tmux attach-session -t example => prompt (no_match)
+Execpolicy: tmux detach-client -s example => prompt (no_match)
+Execpolicy: codex exec -C /tmp - => prompt (no_match)
+Execpolicy: git fetch origin main => allow
+Execpolicy: git fetch --all --prune => allow
+Execpolicy mismatch: git status => no_match expected allow
+Execpolicy raw output: {"matchedRules":[]}
+WARNING: proceeding, even though we could not create PATH aliases: Read-only file system (os error 30)
+Execpolicy mismatch: git rev-parse --show-toplevel => no_match expected allow
+Execpolicy raw output: {"matchedRules":[]}
+WARNING: proceeding, even though we could not create PATH aliases: Read-only file system (os error 30)
+Execpolicy mismatch: git rev-parse --git-common-dir => no_match expected allow
+Execpolicy raw output: {"matchedRules":[]}
+WARNING: proceeding, even though we could not create PATH aliases: Read-only file system (os error 30)
+Execpolicy mismatch: git rev-parse --show-prefix => no_match expected allow
+Execpolicy raw output: {"matchedRules":[]}
+WARNING: proceeding, even though we could not create PATH aliases: Read-only file system (os error 30)
+Execpolicy mismatch: git rev-parse --is-inside-work-tree => no_match expected allow
+Execpolicy raw output: {"matchedRules":[]}
+WARNING: proceeding, even though we could not create PATH aliases: Read-only file system (os error 30)
+Execpolicy mismatch: git rev-parse --abbrev-ref HEAD => no_match expected allow
+Execpolicy raw output: {"matchedRules":[]}
+WARNING: proceeding, even though we could not create PATH aliases: Read-only file system (os error 30)
+Execpolicy mismatch: git rev-parse --verify HEAD => no_match expected allow
+Execpolicy raw output: {"matchedRules":[]}
+WARNING: proceeding, even though we could not create PATH aliases: Read-only file system (os error 30)
+Execpolicy mismatch: git branch --show-current => no_match expected allow
+Execpolicy raw output: {"matchedRules":[]}
+WARNING: proceeding, even though we could not create PATH aliases: Read-only file system (os error 30)
+Execpolicy mismatch: git branch --list -- feature* => no_match expected allow
+Execpolicy raw output: {"matchedRules":[]}
+WARNING: proceeding, even though we could not create PATH aliases: Read-only file system (os error 30)
+Execpolicy mismatch: git worktree list --porcelain => no_match expected allow
+Execpolicy raw output: {"matchedRules":[]}
+WARNING: proceeding, even though we could not create PATH aliases: Read-only file system (os error 30)
+Execpolicy mismatch: git ls-files -- src/** => no_match expected allow
+Execpolicy raw output: {"matchedRules":[]}
+WARNING: proceeding, even though we could not create PATH aliases: Read-only file system (os error 30)
+Execpolicy mismatch: git tag --list -- v* => no_match expected allow
+Execpolicy raw output: {"matchedRules":[]}
+WARNING: proceeding, even though we could not create PATH aliases: Read-only file system (os error 30)
+Execpolicy mismatch: git remote get-url origin => no_match expected allow
+Execpolicy raw output: {"matchedRules":[]}
+WARNING: proceeding, even though we could not create PATH aliases: Read-only file system (os error 30)
+Execpolicy mismatch: git --no-pager diff --no-ext-diff --no-textconv -- README.md => no_match expected allow
+Execpolicy raw output: {"matchedRules":[]}
+WARNING: proceeding, even though we could not create PATH aliases: Read-only file system (os error 30)
+Execpolicy mismatch: git --no-pager diff --cached --no-ext-diff --no-textconv -- README.md => no_match expected allow
+Execpolicy raw output: {"matchedRules":[]}
+WARNING: proceeding, even though we could not create PATH aliases: Read-only file system (os error 30)
+Execpolicy mismatch: git --no-pager log --no-ext-diff --no-textconv --max-count=50 --format=%H%x09%aI%x09%s -- README.md => no_match expected allow
+Execpolicy raw output: {"matchedRules":[]}
+WARNING: proceeding, even though we could not create PATH aliases: Read-only file system (os error 30)
+Execpolicy mismatch: git --no-pager show --no-ext-diff --no-textconv --format=fuller HEAD -- README.md => no_match expected allow
+Execpolicy raw output: {"matchedRules":[]}
+WARNING: proceeding, even though we could not create PATH aliases: Read-only file system (os error 30)
+Execpolicy mismatch: git ls-remote --refs -- origin refs/heads/main => no_match expected allow
+Execpolicy raw output: {"matchedRules":[]}
+WARNING: proceeding, even though we could not create PATH aliases: Read-only file system (os error 30)
+Execpolicy: git ls-remote --refs --upload-pack=evil -- origin => prompt (no_match)
+Execpolicy: git ls-remote --refs -- https://example.invalid/repo.git refs/heads/main => prompt (no_match)
+Execpolicy: git -c core.sshCommand=evil status => prompt (no_match)
+Execpolicy: git --no-pager show --no-ext-diff --no-textconv --format=fuller HEAD~1 -- => prompt (no_match)
+Execpolicy: git fetch https://example.invalid/repo.git main => prompt (no_match)
+Execpolicy: git fetch origin feature:feature => prompt (no_match)
+Execpolicy: git pull --ff-only origin main => allow
+Execpolicy: git pull --rebase origin main => prompt
+Execpolicy: git pull --ff-only --autostash origin main => prompt
+Execpolicy: git pull --ff-only origin main --autostash => prompt
+Execpolicy: git add README.md => allow
+Execpolicy: git commit -m test => allow
+Execpolicy: git commit --amend --no-edit => allow
+Execpolicy: git push origin main => prompt
+Execpolicy: git push origin test-branch => prompt (no_match)
+Execpolicy: git push upstream main => no_match
+Execpolicy: git switch main => prompt
+Execpolicy: git switch -c test-branch => prompt
+Execpolicy: git checkout -b test-branch => prompt
+Execpolicy: git branch test-branch => prompt (no_match)
+Execpolicy: git reset --hard => prompt
+Execpolicy: git clean -fd => prompt
+Execpolicy: git restore README.md => prompt
+Execpolicy: git remote add mirror https://example.invalid/repo.git => prompt
+Execpolicy: git remote remove origin => prompt
+Execpolicy: git remote set-url origin https://example.invalid/repo.git => prompt
+Execpolicy: git branch -d test-branch => prompt
+Execpolicy: git branch -D test-branch => prompt
+Execpolicy: git branch -m old-branch new-branch => prompt
+Execpolicy: git worktree add ../wt -b test-branch => prompt
+Execpolicy: git push -u origin test-branch => prompt
+Execpolicy: git push --set-upstream origin test-branch => prompt
+Execpolicy: git push origin --delete test-branch => prompt
+Execpolicy: git push origin --force main => prompt
+Execpolicy: git push origin main --force => prompt
+Execpolicy: git push origin main --force-with-lease => prompt
+Execpolicy: git push --force-with-lease origin main => prompt (no_match)
+Execpolicy: git push origin main -f => prompt

@@ -1,0 +1,86 @@
+{
+  "candidate": "717d5b27bbca5d451276e6e4399ac7fc8107cf24",
+  "effects": "zero fetch/merge/push for rejected transports",
+  "outcomes": [
+    {
+      "cwd": "/tmp/bridge-nac-installed-cli-l480u7c0/repo",
+      "origin": "git@github.com:YuukiAS/GPT_Codex_AI_Bridge_Kit.git",
+      "refs_before": "e5e64ff712f68c4a2c47573406d824d4693ab394 refs/heads/feature\n03fe10002a82583f9cbd014481f2ee7f0432ca98 refs/heads/main\ne5e64ff712f68c4a2c47573406d824d4693ab394 refs/remotes/origin/main",
+      "argv": [
+        "/overflow/htzhu/mingcheng_new/GPT_Codex_AI_Bridge_Kit/private/exports/bridge-core--normal-entry-acceptance/candidate-venv/bin/ai-bridge",
+        "host",
+        "sync-current-branch",
+        "--expected-repo",
+        "YuukiAS/GPT_Codex_AI_Bridge_Kit",
+        "--expected-branch",
+        "feature"
+      ],
+      "execution": "DIRECT_PLATFORM_EXEC_COMMAND; workspace-write",
+      "tool_output_chunk_id": "d44df5",
+      "returncode": 1,
+      "output": "ERROR: UNSUPPORTED_TRANSPORT_REQUIRES_ORDINARY_APPROVAL\n",
+      "refs_after": "e5e64ff712f68c4a2c47573406d824d4693ab394 refs/heads/feature\n03fe10002a82583f9cbd014481f2ee7f0432ca98 refs/heads/main\ne5e64ff712f68c4a2c47573406d824d4693ab394 refs/remotes/origin/main",
+      "refs_unchanged": true
+    },
+    {
+      "cwd": "/tmp/bridge-nac-installed-cli-u31hrfsb/repo",
+      "origin": "ssh://git@github.com/YuukiAS/GPT_Codex_AI_Bridge_Kit.git",
+      "refs_before": "3b1c4547462b4d45aa28626757796bb3556b4695 refs/heads/feature\n0703baeb36a70e01c7832426490ddb9634f7b40a refs/heads/main\n3b1c4547462b4d45aa28626757796bb3556b4695 refs/remotes/origin/main",
+      "argv": [
+        "/overflow/htzhu/mingcheng_new/GPT_Codex_AI_Bridge_Kit/private/exports/bridge-core--normal-entry-acceptance/candidate-venv/bin/ai-bridge",
+        "host",
+        "sync-current-branch",
+        "--expected-repo",
+        "YuukiAS/GPT_Codex_AI_Bridge_Kit",
+        "--expected-branch",
+        "feature"
+      ],
+      "execution": "DIRECT_PLATFORM_EXEC_COMMAND; workspace-write",
+      "tool_output_chunk_id": "7c727c",
+      "returncode": 1,
+      "output": "ERROR: UNSUPPORTED_TRANSPORT_REQUIRES_ORDINARY_APPROVAL\n",
+      "refs_after": "3b1c4547462b4d45aa28626757796bb3556b4695 refs/heads/feature\n0703baeb36a70e01c7832426490ddb9634f7b40a refs/heads/main\n3b1c4547462b4d45aa28626757796bb3556b4695 refs/remotes/origin/main",
+      "refs_unchanged": true
+    },
+    {
+      "cwd": "/tmp/bridge-nac-installed-cli-wev2lfhu/repo",
+      "origin": "https://example.invalid/YuukiAS/GPT_Codex_AI_Bridge_Kit.git",
+      "refs_before": "3b1c4547462b4d45aa28626757796bb3556b4695 refs/heads/feature\n0703baeb36a70e01c7832426490ddb9634f7b40a refs/heads/main\n3b1c4547462b4d45aa28626757796bb3556b4695 refs/remotes/origin/main",
+      "argv": [
+        "/overflow/htzhu/mingcheng_new/GPT_Codex_AI_Bridge_Kit/private/exports/bridge-core--normal-entry-acceptance/candidate-venv/bin/ai-bridge",
+        "host",
+        "sync-current-branch",
+        "--expected-repo",
+        "YuukiAS/GPT_Codex_AI_Bridge_Kit",
+        "--expected-branch",
+        "feature"
+      ],
+      "execution": "DIRECT_PLATFORM_EXEC_COMMAND; workspace-write",
+      "tool_output_chunk_id": "3983f6",
+      "returncode": 1,
+      "output": "ERROR: UNSUPPORTED_TRANSPORT_REQUIRES_ORDINARY_APPROVAL\n",
+      "refs_after": "3b1c4547462b4d45aa28626757796bb3556b4695 refs/heads/feature\n0703baeb36a70e01c7832426490ddb9634f7b40a refs/heads/main\n3b1c4547462b4d45aa28626757796bb3556b4695 refs/remotes/origin/main",
+      "refs_unchanged": true
+    },
+    {
+      "cwd": "/tmp/bridge-nac-installed-cli-fu42hztw/repo",
+      "origin": "file:///tmp/forbidden.git",
+      "refs_before": "96dd12e50badf5166519c76dadd160b1d4cf246d refs/heads/feature\nb199298fa1efd1838f9f8b3d9a458b0fef0ec45c refs/heads/main\n96dd12e50badf5166519c76dadd160b1d4cf246d refs/remotes/origin/main",
+      "argv": [
+        "/overflow/htzhu/mingcheng_new/GPT_Codex_AI_Bridge_Kit/private/exports/bridge-core--normal-entry-acceptance/candidate-venv/bin/ai-bridge",
+        "host",
+        "sync-current-branch",
+        "--expected-repo",
+        "YuukiAS/GPT_Codex_AI_Bridge_Kit",
+        "--expected-branch",
+        "feature"
+      ],
+      "execution": "DIRECT_PLATFORM_EXEC_COMMAND; workspace-write",
+      "tool_output_chunk_id": "e14f98",
+      "returncode": 1,
+      "output": "ERROR: UNSUPPORTED_TRANSPORT_REQUIRES_ORDINARY_APPROVAL\n",
+      "refs_after": "96dd12e50badf5166519c76dadd160b1d4cf246d refs/heads/feature\nb199298fa1efd1838f9f8b3d9a458b0fef0ec45c refs/heads/main\n96dd12e50badf5166519c76dadd160b1d4cf246d refs/remotes/origin/main",
+      "refs_unchanged": true
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "candidate": "717d5b27bbca5d451276e6e4399ac7fc8107cf24",
+  "version": "0.11.2",
+  "implementation_deterministic": "PASS",
+  "full_py39": {
+    "tests": 522,
+    "failures": 0,
+    "errors": 0,
+    "skips": 0
+  },
+  "full_py312": {
+    "tests": 522,
+    "failures": 0,
+    "errors": 0,
+    "skips": 0
+  },
+  "installed_targeted": {
+    "run": 35,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "hosted_ci_run": 39791918957,
+  "hosted_ci": "PASS; each Python matrix has 4 Codex-dependent skips, covered locally",
+  "independent_prefinal_critic": "PENDING",
+  "status": "READY_FOR_PREFINAL_CRITIC",
+  "final_batch": "NOT_RUN",
+  "real_models": 0,
+  "real_smtp": 0,
+  "real_paid_api": 0,
+  "consumer_final_remote_writes": 0,
+  "release": "ba9013b9fbbd242e51b09f9d09291f417df17652",
+  "all_formal_capabilities_accepted_except_program_run": false,
+  "environment_or_history_notes": "See PREFINAL_CRITIC_HANDOFF.md; do not relabel drift or incomplete raw chains as PASS",
+  "program_run": "INTENTIONALLY_EXCLUDED"
+}

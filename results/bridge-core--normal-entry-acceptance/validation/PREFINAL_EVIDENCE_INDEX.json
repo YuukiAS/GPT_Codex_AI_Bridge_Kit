@@ -1,0 +1,98 @@
+{
+  "candidate": "717d5b27bbca5d451276e6e4399ac7fc8107cf24",
+  "phase": "PRE_FINAL_NONLIVE_NOT_ACCEPTANCE",
+  "files": {
+    "results/bridge-core--normal-entry-acceptance/HISTORICAL_EVIDENCE_INVENTORY.md": {
+      "sha256": "cfd327ce6f9143d3c1c163110b1ef1dc274e0f1dfbe83c60e0b1f2a8f18300e4",
+      "bytes": 3628
+    },
+    "results/bridge-core--normal-entry-acceptance/PREFINAL_CRITIC_HANDOFF.md": {
+      "sha256": "7f2bcafd798800a93d4f8d40789916ba66c0bf1617d8af16589bfe15bf7db01b",
+      "bytes": 8704
+    },
+    "results/bridge-core--normal-entry-acceptance/validation/CANDIDATE_HOST_READONLY_VALIDATE.log": {
+      "sha256": "c316ef900261f1a01dd8176bcf3b8ddf2c482c0e314d2b5395eaf8596ed6aa66",
+      "bytes": 13075
+    },
+    "results/bridge-core--normal-entry-acceptance/validation/CANDIDATE_INSTALL_IDENTITY.json": {
+      "sha256": "c97e518ba22447062d1cae3a376e7fe97bd5c7fdd5e2e3dec322c98d84ab0f73",
+      "bytes": 12349
+    },
+    "results/bridge-core--normal-entry-acceptance/validation/CONTROLLED_ETA_BUDGET_RAW.json": {
+      "sha256": "f7c071b140d46958bb057148b6ff06e8b66a17c01f9c4ab4bb15f1c160db97ee",
+      "bytes": 147050
+    },
+    "results/bridge-core--normal-entry-acceptance/validation/DIRECT_CANDIDATE_CLI.json": {
+      "sha256": "ea89d20e70ac8cf55c13a9f8b8dc0cd16eaf71e2db8025f0a59c9e421d7266e4",
+      "bytes": 4666
+    },
+    "results/bridge-core--normal-entry-acceptance/validation/FORMAL_0111_HOST_VALIDATE.log": {
+      "sha256": "87d399b302dc14700c3aa90bbe92eec35a8916db04c85612219d1e4ed286773d",
+      "bytes": 11955
+    },
+    "results/bridge-core--normal-entry-acceptance/validation/HOSTED_CI.json": {
+      "sha256": "398cf425f2395b3d191e168113a4ca83b3f43850580f1744c17a249d48eeb616",
+      "bytes": 3280
+    },
+    "results/bridge-core--normal-entry-acceptance/validation/HOSTED_CI.log": {
+      "sha256": "360ccb7f11aabe02873a11106edc5fc5549354e9de1326018e9da83492e93033",
+      "bytes": 368030
+    },
+    "results/bridge-core--normal-entry-acceptance/validation/INSTALLED_TARGETED_TESTS.log": {
+      "sha256": "821bb4e0c24141bff4e8ec72218996db9d24d20f85f7c872537ea90af09cf927",
+      "bytes": 4728
+    },
+    "results/bridge-core--normal-entry-acceptance/validation/LOCAL_PY312_TESTS.log": {
+      "sha256": "2449ff49969c6461daa055e3e87168d592a9a81c93884421442027f1c1e2f155",
+      "bytes": 111090
+    },
+    "results/bridge-core--normal-entry-acceptance/validation/LOCAL_PY39_TESTS.log": {
+      "sha256": "af76955f7f07013e0dc83448eb9acbf1840e56e0ef3044b6a3509cb1691def6d",
+      "bytes": 80727
+    },
+    "results/bridge-core--normal-entry-acceptance/validation/MACHINE_AND_CANDIDATE_PREFLIGHT.json": {
+      "sha256": "1e20859533caa7932ef04be31abbaac9f420cd8fc929a2ead0614b695945760a",
+      "bytes": 11521
+    },
+    "results/bridge-core--normal-entry-acceptance/validation/OFFLINE_INSTALL.log": {
+      "sha256": "cf29c98693437bc2334dcc2c6377393eb24cff74ccba6debbebc7e9d92c08cf9",
+      "bytes": 1913
+    },
+    "results/bridge-core--normal-entry-acceptance/validation/PREFINAL_STATUS.json": {
+      "sha256": "5b384816fb6f0cb4dca85257fb4d1f4d43487338fc7e8b26cd5595cf45c9266e",
+      "bytes": 1026
+    },
+    "results/bridge-core--normal-entry-acceptance/validation/SOURCE_DOCUMENT_IDENTITY.json": {
+      "sha256": "1c5c86eeb7130c6c1064eea4ca4424a56cade9e3d16f4c24ce3d3b4998e901ea",
+      "bytes": 4187
+    },
+    "results/bridge-core--normal-entry-acceptance/validation/TEXT_TRANSFORM_READONLY_PREFLIGHT.json": {
+      "sha256": "905478a871a7c5a3cfae8efd27ee700778caa8e2e0ce1b6589c2c85f385c7509",
+      "bytes": 963
+    },
+    "results/bridge-core--normal-entry-acceptance/validation/collect_identity.py": {
+      "sha256": "66533b68cbe03221c2a7f81edf1738beda4060053cb7d5b562fc0e63c269874c",
+      "bytes": 7801
+    },
+    "results/bridge-core--normal-entry-acceptance/validation/controlled_evidence.py": {
+      "sha256": "7624a414f80fe6b535d85cc1d6c6e1279e14b4ba80b3f2f306f0759ff3b96b45",
+      "bytes": 2853
+    },
+    "results/bridge-core--normal-entry-acceptance/validation/install_candidate.py": {
+      "sha256": "8f3df667ebb32ba88e54721ba35dabc6f3637d5fda1acb9a7115d57f7abc14ac",
+      "bytes": 4129
+    },
+    "results/bridge-core--normal-entry-acceptance/validation/nonlive_tests.py": {
+      "sha256": "dfdb0d5815f36ceee19498bdf0e13ebd7cd039739db34693153b2bce2c168c61",
+      "bytes": 1517
+    },
+    "results/bridge-core--normal-entry-acceptance/validation/preflight_candidate.py": {
+      "sha256": "4530ff256db1152edc999d04ec03559425a58f2e39f097fd73a9200db4e198d5",
+      "bytes": 7401
+    },
+    "results/bridge-core--normal-entry-acceptance/validation/run_once.py": {
+      "sha256": "47c7cbce791b779c9e1d0dc12b07e8d65de9bfeaed0c0ec6004a8533a4cdb564",
+      "bytes": 5936
+    }
+  }
+}

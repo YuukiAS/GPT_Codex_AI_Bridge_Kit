@@ -1,0 +1,54 @@
+{
+  "candidate": "717d5b27bbca5d451276e6e4399ac7fc8107cf24",
+  "formal_baseline": "ba9013b9fbbd242e51b09f9d09291f417df17652",
+  "approved_package": "f87763e64d57784d11f69dcc1f3b63a898405d5c",
+  "changed_python_owners": [
+    "ai_bridge_kit/__init__.py",
+    "ai_bridge_kit/host.py",
+    "ai_bridge_kit/notifier.py",
+    "ai_bridge_kit/persistent_run.py",
+    "ai_bridge_kit/text_transform.py"
+  ],
+  "protected_owner_hashes": {
+    "ai_bridge_kit/agent_flow.py": "a16d5e197cee32fd50b9ca45c81ca06c0fa382e3ab2b52fa24f619b2a4557f10",
+    "ai_bridge_kit/bridge_cli.py": "f8d064ae7d00391d3411061bf183776d739276dbc4852932c9c08bd48e39ff2e",
+    "ai_bridge_kit/clear_writing.py": "5e0331f629abaf75db8d880ad25a065383ed11d7cdf5c4aa0758a859bd5ff638",
+    "ai_bridge_kit/cli.py": "97900610a75c046fc76e7ff90a3dc8ab22ecc150b33ff13b1184977451d1b59b",
+    "ai_bridge_kit/external_wait.py": "d94d5709e50e788b231b57ffadd220f402c58b62d8d8aaf84e1671ba2332aeb3",
+    "ai_bridge_kit/overleaf.py": "c27368fa235b60e6930b4718ea11647bf405f34aa01cc7f86ebff552d3a3920a",
+    "ai_bridge_kit/paid_review.py": "1f9c440ddb4793c08fcd87fa8d51f6b586789e86874ebb3f70a9c7f0a11820ff",
+    "ai_bridge_kit/plugin_replay.py": "e28a744ab48d9f4eeb4564447a014864267bdfc28c6d72005904567592dda6a2",
+    "ai_bridge_kit/private.py": "5df4a4fe4cc017a1cee9be1923de6205b2fb9a30c2ef7466fb9874356cd42750",
+    "ai_bridge_kit/readiness.py": "d5043c7bd337fd8df3f90fd884568209935fb8688eb314cfed8963b209a1d792",
+    "ai_bridge_kit/reviewed_handoff.py": "a7bd59a7252795b1d38d4ac9e9731c065c0ceb73acdfdaf3726a300a29d0cc0a",
+    "ai_bridge_kit/reviewed_runner.py": "7ce3c65d7ffb961d9d77182a86e39fa7eac6e66211dea9b2ab9bf4dc6f6e5784",
+    "ai_bridge_kit/task_keys.py": "86c4e25499f768a456ceb4c159b7bf37e59b0500421bd8cafe78a9255ddb932b",
+    "ai_bridge_kit/text_review.py": "bcbc50bc51822c2e74e12436ed5a9c34f44510f0d3c6cca17fdcc5648c372324",
+    "ai_bridge_kit/visual_review.py": "764f91d797d0c842936652bcc5a116baf0091f89bc2222bb25d7eee4cb845ef9",
+    "templates/host/GLOBAL_AGENTS_SNIPPET.md": "1b00c78c401dcc6e63e63d1cbd982ade5a1d6200389167ade22da4e719354b35",
+    "templates/host/rules/ai-bridge-global.rules": "7de120cc99834eb0ddb5e624e249a6ec93c3477d9f63e1ff9e8b5de907b77778",
+    "templates/host/CODEX_CONFIG_PROFILE.md": "4c96e0da7c2a99cc60f16489080edc29331d39801c0374b43f28f4b6afebd73e"
+  },
+  "unchanged_persistent_function_hashes": {
+    "_run_binding_path": "2406f0046596bca461a79f31492437ba3581ac7eb8bd959b1a1872342cfc20a5",
+    "_tmux_has_session": "301d4bbf44da4d3875ebd48a9a2dfb7e3222287a52397a4ad8fcc031f9770fde",
+    "_process_identity": "cd6479cec106ab2371eaf1af19a959e4427ed9442260b4daf68bb9153bc641a3",
+    "estimate_progress_eta": "11944480c29dc7a2e40daeae468f40b17ebda23c287b5c5a49661d1d4d33f75d",
+    "_binding_terminal": "bf33caf124d14199c8c71ad204ed7257969df2588493cbc697047a4d10f08346",
+    "recover_persistent_run": "e1a2017eb40778596ff571e22040ddacdd34d631f09ebbf979f9d238c3084034",
+    "resolve_persistent_run": "3f6fb880eabf6fb211947e0ee89130af169cac2ff6c6c6e582de905d88382ded"
+  },
+  "approved_documents": {
+    "docs/design/0.11.1_normal_entry_capability_acceptance_execution_proposal_v1.2_2026-10-22.md": "a390f0ac48515709ce6bbad7834126b8605a2886863d756d2a183bfa0652dbb2",
+    "docs/design/0.11.1_normal_entry_capability_acceptance_execution_plan_v1.2_2026-10-22.md": "350577879b8c9a413ea4e18a696668d268c2692b250c70c03b619631bf6d8a4b",
+    "docs/goals/0.11.1_normal_entry_capability_acceptance_goal_v1.2_2026-10-22.md": "6b1f21aa611adcb52e6d218258ae020b8a2a7b18fd0c9a36ddede5002cd599d8",
+    "docs/design/0.11.1_normal_entry_capability_acceptance_kickoff_v1.2_2026-10-22.md": "358e765001130361da861954f1abf13a52905758a11cca36c519902b6a0e59f0",
+    "docs/goals/bridge-core--normal-entry-acceptance_persistent_final_v1.2_2026-10-22.md": "53258ed917000e6e058d95fec4980fb7e36116e38df229611386f7f9381373c8",
+    "docs/design/bridge-core--normal-entry-acceptance_text_transform_input_v1.1.md": "40abf54c31688d4a622015dd3c572ee7970ae9380a51ac9ab367d255b80ba440"
+  },
+  "user_gitignore_unchanged": true,
+  "version_parity": "0.11.2",
+  "diff_boundary": "PASS",
+  "source_document_identity": "PASS",
+  "release_moved": false
+}
