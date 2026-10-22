@@ -29,7 +29,7 @@ External notification attempt cap: 6
 
 专用候选虚拟环境 Python：`/overflow/htzhu/mingcheng_new/GPT_Codex_AI_Bridge_Kit/private/exports/bridge-core--normal-entry-acceptance/candidate-venv/bin/python`；CLI：`/overflow/htzhu/mingcheng_new/GPT_Codex_AI_Bridge_Kit/private/exports/bridge-core--normal-entry-acceptance/candidate-venv/bin/ai-bridge`。待 0.11.2 最终候选提交冻结后，必须离线构建、非 editable 安装此 SHA 的包；验证解释器、安装源码、版本、wheel 摘要、CLI、工作树 HEAD 与冻结候选全部对应。正式 start/status/recover、tmux Supervisor（使用调用方 `sys.executable`）、主进程和 progress update 均通过此同一环境，不调用机器已有的 0.11.1、系统 `python3` 或其它分支。
 
-用上述唯一 CLI 执行 `persistent-run start --target . --goal docs/goals/bridge-core--normal-entry-acceptance_persistent_final_v1.2_2026-10-22.md --expected-goal-sha256 <从审查包核对的实际 SHA-256>`。尖括号内容仅用于解释，需要在用户批准的执行提示词中替换为本文件外部已冻结的准确摘要；本文件禁止嵌入自身 SHA 以避免自引用。单个 Goal 不允许自动第二次 start、更换子进程或调用额外模型。
+用上述唯一 CLI 执行正式 `persistent-run start`，参数 `--target .`、`--goal docs/goals/bridge-core--normal-entry-acceptance_persistent_final_v1.2_2026-10-22.md` 与 `--expected-goal-sha256` 必须逐字使用同版 Canonical Goal 中外部冻结的准确 64 位 SHA-256；本文件自身不嵌入自身摘要，以免产生哈希自引用。单个 Goal 不允许自动第二次 start、更换子进程或调用额外模型。
 
 ## 运行完成后的判断
 
