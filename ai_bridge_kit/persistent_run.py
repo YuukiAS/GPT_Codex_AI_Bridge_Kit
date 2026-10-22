@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import re
+import stat
 import statistics
 import subprocess
 import sys
@@ -238,6 +239,8 @@ def _delivery_decision(
         return "deliver", "stage_transition"
     if current.get("status") in {"stalled", "blocked", "complete", "failed"} and previous.get("status") != current.get("status"):
         return "deliver", f"status_{current.get('status')}"
+    if current.get("source_state") in {"PROGRESS_SOURCE_OVERDUE", "UNAVAILABLE"} and previous.get("source_state") != current.get("source_state"):
+        return "deliver", "progress_source_changed"
     if _eta_changed(last_delivered, current):
         return "deliver", "eta_changed"
     previous_time = _timestamp_seconds(last_delivered_at or last_delivered.get("observed_at"))
@@ -571,6 +574,14 @@ def parse_persistent_contract(target: Path, goal: str, *, expected_goal_sha256: 
         "recipient_override": recipient_override,
         "notification_cadence_minutes": notification_cadence_minutes,
     }
+    # Optional additions leave old frozen identities readable without migration.
+    for field, key in (("Progress mode reason", "progress_mode_reason"), ("Progress producer", "progress_producer")):
+        if fields.get(field):
+            identity[key] = fields[field]
+    if "External notification attempt cap" in fields:
+        if fields["External notification attempt cap"] != "6":
+            raise PersistentRunError("External notification attempt cap must be 6 (five ordinary + one terminal)")
+        identity["notification_attempt_cap"] = 6
     launch_id = _sha256_bytes(
         json.dumps(identity, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode("utf-8")
     )
@@ -620,6 +631,9 @@ def _binding_matches(binding: dict[str, Any], contract: dict[str, Any]) -> bool:
         "notify",
         "recipient_override",
         "notification_cadence_minutes",
+        "notification_attempt_cap",
+        "progress_mode_reason",
+        "progress_producer",
     ]
     return all(binding.get(key) == contract.get(key) for key in immutable)
 
@@ -759,6 +773,7 @@ def update_run_progress(
         "schema": "ai-bridge.persistent_run.progress.v2",
         "run_key": run_key,
         "runtime_id": runtime_id,
+        "publication_id": uuid.uuid4().hex,
         "observed_at": _utc_now(),
         "stage": stage or "UNKNOWN",
         "status": status,
@@ -774,29 +789,142 @@ def update_run_progress(
 def observe_binding_progress(binding: dict[str, Any]) -> dict[str, Any]:
     path_raw = str(binding.get("progress_source_path") or "")
     observed_at = _utc_now()
+    now = _timestamp_seconds(observed_at)
+    previous = binding.get("last_good_progress")
+    previous = previous if isinstance(previous, dict) else None
+    expected = binding.get("expected_progress_update_seconds")
+    overdue_after = max(900, 3 * expected) if isinstance(expected, int) and expected > 0 else 900
+
+    def snapshot(state: str, reason: str) -> dict[str, Any]:
+        last_time = _timestamp_seconds((previous or {}).get("observed_at") or binding.get("child_started_at") or binding.get("start_requested_at"))
+        if binding.get("progress_mode") in {"count", "fraction"} and now is not None and last_time is not None and now - last_time > overdue_after:
+            state, reason = "PROGRESS_SOURCE_OVERDUE", "no new valid producer publication within the frozen update allowance"
+        normalized = dict(previous) if previous else None
+        finish = _timestamp_seconds((previous or {}).get("eta"))
+        if normalized is not None and state == "AVAILABLE" and now is not None and finish is not None and finish < now:
+            reason = "ETA_ESTIMATE_EXPIRED; awaiting a new producer publication"
+            normalized.update(eta="UNKNOWN", eta_low="UNKNOWN", eta_high="UNKNOWN", eta_confidence="INSUFFICIENT")
+        if normalized is not None and state != "AVAILABLE":
+            normalized.update(eta="UNKNOWN", eta_low="UNKNOWN", eta_high="UNKNOWN", eta_confidence="INSUFFICIENT")
+        if normalized is not None:
+            normalized["source_state"] = state
+        record = {"state": state, "observed_at": observed_at, "reason": reason,
+                  "source_published_at": (previous or {}).get("observed_at", "UNKNOWN"), "path": path_raw}
+        binding["progress_observation"] = record
+        binding["progress_snapshot"] = {**record, "normalized": normalized}
+        return binding
+
     if not path_raw or binding.get("progress_mode") == "none":
-        binding["progress_observation"] = {"state": "UNAVAILABLE", "observed_at": observed_at, "reason": "progress source not configured"}
-        return binding
+        return snapshot("UNKNOWN", "progress source not configured; " + str(binding.get("progress_mode_reason") or "legacy contract has no quantifiability rationale"))
     try:
-        normalized = normalize_progress_file(Path(path_raw))
-    except PersistentRunError as exc:
-        binding["progress_observation"] = {"state": "UNAVAILABLE", "observed_at": observed_at, "reason": str(exc)}
-        return binding
+        fd = os.open(path_raw, os.O_RDONLY | os.O_NONBLOCK)
+        with os.fdopen(fd, "rb") as handle:
+            if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
+                raise PersistentRunError("progress source must be a regular JSON file")
+            data = handle.read(1024 * 1024 + 1)
+        if len(data) > 1024 * 1024:
+            raise PersistentRunError("progress source exceeds bounded snapshot size")
+        raw = json.loads(data)
+        if not isinstance(raw, dict):
+            raise PersistentRunError("progress evidence must be a JSON object")
+        if not re.fullmatch(r"[0-9a-f]{64}", str(binding.get("launch_id") or "")) or not binding.get("run_key"):
+            raise PersistentRunError("progress binding run identity unavailable")
+        if raw.get("runtime_id") != binding.get("launch_id") or raw.get("run_key", raw.get("run_locator")) != binding.get("run_key"):
+            raise PersistentRunError("progress publication run identity mismatch")
+        published = _timestamp_seconds(raw.get("observed_at"))
+        if published is None or now is None or published > now:
+            raise PersistentRunError("progress publication time missing, invalid or in the future")
+        normalized = normalize_progress_evidence(raw)
+        if binding.get("progress_mode") in {"count", "fraction"} and _quantitative_value(normalized, binding["progress_mode"]) is None:
+            raise PersistentRunError("invalid quantitative progress")
+        publication_digest = _sha256_bytes(json.dumps(raw, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8"))
+        publication_id = raw.get("publication_id") or publication_digest
+        last_id = binding.get("progress_publication_id")
+        last_time = _timestamp_seconds((previous or {}).get("observed_at"))
+        sequence = raw.get("publication_sequence")
+        last_sequence = binding.get("progress_publication_sequence")
+        if publication_id == last_id:
+            if publication_digest != binding.get("progress_publication_digest"):
+                raise PersistentRunError("publication identity reused for changed content")
+            return snapshot("AVAILABLE", "unchanged producer publication; no new ETA point")
+        if last_time is not None and published < last_time:
+            raise PersistentRunError("progress publication time moved backwards")
+        if sequence is not None and (not isinstance(sequence, int) or isinstance(sequence, bool) or sequence < 0 or
+                                     (isinstance(last_sequence, int) and sequence <= last_sequence)):
+            raise PersistentRunError("progress publication sequence moved backwards or is invalid")
+        if last_time == published and not raw.get("publication_id") and sequence is None:
+            raise PersistentRunError("same timestamp without a new publication identity")
+        if now - published > overdue_after:
+            return snapshot("PROGRESS_SOURCE_OVERDUE", "producer publication is already overdue")
+    except (PersistentRunError, OSError, ValueError, TypeError, OverflowError, UnicodeDecodeError) as exc:
+        return snapshot("UNAVAILABLE", str(exc))
     history = binding.get("progress_history") if isinstance(binding.get("progress_history"), list) else []
     point = dict(normalized)
-    if not history or history[-1] != point:
-        history.append(point)
-    history = history[-12:]
+    history = [*history, point][-12:]
     eta = estimate_progress_eta(
         history,
         mode=str(binding.get("progress_mode") or "none"),
         expected_update_seconds=binding.get("expected_progress_update_seconds", "UNKNOWN"),
     )
+    plateau = binding.get("progress_mode") in {"count", "fraction"} and previous is not None and previous.get("stage") == normalized["stage"] and _quantitative_value(previous, binding.get("progress_mode", "none")) == _quantitative_value(normalized, binding.get("progress_mode", "none"))
+    if plateau and binding.get("progress_mode") in {"count", "fraction"}:
+        eta = {"eta": "UNKNOWN", "eta_low": "UNKNOWN", "eta_high": "UNKNOWN", "eta_confidence": "INSUFFICIENT"}
     normalized.update(eta)
-    binding["progress_history"] = history
+    normalized["eta_basis"] = "VALID_PLATEAU" if plateau else ("WARMUP_OR_RESET" if eta["eta"] == "UNKNOWN" else "median recent positive rate; empirical range, not a calibrated confidence interval")
+    binding["progress_history"] = [*history[:-1], dict(normalized)]
     binding["last_good_progress"] = normalized
-    binding["progress_observation"] = {"state": "AVAILABLE", "observed_at": observed_at}
-    return binding
+    binding["progress_publication_id"] = publication_id
+    binding["progress_publication_digest"] = publication_digest
+    if sequence is not None:
+        binding["progress_publication_sequence"] = sequence
+    previous = normalized
+    return snapshot("AVAILABLE", normalized["eta_basis"])
+
+
+def _reserve_notification_slot(binding: dict[str, Any], request: dict[str, Any]) -> dict[str, Any] | None:
+    """Reserve on the existing canonical binding before any external helper."""
+    root = Path(binding["state_root"]) if binding.get("state_root") else None
+    path = _run_binding_path(binding, state_root=root)
+    if path.as_posix() != binding.get("binding_path"):
+        raise PersistentRunError("NOTIFICATION_BUDGET_UNVERIFIABLE: noncanonical binding")
+    saved = _read_json_if_exists(path)
+    if saved is None or not _binding_matches(saved, binding) or saved.get("notification_attempt_cap") != 6:
+        raise PersistentRunError("NOTIFICATION_BUDGET_UNVERIFIABLE: run identity")
+    slots = saved.get("notification_slots")
+    if not isinstance(slots, list) or len(slots) > 6:
+        raise PersistentRunError("NOTIFICATION_BUDGET_UNVERIFIABLE: slot ledger")
+    ids = [slot.get("slot_id") for slot in slots if isinstance(slot, dict)]
+    if len(ids) != len(slots) or len(set(ids)) != len(ids) or any(type(i) is not int or not 1 <= i <= 6 for i in ids):
+        raise PersistentRunError("NOTIFICATION_BUDGET_UNVERIFIABLE: slot identities")
+    general = sum(slot["slot_id"] != 6 for slot in slots)
+    terminal_used = 6 in ids
+    if saved.get("notification_general_slots_used") != general or saved.get("notification_terminal_slot_used") != terminal_used:
+        raise PersistentRunError("NOTIFICATION_BUDGET_UNVERIFIABLE: counters")
+    binding.update(notification_slots=slots, notification_general_slots_used=general,
+                   notification_terminal_slot_used=terminal_used)
+    if any(slot.get("source_event_id") == request["source_event_id"] for slot in slots):
+        binding["last_notification"] = {"status": "NOT_RETRYABLE", "reason": "event slot already consumed"}
+        _atomic_json(path, binding)
+        return None
+    terminal = request["fact_class"] == "runtime_terminal"
+    if terminal and (binding.get("lifecycle_state") != "TERMINAL" or not binding.get("child_exit_observed_at") or type(binding.get("exit_code")) is not int):
+        raise PersistentRunError("NOTIFICATION_BUDGET_UNVERIFIABLE: terminal not observed")
+    if (terminal and terminal_used) or (not terminal and general >= 5):
+        binding["notification_suppressed_count"] = int(saved.get("notification_suppressed_count", 0)) + 1
+        binding["notification_suppressed_reason"] = "NOTIFICATION_BUDGET_EXHAUSTED; runtime/local progress continues; terminal slot reserved"
+        binding["last_notification"] = {"status": "NOTIFICATION_BUDGET_EXHAUSTED", "fact_class": request["fact_class"]}
+        _atomic_json(path, binding)
+        return None
+    slot = {"slot_id": 6 if terminal else general + 1, "source_event_id": request["source_event_id"],
+            "fact_class": request["fact_class"], "reserved_at": _utc_now(),
+            "request_sha256": _sha256_bytes(json.dumps(request, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8"))}
+    binding["notification_slots"] = [*slots, slot]
+    binding["notification_general_slots_used"] = general + int(not terminal)
+    binding["notification_terminal_slot_used"] = terminal_used or terminal
+    _atomic_json(path, binding)
+    return {"binding_locator": path.as_posix(), "launch_id": binding["launch_id"],
+            "goal_sha256": binding["goal_sha256"], "source_event_id": request["source_event_id"],
+            "slot_id": slot["slot_id"], "no_retry": True}
 
 
 def _persistent_notification(
@@ -843,9 +971,18 @@ def _persistent_notification(
             source_event_id=source_id,
             recipient_override=str(binding.get("recipient_override") or ""),
         )
+        options: dict[str, Any] = {}
+        if binding.get("notification_attempt_cap") is not None:
+            permit = _reserve_notification_slot(binding, request)
+            if permit is None:
+                return
+            options["budget_permit"] = permit
+        if binding.get("state_root"):
+            options["state_root"] = Path(binding["state_root"])
         delivery = deliver_notification(
             request,
             repo_identity=str(binding.get("repo_realpath") or ""),
+            **options,
         )
         binding["last_notification"] = {
             "status": delivery.status,
@@ -853,9 +990,16 @@ def _persistent_notification(
             "recorded_at": _utc_now(),
             "fact_class": fact_class,
         }
+        if options.get("budget_permit"):
+            slot_id = options["budget_permit"]["slot_id"]
+            for slot in binding["notification_slots"]:
+                if slot["slot_id"] == slot_id:
+                    slot["notifier_event_key"] = delivery.event_key
+                    slot["delivery_result"] = delivery.status
+            _atomic_json(Path(binding["binding_path"]), binding)
     except Exception as exc:
         binding["last_notification"] = {
-            "status": "FAILED",
+            "status": "NOTIFICATION_BUDGET_UNVERIFIABLE" if "NOTIFICATION_BUDGET_UNVERIFIABLE" in str(exc) else "FAILED",
             "error": f"{type(exc).__name__}: {exc}",
             "recorded_at": _utc_now(),
             "fact_class": fact_class,
@@ -867,16 +1011,14 @@ def _binding_terminal(binding: dict[str, Any]) -> bool:
 
 
 def _progress_status(contract: dict[str, Any]) -> dict[str, Any]:
-    raw = str(contract.get("progress_source_path") or "")
-    if not raw:
-        return {"state": "UNKNOWN", "reason": "progress source not configured"}
-    path = Path(raw)
-    if not path.is_file():
-        return {"state": "UNKNOWN", "reason": "progress source missing", "path": path.as_posix()}
-    try:
-        return {"state": "AVAILABLE", "normalized": normalize_progress_file(path), "path": path.as_posix()}
-    except PersistentRunError as exc:
-        return {"state": "UNKNOWN", "reason": str(exc), "path": path.as_posix()}
+    stored = contract.get("progress_snapshot")
+    if isinstance(stored, dict):
+        return dict(stored)
+    previous = contract.get("last_good_progress")
+    if isinstance(previous, dict):
+        return {**contract.get("progress_observation", {}), "normalized": previous,
+                "reason": "legacy stored snapshot; freshness not verified by a source reread"}
+    return {"state": "UNKNOWN", "reason": "no persisted supervisor progress observation"}
 
 
 def _run_status(
@@ -884,7 +1026,7 @@ def _run_status(
     binding: dict[str, Any] | None,
     exact_active: bool,
 ) -> dict[str, Any]:
-    progress = _progress_status(contract)
+    progress = _progress_status(binding or contract)
     if binding is None:
         return {
             "status": "CONFLICT" if exact_active else "NOT_STARTED",
@@ -953,6 +1095,13 @@ def start_persistent_run(
         if original in {"RUNNING", "STARTING", "UNKNOWN/UNAVAILABLE"}:
             observed["lifecycle_state"] = original
         return observed
+    if contract["progress_mode"] in {"count", "fraction"}:
+        if not isinstance(contract["expected_progress_update_seconds"], int):
+            raise PersistentRunError("quantitative progress requires a positive frozen producer update interval")
+        if contract["progress_owner"] == "project-native" and not contract.get("progress_producer"):
+            raise PersistentRunError("project-native quantitative progress requires Progress producer identity")
+    elif not contract.get("progress_mode_reason"):
+        raise PersistentRunError("stage/none requires a concrete Progress mode reason for a new run")
     if contract["notify"] == "ON":
         from .notifier import require_notifier_ready
 
@@ -969,10 +1118,14 @@ def start_persistent_run(
         "schema": "ai-bridge.persistent-run.binding.v2",
         **contract,
         "binding_path": binding_path.as_posix(),
+        "state_root": state_home(state_root).as_posix(),
         "start_requested_at": _utc_now(),
         "lifecycle_state": "START_REQUESTED",
         "host_boot_id": _boot_identity(),
     }
+    if contract.get("notification_attempt_cap") is not None:
+        binding.update(notification_general_slots_used=0, notification_terminal_slot_used=False,
+                       notification_slots=[], notification_suppressed_count=0)
     _atomic_json(binding_path, binding)
     supervisor = [
         sys.executable,
@@ -1180,6 +1333,9 @@ def supervise_binding(
     binding["child_process_identity"] = _process_identity(child.pid) or {"state": "UNAVAILABLE"}
     binding["lifecycle_state"] = "RUNNING"
     observe_binding_progress(binding)
+    binding["last_logical_delivery"] = (_progress_status(binding).get("normalized"))
+    binding["last_logical_delivery_at"] = binding["child_started_at"]
+    _atomic_json(binding_path, binding)
     _persistent_notification(
         binding,
         fact_class="runtime_start",
@@ -1187,8 +1343,6 @@ def supervise_binding(
         summary="Persistent primary child started; this is a runtime fact, not semantic completion.",
         next_action="Use persistent-run status to observe the same launch identity.",
     )
-    binding["last_logical_delivery"] = binding.get("last_good_progress")
-    binding["last_logical_delivery_at"] = binding["child_started_at"]
     _atomic_json(binding_path, binding)
     if not hasattr(child, "poll"):
         exit_code = child.wait()
@@ -1198,9 +1352,13 @@ def supervise_binding(
                 exit_code = child.wait(timeout=observation_seconds)
                 break
             except subprocess.TimeoutExpired:
-                previous = binding.get("last_good_progress") if isinstance(binding.get("last_good_progress"), dict) else None
+                previous = _progress_status(binding).get("normalized")
                 observe_binding_progress(binding)
-                current = binding.get("last_good_progress") if isinstance(binding.get("last_good_progress"), dict) else None
+                snapshot = _progress_status(binding)
+                current = snapshot.get("normalized")
+                if current is None and snapshot.get("state") == "PROGRESS_SOURCE_OVERDUE":
+                    current = {"stage": "UNKNOWN", "status": "normal", "eta": "UNKNOWN",
+                               "source_state": "PROGRESS_SOURCE_OVERDUE", "observed_at": snapshot["observed_at"]}
                 if current is not None:
                     # Supervisor observation time, not producer publication time,
                     # drives cadence even when a healthy source is unchanged.
@@ -1213,32 +1371,37 @@ def supervise_binding(
                         last_delivered_at=binding.get("last_logical_delivery_at"),
                     )
                     if decision == "deliver":
+                        binding["last_logical_delivery"] = current
+                        binding["last_logical_delivery_at"] = observed["observed_at"]
+                        _atomic_json(binding_path, binding)
                         runtime_status = str(current.get("status") or "RUNNING").upper()
+                        if snapshot.get("state") in {"PROGRESS_SOURCE_OVERDUE", "UNAVAILABLE"}:
+                            runtime_status = str(snapshot["state"])
                         if runtime_status == "COMPLETE":
                             runtime_status = "SOURCE_REPORTED_TERMINAL"
                         _persistent_notification(
                             binding,
                             fact_class="runtime_progress",
                             status=runtime_status,
-                            summary="Persistent supervisor observed project-owned progress; this is not semantic completion.",
+                            summary="Persistent supervisor observed project-owned progress; this is not semantic completion. "
+                                    + str(snapshot.get("reason") or "") + "; source published at "
+                                    + str(snapshot.get("source_published_at") or current.get("observed_at") or "UNKNOWN"),
                             next_action="Continue observing the same runtime unless the original Goal requires action.",
                             progress=current,
                         )
-                        # A logical delivery consumes cadence even if transport
-                        # fails; observations must not become automatic retries.
-                        binding["last_logical_delivery"] = current
-                        binding["last_logical_delivery_at"] = observed["observed_at"]
                 _atomic_json(binding_path, binding)
+    observe_binding_progress(binding)
     binding["child_exit_observed_at"] = _utc_now()
     binding["exit_code"] = exit_code
     binding["lifecycle_state"] = "TERMINAL"
+    _atomic_json(binding_path, binding)
     _persistent_notification(
         binding,
         fact_class="runtime_terminal",
         status=f"EXITED_{exit_code}",
         summary=f"Persistent primary child exited with code {exit_code}; Goal completion is not inferred.",
         next_action="Evaluate the original Goal's positive completion evidence.",
-        progress=binding.get("last_good_progress") if isinstance(binding.get("last_good_progress"), dict) else None,
+        progress=_progress_status(binding).get("normalized"),
     )
     _atomic_json(binding_path, binding)
     return 0

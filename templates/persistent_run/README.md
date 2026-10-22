@@ -107,6 +107,20 @@ observation 标为 unavailable，child 与 supervisor 继续，last-good 不被�
 count/fraction 至少三个有效点且跨十分钟后才形成主动 ETA；stage/none 或证据不足时
 诚实保持 `UNKNOWN`。
 
+新 quantitative run 必须冻结实际 producer 和正整数更新间隔，stage/none 必须写
+`Progress mode reason`。项目原生 JSON 携带 exact run/runtime 身份及来源实际
+`observed_at`，可用独立 `publication_id` 或递增 `publication_sequence`。
+重复读取不刷新来源健康时间、不增加 ETA 样本。超过
+`max(900s, 3 × expected interval)` 没有新有效发布，当前状态是
+`PROGRESS_SOURCE_OVERDUE`，不是业务 stalled；有效平台期、预热/重置、坏源有各自
+诊断。status 不重读来源，读取 supervisor 保存的同一份 snapshot；last-good 保留
+来源时间，当前不支持的 ETA 为 `UNKNOWN`，经验区间不是校准置信区间。
+
+可选 `External notification attempt cap: 6` 在既有 binding 限制五个普通席与一个
+真实 terminal 保留席。席位在 helper 前落盘，失败、未知或崩溃不退还、不 retry；
+耗尽只抑制外部通知，不中断 child 或本地进度。RUNNING/child identity、观察与逻辑
+投递时钟、真实 exit/末次进度均在相应通知前保存。
+
 正式 supervisor 只在 contract 的 `Notify: ON` 且 machine Notifier readiness 通过后
 投递，复用 `~/.ai-bridge/private/notifier.env`，不为报告进展新建 credential、recipient、
 daemon、watcher 或 controller。独立 `report/latest` 只记录本机报告和逻辑投递判断；

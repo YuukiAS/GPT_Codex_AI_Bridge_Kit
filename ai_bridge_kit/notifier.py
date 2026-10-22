@@ -523,18 +523,76 @@ def event_directory(event_key_value: str, *, state_root: Path | None = None) -> 
     return notifier_state_root(state_root) / "events" / event_key_value
 
 
+def _persistent_budget_permit(
+    request: dict[str, Any], *, repo_identity: str,
+    permit: dict[str, Any] | None, state_root: Path | None = None,
+) -> dict[str, Any] | None:
+    """Verify only Persistent's canonical reservation; never allocate a slot."""
+    if request.get("consumer") != "persistent":
+        if permit is not None:
+            raise ValueError("NOTIFICATION_BUDGET_UNVERIFIABLE: wrong consumer")
+        return None
+    from .persistent_run import _run_binding_path
+
+    path = _run_binding_path({"repo_realpath": repo_identity, "run_key": request.get("task_key", "")},
+                             state_root=machine_home(state_root))
+    try:
+        binding = load_json(path) if path.exists() else {}
+        if not isinstance(binding, dict) or path.is_symlink():
+            raise ValueError("invalid canonical binding")
+        if binding.get("notification_attempt_cap") is None and permit is None:
+            return None  # Existing unbudgeted consumers retain their behavior.
+        if not isinstance(permit, dict) or binding.get("notification_attempt_cap") != 6:
+            raise ValueError("missing permit or invalid cap")
+        if permit.get("binding_locator") != path.as_posix() or permit.get("no_retry") is not True:
+            raise ValueError("noncanonical locator or retry permission")
+        if (binding.get("repo_realpath") != repo_identity or binding.get("run_key") != request.get("task_key") or
+                request.get("run_id") != binding.get("run_key") or binding.get("launch_id") != request.get("runtime_id") or
+                permit.get("launch_id") != binding.get("launch_id") or permit.get("goal_sha256") != binding.get("goal_sha256") or
+                not re.fullmatch(r"[0-9a-f]{64}", str(binding.get("goal_sha256") or "")) or
+                permit.get("source_event_id") != request.get("source_event_id")):
+            raise ValueError("run, Goal or event identity mismatch")
+        slots = binding.get("notification_slots")
+        if not isinstance(slots, list) or not slots or len(slots) > 6:
+            raise ValueError("invalid slot ledger")
+        ids = [slot.get("slot_id") for slot in slots if isinstance(slot, dict)]
+        if len(ids) != len(slots) or len(set(ids)) != len(ids) or any(type(i) is not int or not 1 <= i <= 6 for i in ids):
+            raise ValueError("invalid slot identities")
+        if (binding.get("notification_general_slots_used") != sum(i != 6 for i in ids) or
+                binding.get("notification_terminal_slot_used") != (6 in ids)):
+            raise ValueError("invalid slot counters")
+        slot = next((slot for slot in slots if slot["slot_id"] == permit.get("slot_id")), None)
+        digest = hashlib.sha256(json.dumps(request, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+        if slot is None or slot.get("source_event_id") != request.get("source_event_id") or slot.get("fact_class") != request.get("fact_class") or slot.get("request_sha256") != digest:
+            raise ValueError("request does not own the reserved slot")
+        terminal = request.get("fact_class") == "runtime_terminal"
+        if terminal != (slot["slot_id"] == 6):
+            raise ValueError("terminal reservation cannot be used for ordinary progress")
+        if terminal and (binding.get("lifecycle_state") != "TERMINAL" or not binding.get("child_exit_observed_at") or
+                         type(binding.get("exit_code")) is not int or request.get("status") != f"EXITED_{binding['exit_code']}"):
+            raise ValueError("terminal fact not durably observed")
+        return dict(permit)
+    except (OSError, ValueError, TypeError, KeyError) as exc:
+        raise ValueError(f"NOTIFICATION_BUDGET_UNVERIFIABLE: {exc}") from exc
+
+
 def claim_event(
     request: dict[str, Any],
     *,
     repo_identity: str,
     config: dict[str, str],
     state_root: Path | None = None,
+    budget_permit: dict[str, Any] | None = None,
 ) -> tuple[str, Path, str]:
     errors = validate_notification_request(request)
     if errors:
         raise ValueError("; ".join(errors))
+    permit = _persistent_budget_permit(request, repo_identity=repo_identity, permit=budget_permit, state_root=state_root)
     recipient = resolve_recipient(request, config)
     key = auto_event_key(request, repo_identity=repo_identity, resolved_recipient=recipient)
+    if permit is not None:
+        # One claim per slot, even if machine defaults change after a crash.
+        key = hashlib.sha256(f"{permit['binding_locator']}\0{permit['launch_id']}\0{permit['slot_id']}".encode("utf-8")).hexdigest()
     directory = event_directory(key, state_root=state_root)
     directory.mkdir(parents=True, exist_ok=True)
     claim = directory / "claim.json"
@@ -546,6 +604,8 @@ def claim_event(
         "resolved_recipient": recipient,
         "request": request,
     }
+    if permit is not None:
+        payload["budget_permit"] = permit
     raw = (json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8")
     try:
         fd = os.open(claim, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -794,6 +854,7 @@ def deliver_event_inline(
     sender: Callable[..., None] | None = None,
     parent_attempt_id: str | None = None,
     monotonic: Callable[[], float] = time.monotonic,
+    state_root: Path | None = None,
 ) -> NotifierResult:
     claim = load_json(directory / "claim.json")
     request = claim.get("request")
@@ -802,6 +863,21 @@ def deliver_event_inline(
     errors = validate_notification_request(request)
     if errors:
         return NotifierResult("FAILED", event_key=str(claim.get("event_key") or ""), message="; ".join(errors))
+    try:
+        permit = _persistent_budget_permit(request, repo_identity=claim["repo_identity"], permit=claim.get("budget_permit"), state_root=state_root)
+        if permit is not None:
+            if parent_attempt_id:
+                return NotifierResult("NOT_RETRYABLE", event_key=claim["event_key"])
+            # A crashed helper consumes its slot too; never re-enter expression.
+            fd = os.open(directory / "budget-helper-started", os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, "wb") as handle:
+                handle.write(b"no-retry\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+    except FileExistsError:
+        return NotifierResult("NOT_RETRYABLE", event_key=claim["event_key"])
+    except ValueError as exc:
+        return NotifierResult("NOTIFICATION_BUDGET_UNVERIFIABLE", event_key=claim.get("event_key", ""), message=str(exc))
     active_config = dict(config) if config is not None else notifier_env(config_root=config_root)
     attempt_id = uuid.uuid4().hex
     attempt = {
@@ -881,8 +957,26 @@ def _run_delivery_helper(
     deadline_seconds: float,
     parent_attempt_id: str | None = None,
     popen: Callable[..., Any] = subprocess.Popen,
+    state_root: Path | None = None,
 ) -> NotifierResult:
     claim = load_json(directory / "claim.json")
+    try:
+        permit = _persistent_budget_permit(claim["request"], repo_identity=claim["repo_identity"], permit=claim.get("budget_permit"), state_root=state_root)
+        if permit is not None and (parent_attempt_id or (directory / "budget-helper-started").exists()):
+            return NotifierResult("NOT_RETRYABLE", event_key=claim["event_key"])
+        if permit is not None:
+            # Persist dispatch before Popen too: a parent/helper crash cannot
+            # authorize another dispatch of the same already-consumed slot.
+            try:
+                fd = os.open(directory / "budget-helper-launched", os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                with os.fdopen(fd, "wb") as handle:
+                    handle.write(b"no-retry\n")
+                    handle.flush()
+                    os.fsync(handle.fileno())
+            except FileExistsError:
+                return NotifierResult("NOT_RETRYABLE", event_key=claim["event_key"])
+    except ValueError as exc:
+        return NotifierResult("NOTIFICATION_BUDGET_UNVERIFIABLE", event_key=claim["event_key"], message=str(exc))
     command = [
         sys.executable,
         "-m",
@@ -897,6 +991,8 @@ def _run_delivery_helper(
     ]
     if parent_attempt_id:
         command.extend(["--parent-attempt-id", parent_attempt_id])
+    if state_root is not None:
+        command.extend(["--state-root", machine_home(state_root).as_posix()])
     process = popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
         process.wait(timeout=deadline_seconds)
@@ -930,8 +1026,13 @@ def deliver_notification(
     popen: Callable[..., Any] = subprocess.Popen,
     require_ready: bool = True,
     config: dict[str, str] | None = None,
+    budget_permit: dict[str, Any] | None = None,
 ) -> NotifierResult:
     started = time.monotonic()
+    try:
+        _persistent_budget_permit(request, repo_identity=repo_identity, permit=budget_permit, state_root=state_root)
+    except ValueError as exc:
+        return NotifierResult("NOTIFICATION_BUDGET_UNVERIFIABLE", message=str(exc))
     active_config = dict(config) if config is not None else notifier_env(config_root=config_root)
     if require_ready:
         require_notifier_ready(config_root=config_root, state_root=state_root, config=config)
@@ -940,6 +1041,7 @@ def deliver_notification(
         repo_identity=repo_identity,
         config=active_config,
         state_root=state_root,
+        budget_permit=budget_permit,
     )
     key = directory.name
     if status == "DUPLICATE":
@@ -954,6 +1056,7 @@ def deliver_notification(
         config_root=machine_home(config_root),
         deadline_seconds=remaining,
         popen=popen,
+        state_root=state_root,
     )
 
 
@@ -968,6 +1071,9 @@ def retry_event(
 ) -> NotifierResult:
     started = time.monotonic()
     directory = event_directory(event_key_value, state_root=state_root)
+    claim_path = directory / "claim.json"
+    if claim_path.is_file() and load_json(claim_path).get("budget_permit") is not None:
+        return NotifierResult("NOT_RETRYABLE", event_key=event_key_value, message="budgeted Persistent slot is consumed; no retry authorization")
     latest = _read_latest_attempt(directory)
     if latest is None:
         return NotifierResult("NOT_RETRYABLE", event_key=event_key_value, message="event or attempt missing")
@@ -985,6 +1091,7 @@ def retry_event(
         deadline_seconds=remaining,
         parent_attempt_id=str(latest.get("attempt_id") or ""),
         popen=popen,
+        state_root=state_root,
     )
 
 
@@ -1208,6 +1315,7 @@ def build_parser() -> argparse.ArgumentParser:
     helper.add_argument("--config-root", type=Path, required=True)
     helper.add_argument("--deadline-seconds", type=float, required=True)
     helper.add_argument("--parent-attempt-id")
+    helper.add_argument("--state-root", type=Path)
     return parser
 
 
@@ -1255,6 +1363,7 @@ def main(argv: list[str] | None = None) -> int:
             config_root=args.config_root,
             deadline_seconds=args.deadline_seconds,
             parent_attempt_id=args.parent_attempt_id,
+            state_root=args.state_root,
         )
         return 0 if result.status == "SMTP_ACCEPTED" else 1
     parser.print_help()

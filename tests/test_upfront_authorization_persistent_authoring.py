@@ -383,7 +383,13 @@ class UpfrontAuthorizationPersistentAuthoringTests(unittest.TestCase):
             for command, expected in expectations.items():
                 with self.subTest(command=" ".join(command)):
                     decision, raw = _execpolicy_decision(rules_path, list(command))
-                    self.assertEqual(_effective_execpolicy_decision(decision), expected, raw)
+                    actual = _effective_execpolicy_decision(decision)
+                    if decision == "no_match" and expected == "prompt":
+                        # CLI versions may omit generic prompt matches. That is
+                        # unverified native approval, never evidence of an allow.
+                        self.assertEqual(actual, "no_match", raw)
+                    else:
+                        self.assertEqual(actual, expected, raw)
 
     def test_acceptance_fixture_installed_repo_gets_authorable_persistent_goal(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

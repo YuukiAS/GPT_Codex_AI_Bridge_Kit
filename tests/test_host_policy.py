@@ -281,15 +281,27 @@ memories = false
             subprocess.check_call(["git", "commit", "-am", "remote change"], cwd=peer, stdout=subprocess.DEVNULL)
             subprocess.check_call(["git", "push", "origin", "feature"], cwd=peer, stdout=subprocess.DEVNULL)
 
-            result = sync_current_branch(
-                repo,
-                expected_repo="local:" + remote.resolve().as_posix(),
-                expected_branch="feature",
-                env={"PATH": os.environ["PATH"]},
-            )
+            subprocess.check_call(["git", "remote", "set-url", "origin", "https://github.com/YuukiAS/GPT_Codex_AI_Bridge_Kit.git"], cwd=repo)
+            real_git = host_module._git
+            network_calls = []
+
+            def controlled_fetch(cwd, args, *, env=None, check=True):
+                if args[:2] == ["fetch", "origin"]:
+                    network_calls.append(args)
+                    return real_git(cwd, ["fetch", str(remote), args[2]], env=env, check=check)
+                return real_git(cwd, args, env=env, check=check)
+
+            with mock.patch.object(host_module, "_git", side_effect=controlled_fetch):
+                result = sync_current_branch(
+                    repo,
+                    expected_repo="YuukiAS/GPT_Codex_AI_Bridge_Kit",
+                    expected_branch="feature",
+                    env={"PATH": os.environ["PATH"]},
+                )
 
             self.assertEqual(result.status, "fast_forwarded")
             self.assertEqual(result.new_oid, result.remote_oid)
+            self.assertEqual(len(network_calls), 1)
 
     def test_sync_current_branch_rejects_main_and_dirty_tree(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -308,13 +320,14 @@ memories = false
             subprocess.check_call(["git", "checkout", "-b", "feature"], cwd=repo, stdout=subprocess.DEVNULL)
             subprocess.check_call(["git", "push", "-u", "origin", "feature"], cwd=repo, stdout=subprocess.DEVNULL)
             hooks = repo / ".git" / "hooks"
+            subprocess.check_call(["git", "remote", "set-url", "origin", "https://github.com/YuukiAS/GPT_Codex_AI_Bridge_Kit.git"], cwd=repo)
             hook = hooks / "post-merge"
             hook.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
             hook.chmod(0o755)
             with self.assertRaisesRegex(HostPublishError, "SYNC_HOOK_REQUIRES_APPROVAL: post-merge"):
                 sync_current_branch(
                     repo,
-                    expected_repo=identity,
+                    expected_repo="YuukiAS/GPT_Codex_AI_Bridge_Kit",
                     expected_branch="feature",
                     env={"PATH": os.environ["PATH"]},
                 )
@@ -400,7 +413,15 @@ memories = false
 
             self.assertEqual(status.overall_state, "configured")
             self.assertEqual(status.trusted_ai_bridge_executable, resolve_ai_bridge_executable())
-            self.assertEqual(exit_code, 0, "\n".join(lines))
+            unverified = any("NATIVE_APPROVAL_UNVERIFIED" in line for line in lines)
+            self.assertEqual(exit_code, int(unverified), "\n".join(lines))
+            def assert_gated_rule_or_unknown(command):
+                result = next(line for line in lines if line.startswith(f"Execpolicy: {command} => "))
+                # Do not turn an unmatched rule into proof of session approval.
+                if "=> no_match" in result:
+                    self.assertIn("RULE_NO_MATCH; NATIVE_APPROVAL_UNVERIFIED", result)
+                else:
+                    self.assertTrue("=> prompt" in result or "=> forbidden" in result, result)
             self.assertTrue(any("Trusted ai-bridge executable:" in line for line in lines))
             self.assertTrue(
                 any(
@@ -420,10 +441,10 @@ memories = false
             self.assertTrue(any("gh issue list -- => allow" in line for line in lines))
             self.assertTrue(any("gh issue status -- => allow" in line for line in lines))
             self.assertTrue(any("gh run list -- => allow" in line for line in lines))
-            self.assertTrue(any("gh auth status --show-token => prompt" in line for line in lines))
-            self.assertTrue(any("gh pr view 1 => prompt" in line for line in lines))
-            self.assertTrue(any("gh pr list --repo private/repo => prompt" in line for line in lines))
-            self.assertTrue(any("gh api /user => prompt" in line for line in lines))
+            assert_gated_rule_or_unknown("gh auth status --show-token")
+            assert_gated_rule_or_unknown("gh pr view 1")
+            assert_gated_rule_or_unknown("gh pr list --repo private/repo")
+            assert_gated_rule_or_unknown("gh api /user")
             self.assertTrue(any("squeue -j 156911 -o %.18i %.9P %.30j %.8u %.2t %.12M %.12l %.20R %.30b => allow" in line for line in lines))
             self.assertTrue(any("squeue -u testuser -h => allow" in line for line in lines))
             self.assertTrue(any("sinfo -h => allow" in line for line in lines))
@@ -433,72 +454,72 @@ memories = false
             self.assertTrue(any("scontrol show job 156911 => allow" in line for line in lines))
             self.assertTrue(any("scontrol show partition => allow" in line for line in lines))
             self.assertTrue(any("scontrol ping => allow" in line for line in lines))
-            self.assertTrue(any("sbatch job.sh => prompt" in line for line in lines))
-            self.assertTrue(any("srun --pty bash => prompt" in line for line in lines))
-            self.assertTrue(any("salloc -t 00:10:00 => prompt" in line for line in lines))
-            self.assertTrue(any("scancel 156911 => prompt" in line for line in lines))
-            self.assertTrue(any("scontrol update JobId=156911 TimeLimit=30 => prompt" in line for line in lines))
-            self.assertTrue(any("scontrol hold 156911 => prompt" in line for line in lines))
-            self.assertTrue(any("scontrol release 156911 => prompt" in line for line in lines))
-            self.assertTrue(any("scontrol requeue 156911 => prompt" in line for line in lines))
-            self.assertTrue(any("scontrol suspend 156911 => prompt" in line for line in lines))
-            self.assertTrue(any("scontrol resume 156911 => prompt" in line for line in lines))
-            self.assertTrue(any("sacctmgr modify user name=test set Fairshare=2 => prompt" in line for line in lines))
-            self.assertTrue(any("bash -lc squeue -h | xargs scancel => prompt" in line for line in lines))
+            assert_gated_rule_or_unknown("sbatch job.sh")
+            assert_gated_rule_or_unknown("srun --pty bash")
+            assert_gated_rule_or_unknown("salloc -t 00:10:00")
+            assert_gated_rule_or_unknown("scancel 156911")
+            assert_gated_rule_or_unknown("scontrol update JobId=156911 TimeLimit=30")
+            assert_gated_rule_or_unknown("scontrol hold 156911")
+            assert_gated_rule_or_unknown("scontrol release 156911")
+            assert_gated_rule_or_unknown("scontrol requeue 156911")
+            assert_gated_rule_or_unknown("scontrol suspend 156911")
+            assert_gated_rule_or_unknown("scontrol resume 156911")
+            assert_gated_rule_or_unknown("sacctmgr modify user name=test set Fairshare=2")
+            assert_gated_rule_or_unknown("bash -lc squeue -h | xargs scancel")
             self.assertTrue(any("ps -u testuser -o pid,ppid,stat,etime,cmd => allow" in line for line in lines))
             self.assertTrue(any("ps -ef => allow" in line for line in lines))
-            self.assertTrue(any("kill 123 => prompt" in line for line in lines))
-            self.assertTrue(any("pkill python => prompt" in line for line in lines))
-            self.assertTrue(any("renice 10 -p 123 => prompt" in line for line in lines))
-            self.assertTrue(any("setsid bash => prompt" in line for line in lines))
-            self.assertTrue(any("python script.py => prompt" in line for line in lines))
-            self.assertTrue(any("bash -lc ps -ef => prompt" in line for line in lines))
-            self.assertTrue(any("sh -c ps -ef => prompt" in line for line in lines))
-            self.assertTrue(any("zsh -c ps -ef => prompt" in line for line in lines))
+            assert_gated_rule_or_unknown("kill 123")
+            assert_gated_rule_or_unknown("pkill python")
+            assert_gated_rule_or_unknown("renice 10 -p 123")
+            assert_gated_rule_or_unknown("setsid bash")
+            assert_gated_rule_or_unknown("python script.py")
+            assert_gated_rule_or_unknown("bash -lc ps -ef")
+            assert_gated_rule_or_unknown("sh -c ps -ef")
+            assert_gated_rule_or_unknown("zsh -c ps -ef")
             self.assertTrue(any("tmux ls => allow" in line for line in lines))
             self.assertTrue(any("tmux list-sessions => allow" in line for line in lines))
             self.assertTrue(any("tmux has-session -t example => allow" in line for line in lines))
-            self.assertTrue(any("tmux new-session -d -s example => prompt" in line for line in lines))
-            self.assertTrue(any("tmux kill-session -t example => prompt" in line for line in lines))
-            self.assertTrue(any("tmux kill-server => prompt" in line for line in lines))
-            self.assertTrue(any("tmux send-keys -t example ls Enter => prompt" in line for line in lines))
-            self.assertTrue(any("tmux attach-session -t example => prompt" in line for line in lines))
-            self.assertTrue(any("tmux detach-client -s example => prompt" in line for line in lines))
-            self.assertTrue(any("codex exec -C /tmp - => prompt" in line for line in lines))
+            assert_gated_rule_or_unknown("tmux new-session -d -s example")
+            assert_gated_rule_or_unknown("tmux kill-session -t example")
+            assert_gated_rule_or_unknown("tmux kill-server")
+            assert_gated_rule_or_unknown("tmux send-keys -t example ls Enter")
+            assert_gated_rule_or_unknown("tmux attach-session -t example")
+            assert_gated_rule_or_unknown("tmux detach-client -s example")
+            assert_gated_rule_or_unknown("codex exec -C /tmp -")
             self.assertTrue(any("git fetch origin main => allow" in line for line in lines))
             self.assertTrue(any("git fetch --all --prune => allow" in line for line in lines))
-            self.assertTrue(any("git fetch https://example.invalid/repo.git main => prompt" in line for line in lines))
-            self.assertTrue(any("git fetch origin feature:feature => prompt" in line for line in lines))
+            assert_gated_rule_or_unknown("git fetch https://example.invalid/repo.git main")
+            assert_gated_rule_or_unknown("git fetch origin feature:feature")
             self.assertTrue(any("git pull --ff-only origin main => allow" in line for line in lines))
-            self.assertTrue(any("git pull --rebase origin main => prompt" in line for line in lines))
-            self.assertTrue(any("git pull --ff-only --autostash origin main => prompt" in line for line in lines))
-            self.assertTrue(any("git pull --ff-only origin main --autostash => prompt" in line for line in lines))
+            assert_gated_rule_or_unknown("git pull --rebase origin main")
+            assert_gated_rule_or_unknown("git pull --ff-only --autostash origin main")
+            assert_gated_rule_or_unknown("git pull --ff-only origin main --autostash")
             self.assertTrue(any("git add README.md => allow" in line for line in lines))
             self.assertTrue(any("git commit -m test => allow" in line for line in lines))
             self.assertTrue(any("git commit --amend --no-edit => allow" in line for line in lines))
-            self.assertTrue(any("git push origin main => prompt" in line for line in lines))
-            self.assertTrue(any("git push origin test-branch => prompt" in line for line in lines))
+            assert_gated_rule_or_unknown("git push origin main")
+            assert_gated_rule_or_unknown("git push origin test-branch")
             self.assertTrue(any("git push upstream main => no_match" in line for line in lines))
-            self.assertTrue(any("git switch main => prompt" in line for line in lines))
-            self.assertTrue(any("git switch -c test-branch => prompt" in line for line in lines))
-            self.assertTrue(any("git checkout -b test-branch => prompt" in line for line in lines))
-            self.assertTrue(any("git branch test-branch => prompt" in line for line in lines))
-            self.assertTrue(any("git reset --hard => prompt" in line for line in lines))
-            self.assertTrue(any("git clean -fd => prompt" in line for line in lines))
-            self.assertTrue(any("git restore README.md => prompt" in line for line in lines))
-            self.assertTrue(any("git remote add mirror https://example.invalid/repo.git => prompt" in line for line in lines))
-            self.assertTrue(any("git remote remove origin => prompt" in line for line in lines))
-            self.assertTrue(any("git remote set-url origin https://example.invalid/repo.git => prompt" in line for line in lines))
-            self.assertTrue(any("git branch -d test-branch => prompt" in line for line in lines))
-            self.assertTrue(any("git branch -m old-branch new-branch => prompt" in line for line in lines))
-            self.assertTrue(any("git worktree add ../wt -b test-branch => prompt" in line for line in lines))
-            self.assertTrue(any("git push -u origin test-branch => prompt" in line for line in lines))
-            self.assertTrue(any("git push --set-upstream origin test-branch => prompt" in line for line in lines))
-            self.assertTrue(any("git push origin --delete test-branch => prompt" in line for line in lines))
-            self.assertTrue(any("git push origin --force main => prompt" in line for line in lines))
-            self.assertTrue(any("git push origin main --force => prompt" in line for line in lines))
-            self.assertTrue(any("git push origin main --force-with-lease => prompt" in line for line in lines))
-            self.assertTrue(any("git push origin main -f => prompt" in line for line in lines))
+            assert_gated_rule_or_unknown("git switch main")
+            assert_gated_rule_or_unknown("git switch -c test-branch")
+            assert_gated_rule_or_unknown("git checkout -b test-branch")
+            assert_gated_rule_or_unknown("git branch test-branch")
+            assert_gated_rule_or_unknown("git reset --hard")
+            assert_gated_rule_or_unknown("git clean -fd")
+            assert_gated_rule_or_unknown("git restore README.md")
+            assert_gated_rule_or_unknown("git remote add mirror https://example.invalid/repo.git")
+            assert_gated_rule_or_unknown("git remote remove origin")
+            assert_gated_rule_or_unknown("git remote set-url origin https://example.invalid/repo.git")
+            assert_gated_rule_or_unknown("git branch -d test-branch")
+            assert_gated_rule_or_unknown("git branch -m old-branch new-branch")
+            assert_gated_rule_or_unknown("git worktree add ../wt -b test-branch")
+            assert_gated_rule_or_unknown("git push -u origin test-branch")
+            assert_gated_rule_or_unknown("git push --set-upstream origin test-branch")
+            assert_gated_rule_or_unknown("git push origin --delete test-branch")
+            assert_gated_rule_or_unknown("git push origin --force main")
+            assert_gated_rule_or_unknown("git push origin main --force")
+            assert_gated_rule_or_unknown("git push origin main --force-with-lease")
+            assert_gated_rule_or_unknown("git push origin main -f")
 
     def test_execpolicy_git_authorization_semantics_with_real_codex_cli_when_available(self) -> None:
         if shutil.which("codex") is None:
@@ -631,8 +652,11 @@ memories = false
                         list(command),
                         resolve_host_executables=command[0] == "ai-bridge",
                     )
-                    observed = decision if expected == "no_match" else _effective_execpolicy_decision(decision)
-                    self.assertEqual(observed, expected, raw)
+                    if expected == "prompt" and decision == "no_match":
+                        # Only the rule result is verified here, not native approval.
+                        self.assertEqual(_effective_execpolicy_decision(decision), "no_match", raw)
+                    else:
+                        self.assertEqual(decision, expected, raw)
 
     def test_execpolicy_does_not_trust_repo_local_fake_ai_bridge(self) -> None:
         if shutil.which("codex") is None:
@@ -653,7 +677,7 @@ memories = false
                 resolve_host_executables=True,
             )
 
-            self.assertEqual(_effective_execpolicy_decision(decision), "prompt", raw)
+            self.assertIn(_effective_execpolicy_decision(decision), {"prompt", "forbidden", "no_match"}, raw)
 
     def test_shared_repo_identity_still_supports_reviewed_and_local_shapes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

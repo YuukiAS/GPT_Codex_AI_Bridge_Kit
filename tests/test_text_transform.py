@@ -27,7 +27,9 @@ class FakeResponse:
         return None
 
     def read(self) -> bytes:
-        return json.dumps(self.payload).encode("utf-8")
+        return json.dumps({"input_tokens": 100, "id": "resp_fixture", "model": "gpt-5.6-terra",
+                           "service_tier": "default", "usage": {"input_tokens": 100, "output_tokens": 20,
+                           "input_tokens_details": {"cached_tokens": 0}}, **self.payload}).encode("utf-8")
 
 
 class TextTransformTests(unittest.TestCase):
@@ -123,13 +125,13 @@ class TextTransformTests(unittest.TestCase):
                 output_age,
                 result,
                 api_key="sk-transform-secret",
-                model="gpt-test-transform",
+                model="gpt-5.6-terra",
                 timeout=17,
                 opener=opener,
             )
 
             request_text = json.dumps(captured["body"], ensure_ascii=False)
-            self.assertEqual(captured["body"]["model"], "gpt-test-transform")
+            self.assertEqual(captured["body"]["model"], "gpt-5.6-terra")
             self.assertFalse(captured["body"]["store"])
             self.assertIn("provenance 和 estimand", request_text)
             self.assertIn("docs/contract.md", request_text)
@@ -254,7 +256,7 @@ class TextTransformTests(unittest.TestCase):
                     api_key="sk",
                     opener=lambda *_args, **_kwargs: FakeResponse({"status": "incomplete", "output_text": "x"}),
                 )
-            with self.assertRaisesRegex(text_transform.TextTransformError, "output was empty"):
+            with self.assertRaisesRegex(text_transform.TextTransformError, "reservation consumed"):
                 text_transform.run_text_transform(
                     target,
                     target / "results/048_text/text_transform/text_transform_inputs.json",
@@ -266,7 +268,7 @@ class TextTransformTests(unittest.TestCase):
                 )
             self.assertFalse((target / output_age).exists())
 
-    def test_writeback_stages_only_output_age_and_result(self) -> None:
+    def test_writeback_stages_output_result_and_final_budget_only(self) -> None:
         tmp, target, source, _output_identity, output_age, result = self.make_project()
         with tmp:
             text_transform.run_text_transform(
@@ -283,6 +285,7 @@ class TextTransformTests(unittest.TestCase):
             self.assertEqual(
                 staged,
                 [
+                    "results/048_text/paid_review_budget.json",
                     "results/048_text/text_transform/TEXT_TRANSFORM.json",
                     "results/048_text/text_transform/output.age",
                 ],

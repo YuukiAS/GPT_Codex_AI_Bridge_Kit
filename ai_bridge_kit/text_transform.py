@@ -14,6 +14,7 @@ from typing import Any, Callable
 
 from . import text_review
 from . import visual_review
+from . import paid_review
 
 
 TEXT_TRANSFORM_MANIFEST_SCHEMA = "AI_BRIDGE_TEXT_TRANSFORM_MANIFEST_V1"
@@ -478,6 +479,10 @@ def build_responses_request(target: Path, manifest: dict[str, Any], plaintext: s
     return {
         "model": model,
         "store": False,
+        "max_output_tokens": 4096,
+        "reasoning": {"effort": "low"},
+        "service_tier": "default",
+        "tools": [],
         "input": [
             {
                 "role": "user",
@@ -668,7 +673,39 @@ def run_text_transform(
         os.environ.get(OPENAI_TRANSFORM_KEY_ENV, "") or os.environ.get(LEGACY_OPENAI_KEY_ENV, "") or os.environ.get("OPENAI_API_KEY", "")
     )
     request_payload = build_responses_request(target, manifest, plaintext, model=selected_model)
+    try:
+        paid_review.validate_model_pricing(selected_model)
+        campaign = paid_review.campaign_identity_from_manifest(manifest)
+        contract = {"max_paid_calls": 1, "campaign_reserved_cost_hard_ceiling_usd": "0.25",
+                    "per_call_worst_case_ceiling_usd": "0.25", "automatic_paid_retries": 0}
+        ledger = paid_review.budget_state_path(target, campaign)
+        # A reservation is spent even after timeout, crash or zero-billing error.
+        # Refuse reruns before even repeating the token-count endpoint.
+        if ledger.exists():
+            state = paid_review.load_budget_state(ledger, campaign_identity=campaign,
+                                                  expected_contract=paid_review.initial_contract(contract))
+            if state["reservations"]:
+                raise paid_review.PaidReviewBudgetError("text transform reservation consumed; zero retry")
+        preflight = paid_review.count_input_tokens(request_payload, api_key=selected_key, timeout=timeout, opener=opener)
+        # Only accounting facts may enter the public ledger, never echoed text.
+        preflight["raw_response"] = {"input_tokens": preflight["input_tokens"]}
+        reservation = paid_review.reserve_paid_review_call(
+            target=target, campaign_identity=campaign, review_type="text_transform", model=selected_model,
+            request_payload=request_payload, input_token_preflight=preflight, initial_contract_override=contract)
+        if reservation.get("reused_zero_billing_reservation"):
+            raise paid_review.PaidReviewBudgetError("text transform cannot reuse a zero-billing reservation")
+        paid_review.persist_reservation_to_git_if_requested(target, reservation["state_path"])
+    except paid_review.PaidReviewBudgetError as exc:
+        raise TextTransformError(str(exc)) from exc
     response_payload = call_openai_responses(request_payload, api_key=selected_key, timeout=timeout, opener=opener)
+    reservation = paid_review.record_actual_usage(
+        target=target, campaign_identity=campaign,
+        reservation_id=reservation["reservation"]["reservation_id"], response_payload=response_payload)
+    receipt = paid_review.receipt_from_reservation(campaign_identity=campaign, review_type="text_transform",
+                                                 model=selected_model, reservation_bundle=reservation,
+                                                 response_payload=response_payload)
+    if receipt["accounting_status"] != "ACCOUNTING_VERIFIED":
+        raise TextTransformError("text transform accounting unverified; reservation remains consumed; zero retry")
     output_plaintext = _extract_response_text(response_payload)
     if not output_plaintext.strip():
         raise TextTransformError("OpenAI text transform output was empty")
@@ -684,6 +721,7 @@ def run_text_transform(
         output_age_path=absolute_output_age,
         model=selected_model,
     )
+    artifact["paid_review_receipt"] = receipt
     errors = validate_text_transform_result(
         artifact,
         expected={
@@ -812,9 +850,20 @@ def bridge_kit_pip_spec(ref: str | None = None) -> str:
 def text_transform_writeback_needed(target: Path, output_age_path: Path | str, result_path: Path | str) -> bool:
     output_rel = validate_encrypted_payload_path(output_age_path)
     result_rel = validate_result_path(result_path)
-    subprocess.check_call(["git", "add", "--", output_rel, result_rel], cwd=target)
+    artifact = load_json(target / result_rel)
+    errors = validate_text_transform_result(artifact)
+    if errors:
+        raise TextTransformError("; ".join(errors))
+    campaign = artifact.get("paid_review_receipt", {}).get("campaign_identity")
+    if not campaign:
+        raise TextTransformError("text transform writeback requires paid budget receipt")
+    if campaign != paid_review.campaign_identity_from_manifest(artifact):
+        raise TextTransformError("text transform writeback campaign mismatch")
+    ledger = paid_review.budget_state_path(target, campaign).relative_to(target).as_posix()
+    paths = [output_rel, result_rel, ledger]
+    subprocess.check_call(["git", "add", "--", *paths], cwd=target)
     result = subprocess.run(
-        ["git", "diff", "--cached", "--quiet", "--", output_rel, result_rel],
+        ["git", "diff", "--cached", "--quiet", "--", *paths],
         cwd=target,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,

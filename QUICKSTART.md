@@ -2,6 +2,10 @@
 
 这是当前 `0.11.x`（`0.11.1` 补丁）的最短使用流程；机器安装应使用正式 `release` checkout，不追随任意开发分支。
 
+当前源码 `0.11.2` 是尚未正式分发的候选；不要用候选验收环境替换现有机器安装。
+
+新 Persistent contract 不再默认选择无进度：count/fraction 写明实际 producer 和正整数更新间隔，stage/none 写 `Progress mode reason`。项目原生来源必须提供当前 run/runtime 身份和实际发布时间；status 读取 supervisor 已保存的快照。来源停更超过 `max(900s, 3 × expected interval)` 显示 `PROGRESS_SOURCE_OVERDUE`，不等同业务 stalled。需要六次外部尝试上限时冻结 `External notification attempt cap: 6`，五普通席加一真实终止席，失败不退款、不 retry；该配置不替代用户对模型或邮件的授权。
+
 ## 1. 初始化真实项目
 
 先本地安装一次：

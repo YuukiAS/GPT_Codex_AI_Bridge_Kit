@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+## 0.11.2 - candidate
+
+- Keep Host current-branch synchronization GitHub-HTTPS-only at the effective
+  fetch/push boundary. Report raw execpolicy no-match as unverified native
+  approval, never as an observed prompt or allow.
+- Separate producer publications from supervisor observations. Repeated reads
+  cannot refresh source health or create ETA points; persist one shared snapshot
+  for status/history/notifications, distinguish warm-up, plateau and overdue/bad
+  sources, and save RUNNING/real exit/final progress before notification.
+- Add an optional six-attempt Persistent notification budget on the existing
+  binding: five ordinary slots and one real-terminal reserve, consumed before
+  helpers and never refunded or automatically retried after failure or ambiguity.
+- Reuse paid-review token counting, one-call USD0.25 reservation and actual-usage
+  receipts for Text Transform; persist the reservation before the paid call and
+  stage the updated ledger with encrypted results. Ship runtime templates in the
+  non-editable wheel. No release-channel or machine-policy update is implied.
+
 ## 0.11.1 - 2026-10-20
 
 - Fix Persistent progress notification cadence by separating the latest

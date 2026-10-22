@@ -78,6 +78,7 @@ class PersistentRunTests(unittest.TestCase):
             "Working directory: .\n"
             f"Launch argv: {json.dumps([sys.executable, '-c', 'raise SystemExit(7)'])}\n"
             "Progress mode: none\n"
+            "Progress mode reason: exit-code fixture has no domain work counter\n"
             "Progress owner: none\n"
             "Progress source locator: NONE\n"
             "Expected progress update seconds: UNKNOWN\n"
@@ -419,9 +420,14 @@ class PersistentRunTests(unittest.TestCase):
             "progress_source_path": str(progress),
             "progress_mode": "fraction",
             "expected_progress_update_seconds": 300,
+            "launch_id": "a" * 64,
+            "run_key": "run-a",
         }
+        frozen_clock = mock.patch.object(persistent_run, "_utc_now", return_value="2026-10-19T00:05:00+00:00")
+        frozen_clock.start()
+        self.addCleanup(frozen_clock.stop)
         progress.write_text(
-            json.dumps({"observed_at": "2026-10-19T00:00:00+00:00", "stage": "fit", "fraction": 0.2}),
+            json.dumps({"runtime_id": "a" * 64, "run_key": "run-a", "observed_at": "2026-10-19T00:00:00+00:00", "stage": "fit", "fraction": 0.2}),
             encoding="utf-8",
         )
         persistent_run.observe_binding_progress(binding)
@@ -431,7 +437,7 @@ class PersistentRunTests(unittest.TestCase):
         self.assertEqual(binding["progress_observation"]["state"], "UNAVAILABLE")
         self.assertEqual(binding["last_good_progress"], last_good)
         progress.write_text(
-            json.dumps({"observed_at": "2026-10-19T00:05:00+00:00", "stage": "fit", "fraction": 0.4}),
+            json.dumps({"runtime_id": "a" * 64, "run_key": "run-a", "observed_at": "2026-10-19T00:05:00+00:00", "stage": "fit", "fraction": 0.4}),
             encoding="utf-8",
         )
         persistent_run.observe_binding_progress(binding)

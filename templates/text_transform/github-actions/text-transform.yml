@@ -25,6 +25,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: text-transform-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   text-transform:
     runs-on: ubuntu-latest
@@ -36,6 +40,7 @@ jobs:
       AI_BRIDGE_TEXT_TRANSFORM_RESULT: ${{ github.event.inputs.result }}
       AI_BRIDGE_KIT_PIP_SPEC: __AI_BRIDGE_KIT_PIP_SPEC__
       AI_BRIDGE_PRIVATE_REVIEW_AGE_KEY: ${{ secrets.AI_BRIDGE_PRIVATE_REVIEW_AGE_KEY }}
+      AI_BRIDGE_PAID_REVIEW_GIT_RESERVE: '1'
     steps:
       - uses: actions/checkout@v4
         with:

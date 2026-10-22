@@ -12,10 +12,12 @@ Goal source: <repo-relative path>
 Run/session key: <project-owned stable key>
 Working directory: .
 Launch argv: ["python", "-m", "<project-owned-entrypoint>"]
-Progress mode: none
-Progress owner: none
-Progress source locator: NONE
-Expected progress update seconds: UNKNOWN
+Progress mode: <count | fraction | stage | none>
+Progress owner: <bridge-child | project-native | none>
+Progress source locator: <bridge-state | repo-relative JSON path | NONE>
+Expected progress update seconds: <positive integer for quantitative progress | UNKNOWN>
+Progress producer: <actual project-native producer entry, if applicable>
+Progress mode reason: <concrete reason when choosing stage/none>
 Notify: OFF
 Recipient override: NONE
 Notification cadence minutes: 60
@@ -75,6 +77,22 @@ Notification cadence minutes: 60
 Progress truth is owned by the project-native source above. Bridge may normalize, compare, persist latest/history, and optionally project a one-shot operational-progress Notification, but it must not infer domain progress from tmux/session/PID existence alone.
 
 For `bridge-child`, the child writes progress only through `ai-bridge persistent-run progress update`; Bridge injects the run key, progress path, mode, owner, expected cadence and runtime identity. `count` and `fraction` require a real producer. ETA remains `UNKNOWN` until at least three valid quantitative points span at least ten minutes.
+
+New quantitative runs require a positive expected publication interval;
+project-native progress also names its actual producer. Publications identify
+the exact run and runtime, their own `observed_at`, and optionally a unique
+`publication_id` or increasing `publication_sequence`. Supervisor observation
+time is separate: rereading one publication never creates another ETA point.
+After more than `max(900s, 3 * expected interval)` without a new valid
+publication, the source is `PROGRESS_SOURCE_OVERDUE`, not business stalled.
+Status reads the persisted supervisor snapshot; last-good facts retain their
+publication time while unsupported current ETA remains `UNKNOWN`.
+
+For an explicitly bounded six-attempt run, add
+`External notification attempt cap: 6`. The existing binding then reserves
+five ordinary slots and one true-runtime-terminal slot before any external
+helper. Failure, ambiguity or helper loss consumes the slot; retry is forbidden.
+This is not an authorization to call a model or send email.
 
 ## Completion
 

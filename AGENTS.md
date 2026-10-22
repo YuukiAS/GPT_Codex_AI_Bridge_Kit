@@ -131,6 +131,16 @@ Critic 不拥有 Bridge maintenance-specific low-friction policy，不得加入
 
 ## 6. Persistent Run、Progress、Notifier 与 Clear Writing
 
+0.11.2 正常入口候选修复以
+`docs/design/0.11.1_normal_entry_capability_acceptance_execution_proposal_v1.2_2026-10-22.md`、
+同版 Execution Plan/Canonical Goal/Kickoff（批准提交
+`f87763e64d57784d11f69dcc1f3b63a898405d5c`）为准；未授权最终 live 批次或正式分发。
+新 quantitative contract 必须有真实 producer/正更新间隔，stage/none 有具体理由；
+来源发布时间与观察时间分开，status 只读持久快照。来源停更只报
+`PROGRESS_SOURCE_OVERDUE`，不推断业务 stalled。六席 run 只在已有 binding 预留
+五普通席加一真实终止席，先占位再 helper，失败/未知/崩溃不退款、不 retry；
+RUNNING/真实退出码及末次进度必须先于通知落盘。
+
 Persistent Run 是项目层可选的 terminal-owned survive-disconnect 合同，不是第四套
 workflow。先分别判断 upfront authorization、process lifetime owner 与
 project-native progress source。scheduler-owned batch 或已有 detached service 不因

@@ -8,6 +8,8 @@
 
 当前发行系列为 `0.11.x`，本补丁版本为 `0.11.1`；`0.11.0` 已正式发布。机器同步只以远端 `refs/heads/release` 及对应发行证据为准，不依赖 GitHub Release 或 tag。开发分支可以包含后续候选和证据、文档提交，但较新的分支 HEAD 不会自动成为正式发行目标。
 
+当前源码正在验证 `0.11.2` 候选，尚未替代正式 `0.11.1`。本轮只修正 Host 同步与审批诊断、Persistent 进度来源和通知预算、Text Transform 费用记账；最终真实正常入口验收仍须独立审查及用户授权。
+
 ## 一眼看懂：我到底该装什么
 
 整个工具包分成三层：
@@ -418,6 +420,12 @@ ai-bridge persistent-run prompt kickoff \
 count/fraction 的 ETA 使用最近最多 60 分钟、12 个点中同 stage、同 total 的连续片段，至少三个有效点并跨十分钟。它取相邻点正向速率的中位数，用剩余工作量除以该速率估算剩余时间；区间用近期速率的上下四分位位置给出快慢边界。进度回退、stage/total 改变或超过 `max(15min, 3 × expected update interval)` 的间隔会重新 warm-up。stage/none、有效点不足、跨度不足或没有正向速率时保持 `UNKNOWN`，不编造预计时间。
 
 进度观察与邮件投递分别记账。普通 count/fraction 小变化只更新 latest/history，不立即发邮件；健康进度从上一次**逻辑投递**开始计时，达到通知 cadence 才投递，默认 60 分钟，非测试配置不得低于 15 分钟。每 5 分钟刷新 observation 不会重置该计时。start/resume、阶段切换、进入 stalled/blocked/failed、runtime terminal 和 material ETA change 可以提前通知；ETA 在已知与 `UNKNOWN` 之间切换总是重大变化，已知时间的变化门槛保持 `abs(new_finish - previous_finish) >= max(15min, 25% × previous_remaining_time)`。邮件失败也不会把下一次 observation 变成自动重试；runtime terminal 不受进度 cadence 阻断。
+
+`0.11.2` 候选的新 quantitative run 必须写明实际 producer 和正整数更新间隔；选择 stage/none 必须说明具体原因。项目原生 JSON 要绑定当前 run/runtime，并记录来源实际发布时间。重复读取不增加 ETA 样本，也不刷新来源健康时间。超过 `max(900s, 3 × expected update interval)` 没有新有效发布时标记 `PROGRESS_SOURCE_OVERDUE`，不能据此断言业务 stalled。有效平台期、重新预热、坏源和来源超期分别说明原因；保留带时间的 last-good，当前证据不支持时 ETA 为 `UNKNOWN`。status、history 和通知共用 supervisor 已持久化的快照，status 不重新读取源文件制造新事实。
+
+需要六次上限的 run 可冻结 `External notification attempt cap: 6`：现有 binding 在任何模型/SMTP helper 前持久预留五个普通席和一个真实 runtime terminal 专席；失败、未知结果或 helper 崩溃不退还，不能用 retry 重发。席位耗尽后进度与 primary child 继续运行，本机记录被抑制原因。RUNNING/PID/start、各次观察及逻辑投递时钟、真实退出码和末次进度都先于相应通知落盘；通知不负责裁定业务完成。
+
+Text Transform 候选入口复用现有费用账本：最多一次 token count、一次 `gpt-5.6-terra` Responses，`max_output_tokens=4096`、low/default、`store=false`、无工具，单次及 campaign 预留上限均为 USD0.25、零重试。Actions 在付费前先写回不可退款预留，最终把实际用量账本和密文输出、`TEXT_TRANSFORM.json` 同次写回；失败或未知结果不授权再调用。模板仍只默认 main/reviewed 分支，不自动开放其他消费者分支。
 
 GPT 写长期目标/任务时要先判断执行生命周期和寿命 owner。中文里“跑到明早”“无人值守”“多小时”不等于 tmux；“断线后继续运行一个终端拥有的 orchestrator”“恢复已有持久目标”才通常指向持久运行合同。无论选择哪种寿命 owner，都不代表必须把轻量交接任务改成复核模式 / 控制模式。如果确实需要终端拥有的断线存活能力，而仓库没有安装持久运行，也没有用户选择的等价项目原生合同，不要把任务写成普通实时 Codex 会话。
 

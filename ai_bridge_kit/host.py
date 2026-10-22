@@ -892,8 +892,8 @@ def sync_current_branch(
         raise HostPublishError("UPSTREAM_MERGE_MISMATCH")
     fetch_url = _single_remote_url(top, ["remote", "get-url", "--all", "origin"], "REMOTE_URL_AMBIGUOUS", env=stable_env)
     push_url = _single_remote_url(top, ["remote", "get-url", "--push", "--all", "origin"], "REMOTE_PUSH_URL_AMBIGUOUS", env=stable_env)
-    repo = _canonical_repo_identity(fetch_url)
-    push_repo = _canonical_repo_identity(push_url)
+    repo = _publisher_github_https_identity(fetch_url)
+    push_repo = _publisher_github_https_identity(push_url)
     if repo != push_repo or repo != expected_repo:
         raise HostPublishError("REMOTE_IDENTITY_MISMATCH")
     _reject_repository_transport_config(top, env=stable_env)
@@ -999,8 +999,7 @@ def _execpolicy_decision(
 
 
 def _effective_execpolicy_decision(decision: str | None) -> str | None:
-    if decision == "no_match":
-        return "prompt"
+    # Unmatched rules say nothing about the active session's native approval.
     return decision
 
 
@@ -1318,9 +1317,17 @@ def validate_host_policy(codex_home: Path, cwd: Path | None = None) -> tuple[Hos
         )
         observed = _effective_execpolicy_decision(decision) if comparison == "effective" else decision
         label = " ".join(command)
+        rule_state = {
+            "allow": "RULE_MATCH_ALLOW", "prompt": "RULE_MATCH_PROMPT",
+            "forbidden": "RULE_MATCH_FORBIDDEN", "no_match": "RULE_NO_MATCH",
+        }.get(decision, "RULE_RESULT_UNAVAILABLE")
+        if decision == "no_match":
+            lines.append(f"Execpolicy: {label} => no_match ({rule_state}; NATIVE_APPROVAL_UNVERIFIED)")
+            if expected != "no_match":
+                exit_code = 1
+            continue
         if observed == expected:
-            suffix = f" ({decision})" if comparison == "effective" and decision != observed else ""
-            lines.append(f"Execpolicy: {label} => {observed}{suffix}")
+            lines.append(f"Execpolicy: {label} => {observed} ({rule_state})")
         else:
             exit_code = 1
             lines.append(f"Execpolicy mismatch: {label} => {observed or 'unknown'} expected {expected}")
