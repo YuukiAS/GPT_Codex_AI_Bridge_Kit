@@ -641,6 +641,32 @@ def validate_text_transform_result(payload: dict[str, Any], *, expected: dict[st
     return errors
 
 
+def _reserve_transform_call(target, manifest, request, *, model, api_key, timeout, opener):
+    paid_review.validate_model_pricing(model)
+    campaign = paid_review.campaign_identity_from_manifest(manifest)
+    contract = {"max_paid_calls": 1, "campaign_reserved_cost_hard_ceiling_usd": "0.25",
+                "per_call_worst_case_ceiling_usd": "0.25", "automatic_paid_retries": 0}
+    ledger = paid_review.budget_state_path(target, campaign)
+    # Reuse the existing lock primitive, with a separate invocation lock so the
+    # nested reservation lock never deadlocks. No second budget state is created.
+    with paid_review.locked_budget(ledger.with_name("text_transform_once.json")):
+        if ledger.exists():
+            state = paid_review.load_budget_state(ledger, campaign_identity=campaign,
+                                                  expected_contract=paid_review.initial_contract(contract))
+            if state["reservations"]:
+                raise paid_review.PaidReviewBudgetError("text transform reservation consumed; zero retry")
+        preflight = paid_review.count_input_tokens(request, api_key=api_key, timeout=timeout, opener=opener)
+        # Only accounting facts may enter the public ledger, never echoed text.
+        preflight["raw_response"] = {"input_tokens": preflight["input_tokens"]}
+        reservation = paid_review.reserve_paid_review_call(
+            target=target, campaign_identity=campaign, review_type="text_transform", model=model,
+            request_payload=request, input_token_preflight=preflight, initial_contract_override=contract)
+        if reservation.get("reused_zero_billing_reservation"):
+            raise paid_review.PaidReviewBudgetError("text transform cannot reuse a zero-billing reservation")
+        paid_review.persist_reservation_to_git_if_requested(target, reservation["state_path"])
+    return campaign, reservation
+
+
 def run_text_transform(
     target: Path,
     manifest_path: Path,
@@ -674,27 +700,8 @@ def run_text_transform(
     )
     request_payload = build_responses_request(target, manifest, plaintext, model=selected_model)
     try:
-        paid_review.validate_model_pricing(selected_model)
-        campaign = paid_review.campaign_identity_from_manifest(manifest)
-        contract = {"max_paid_calls": 1, "campaign_reserved_cost_hard_ceiling_usd": "0.25",
-                    "per_call_worst_case_ceiling_usd": "0.25", "automatic_paid_retries": 0}
-        ledger = paid_review.budget_state_path(target, campaign)
-        # A reservation is spent even after timeout, crash or zero-billing error.
-        # Refuse reruns before even repeating the token-count endpoint.
-        if ledger.exists():
-            state = paid_review.load_budget_state(ledger, campaign_identity=campaign,
-                                                  expected_contract=paid_review.initial_contract(contract))
-            if state["reservations"]:
-                raise paid_review.PaidReviewBudgetError("text transform reservation consumed; zero retry")
-        preflight = paid_review.count_input_tokens(request_payload, api_key=selected_key, timeout=timeout, opener=opener)
-        # Only accounting facts may enter the public ledger, never echoed text.
-        preflight["raw_response"] = {"input_tokens": preflight["input_tokens"]}
-        reservation = paid_review.reserve_paid_review_call(
-            target=target, campaign_identity=campaign, review_type="text_transform", model=selected_model,
-            request_payload=request_payload, input_token_preflight=preflight, initial_contract_override=contract)
-        if reservation.get("reused_zero_billing_reservation"):
-            raise paid_review.PaidReviewBudgetError("text transform cannot reuse a zero-billing reservation")
-        paid_review.persist_reservation_to_git_if_requested(target, reservation["state_path"])
+        campaign, reservation = _reserve_transform_call(target, manifest, request_payload,
+            model=selected_model, api_key=selected_key, timeout=timeout, opener=opener)
     except paid_review.PaidReviewBudgetError as exc:
         raise TextTransformError(str(exc)) from exc
     response_payload = call_openai_responses(request_payload, api_key=selected_key, timeout=timeout, opener=opener)

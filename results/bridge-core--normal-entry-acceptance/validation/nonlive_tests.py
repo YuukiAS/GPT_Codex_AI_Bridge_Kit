@@ -20,6 +20,8 @@ def guard(event, args):
             forbidden = Path(executable).resolve() == REAL_CODEX and argv[1] == "exec"
     if event == "socket.getaddrinfo":
         forbidden = str(args[0]).lower() in {"smtp.gmail.com", "api.openai.com"}
+    if event == "urllib.Request":
+        forbidden = str(args[0]).startswith("https://api.openai.com/")
     if forbidden:
         raise RuntimeError("NORMAL_ENTRY_NONLIVE_ONLY: " + event)
 

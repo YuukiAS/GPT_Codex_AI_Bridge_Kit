@@ -45,6 +45,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: true
+          # A rerun must see the committed spent reservation, not its old event SHA.
+          ref: ${{ github.ref }}
 
       - uses: actions/setup-python@v5
         with:

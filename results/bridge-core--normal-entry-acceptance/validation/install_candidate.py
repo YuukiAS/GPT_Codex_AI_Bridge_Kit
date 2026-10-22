@@ -20,6 +20,7 @@ def run(argv, *, cwd=ROOT, env=None):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--candidate", required=True)
+    parser.add_argument("--venv-python", default="/usr/bin/python3.9")
     args = parser.parse_args()
     candidate = args.candidate
     if run(["git", "rev-parse", "HEAD"]).strip() != candidate:
@@ -42,7 +43,7 @@ def main():
     wheel_dir.mkdir(parents=True)
     log = run([sys.executable, "-m", "pip", "wheel", "--no-index", "--no-deps", "--no-build-isolation",
                "--wheel-dir", str(wheel_dir), str(source)], env=env)
-    run([sys.executable, "-m", "venv", str(venv)], env=env)
+    run([args.venv_python, "-m", "venv", str(venv)], env=env)
     python = venv / "bin/python"
     cli = venv / "bin/ai-bridge"
     wheels = list(wheel_dir.glob("*.whl"))
@@ -58,6 +59,7 @@ print(json.dumps(dict(sys_executable=sys.executable,module_path=ai_bridge_kit.__
  direct_url=json.loads(d.read_text('direct_url.json')),user_site_enabled=__import__('site').ENABLE_USER_SITE)))
 """
     identity = json.loads(run([str(python), "-I", "-c", code], cwd=EXPORT, env=env))
+    identity["module_path"] = str(Path(identity["module_path"]).resolve())
     assert identity["version"] == identity["metadata_version"] == "0.11.2"
     assert identity["sys_executable"] == str(python)
     assert identity["direct_url"].get("dir_info", {}).get("editable") is not True

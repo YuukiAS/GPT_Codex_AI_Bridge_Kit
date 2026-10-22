@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+import io
 import os
 import subprocess
 import unittest
+import urllib.error
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest import mock
 
@@ -94,6 +97,9 @@ class TextTransformBudgetTests(unittest.TestCase):
                         return test_text_transform.FakeResponse({"input_tokens": 100})
                     if failure == "empty":
                         return test_text_transform.FakeResponse({"status": "completed", "output_text": " "})
+                    if failure == "credit_balance_exhausted":
+                        raise urllib.error.HTTPError(request.full_url, 429, failure, {},
+                              io.BytesIO(b'{"error":{"code":"credit_balance_exhausted"}}'))
                     raise TimeoutError(failure)
 
                 with self.assertRaises(transform.TextTransformError):
@@ -101,6 +107,34 @@ class TextTransformBudgetTests(unittest.TestCase):
                 with self.assertRaisesRegex(transform.TextTransformError, "reservation consumed"):
                     self.run_transform(values, opener)
                 self.assertEqual(len(calls), 2)
+
+    def test_concurrent_invocations_cannot_repeat_token_count_or_paid_call(self):
+        values = self.project()
+        calls = []
+
+        def opener(request, timeout):
+            calls.append(request.full_url)
+            return test_text_transform.FakeResponse({"status": "completed", "output_text": "safe output"})
+
+        def invoke(_):
+            try:
+                return self.run_transform(values, opener)["schema"]
+            except transform.TextTransformError:
+                return "REFUSED"
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(invoke, range(2)))
+        self.assertEqual(sorted(results), sorted([transform.TEXT_TRANSFORM_RESULT_SCHEMA, "REFUSED"]))
+        self.assertEqual(len(calls), 2)  # One token count + one Responses, not two of either.
+
+    def test_template_serializes_branch_and_checks_out_current_spent_ledger(self):
+        template = Path(transform.__file__).resolve().parents[1] / "templates/text_transform/github-actions/text-transform.yml"
+        text = template.read_text()
+        self.assertIn("ref: ${{ github.ref }}", text)
+        self.assertIn("cancel-in-progress: false", text)
+        self.assertIn("AI_BRIDGE_PAID_REVIEW_GIT_RESERVE: '1'", text)
+        self.assertIn("      - main\n      - 'reviewed/**'", text)
+        self.assertNotIn("work/bridge-core--normal-entry-acceptance-text-transform", text)
 
     def test_overbudget_and_wrong_model_fail_before_paid_call(self):
         values = self.project()
